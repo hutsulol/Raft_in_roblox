@@ -119,13 +119,16 @@ local function removeProgress(resource)
 	end
 end
 
-local function showCollectedPopup()
+local function showCollectedPopup(worldPos)
+	local screenPos, onScreen = camera:WorldToScreenPoint(worldPos)
+	if not onScreen then return end
+
 	local screenGui = Instance.new("ScreenGui")
 	screenGui.Parent = playerGui
 
 	local container = Instance.new("Frame")
 	container.Size = UDim2.new(0, 120, 0, 50)
-	container.Position = UDim2.new(0, 20, 0.5, -25)
+	container.Position = UDim2.new(0, screenPos.X - 60, 0, screenPos.Y - 25)
 	container.BackgroundTransparency = 1
 	container.Parent = screenGui
 
@@ -149,8 +152,9 @@ local function showCollectedPopup()
 	icon.ScaleType = Enum.ScaleType.Fit
 	icon.Parent = container
 
+	local startY = screenPos.Y - 25
 	local tweenUp = TweenService:Create(container, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Position = UDim2.new(0, 20, 0.5, -75),
+		Position = UDim2.new(0, screenPos.X - 60, 0, startY - 50),
 	})
 	local tweenFadeText = TweenService:Create(label, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		TextTransparency = 1,
@@ -167,13 +171,29 @@ local function showCollectedPopup()
 	end)
 end
 
+local lastResourcePositions = {}
+
 collectNotify.OnClientEvent:Connect(function(action, resource, clicks, maxClicks)
 	if action == "progress" then
 		updateProgress(resource, clicks, maxClicks)
+		local adornee = getAdornee(resource)
+		if adornee and adornee:IsA("BasePart") then
+			lastResourcePositions[resource] = adornee.Position
+		end
 	elseif action == "collected" then
+		local worldPos = lastResourcePositions[resource]
+		if not worldPos then
+			local adornee = getAdornee(resource)
+			if adornee and adornee:IsA("BasePart") then
+				worldPos = adornee.Position
+			end
+		end
 		removeProgress(resource)
 		clearHighlight()
-		showCollectedPopup()
+		lastResourcePositions[resource] = nil
+		if worldPos then
+			showCollectedPopup(worldPos)
+		end
 	end
 end)
 
