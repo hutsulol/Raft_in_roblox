@@ -2,6 +2,7 @@ local CollectionService = game:GetService("CollectionService")
 local rs = game:GetService("ReplicatedStorage")
 
 local CLICKS_TO_COLLECT = 5
+local LIFETIME = 120
 
 local logTemplate = rs:WaitForChild("Log")
 
@@ -94,8 +95,8 @@ while true do
 
 	local spawnPos =
 		root.Position
-		+ root.CFrame.LookVector * math.random(80, 120)
-		+ Vector3.new(math.random(-30, 30), 0, math.random(-30, 30))
+		+ root.CFrame.LookVector * math.random(160, 240)
+		+ Vector3.new(math.random(-60, 60), 0, math.random(-60, 60))
 
 	local clone = logTemplate:Clone()
 
@@ -115,4 +116,11 @@ while true do
 	clone:PivotTo(CFrame.new(spawnPos))
 	clone.Parent = workspace
 	CollectionService:AddTag(clone, "Resource")
+
+	task.delay(LIFETIME, function()
+		if clone and clone.Parent then
+			clickCounts[clone] = nil
+			clone:Destroy()
+		end
+	end)
 end
