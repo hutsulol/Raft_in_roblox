@@ -3,12 +3,10 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
-local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Disable default Roblox backpack/inventory
 StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
@@ -23,13 +21,11 @@ local isOpen = false
 local screenGui = nil
 local hotbarGui = nil
 
--- Colors matching RAFT style (brown/tan theme)
 local COLORS = {
 	panelBg = Color3.fromRGB(139, 109, 63),
 	panelBorder = Color3.fromRGB(100, 75, 40),
 	slotBg = Color3.fromRGB(175, 145, 95),
 	slotBorder = Color3.fromRGB(120, 90, 50),
-	slotHighlight = Color3.fromRGB(220, 200, 140),
 	titleText = Color3.fromRGB(50, 35, 15),
 	lightText = Color3.fromRGB(255, 245, 220),
 	craftPanelBg = Color3.fromRGB(220, 205, 175),
@@ -40,49 +36,40 @@ local COLORS = {
 	hotbarBg = Color3.fromRGB(139, 109, 63),
 	separator = Color3.fromRGB(200, 185, 150),
 	equipped = Color3.fromRGB(200, 170, 100),
-	dragHighlight = Color3.fromRGB(255, 220, 100),
 }
 
-local INVENTORY_SLOTS = 20
 local HOTBAR_SLOTS = 8
+local GRID_SLOTS = 20
+local TOTAL_SLOTS = HOTBAR_SLOTS + GRID_SLOTS
 local SLOT_SIZE = 60
 local SLOT_PAD = 6
 local COLS = 5
 
--- ─── Slot Data Model ───
--- Each slot: nil or {type="resource", name="Log", count=5, icon=LOG_ICON}
---        or: {type="tool", name="Wooden_Spear", toolName="Wooden_Spear", icon="..."}
-local hotbarData = {} -- [1..HOTBAR_SLOTS]
-local invData = {}    -- [1..INVENTORY_SLOTS]
+-- ─── Unified Slot Data ───
+-- Slots 1..8 = hotbar, slots 9..28 = inventory grid
+local slotData = {}
+local slotsInitialized = false
 
--- ─── Drag State ───
+-- ─── Drag ───
 local dragState = {
 	active = false,
-	sourceType = nil,  -- "hotbar" or "inventory"
-	sourceIndex = nil,
+	sourceSlot = nil,
 	data = nil,
-	ghost = nil,       -- floating ImageLabel
+	ghost = nil,
 	ghostGui = nil,
-	didDrag = false,   -- true if mouse moved during drag (prevents click-equip)
+	didDrag = false,
 	startPos = nil,
 }
-local DRAG_THRESHOLD = 5 -- pixels before drag activates
+local DRAG_THRESHOLD = 5
 
 -- ─── Helpers ───
 
 local function canAfford(recipe)
 	if not recipe or not recipe.costs then return false end
 	for item, amount in recipe.costs do
-		if (inventory[item] or 0) < amount then
-			return false
-		end
+		if (inventory[item] or 0) < amount then return false end
 	end
 	return true
-end
-
-local function getItemIcon(itemName)
-	if itemName == "Log" then return LOG_ICON end
-	return ""
 end
 
 local function getToolList()
@@ -102,132 +89,86 @@ local function getToolList()
 	return tools
 end
 
-local slotsInitialized = false
-
--- Find first empty slot in an array
-local function findEmptySlot(arr, maxSlots)
-	for i = 1, maxSlots do
-		if not arr[i] then return i end
+local function findEmptySlot(startIdx, endIdx)
+	for i = startIdx, endIdx do
+		if not slotData[i] then return i end
 	end
 	return nil
 end
 
--- Check if an item already exists in an array
-local function findItemInSlots(arr, maxSlots, itemType, itemName)
-	for i = 1, maxSlots do
-		if arr[i] and arr[i].type == itemType and arr[i].name == itemName then
+local function findItemSlot(itemType, itemName)
+	for i = 1, TOTAL_SLOTS do
+		if slotData[i] and slotData[i].type == itemType and slotData[i].name == itemName then
 			return i
 		end
 	end
 	return nil
 end
 
--- Smart rebuild: preserves positions, only adds/removes/updates as needed
 local function rebuildSlotData()
 	local tools = getToolList()
 	local logCount = inventory.Log or 0
 
 	if not slotsInitialized then
-		-- First time: place everything in default positions
-		for i = 1, HOTBAR_SLOTS do hotbarData[i] = nil end
-		for i = 1, INVENTORY_SLOTS do invData[i] = nil end
+		for i = 1, TOTAL_SLOTS do slotData[i] = nil end
 
 		if logCount > 0 then
-			hotbarData[1] = {type = "resource", name = "Log", count = logCount, icon = LOG_ICON}
+			slotData[1] = {type = "resource", name = "Log", count = logCount, icon = LOG_ICON}
 		end
 
-		local toolSlot = 2
+		local slot = 2
 		for _, tool in tools do
-			if toolSlot > HOTBAR_SLOTS then break end
+			if slot > HOTBAR_SLOTS then break end
 			local toolIcon = (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
-			hotbarData[toolSlot] = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon}
-			toolSlot = toolSlot + 1
+			slotData[slot] = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon}
+			slot = slot + 1
 		end
 
 		slotsInitialized = true
 		return
 	end
 
-	-- ─── Update existing items, add new ones, remove stale ones ───
-
-	-- Update Log counts in both arrays (or add if new, remove if zero)
-	local function updateResource(arr, maxSlots)
-		local idx = findItemInSlots(arr, maxSlots, "resource", "Log")
-		if logCount > 0 then
-			if idx then
-				arr[idx].count = logCount
-			end
-			-- Don't auto-add to this array - only add if not in any array
-		else
-			if idx then arr[idx] = nil end
-		end
-	end
-
-	updateResource(hotbarData, HOTBAR_SLOTS)
-	updateResource(invData, INVENTORY_SLOTS)
-
-	-- If Log not found anywhere and count > 0, add to first empty hotbar slot
+	-- Update log counts wherever they are, or add if new
+	local logSlot = findItemSlot("resource", "Log")
 	if logCount > 0 then
-		local inHotbar = findItemInSlots(hotbarData, HOTBAR_SLOTS, "resource", "Log")
-		local inInv = findItemInSlots(invData, INVENTORY_SLOTS, "resource", "Log")
-		if not inHotbar and not inInv then
-			local empty = findEmptySlot(hotbarData, HOTBAR_SLOTS)
+		if logSlot then
+			slotData[logSlot].count = logCount
+		else
+			local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, TOTAL_SLOTS)
 			if empty then
-				hotbarData[empty] = {type = "resource", name = "Log", count = logCount, icon = LOG_ICON}
-			else
-				empty = findEmptySlot(invData, INVENTORY_SLOTS)
-				if empty then
-					invData[empty] = {type = "resource", name = "Log", count = logCount, icon = LOG_ICON}
-				end
+				slotData[empty] = {type = "resource", name = "Log", count = logCount, icon = LOG_ICON}
 			end
 		end
+	else
+		if logSlot then slotData[logSlot] = nil end
 	end
 
-	-- Build set of current tool names
+	-- Remove tools that no longer exist
 	local currentTools = {}
-	for _, tool in tools do
-		currentTools[tool.Name] = tool
-	end
+	for _, tool in tools do currentTools[tool.Name] = tool end
 
-	-- Remove tools from slots that no longer exist
-	for i = 1, HOTBAR_SLOTS do
-		if hotbarData[i] and hotbarData[i].type == "tool" then
-			if not currentTools[hotbarData[i].toolName] then
-				hotbarData[i] = nil
-			end
-		end
-	end
-	for i = 1, INVENTORY_SLOTS do
-		if invData[i] and invData[i].type == "tool" then
-			if not currentTools[invData[i].toolName] then
-				invData[i] = nil
+	for i = 1, TOTAL_SLOTS do
+		if slotData[i] and slotData[i].type == "tool" then
+			if not currentTools[slotData[i].toolName] then
+				slotData[i] = nil
 			end
 		end
 	end
 
-	-- Add new tools that aren't in any slot
+	-- Add new tools
 	for _, tool in tools do
-		local inHotbar = findItemInSlots(hotbarData, HOTBAR_SLOTS, "tool", tool.Name)
-		local inInv = findItemInSlots(invData, INVENTORY_SLOTS, "tool", tool.Name)
-		if not inHotbar and not inInv then
+		if not findItemSlot("tool", tool.Name) then
 			local toolIcon = (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
 			local entry = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon}
-			local empty = findEmptySlot(hotbarData, HOTBAR_SLOTS)
-			if empty then
-				hotbarData[empty] = entry
-			else
-				empty = findEmptySlot(invData, INVENTORY_SLOTS)
-				if empty then
-					invData[empty] = entry
-				end
-			end
+			local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, TOTAL_SLOTS)
+			if empty then slotData[empty] = entry end
 		end
 	end
 end
 
--- ─── Slot Rendering ───
+-- ─── Rendering ───
 
-local function clearSlot(slot)
+local function clearSlotUI(slot)
 	for _, child in slot:GetChildren() do
 		if child:IsA("ImageLabel") or (child:IsA("TextLabel") and child.Name ~= "") then
 			child:Destroy()
@@ -235,8 +176,8 @@ local function clearSlot(slot)
 	end
 end
 
-local function renderSlotData(slot, data)
-	clearSlot(slot)
+local function renderSlot(slot, data)
+	clearSlotUI(slot)
 	if not data then return end
 
 	local img = Instance.new("ImageLabel")
@@ -265,12 +206,56 @@ local function renderSlotData(slot, data)
 	end
 end
 
+function renderAllSlots()
+	local char = player.Character
+
+	-- Render hotbar (slots 1-8)
+	if hotbarGui then
+		local bar = hotbarGui:FindFirstChild("Hotbar")
+		if bar then
+			for i = 1, HOTBAR_SLOTS do
+				local slot = bar:FindFirstChild("HotbarSlot_" .. i)
+				if slot then
+					renderSlot(slot, slotData[i])
+					local data = slotData[i]
+					if data and data.type == "tool" and char then
+						local isEquipped = false
+						for _, t in char:GetChildren() do
+							if t:IsA("Tool") and t.Name == data.toolName then isEquipped = true break end
+						end
+						slot.BackgroundColor3 = isEquipped and COLORS.equipped or COLORS.slotBg
+					else
+						slot.BackgroundColor3 = COLORS.slotBg
+					end
+				end
+			end
+		end
+	end
+
+	-- Render inventory grid (slots 9-28)
+	if screenGui then
+		local grid = screenGui:FindFirstChild("InventoryGrid", true)
+		if grid then
+			for i = 1, GRID_SLOTS do
+				local slot = grid:FindFirstChild("Slot_" .. i)
+				if slot then
+					renderSlot(slot, slotData[HOTBAR_SLOTS + i])
+				end
+			end
+		end
+
+		local resCount = screenGui:FindFirstChild("ResCount", true)
+		if resCount then
+			resCount.Text = tostring(inventory.Log or 0)
+		end
+	end
+end
+
 -- ─── Drag & Drop ───
 
-local function beginDragPending(sourceType, sourceIndex, data, mousePos)
+local function beginDragPending(slotIndex, data, mousePos)
 	if not data then return end
-	dragState.sourceType = sourceType
-	dragState.sourceIndex = sourceIndex
+	dragState.sourceSlot = slotIndex
 	dragState.data = data
 	dragState.startPos = mousePos
 	dragState.active = false
@@ -299,18 +284,18 @@ local function activateDrag(mousePos)
 	ghost.Parent = ghostGui
 
 	if data.count and data.count > 0 then
-		local countLabel = Instance.new("TextLabel")
-		countLabel.Size = UDim2.new(0, 25, 0, 16)
-		countLabel.Position = UDim2.new(1, -25, 1, -16)
-		countLabel.BackgroundTransparency = 1
-		countLabel.Text = tostring(data.count)
-		countLabel.TextColor3 = COLORS.lightText
-		countLabel.TextStrokeTransparency = 0.3
-		countLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
-		countLabel.Font = Enum.Font.GothamBold
-		countLabel.TextSize = 13
-		countLabel.TextXAlignment = Enum.TextXAlignment.Right
-		countLabel.Parent = ghost
+		local cl = Instance.new("TextLabel")
+		cl.Size = UDim2.new(0, 25, 0, 16)
+		cl.Position = UDim2.new(1, -25, 1, -16)
+		cl.BackgroundTransparency = 1
+		cl.Text = tostring(data.count)
+		cl.TextColor3 = COLORS.lightText
+		cl.TextStrokeTransparency = 0.3
+		cl.TextStrokeColor3 = Color3.new(0, 0, 0)
+		cl.Font = Enum.Font.GothamBold
+		cl.TextSize = 13
+		cl.TextXAlignment = Enum.TextXAlignment.Right
+		cl.Parent = ghost
 	end
 
 	dragState.ghost = ghost
@@ -318,7 +303,6 @@ local function activateDrag(mousePos)
 end
 
 local function updateDragPosition(mousePos)
-	-- Check if we should activate drag (threshold)
 	if dragState.startPos and not dragState.active and dragState.data then
 		local dx = mousePos.X - dragState.startPos.X
 		local dy = mousePos.Y - dragState.startPos.Y
@@ -326,59 +310,53 @@ local function updateDragPosition(mousePos)
 			activateDrag(mousePos)
 		end
 	end
-
 	if dragState.active and dragState.ghost then
 		dragState.ghost.Position = UDim2.new(0, mousePos.X - (SLOT_SIZE - 8) / 2, 0, mousePos.Y - (SLOT_SIZE - 8) / 2)
 	end
 end
 
 local function findSlotUnderMouse(mousePos)
-	-- Check hotbar slots
+	-- Check hotbar slots (1-8)
 	if hotbarGui then
 		local bar = hotbarGui:FindFirstChild("Hotbar")
 		if bar then
 			for i = 1, HOTBAR_SLOTS do
 				local slot = bar:FindFirstChild("HotbarSlot_" .. i)
 				if slot then
-					local absPos = slot.AbsolutePosition
-					local absSize = slot.AbsoluteSize
-					if mousePos.X >= absPos.X and mousePos.X <= absPos.X + absSize.X
-						and mousePos.Y >= absPos.Y and mousePos.Y <= absPos.Y + absSize.Y then
-						return "hotbar", i, slot
+					local p = slot.AbsolutePosition
+					local s = slot.AbsoluteSize
+					if mousePos.X >= p.X and mousePos.X <= p.X + s.X and mousePos.Y >= p.Y and mousePos.Y <= p.Y + s.Y then
+						return i
 					end
 				end
 			end
 		end
 	end
 
-	-- Check inventory slots (only when open)
+	-- Check inventory grid slots (9-28)
 	if screenGui then
 		local grid = screenGui:FindFirstChild("InventoryGrid", true)
 		if grid then
-			for i = 1, INVENTORY_SLOTS do
+			for i = 1, GRID_SLOTS do
 				local slot = grid:FindFirstChild("Slot_" .. i)
 				if slot then
-					local absPos = slot.AbsolutePosition
-					local absSize = slot.AbsoluteSize
-					if mousePos.X >= absPos.X and mousePos.X <= absPos.X + absSize.X
-						and mousePos.Y >= absPos.Y and mousePos.Y <= absPos.Y + absSize.Y then
-						return "inventory", i, slot
+					local p = slot.AbsolutePosition
+					local s = slot.AbsoluteSize
+					if mousePos.X >= p.X and mousePos.X <= p.X + s.X and mousePos.Y >= p.Y and mousePos.Y <= p.Y + s.Y then
+						return HOTBAR_SLOTS + i
 					end
 				end
 			end
 		end
 	end
 
-	return nil, nil, nil
+	return nil
 end
 
 local function cancelDrag()
-	if dragState.ghostGui then
-		dragState.ghostGui:Destroy()
-	end
+	if dragState.ghostGui then dragState.ghostGui:Destroy() end
 	dragState.active = false
-	dragState.sourceType = nil
-	dragState.sourceIndex = nil
+	dragState.sourceSlot = nil
 	dragState.data = nil
 	dragState.ghost = nil
 	dragState.ghostGui = nil
@@ -386,36 +364,25 @@ local function cancelDrag()
 end
 
 local function endDrag(mousePos)
-	local wasDragging = dragState.active
-
-	if not wasDragging then
-		-- Mouse released without reaching threshold, just cancel
+	if not dragState.active then
 		cancelDrag()
 		return
 	end
 
-	local targetType, targetIndex = findSlotUnderMouse(mousePos)
+	local targetSlot = findSlotUnderMouse(mousePos)
 
-	if targetType and targetIndex then
-		local srcArr = dragState.sourceType == "hotbar" and hotbarData or invData
-		local dstArr = targetType == "hotbar" and hotbarData or invData
-		local srcIdx = dragState.sourceIndex
-		local dstIdx = targetIndex
-
-		if not (dragState.sourceType == targetType and srcIdx == dstIdx) then
-			-- Swap
-			local temp = dstArr[dstIdx]
-			dstArr[dstIdx] = srcArr[srcIdx]
-			srcArr[srcIdx] = temp
-		end
+	if targetSlot and targetSlot ~= dragState.sourceSlot then
+		local temp = slotData[targetSlot]
+		slotData[targetSlot] = slotData[dragState.sourceSlot]
+		slotData[dragState.sourceSlot] = temp
 	end
 
 	cancelDrag()
-	dragState.didDrag = true -- keep this flag until next mouse down
+	dragState.didDrag = true
 	renderAllSlots()
 end
 
--- ─── Equip Tool ───
+-- ─── Equip ───
 
 local function equipToolByName(toolName)
 	local char = player.Character
@@ -423,7 +390,6 @@ local function equipToolByName(toolName)
 	local humanoid = char:FindFirstChildOfClass("Humanoid")
 	if not humanoid then return end
 
-	-- Check if already equipped
 	for _, t in char:GetChildren() do
 		if t:IsA("Tool") and t.Name == toolName then
 			humanoid:UnequipTools()
@@ -431,7 +397,6 @@ local function equipToolByName(toolName)
 		end
 	end
 
-	-- Find in backpack
 	local backpack = player:FindFirstChild("Backpack")
 	if backpack then
 		for _, t in backpack:GetChildren() do
@@ -443,146 +408,7 @@ local function equipToolByName(toolName)
 	end
 end
 
--- ─── Render All Slots ───
-
-function renderAllSlots()
-	-- Render hotbar
-	if hotbarGui then
-		local bar = hotbarGui:FindFirstChild("Hotbar")
-		if bar then
-			local char = player.Character
-			for i = 1, HOTBAR_SLOTS do
-				local slot = bar:FindFirstChild("HotbarSlot_" .. i)
-				if slot then
-					renderSlotData(slot, hotbarData[i])
-					-- Highlight equipped tool
-					local data = hotbarData[i]
-					if data and data.type == "tool" and char then
-						local isEquipped = false
-						for _, t in char:GetChildren() do
-							if t:IsA("Tool") and t.Name == data.toolName then
-								isEquipped = true
-								break
-							end
-						end
-						slot.BackgroundColor3 = isEquipped and COLORS.equipped or COLORS.slotBg
-					else
-						slot.BackgroundColor3 = COLORS.slotBg
-					end
-				end
-			end
-		end
-	end
-
-	-- Render inventory grid (if open)
-	if screenGui then
-		local grid = screenGui:FindFirstChild("InventoryGrid", true)
-		if grid then
-			for i = 1, INVENTORY_SLOTS do
-				local slot = grid:FindFirstChild("Slot_" .. i)
-				if slot then
-					renderSlotData(slot, invData[i])
-				end
-			end
-		end
-
-		-- Update resource count display
-		local resCount = screenGui:FindFirstChild("ResCount", true)
-		if resCount then
-			resCount.Text = tostring(inventory.Log or 0)
-		end
-	end
-end
-
--- ─── Hotbar (always visible) ───
-
-local function buildHotbar()
-	if hotbarGui then hotbarGui:Destroy() end
-
-	hotbarGui = Instance.new("ScreenGui")
-	hotbarGui.Name = "HotbarGui"
-	hotbarGui.ResetOnSpawn = false
-	hotbarGui.DisplayOrder = 5
-	hotbarGui.Parent = playerGui
-
-	local barWidth = HOTBAR_SLOTS * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
-	local bar = Instance.new("Frame")
-	bar.Name = "Hotbar"
-	bar.Size = UDim2.new(0, barWidth, 0, SLOT_SIZE + SLOT_PAD * 2)
-	bar.Position = UDim2.new(0.5, -barWidth / 2, 1, -(SLOT_SIZE + SLOT_PAD * 2) - 10)
-	bar.BackgroundColor3 = COLORS.hotbarBg
-	bar.BackgroundTransparency = 0.15
-	bar.BorderSizePixel = 0
-	bar.Parent = hotbarGui
-
-	local barCorner = Instance.new("UICorner")
-	barCorner.CornerRadius = UDim.new(0, 8)
-	barCorner.Parent = bar
-
-	local barStroke = Instance.new("UIStroke")
-	barStroke.Color = COLORS.panelBorder
-	barStroke.Thickness = 2
-	barStroke.Parent = bar
-
-	for i = 1, HOTBAR_SLOTS do
-		local slot = Instance.new("TextButton")
-		slot.Name = "HotbarSlot_" .. i
-		slot.Size = UDim2.new(0, SLOT_SIZE, 0, SLOT_SIZE)
-		slot.Position = UDim2.new(0, SLOT_PAD + (i - 1) * (SLOT_SIZE + SLOT_PAD), 0, SLOT_PAD)
-		slot.BackgroundColor3 = COLORS.slotBg
-		slot.BackgroundTransparency = 0.1
-		slot.BorderSizePixel = 0
-		slot.Text = ""
-		slot.AutoButtonColor = false
-		slot.Parent = bar
-
-		local slotCorner = Instance.new("UICorner")
-		slotCorner.CornerRadius = UDim.new(0, 6)
-		slotCorner.Parent = slot
-
-		local slotStroke = Instance.new("UIStroke")
-		slotStroke.Color = COLORS.slotBorder
-		slotStroke.Thickness = 1.5
-		slotStroke.Parent = slot
-
-		local slotIndex = i
-
-		-- Mouse down = begin drag pending
-		slot.MouseButton1Down:Connect(function()
-			dragState.didDrag = false
-			local mousePos = UserInputService:GetMouseLocation()
-			local data = hotbarData[slotIndex]
-			if data then
-				beginDragPending("hotbar", slotIndex, data, mousePos)
-			end
-		end)
-
-		-- Click to equip tool (only if we didn't drag)
-		slot.MouseButton1Click:Connect(function()
-			if dragState.didDrag then
-				dragState.didDrag = false
-				return
-			end
-			local data = hotbarData[slotIndex]
-			if data and data.type == "tool" then
-				equipToolByName(data.toolName)
-				task.wait(0.1)
-				renderAllSlots()
-			end
-		end)
-	end
-end
-
--- ─── Inventory UI ───
-
-local function closeUI()
-	if screenGui then
-		screenGui:Destroy()
-		screenGui = nil
-	end
-	isOpen = false
-	selectedRecipe = nil
-end
+-- ─── UI Update ───
 
 local function updateCraftPanel()
 	if not screenGui then return end
@@ -639,6 +465,97 @@ local function updateUI()
 	updateCraftPanel()
 end
 
+-- ─── Close ───
+
+local function closeUI()
+	if screenGui then
+		screenGui:Destroy()
+		screenGui = nil
+	end
+	isOpen = false
+	selectedRecipe = nil
+	if hotbarGui then hotbarGui.DisplayOrder = 5 end
+end
+
+-- ─── Build Hotbar ───
+
+local function buildHotbar()
+	if hotbarGui then hotbarGui:Destroy() end
+
+	hotbarGui = Instance.new("ScreenGui")
+	hotbarGui.Name = "HotbarGui"
+	hotbarGui.ResetOnSpawn = false
+	hotbarGui.DisplayOrder = 5
+	hotbarGui.Parent = playerGui
+
+	local barWidth = HOTBAR_SLOTS * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
+	local bar = Instance.new("Frame")
+	bar.Name = "Hotbar"
+	bar.Size = UDim2.new(0, barWidth, 0, SLOT_SIZE + SLOT_PAD * 2)
+	bar.Position = UDim2.new(0.5, -barWidth / 2, 1, -(SLOT_SIZE + SLOT_PAD * 2) - 10)
+	bar.BackgroundColor3 = COLORS.hotbarBg
+	bar.BackgroundTransparency = 0.15
+	bar.BorderSizePixel = 0
+	bar.Parent = hotbarGui
+
+	local barCorner = Instance.new("UICorner")
+	barCorner.CornerRadius = UDim.new(0, 8)
+	barCorner.Parent = bar
+
+	local barStroke = Instance.new("UIStroke")
+	barStroke.Color = COLORS.panelBorder
+	barStroke.Thickness = 2
+	barStroke.Parent = bar
+
+	for i = 1, HOTBAR_SLOTS do
+		local slot = Instance.new("TextButton")
+		slot.Name = "HotbarSlot_" .. i
+		slot.Size = UDim2.new(0, SLOT_SIZE, 0, SLOT_SIZE)
+		slot.Position = UDim2.new(0, SLOT_PAD + (i - 1) * (SLOT_SIZE + SLOT_PAD), 0, SLOT_PAD)
+		slot.BackgroundColor3 = COLORS.slotBg
+		slot.BackgroundTransparency = 0.1
+		slot.BorderSizePixel = 0
+		slot.Text = ""
+		slot.AutoButtonColor = false
+		slot.Parent = bar
+
+		local slotCorner = Instance.new("UICorner")
+		slotCorner.CornerRadius = UDim.new(0, 6)
+		slotCorner.Parent = slot
+
+		local slotStroke = Instance.new("UIStroke")
+		slotStroke.Color = COLORS.slotBorder
+		slotStroke.Thickness = 1.5
+		slotStroke.Parent = slot
+
+		local slotIndex = i
+
+		slot.MouseButton1Down:Connect(function()
+			dragState.didDrag = false
+			local mousePos = UserInputService:GetMouseLocation()
+			local data = slotData[slotIndex]
+			if data then
+				beginDragPending(slotIndex, data, mousePos)
+			end
+		end)
+
+		slot.MouseButton1Click:Connect(function()
+			if dragState.didDrag then
+				dragState.didDrag = false
+				return
+			end
+			local data = slotData[slotIndex]
+			if data and data.type == "tool" then
+				equipToolByName(data.toolName)
+				task.wait(0.1)
+				renderAllSlots()
+			end
+		end)
+	end
+end
+
+-- ─── Build Inventory UI ───
+
 local function buildUI()
 	screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "InventoryGui"
@@ -646,7 +563,6 @@ local function buildUI()
 	screenGui.DisplayOrder = 10
 	screenGui.Parent = playerGui
 
-	-- ─── Center Inventory Panel ───
 	local gridWidth = COLS * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
 	local gridHeight = 4 * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
 	local panelWidth = gridWidth + 30
@@ -655,7 +571,7 @@ local function buildUI()
 	local centerPanel = Instance.new("Frame")
 	centerPanel.Name = "CenterPanel"
 	centerPanel.Size = UDim2.new(0, panelWidth, 0, panelHeight)
-	centerPanel.Position = UDim2.new(0.5, -panelWidth / 2, 0.5, -panelHeight / 2 - 20)
+	centerPanel.Position = UDim2.new(0.5, -panelWidth / 2, 0.5, -panelHeight / 2 - 50)
 	centerPanel.BackgroundColor3 = COLORS.panelBg
 	centerPanel.BorderSizePixel = 0
 	centerPanel.Parent = screenGui
@@ -669,9 +585,7 @@ local function buildUI()
 	centerStroke.Thickness = 3
 	centerStroke.Parent = centerPanel
 
-	-- Title
 	local title = Instance.new("TextLabel")
-	title.Name = "Title"
 	title.Size = UDim2.new(1, -80, 0, 30)
 	title.Position = UDim2.new(0, 10, 0, 8)
 	title.BackgroundTransparency = 1
@@ -682,7 +596,6 @@ local function buildUI()
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = centerPanel
 
-	-- Separator
 	local sep = Instance.new("Frame")
 	sep.Size = UDim2.new(1, -30, 0, 2)
 	sep.Position = UDim2.new(0, 15, 0, 42)
@@ -690,7 +603,6 @@ local function buildUI()
 	sep.BorderSizePixel = 0
 	sep.Parent = centerPanel
 
-	-- Resource count (top right)
 	local resIcon = Instance.new("ImageLabel")
 	resIcon.Size = UDim2.new(0, 22, 0, 22)
 	resIcon.Position = UDim2.new(1, -75, 0, 12)
@@ -711,7 +623,7 @@ local function buildUI()
 	resCount.TextXAlignment = Enum.TextXAlignment.Left
 	resCount.Parent = centerPanel
 
-	-- Inventory grid
+	-- Inventory grid (these are slots 9-28)
 	local gridFrame = Instance.new("Frame")
 	gridFrame.Name = "InventoryGrid"
 	gridFrame.Size = UDim2.new(0, gridWidth, 0, gridHeight)
@@ -719,7 +631,7 @@ local function buildUI()
 	gridFrame.BackgroundTransparency = 1
 	gridFrame.Parent = centerPanel
 
-	for i = 1, INVENTORY_SLOTS do
+	for i = 1, GRID_SLOTS do
 		local row = math.floor((i - 1) / COLS)
 		local col = (i - 1) % COLS
 
@@ -743,25 +655,24 @@ local function buildUI()
 		slotStroke.Thickness = 1.5
 		slotStroke.Parent = slot
 
-		local slotIndex = i
+		local globalIdx = HOTBAR_SLOTS + i
 
 		slot.MouseButton1Down:Connect(function()
 			dragState.didDrag = false
 			local mousePos = UserInputService:GetMouseLocation()
-			local data = invData[slotIndex]
+			local data = slotData[globalIdx]
 			if data then
-				beginDragPending("inventory", slotIndex, data, mousePos)
+				beginDragPending(globalIdx, data, mousePos)
 			end
 		end)
 	end
 
 	-- ─── Left Crafting Panel ───
 	local craftPanelWidth = 200
-
 	local craftPanel = Instance.new("Frame")
 	craftPanel.Name = "CraftPanel"
 	craftPanel.Size = UDim2.new(0, craftPanelWidth, 0, panelHeight)
-	craftPanel.Position = UDim2.new(0.5, -panelWidth / 2 - craftPanelWidth - 10, 0.5, -panelHeight / 2 - 20)
+	craftPanel.Position = UDim2.new(0.5, -panelWidth / 2 - craftPanelWidth - 10, 0.5, -panelHeight / 2 - 50)
 	craftPanel.BackgroundColor3 = COLORS.craftPanelBg
 	craftPanel.BorderSizePixel = 0
 	craftPanel.Parent = screenGui
@@ -805,14 +716,14 @@ local function buildUI()
 	listLayout.Padding = UDim.new(0, 5)
 	listLayout.Parent = craftList
 
-	for i, recipe in recipes do
+	for idx, recipe in recipes do
 		local btn = Instance.new("TextButton")
 		btn.Name = "Recipe_" .. recipe.name
 		btn.Size = UDim2.new(1, 0, 0, 45)
 		btn.BackgroundColor3 = COLORS.craftItemBg
 		btn.Text = ""
 		btn.BorderSizePixel = 0
-		btn.LayoutOrder = i
+		btn.LayoutOrder = idx
 		btn.AutoButtonColor = false
 		btn.Parent = craftList
 		btn:SetAttribute("RecipeName", recipe.name)
@@ -876,11 +787,9 @@ local function buildUI()
 				btn.BackgroundColor3 = COLORS.craftItemHover
 			end
 		end)
-
 		btn.MouseLeave:Connect(function()
 			btn.BackgroundColor3 = COLORS.craftItemBg
 		end)
-
 		btn.MouseButton1Click:Connect(function()
 			selectedRecipe = recipe
 			updateCraftPanel()
@@ -941,7 +850,9 @@ local function buildUI()
 
 	closeBtn.MouseButton1Click:Connect(closeUI)
 
-	-- Render
+	-- Raise hotbar above inventory
+	if hotbarGui then hotbarGui.DisplayOrder = 15 end
+
 	updateUI()
 end
 
@@ -970,7 +881,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	end
 	local slotNum = numberKeys[input.KeyCode]
 	if slotNum then
-		local data = hotbarData[slotNum]
+		local data = slotData[slotNum]
 		if data and data.type == "tool" then
 			equipToolByName(data.toolName)
 			task.wait(0.1)
@@ -979,19 +890,17 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	end
 end)
 
--- Global mouse move for drag
 UserInputService.InputChanged:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
-		if dragState.active then
+		if dragState.startPos then
 			updateDragPosition(UserInputService:GetMouseLocation())
 		end
 	end
 end)
 
--- Global mouse up to end drag (catches release anywhere)
 UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
-		if dragState.active then
+		if dragState.active or dragState.startPos then
 			endDrag(UserInputService:GetMouseLocation())
 		end
 	end
@@ -1007,9 +916,7 @@ end)
 inventoryCraftEvent.OnClientEvent:Connect(function(action, data, inv)
 	if action == "recipes" then
 		recipes = data
-		if inv then
-			inventory = inv
-		end
+		if inv then inventory = inv end
 		if isOpen then
 			closeUI()
 			isOpen = true
@@ -1038,9 +945,7 @@ inventoryCraftEvent.OnClientEvent:Connect(function(action, data, inv)
 			TextStrokeTransparency = 1,
 		})
 		tween:Play()
-		tween.Completed:Connect(function()
-			msgGui:Destroy()
-		end)
+		tween.Completed:Connect(function() msgGui:Destroy() end)
 	end
 end)
 
@@ -1049,7 +954,6 @@ rebuildSlotData()
 buildHotbar()
 renderAllSlots()
 
--- Listen for backpack changes
 local backpack = player:WaitForChild("Backpack")
 backpack.ChildAdded:Connect(function() task.wait(0.1) updateUI() end)
 backpack.ChildRemoved:Connect(function() task.wait(0.1) updateUI() end)
