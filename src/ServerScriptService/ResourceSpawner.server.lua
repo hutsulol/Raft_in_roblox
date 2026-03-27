@@ -3,7 +3,6 @@ local rs = game:GetService("ReplicatedStorage")
 
 local CLICKS_TO_COLLECT = 5
 local LIFETIME = 120
-local FLOAT_Y = 1.5
 
 local collectEvent = rs:FindFirstChild("CollectResource")
 if not collectEvent then
@@ -84,28 +83,6 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 	end
 end)
 
-local RunService = game:GetService("RunService")
-
-RunService.Heartbeat:Connect(function()
-	for _, resource in CollectionService:GetTagged("Resource") do
-		if not resource:IsDescendantOf(workspace) then continue end
-
-		local root
-		if resource:IsA("Model") then
-			root = resource.PrimaryPart
-		elseif resource:IsA("BasePart") then
-			root = resource
-		end
-		if not root then continue end
-
-		local lv = root:FindFirstChild("FloatVelocity")
-		if not lv then continue end
-
-		local diff = FLOAT_Y - root.Position.Y
-		lv.VectorVelocity = Vector3.new(0, diff * 5, 0)
-	end
-end)
-
 while true do
 	task.wait(3)
 
@@ -117,7 +94,7 @@ while true do
 	local spawnPos =
 		root.Position
 		+ root.CFrame.LookVector * math.random(160, 240)
-		+ Vector3.new(math.random(-60, 60), FLOAT_Y, math.random(-60, 60))
+		+ Vector3.new(math.random(-60, 60), 0, math.random(-60, 60))
 
 	local clone = rs:FindFirstChild("Log"):Clone()
 
@@ -131,30 +108,11 @@ while true do
 	clone:PivotTo(CFrame.new(spawnPos))
 	clone.Parent = workspace
 
-	local cRoot = clone.PrimaryPart
 	for _, part in clone:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
-			if part ~= cRoot then
-				local weld = Instance.new("WeldConstraint")
-				weld.Part0 = cRoot
-				weld.Part1 = part
-				weld.Parent = cRoot
-			end
 		end
 	end
-
-	local att = Instance.new("Attachment")
-	att.Parent = cRoot
-
-	local floatVelocity = Instance.new("LinearVelocity")
-	floatVelocity.Name = "FloatVelocity"
-	floatVelocity.Attachment0 = att
-	floatVelocity.ForceLimitMode = Enum.ForceLimitMode.PerAxis
-	floatVelocity.MaxAxesForce = Vector3.new(0, 10000, 0)
-	floatVelocity.VectorVelocity = Vector3.new(0, 0, 0)
-	floatVelocity.RelativeTo = Enum.ActuatorRelativeTo.World
-	floatVelocity.Parent = cRoot
 
 	CollectionService:AddTag(clone, "Resource")
 
