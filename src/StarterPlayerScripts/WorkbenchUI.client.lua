@@ -449,6 +449,96 @@ craftEvent.OnClientEvent:Connect(function(action, data, inv)
 end)
 
 local holdingE = false
+local hoveringWorkbench = false
+local promptBillboard = nil
+
+local function isMouseOnWorkbench()
+	local camera = workspace.CurrentCamera
+	local mouse = player:GetMouse()
+	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = {player.Character}
+
+	local result = workspace:Raycast(ray.Origin, ray.Direction * 50, params)
+	if not result or not result.Instance then return false end
+
+	local hit = result.Instance
+	local wb = findWorkBench()
+	if not wb then return false end
+
+	if hit:IsDescendantOf(wb) or hit == wb then
+		return true
+	end
+
+	return false
+end
+
+local function showPrompt()
+	if promptBillboard then return end
+
+	local wb = findWorkBench()
+	if not wb then return end
+
+	local adornee = wb.PrimaryPart or wb:FindFirstChildWhichIsA("BasePart", true)
+	if not adornee then return end
+
+	promptBillboard = Instance.new("BillboardGui")
+	promptBillboard.Size = UDim2.new(6, 0, 1.5, 0)
+	promptBillboard.StudsOffset = Vector3.new(0, 4, 0)
+	promptBillboard.AlwaysOnTop = true
+	promptBillboard.Adornee = adornee
+	promptBillboard.Parent = playerGui
+
+	local bg = Instance.new("Frame")
+	bg.Size = UDim2.new(1, 0, 1, 0)
+	bg.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
+	bg.BackgroundTransparency = 0.2
+	bg.BorderSizePixel = 0
+	bg.Parent = promptBillboard
+
+	local bgCorner = Instance.new("UICorner")
+	bgCorner.CornerRadius = UDim.new(0.2, 0)
+	bgCorner.Parent = bg
+
+	local eKey = Instance.new("TextLabel")
+	eKey.Size = UDim2.new(0.15, 0, 0.6, 0)
+	eKey.Position = UDim2.new(0.15, 0, 0.2, 0)
+	eKey.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
+	eKey.Text = "E"
+	eKey.TextColor3 = Color3.new(1, 1, 1)
+	eKey.TextScaled = true
+	eKey.Font = Enum.Font.GothamBold
+	eKey.BorderSizePixel = 0
+	eKey.Parent = bg
+
+	local eCorner = Instance.new("UICorner")
+	eCorner.CornerRadius = UDim.new(0.2, 0)
+	eCorner.Parent = eKey
+
+	local eStroke = Instance.new("UIStroke")
+	eStroke.Color = Color3.fromRGB(120, 120, 130)
+	eStroke.Thickness = 1
+	eStroke.Parent = eKey
+
+	local txt = Instance.new("TextLabel")
+	txt.Size = UDim2.new(0.5, 0, 0.6, 0)
+	txt.Position = UDim2.new(0.35, 0, 0.2, 0)
+	txt.BackgroundTransparency = 1
+	txt.Text = "Craft"
+	txt.TextColor3 = Color3.new(1, 1, 1)
+	txt.TextScaled = true
+	txt.Font = Enum.Font.GothamBold
+	txt.TextXAlignment = Enum.TextXAlignment.Left
+	txt.Parent = bg
+end
+
+local function hidePrompt()
+	if promptBillboard then
+		promptBillboard:Destroy()
+		promptBillboard = nil
+	end
+end
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
@@ -457,6 +547,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 			closeUI()
 			return
 		end
+		if not hoveringWorkbench then return end
 		if not isNearWorkbench() then return end
 		holdingE = true
 		holdStart = tick()
@@ -467,6 +558,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 				if holdingE and tick() - holdStart >= HOLD_TIME then
 					openUI()
 					holdingE = false
+					hidePrompt()
 					break
 				end
 			end
@@ -480,38 +572,16 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 end)
 
-local promptGui = nil
-
 RunService.RenderStepped:Connect(function()
+	local onWB = isMouseOnWorkbench()
 	local near = isNearWorkbench()
 
-	if near and not isOpen then
-		if not promptGui then
-			promptGui = Instance.new("ScreenGui")
-			promptGui.Name = "WorkbenchPrompt"
-			promptGui.Parent = playerGui
-
-			local prompt = Instance.new("TextLabel")
-			prompt.Size = UDim2.new(0, 300, 0, 40)
-			prompt.Position = UDim2.new(0.5, -150, 0.7, 0)
-			prompt.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-			prompt.BackgroundTransparency = 0.3
-			prompt.Text = "Hold [E] to open Workbench"
-			prompt.TextColor3 = Color3.new(1, 1, 1)
-			prompt.TextScaled = true
-			prompt.Font = Enum.Font.GothamBold
-			prompt.BorderSizePixel = 0
-			prompt.Parent = promptGui
-
-			local pCorner = Instance.new("UICorner")
-			pCorner.CornerRadius = UDim.new(0, 8)
-			pCorner.Parent = prompt
-		end
+	if onWB and near and not isOpen then
+		hoveringWorkbench = true
+		showPrompt()
 	else
-		if promptGui then
-			promptGui:Destroy()
-			promptGui = nil
-		end
+		hoveringWorkbench = false
+		hidePrompt()
 	end
 
 	if isOpen and not near then
