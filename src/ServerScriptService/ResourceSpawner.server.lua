@@ -5,23 +5,26 @@ local DRIFT_SPEED = 10
 local PULL_SPEED = 30
 
 local templates = {}
-for _, name in {"Log", "Wooden Barrel"} do
+for _, name in {"Log", "WoodenBarrel"} do
 	local model = rs:FindFirstChild(name)
 	if model then
 		table.insert(templates, model)
 	end
 end
 
-local pullEvent = Instance.new("RemoteEvent")
-pullEvent.Name = "PullResource"
-pullEvent.Parent = rs
+local pullEvent = rs:FindFirstChild("PullResource")
+if not pullEvent then
+	pullEvent = Instance.new("RemoteEvent")
+	pullEvent.Name = "PullResource"
+	pullEvent.Parent = rs
+end
 
 local resources = {}
 local pullTargets = {}
 
 local function getBoat()
 	for _, v in pairs(workspace:GetChildren()) do
-		if v:IsA("Model") and v.PrimaryPart and v.Name == "Boat" then
+		if v:IsA("Model") and v.PrimaryPart then
 			return v
 		end
 	end

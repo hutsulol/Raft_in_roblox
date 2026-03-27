@@ -1,7 +1,20 @@
 local SPEED = 20
 local FORCE_MAGNITUDE = 5000
 
-local boat = workspace:WaitForChild("Model")
+local function getBoat()
+	for _, v in pairs(workspace:GetChildren()) do
+		if v:IsA("Model") and v.PrimaryPart then
+			return v
+		end
+	end
+end
+
+local boat = nil
+while not boat do
+	boat = getBoat()
+	if not boat then task.wait(1) end
+end
+
 local primaryPart = boat.PrimaryPart
 
 local attachment = Instance.new("Attachment")
