@@ -386,14 +386,16 @@ local function endDrag(mousePos)
 		local srcData = slotData[srcSlot]
 		local dstData = slotData[targetSlot]
 
+		local MAX_STACK = 30
+
 		if isSplit and srcData and srcData.type == "resource" and srcData.count and srcData.count > 1 then
 			-- Right-click split: move exactly 1 to target
 			if dstData and dstData.type == "resource" and dstData.name == srcData.name then
-				-- Same resource in target: add 1
-				dstData.count = dstData.count + 1
-				srcData.count = srcData.count - 1
+				if dstData.count < MAX_STACK then
+					dstData.count = dstData.count + 1
+					srcData.count = srcData.count - 1
+				end
 			elseif not dstData then
-				-- Empty target: place 1 there
 				slotData[targetSlot] = {
 					type = srcData.type,
 					name = srcData.name,
@@ -402,9 +404,25 @@ local function endDrag(mousePos)
 				}
 				srcData.count = srcData.count - 1
 			end
-			-- If target has a different item, do nothing (can't split onto different item)
+		elseif srcData and dstData
+			and srcData.type == "resource" and dstData.type == "resource"
+			and srcData.name == dstData.name then
+			-- Left-click same resource: stack them (up to MAX_STACK)
+			local space = MAX_STACK - dstData.count
+			if space > 0 then
+				local toMove = math.min(srcData.count, space)
+				dstData.count = dstData.count + toMove
+				srcData.count = srcData.count - toMove
+				if srcData.count <= 0 then
+					slotData[srcSlot] = nil
+				end
+			else
+				-- Target full: swap
+				slotData[targetSlot] = srcData
+				slotData[srcSlot] = dstData
+			end
 		else
-			-- Normal drag: full swap
+			-- Different items or tools: swap
 			slotData[targetSlot] = srcData
 			slotData[srcSlot] = dstData
 		end
