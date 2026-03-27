@@ -1,7 +1,7 @@
 local SPEED = 20
 local FORCE_MAGNITUDE = 5000
 
-local boat = workspace:WaitForChild("Boat")
+local boat = workspace:WaitForChild("Model")
 local primaryPart = boat.PrimaryPart
 
 local attachment = Instance.new("Attachment")
