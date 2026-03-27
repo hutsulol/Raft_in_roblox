@@ -135,6 +135,12 @@ while true do
 	for _, part in clone:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
+			if part ~= cRoot then
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = cRoot
+				weld.Part1 = part
+				weld.Parent = cRoot
+			end
 		end
 	end
 
