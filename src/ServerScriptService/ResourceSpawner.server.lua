@@ -3,6 +3,7 @@ local rs = game:GetService("ReplicatedStorage")
 
 local CLICKS_TO_COLLECT = 5
 local LIFETIME = 120
+local WORKBENCH_RANGE = 15
 
 local collectEvent = rs:FindFirstChild("CollectResource")
 if not collectEvent then
@@ -18,7 +19,43 @@ if not collectNotify then
 	collectNotify.Parent = rs
 end
 
+local craftEvent = rs:FindFirstChild("CraftItem")
+if not craftEvent then
+	craftEvent = Instance.new("RemoteEvent")
+	craftEvent.Name = "CraftItem"
+	craftEvent.Parent = rs
+end
+
+local inventoryEvent = rs:FindFirstChild("InventoryUpdate")
+if not inventoryEvent then
+	inventoryEvent = Instance.new("RemoteEvent")
+	inventoryEvent.Name = "InventoryUpdate"
+	inventoryEvent.Parent = rs
+end
+
+local inventories = {}
 local clickCounts = {}
+
+local recipes = {
+	{
+		name = "Wood_Knife",
+		displayName = "Wood Knife",
+		icon = "rbxassetid://110032041583533",
+		costs = {Log = 2},
+		model = "Wood_Knife",
+	},
+}
+
+local function getInventory(player)
+	if not inventories[player] then
+		inventories[player] = {Log = 0}
+	end
+	return inventories[player]
+end
+
+local function sendInventory(player)
+	inventoryEvent:FireClient(player, getInventory(player), recipes)
+end
 
 local function getBoat()
 	for _, v in pairs(workspace:GetChildren()) do
@@ -42,6 +79,10 @@ local function getResourceFromPart(part)
 
 	return nil
 end
+
+game:GetService("Players").PlayerRemoving:Connect(function(player)
+	inventories[player] = nil
+end)
 
 collectEvent.OnServerEvent:Connect(function(player, targetPart)
 	if typeof(targetPart) ~= "Instance" then return end
@@ -78,9 +119,68 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 
 	if clicks >= CLICKS_TO_COLLECT then
 		clickCounts[resource] = nil
+		local inv = getInventory(player)
+		inv.Log = (inv.Log or 0) + 1
 		collectNotify:FireClient(player, "collected", resource)
+		sendInventory(player)
 		resource:Destroy()
 	end
+end)
+
+craftEvent.OnServerEvent:Connect(function(player, recipeName)
+	if typeof(recipeName) ~= "string" then return end
+
+	local char = player.Character
+	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
+	local workbench = workspace:FindFirstChild("Workbench")
+	if not workbench then return end
+
+	local wbPos
+	if workbench:IsA("Model") and workbench.PrimaryPart then
+		wbPos = workbench.PrimaryPart.Position
+	elseif workbench:IsA("Model") then
+		wbPos = workbench:GetPivot().Position
+	elseif workbench:IsA("BasePart") then
+		wbPos = workbench.Position
+	else
+		return
+	end
+
+	local dist = (char.HumanoidRootPart.Position - wbPos).Magnitude
+	if dist > WORKBENCH_RANGE then return end
+
+	local recipe = nil
+	for _, r in recipes do
+		if r.name == recipeName then
+			recipe = r
+			break
+		end
+	end
+	if not recipe then return end
+
+	local inv = getInventory(player)
+	for item, amount in recipe.costs do
+		if (inv[item] or 0) < amount then
+			return
+		end
+	end
+
+	for item, amount in recipe.costs do
+		inv[item] = inv[item] - amount
+	end
+
+	local template = rs:FindFirstChild(recipe.model)
+	if template then
+		local tool = template:Clone()
+		local backpack = player:FindFirstChild("Backpack")
+		if backpack then
+			tool.Parent = backpack
+		end
+	end
+
+	sendInventory(player)
+	craftEvent:FireClient(player, "success", recipeName)
 end)
 
 while true do
