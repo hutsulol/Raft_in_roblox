@@ -1,12 +1,23 @@
 local CollectionService = game:GetService("CollectionService")
 local rs = game:GetService("ReplicatedStorage")
 
+local CLICKS_TO_COLLECT = 5
+
 local collectEvent = rs:FindFirstChild("CollectResource")
 if not collectEvent then
 	collectEvent = Instance.new("RemoteEvent")
 	collectEvent.Name = "CollectResource"
 	collectEvent.Parent = rs
 end
+
+local collectNotify = rs:FindFirstChild("CollectNotify")
+if not collectNotify then
+	collectNotify = Instance.new("RemoteEvent")
+	collectNotify.Name = "CollectNotify"
+	collectNotify.Parent = rs
+end
+
+local clickCounts = {}
 
 local function getBoat()
 	for _, v in pairs(workspace:GetChildren()) do
@@ -27,7 +38,24 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 	local dist = (char.HumanoidRootPart.Position - targetPart.Position).Magnitude
 	if dist > 50 then return end
 
-	targetPart:Destroy()
+	if not clickCounts[targetPart] then
+		clickCounts[targetPart] = {}
+	end
+
+	if not clickCounts[targetPart][player] then
+		clickCounts[targetPart][player] = 0
+	end
+
+	clickCounts[targetPart][player] = clickCounts[targetPart][player] + 1
+	local clicks = clickCounts[targetPart][player]
+
+	collectNotify:FireClient(player, "progress", targetPart, clicks, CLICKS_TO_COLLECT)
+
+	if clicks >= CLICKS_TO_COLLECT then
+		clickCounts[targetPart] = nil
+		collectNotify:FireClient(player, "collected", targetPart)
+		targetPart:Destroy()
+	end
 end)
 
 while true do
