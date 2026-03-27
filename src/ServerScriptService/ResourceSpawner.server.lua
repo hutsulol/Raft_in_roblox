@@ -41,13 +41,7 @@ end
 local clickCounts = {}
 
 local function getBoat()
-	for _, v in pairs(workspace:GetChildren()) do
-		if v:IsA("Model") and v.PrimaryPart then
-			if not CollectionService:HasTag(v, "Resource") then
-				return v
-			end
-		end
-	end
+	return workspace:FindFirstChild("raft")
 end
 
 local function getResourceFromPart(part)

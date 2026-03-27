@@ -1,18 +1,9 @@
 local SPEED = 20
 local FORCE_MAGNITUDE = 5000
 
-local function getBoat()
-	for _, v in pairs(workspace:GetChildren()) do
-		if v:IsA("Model") and v.PrimaryPart then
-			return v
-		end
-	end
-end
-
-local boat = nil
-while not boat do
-	boat = getBoat()
-	if not boat then task.wait(1) end
+local boat = workspace:WaitForChild("raft")
+while not boat.PrimaryPart do
+	task.wait(0.1)
 end
 
 local primaryPart = boat.PrimaryPart
