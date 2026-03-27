@@ -117,7 +117,12 @@ while true do
 		+ root.CFrame.LookVector * math.random(400, 600)
 		+ Vector3.new(math.random(-100, 100), 0, math.random(-100, 100))
 
-	local clone = rs:FindFirstChild("Log"):Clone()
+	local logTemplate = rs:FindFirstChild("Log")
+	if not logTemplate then
+		warn("ResourceSpawner: No 'Log' model found in ReplicatedStorage!")
+		continue
+	end
+	local clone = logTemplate:Clone()
 
 	if not clone.PrimaryPart then
 		local first = clone:FindFirstChildWhichIsA("BasePart", true)
