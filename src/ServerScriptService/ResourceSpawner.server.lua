@@ -3,6 +3,8 @@ local rs = game:GetService("ReplicatedStorage")
 
 local CLICKS_TO_COLLECT = 5
 
+local logTemplate = rs:WaitForChild("Log")
+
 local collectEvent = rs:FindFirstChild("CollectResource")
 if not collectEvent then
 	collectEvent = Instance.new("RemoteEvent")
@@ -22,39 +24,63 @@ local clickCounts = {}
 local function getBoat()
 	for _, v in pairs(workspace:GetChildren()) do
 		if v:IsA("Model") and v.PrimaryPart then
-			return v
+			if not CollectionService:HasTag(v, "Resource") then
+				return v
+			end
 		end
 	end
 end
 
+local function getResourceFromPart(part)
+	if CollectionService:HasTag(part, "Resource") then
+		return part
+	end
+
+	local model = part:FindFirstAncestorOfClass("Model")
+	if model and CollectionService:HasTag(model, "Resource") then
+		return model
+	end
+
+	return nil
+end
+
 collectEvent.OnServerEvent:Connect(function(player, targetPart)
-	if typeof(targetPart) ~= "Instance" or not targetPart:IsA("BasePart") then return end
+	if typeof(targetPart) ~= "Instance" then return end
 	if not targetPart:IsDescendantOf(workspace) then return end
-	if not CollectionService:HasTag(targetPart, "Plank") then return end
+
+	local resource = getResourceFromPart(targetPart)
+	if not resource then return end
 
 	local char = player.Character
 	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
-	local dist = (char.HumanoidRootPart.Position - targetPart.Position).Magnitude
+	local resourcePos
+	if resource:IsA("Model") then
+		resourcePos = resource:GetPivot().Position
+	else
+		resourcePos = resource.Position
+	end
+
+	local dist = (char.HumanoidRootPart.Position - resourcePos).Magnitude
 	if dist > 50 then return end
 
-	if not clickCounts[targetPart] then
-		clickCounts[targetPart] = {}
+	if not clickCounts[resource] then
+		clickCounts[resource] = {}
 	end
 
-	if not clickCounts[targetPart][player] then
-		clickCounts[targetPart][player] = 0
+	if not clickCounts[resource][player] then
+		clickCounts[resource][player] = 0
 	end
 
-	clickCounts[targetPart][player] = clickCounts[targetPart][player] + 1
-	local clicks = clickCounts[targetPart][player]
+	clickCounts[resource][player] = clickCounts[resource][player] + 1
+	local clicks = clickCounts[resource][player]
 
-	collectNotify:FireClient(player, "progress", targetPart, clicks, CLICKS_TO_COLLECT)
+	collectNotify:FireClient(player, "progress", resource, clicks, CLICKS_TO_COLLECT)
 
 	if clicks >= CLICKS_TO_COLLECT then
-		clickCounts[targetPart] = nil
-		collectNotify:FireClient(player, "collected", targetPart)
-		targetPart:Destroy()
+		clickCounts[resource] = nil
+		collectNotify:FireClient(player, "collected", resource)
+		resource:Destroy()
 	end
 end)
 
@@ -71,12 +97,22 @@ while true do
 		+ root.CFrame.LookVector * math.random(80, 120)
 		+ Vector3.new(math.random(-30, 30), 0, math.random(-30, 30))
 
-	local part = Instance.new("Part")
-	part.Size = Vector3.new(4, 2, 8)
-	part.Color = Color3.fromRGB(139, 90, 43)
-	part.Material = Enum.Material.Wood
-	part.Anchored = false
-	part.Position = spawnPos
-	part.Parent = workspace
-	CollectionService:AddTag(part, "Plank")
+	local clone = logTemplate:Clone()
+
+	if not clone.PrimaryPart then
+		local first = clone:FindFirstChildWhichIsA("BasePart", true)
+		if first then
+			clone.PrimaryPart = first
+		end
+	end
+
+	for _, part in clone:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
+		end
+	end
+
+	clone:PivotTo(CFrame.new(spawnPos))
+	clone.Parent = workspace
+	CollectionService:AddTag(clone, "Resource")
 end

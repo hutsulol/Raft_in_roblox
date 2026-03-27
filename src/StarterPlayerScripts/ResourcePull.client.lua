@@ -15,9 +15,10 @@ local collectNotify = ReplicatedStorage:WaitForChild("CollectNotify")
 
 local currentHighlight = nil
 local currentTarget = nil
+local hitPart = nil
 local progressBillboards = {}
 
-local function getPlankUnderMouse()
+local function getResourceUnderMouse()
 	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
@@ -25,15 +26,21 @@ local function getPlankUnderMouse()
 
 	local result = workspace:Raycast(ray.Origin, ray.Direction * 200, params)
 	if not result or not result.Instance then
-		return nil
+		return nil, nil
 	end
 
 	local hit = result.Instance
-	if not CollectionService:HasTag(hit, "Plank") then
-		return nil
+
+	if CollectionService:HasTag(hit, "Resource") then
+		return hit, hit
 	end
 
-	return hit
+	local model = hit:FindFirstAncestorOfClass("Model")
+	if model and CollectionService:HasTag(model, "Resource") then
+		return model, hit
+	end
+
+	return nil, nil
 end
 
 local function clearHighlight()
@@ -42,18 +49,31 @@ local function clearHighlight()
 		currentHighlight = nil
 	end
 	currentTarget = nil
+	hitPart = nil
 end
 
-local function getOrCreateProgressUI(part)
-	if progressBillboards[part] then
-		return progressBillboards[part]
+local function getAdornee(resource)
+	if resource:IsA("Model") and resource.PrimaryPart then
+		return resource.PrimaryPart
+	elseif resource:IsA("BasePart") then
+		return resource
 	end
+	local first = resource:FindFirstChildWhichIsA("BasePart", true)
+	return first or resource
+end
+
+local function getOrCreateProgressUI(resource)
+	if progressBillboards[resource] then
+		return progressBillboards[resource]
+	end
+
+	local adornee = getAdornee(resource)
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Size = UDim2.new(4, 0, 0.5, 0)
 	billboard.StudsOffset = Vector3.new(0, 3, 0)
 	billboard.AlwaysOnTop = true
-	billboard.Adornee = part
+	billboard.Adornee = adornee
 	billboard.Parent = playerGui
 
 	local bg = Instance.new("Frame")
@@ -79,12 +99,12 @@ local function getOrCreateProgressUI(part)
 	fillCorner.CornerRadius = UDim.new(0.3, 0)
 	fillCorner.Parent = fill
 
-	progressBillboards[part] = billboard
+	progressBillboards[resource] = billboard
 	return billboard
 end
 
-local function updateProgress(part, clicks, maxClicks)
-	local billboard = getOrCreateProgressUI(part)
+local function updateProgress(resource, clicks, maxClicks)
+	local billboard = getOrCreateProgressUI(resource)
 	local bg = billboard:FindFirstChildWhichIsA("Frame")
 	local fill = bg:FindFirstChild("Fill")
 
@@ -92,10 +112,10 @@ local function updateProgress(part, clicks, maxClicks)
 	TweenService:Create(fill, TweenInfo.new(0.15), {Size = UDim2.new(ratio, 0, 1, 0)}):Play()
 end
 
-local function removeProgress(part)
-	if progressBillboards[part] then
-		progressBillboards[part]:Destroy()
-		progressBillboards[part] = nil
+local function removeProgress(resource)
+	if progressBillboards[resource] then
+		progressBillboards[resource]:Destroy()
+		progressBillboards[resource] = nil
 	end
 end
 
@@ -107,7 +127,7 @@ local function showCollectedPopup()
 	label.Size = UDim2.new(0, 200, 0, 50)
 	label.Position = UDim2.new(0.5, -100, 0.4, 0)
 	label.BackgroundTransparency = 1
-	label.Text = "+1 🪵"
+	label.Text = "+1 Log"
 	label.TextColor3 = Color3.fromRGB(255, 220, 100)
 	label.TextStrokeTransparency = 0.5
 	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
@@ -126,33 +146,34 @@ local function showCollectedPopup()
 	end)
 end
 
-collectNotify.OnClientEvent:Connect(function(action, part, clicks, maxClicks)
+collectNotify.OnClientEvent:Connect(function(action, resource, clicks, maxClicks)
 	if action == "progress" then
-		updateProgress(part, clicks, maxClicks)
+		updateProgress(resource, clicks, maxClicks)
 	elseif action == "collected" then
-		removeProgress(part)
+		removeProgress(resource)
 		clearHighlight()
 		showCollectedPopup()
 	end
 end)
 
 RunService.RenderStepped:Connect(function()
-	local plank = getPlankUnderMouse()
+	local resource, part = getResourceUnderMouse()
 
-	if plank == currentTarget then
+	if resource == currentTarget then
 		return
 	end
 
 	clearHighlight()
 
-	if plank then
-		currentTarget = plank
+	if resource then
+		currentTarget = resource
+		hitPart = part
 		local highlight = Instance.new("Highlight")
 		highlight.FillColor = Color3.new(1, 1, 1)
 		highlight.FillTransparency = 0.5
 		highlight.OutlineColor = Color3.new(1, 1, 1)
 		highlight.OutlineTransparency = 0
-		highlight.Parent = plank
+		highlight.Parent = resource
 		currentHighlight = highlight
 	end
 end)
@@ -161,8 +182,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
-		if currentTarget then
-			collectEvent:FireServer(currentTarget)
+		if currentTarget and hitPart then
+			collectEvent:FireServer(hitPart)
 		end
 	end
 end)
