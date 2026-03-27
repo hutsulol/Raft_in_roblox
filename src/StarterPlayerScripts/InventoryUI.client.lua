@@ -60,6 +60,7 @@ local dragState = {
 	ghostGui = nil,
 	didDrag = false,
 	startPos = nil,
+	splitMode = false, -- right-click: move only 1 item
 }
 local DRAG_THRESHOLD = 5
 
@@ -254,13 +255,14 @@ end
 
 -- ─── Drag & Drop ───
 
-local function beginDragPending(slotIndex, data, mousePos)
+local function beginDragPending(slotIndex, data, mousePos, isSplit)
 	if not data then return end
 	dragState.sourceSlot = slotIndex
 	dragState.data = data
 	dragState.startPos = mousePos
 	dragState.active = false
 	dragState.didDrag = false
+	dragState.splitMode = isSplit or false
 end
 
 local function activateDrag(mousePos)
@@ -284,12 +286,13 @@ local function activateDrag(mousePos)
 	ghost.ImageTransparency = 0.3
 	ghost.Parent = ghostGui
 
-	if data.count and data.count > 0 then
+	local displayCount = (dragState.splitMode and 1) or (data.count)
+	if displayCount and displayCount > 0 then
 		local cl = Instance.new("TextLabel")
 		cl.Size = UDim2.new(0, 25, 0, 16)
 		cl.Position = UDim2.new(1, -25, 1, -16)
 		cl.BackgroundTransparency = 1
-		cl.Text = tostring(data.count)
+		cl.Text = tostring(displayCount)
 		cl.TextColor3 = COLORS.lightText
 		cl.TextStrokeTransparency = 0.3
 		cl.TextStrokeColor3 = Color3.new(0, 0, 0)
@@ -376,11 +379,35 @@ local function endDrag(mousePos)
 	end
 
 	local targetSlot = findSlotUnderMouse(mousePos)
+	local srcSlot = dragState.sourceSlot
+	local isSplit = dragState.splitMode
 
-	if targetSlot and targetSlot ~= dragState.sourceSlot then
-		local temp = slotData[targetSlot]
-		slotData[targetSlot] = slotData[dragState.sourceSlot]
-		slotData[dragState.sourceSlot] = temp
+	if targetSlot and targetSlot ~= srcSlot then
+		local srcData = slotData[srcSlot]
+		local dstData = slotData[targetSlot]
+
+		if isSplit and srcData and srcData.type == "resource" and srcData.count and srcData.count > 1 then
+			-- Right-click split: move exactly 1 to target
+			if dstData and dstData.type == "resource" and dstData.name == srcData.name then
+				-- Same resource in target: add 1
+				dstData.count = dstData.count + 1
+				srcData.count = srcData.count - 1
+			elseif not dstData then
+				-- Empty target: place 1 there
+				slotData[targetSlot] = {
+					type = srcData.type,
+					name = srcData.name,
+					count = 1,
+					icon = srcData.icon,
+				}
+				srcData.count = srcData.count - 1
+			end
+			-- If target has a different item, do nothing (can't split onto different item)
+		else
+			-- Normal drag: full swap
+			slotData[targetSlot] = srcData
+			slotData[srcSlot] = dstData
+		end
 	end
 
 	cancelDrag()
@@ -541,7 +568,16 @@ local function buildHotbar()
 			local mousePos = UserInputService:GetMouseLocation()
 			local data = slotData[slotIndex]
 			if data then
-				beginDragPending(slotIndex, data, mousePos)
+				beginDragPending(slotIndex, data, mousePos, false)
+			end
+		end)
+
+		slot.MouseButton2Down:Connect(function()
+			dragState.didDrag = false
+			local mousePos = UserInputService:GetMouseLocation()
+			local data = slotData[slotIndex]
+			if data and data.type == "resource" and data.count and data.count > 1 then
+				beginDragPending(slotIndex, data, mousePos, true)
 			end
 		end)
 
@@ -668,7 +704,16 @@ local function buildUI()
 			local mousePos = UserInputService:GetMouseLocation()
 			local data = slotData[globalIdx]
 			if data then
-				beginDragPending(globalIdx, data, mousePos)
+				beginDragPending(globalIdx, data, mousePos, false)
+			end
+		end)
+
+		slot.MouseButton2Down:Connect(function()
+			dragState.didDrag = false
+			local mousePos = UserInputService:GetMouseLocation()
+			local data = slotData[globalIdx]
+			if data and data.type == "resource" and data.count and data.count > 1 then
+				beginDragPending(globalIdx, data, mousePos, true)
 			end
 		end)
 	end
@@ -905,7 +950,9 @@ UserInputService.InputChanged:Connect(function(input)
 end)
 
 UserInputService.InputEnded:Connect(function(input)
-	if input.UserInputType == Enum.UserInputType.MouseButton1 or input.UserInputType == Enum.UserInputType.Touch then
+	if input.UserInputType == Enum.UserInputType.MouseButton1
+		or input.UserInputType == Enum.UserInputType.MouseButton2
+		or input.UserInputType == Enum.UserInputType.Touch then
 		if dragState.active or dragState.startPos then
 			endDrag(UserInputService:GetMouseLocation())
 		end
