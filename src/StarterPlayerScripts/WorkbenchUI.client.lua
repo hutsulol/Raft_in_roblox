@@ -22,19 +22,24 @@ local screenGui = nil
 
 local LOG_ICON = "rbxassetid://110032041583533"
 
-local function getWorkbench()
-	return workspace:FindFirstChild("Workbench")
+local function findWorkBench()
+	for _, v in workspace:GetDescendants() do
+		if v:IsA("Model") and v.Name == "WorkBench" then
+			return v
+		end
+	end
+	return nil
 end
 
-local function getWorkbenchPos()
-	local wb = getWorkbench()
+local function getWorkBenchPos()
+	local wb = findWorkBench()
 	if not wb then return nil end
-	if wb:IsA("Model") and wb.PrimaryPart then
+	if wb.PrimaryPart then
 		return wb.PrimaryPart.Position
-	elseif wb:IsA("Model") then
-		return wb:GetPivot().Position
-	elseif wb:IsA("BasePart") then
-		return wb.Position
+	end
+	local part = wb:FindFirstChildWhichIsA("BasePart", true)
+	if part then
+		return part.Position
 	end
 	return nil
 end
@@ -42,7 +47,7 @@ end
 local function isNearWorkbench()
 	local char = player.Character
 	if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
-	local wbPos = getWorkbenchPos()
+	local wbPos = getWorkBenchPos()
 	if not wbPos then return false end
 	return (char.HumanoidRootPart.Position - wbPos).Magnitude <= WORKBENCH_RANGE
 end
@@ -205,9 +210,7 @@ local function buildUI()
 	closeBtnCorner.CornerRadius = UDim.new(0, 8)
 	closeBtnCorner.Parent = closeBtn
 
-	closeBtn.MouseButton1Click:Connect(function()
-		closeUI()
-	end)
+	closeBtn.MouseButton1Click:Connect(closeUI)
 
 	local leftPanel = Instance.new("Frame")
 	leftPanel.Name = "LeftPanel"
@@ -286,7 +289,7 @@ local function buildUI()
 		nameLabel.Parent = btn
 
 		local costText = ""
-		for item, amount in recipe.costs do
+		for _, amount in recipe.costs do
 			costText = costText .. tostring(amount)
 		end
 
@@ -386,7 +389,7 @@ local function buildUI()
 
 	craftBtn.MouseButton1Click:Connect(function()
 		if selectedRecipe and canAfford(selectedRecipe) then
-			craftEvent:FireServer(selectedRecipe.name)
+			craftEvent:FireServer("craft", selectedRecipe.name)
 		end
 	end)
 
@@ -397,19 +400,27 @@ local function openUI()
 	if isOpen then return end
 	if not isNearWorkbench() then return end
 	isOpen = true
+	craftEvent:FireServer("requestRecipes")
 	buildUI()
 end
 
-inventoryEvent.OnClientEvent:Connect(function(inv, serverRecipes)
+inventoryEvent.OnClientEvent:Connect(function(inv)
 	inventory = inv
-	if serverRecipes then
-		recipes = serverRecipes
-	end
 	updateUI()
 end)
 
-craftEvent.OnClientEvent:Connect(function(action, recipeName)
-	if action == "success" then
+craftEvent.OnClientEvent:Connect(function(action, data, inv)
+	if action == "recipes" then
+		recipes = data
+		if inv then
+			inventory = inv
+		end
+		if isOpen then
+			closeUI()
+			isOpen = true
+			buildUI()
+		end
+	elseif action == "success" then
 		local successGui = Instance.new("ScreenGui")
 		successGui.Parent = playerGui
 
@@ -446,6 +457,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 			closeUI()
 			return
 		end
+		if not isNearWorkbench() then return end
 		holdingE = true
 		holdStart = tick()
 
