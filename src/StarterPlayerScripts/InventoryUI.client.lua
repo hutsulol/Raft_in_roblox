@@ -109,36 +109,59 @@ end
 
 local MAX_STACK = 30
 
--- Distribute logs across slots respecting MAX_STACK
+-- Update resource slots: preserve existing layout, only add/remove the difference
 local function distributeResource(name, totalCount, icon)
 	-- Find all existing slots with this resource
 	local existingSlots = {}
+	local currentTotal = 0
 	for i = 1, TOTAL_SLOTS do
 		if slotData[i] and slotData[i].type == "resource" and slotData[i].name == name then
 			table.insert(existingSlots, i)
+			currentTotal = currentTotal + slotData[i].count
 		end
 	end
 
-	local remaining = totalCount
+	local diff = totalCount - currentTotal
 
-	-- Fill existing slots first
-	for _, idx in existingSlots do
-		if remaining <= 0 then
-			slotData[idx] = nil
-		else
-			local amount = math.min(remaining, MAX_STACK)
-			slotData[idx].count = amount
-			remaining = remaining - amount
+	if diff == 0 then return end
+
+	if diff > 0 then
+		-- Adding items: fill last non-full slot first, then create new slots
+		local added = 0
+		-- Try to add to existing slots that aren't full (last ones first for natural stacking)
+		for j = #existingSlots, 1, -1 do
+			local idx = existingSlots[j]
+			local space = MAX_STACK - slotData[idx].count
+			if space > 0 then
+				local toAdd = math.min(diff - added, space)
+				slotData[idx].count = slotData[idx].count + toAdd
+				added = added + toAdd
+				if added >= diff then break end
+			end
 		end
-	end
 
-	-- If there's still remaining, create new slots
-	while remaining > 0 do
-		local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, TOTAL_SLOTS)
-		if not empty then break end -- inventory full
-		local amount = math.min(remaining, MAX_STACK)
-		slotData[empty] = {type = "resource", name = name, count = amount, icon = icon}
-		remaining = remaining - amount
+		-- Still need more? Create new slots
+		while added < diff do
+			local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, TOTAL_SLOTS)
+			if not empty then break end
+			local amount = math.min(diff - added, MAX_STACK)
+			slotData[empty] = {type = "resource", name = name, count = amount, icon = icon}
+			added = added + amount
+		end
+	else
+		-- Removing items: take from last slots first
+		local toRemove = -diff
+		for j = #existingSlots, 1, -1 do
+			local idx = existingSlots[j]
+			if toRemove >= slotData[idx].count then
+				toRemove = toRemove - slotData[idx].count
+				slotData[idx] = nil
+			else
+				slotData[idx].count = slotData[idx].count - toRemove
+				toRemove = 0
+			end
+			if toRemove <= 0 then break end
+		end
 	end
 end
 
