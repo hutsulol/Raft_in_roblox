@@ -4,8 +4,6 @@ local rs = game:GetService("ReplicatedStorage")
 local CLICKS_TO_COLLECT = 5
 local LIFETIME = 120
 
-local logTemplate = rs:WaitForChild("Log")
-
 local collectEvent = rs:FindFirstChild("CollectResource")
 if not collectEvent then
 	collectEvent = Instance.new("RemoteEvent")
@@ -98,7 +96,7 @@ while true do
 		+ root.CFrame.LookVector * math.random(160, 240)
 		+ Vector3.new(math.random(-60, 60), 0, math.random(-60, 60))
 
-	local clone = logTemplate:Clone()
+	local clone = rs:FindFirstChild("Log"):Clone()
 
 	if not clone.PrimaryPart then
 		local first = clone:FindFirstChildWhichIsA("BasePart", true)
@@ -107,14 +105,15 @@ while true do
 		end
 	end
 
+	clone:PivotTo(CFrame.new(spawnPos))
+	clone.Parent = workspace
+
 	for _, part in clone:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
 		end
 	end
 
-	clone:PivotTo(CFrame.new(spawnPos))
-	clone.Parent = workspace
 	CollectionService:AddTag(clone, "Resource")
 
 	task.delay(LIFETIME, function()
