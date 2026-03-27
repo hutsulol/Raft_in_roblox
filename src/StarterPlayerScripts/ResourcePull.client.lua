@@ -29,7 +29,7 @@ local function getResourceUnderMouse()
 		return nil
 	end
 
-	if not model:FindFirstChild("DriftForce", true) then
+	if not model:FindFirstChild("ResourceDrift") then
 		return nil
 	end
 
