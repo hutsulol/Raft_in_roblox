@@ -121,7 +121,7 @@ end
 
 local RESOURCE_ICONS = {
 	Log = "rbxassetid://110032041583533",
-	Plastic = "rbxassetid://110032041583533",
+	Plastic = "rbxassetid://88529166446482",
 }
 
 local function showCollectedPopup(worldPos, resType, resAmount)

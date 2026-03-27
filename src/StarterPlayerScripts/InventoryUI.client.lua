@@ -14,7 +14,7 @@ local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local inventoryCraftEvent = ReplicatedStorage:WaitForChild("InventoryCraft")
 
 local LOG_ICON = "rbxassetid://110032041583533"
-local PLASTIC_ICON = "rbxassetid://110032041583533" -- same icon for now
+local PLASTIC_ICON = "rbxassetid://88529166446482"
 
 local RESOURCE_ICONS = {
 	Log = LOG_ICON,
@@ -769,12 +769,9 @@ local function buildUI()
 	plasticCount.Position = UDim2.new(1, -48, 0, 13)
 	plasticCount.BackgroundTransparency = 1
 	plasticCount.Text = tostring(inventory.Plastic or 0)
-	resCount.TextColor3 = COLORS.titleText
-	resCount.Font = Enum.Font.GothamBold
-	resCount.TextSize = 16
-	resCount.TextXAlignment = Enum.TextXAlignment.Left
-	resCount.Parent = centerPanel
-
+	plasticCount.TextColor3 = COLORS.titleText
+	plasticCount.Font = Enum.Font.GothamBold
+	plasticCount.TextSize = 14
 	-- Inventory grid (these are slots 9-28)
 	local gridFrame = Instance.new("Frame")
 	gridFrame.Name = "InventoryGrid"
