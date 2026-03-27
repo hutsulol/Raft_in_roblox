@@ -2,9 +2,13 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
+local StarterGui = game:GetService("StarterGui")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+
+-- Disable default Roblox backpack/inventory
+StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local inventoryCraftEvent = ReplicatedStorage:WaitForChild("InventoryCraft")
@@ -91,13 +95,15 @@ local function buildHotbar()
 	barStroke.Parent = bar
 
 	for i = 1, HOTBAR_SLOTS do
-		local slot = Instance.new("Frame")
+		local slot = Instance.new("TextButton")
 		slot.Name = "HotbarSlot_" .. i
 		slot.Size = UDim2.new(0, SLOT_SIZE, 0, SLOT_SIZE)
 		slot.Position = UDim2.new(0, SLOT_PAD + (i - 1) * (SLOT_SIZE + SLOT_PAD), 0, SLOT_PAD)
 		slot.BackgroundColor3 = COLORS.slotBg
 		slot.BackgroundTransparency = 0.1
 		slot.BorderSizePixel = 0
+		slot.Text = ""
+		slot.AutoButtonColor = false
 		slot.Parent = bar
 
 		local slotCorner = Instance.new("UICorner")
@@ -108,6 +114,91 @@ local function buildHotbar()
 		slotStroke.Color = COLORS.slotBorder
 		slotStroke.Thickness = 1.5
 		slotStroke.Parent = slot
+
+		-- Click to equip tool (slot 2+ are tools)
+		local slotIndex = i
+		slot.MouseButton1Click:Connect(function()
+			if slotIndex >= 2 then
+				equipToolFromSlot(slotIndex)
+				updateHotbar()
+			end
+		end)
+	end
+end
+
+local function clearSlot(slot)
+	local ic = slot:FindFirstChild("ItemIcon")
+	local ct = slot:FindFirstChild("ItemCount")
+	local nm = slot:FindFirstChild("ItemName")
+	if ic then ic:Destroy() end
+	if ct then ct:Destroy() end
+	if nm then nm:Destroy() end
+end
+
+local function fillSlotWithItem(slot, icon, countNum, name)
+	local img = Instance.new("ImageLabel")
+	img.Name = "ItemIcon"
+	img.Size = UDim2.new(0.7, 0, 0.7, 0)
+	img.Position = UDim2.new(0.15, 0, 0.05, 0)
+	img.BackgroundTransparency = 1
+	img.Image = icon
+	img.ScaleType = Enum.ScaleType.Fit
+	img.Parent = slot
+
+	if countNum and countNum > 1 then
+		local count = Instance.new("TextLabel")
+		count.Name = "ItemCount"
+		count.Size = UDim2.new(0, 25, 0, 16)
+		count.Position = UDim2.new(1, -27, 1, -18)
+		count.BackgroundTransparency = 1
+		count.Text = tostring(countNum)
+		count.TextColor3 = COLORS.lightText
+		count.TextStrokeTransparency = 0.3
+		count.TextStrokeColor3 = Color3.new(0, 0, 0)
+		count.Font = Enum.Font.GothamBold
+		count.TextSize = 13
+		count.TextXAlignment = Enum.TextXAlignment.Right
+		count.Parent = slot
+	end
+end
+
+local selectedHotbarSlot = nil
+
+local function equipToolFromSlot(slotIndex)
+	local char = player.Character
+	if not char then return end
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+
+	-- Get tools in backpack and character
+	local backpack = player:FindFirstChild("Backpack")
+	local tools = {}
+	if backpack then
+		for _, t in backpack:GetChildren() do
+			if t:IsA("Tool") then table.insert(tools, t) end
+		end
+	end
+	for _, t in char:GetChildren() do
+		if t:IsA("Tool") then table.insert(tools, t) end
+	end
+
+	-- Slot 1 is logs (not equippable), tools start at slot 2
+	local toolIndex = slotIndex - 1
+	if toolIndex < 1 or toolIndex > #tools then
+		-- Unequip current tool
+		humanoid:UnequipTools()
+		selectedHotbarSlot = nil
+		return
+	end
+
+	local tool = tools[toolIndex]
+	if tool.Parent == char then
+		-- Already equipped, unequip
+		humanoid:UnequipTools()
+		selectedHotbarSlot = nil
+	else
+		humanoid:EquipTool(tool)
+		selectedHotbarSlot = slotIndex
 	end
 end
 
@@ -116,37 +207,48 @@ local function updateHotbar()
 	local bar = hotbarGui:FindFirstChild("Hotbar")
 	if not bar then return end
 
-	-- Show Log in first hotbar slot if we have any
+	-- Clear all slots
+	for i = 1, HOTBAR_SLOTS do
+		local slot = bar:FindFirstChild("HotbarSlot_" .. i)
+		if slot then
+			clearSlot(slot)
+			slot.BackgroundColor3 = COLORS.slotBg
+		end
+	end
+
+	-- Slot 1: Logs
 	local slot1 = bar:FindFirstChild("HotbarSlot_1")
-	if slot1 then
-		local existing = slot1:FindFirstChild("ItemIcon")
-		local existingCount = slot1:FindFirstChild("ItemCount")
-		if existing then existing:Destroy() end
-		if existingCount then existingCount:Destroy() end
+	if slot1 and (inventory.Log or 0) > 0 then
+		fillSlotWithItem(slot1, LOG_ICON, inventory.Log)
+	end
 
-		if (inventory.Log or 0) > 0 then
-			local icon = Instance.new("ImageLabel")
-			icon.Name = "ItemIcon"
-			icon.Size = UDim2.new(0.8, 0, 0.8, 0)
-			icon.Position = UDim2.new(0.1, 0, 0.1, 0)
-			icon.BackgroundTransparency = 1
-			icon.Image = LOG_ICON
-			icon.ScaleType = Enum.ScaleType.Fit
-			icon.Parent = slot1
+	-- Slots 2+: Tools from Backpack and Character
+	local backpack = player:FindFirstChild("Backpack")
+	local char = player.Character
+	local tools = {}
+	if backpack then
+		for _, t in backpack:GetChildren() do
+			if t:IsA("Tool") then table.insert(tools, t) end
+		end
+	end
+	if char then
+		for _, t in char:GetChildren() do
+			if t:IsA("Tool") then table.insert(tools, t) end
+		end
+	end
 
-			local count = Instance.new("TextLabel")
-			count.Name = "ItemCount"
-			count.Size = UDim2.new(0, 25, 0, 18)
-			count.Position = UDim2.new(1, -27, 1, -20)
-			count.BackgroundTransparency = 1
-			count.Text = tostring(inventory.Log)
-			count.TextColor3 = COLORS.lightText
-			count.TextStrokeTransparency = 0.3
-			count.TextStrokeColor3 = Color3.new(0, 0, 0)
-			count.Font = Enum.Font.GothamBold
-			count.TextSize = 14
-			count.TextXAlignment = Enum.TextXAlignment.Right
-			count.Parent = slot1
+	for i, tool in tools do
+		local slotIndex = i + 1 -- offset by 1 because slot 1 is logs
+		if slotIndex > HOTBAR_SLOTS then break end
+		local slot = bar:FindFirstChild("HotbarSlot_" .. slotIndex)
+		if slot then
+			local toolIcon = tool.TextureId ~= "" and tool.TextureId or LOG_ICON
+			fillSlotWithItem(slot, toolIcon, nil, tool.Name)
+			-- Highlight if equipped (tool is in character, not backpack)
+			if char and tool.Parent == char then
+				slot.BackgroundColor3 = Color3.fromRGB(200, 170, 100)
+				selectedHotbarSlot = slotIndex
+			end
 		end
 	end
 end
@@ -583,10 +685,22 @@ end
 
 -- ─── Input ───
 
+local numberKeys = {
+	[Enum.KeyCode.One] = 1, [Enum.KeyCode.Two] = 2, [Enum.KeyCode.Three] = 3,
+	[Enum.KeyCode.Four] = 4, [Enum.KeyCode.Five] = 5, [Enum.KeyCode.Six] = 6,
+	[Enum.KeyCode.Seven] = 7, [Enum.KeyCode.Eight] = 8,
+}
+
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode == Enum.KeyCode.E then
 		toggleInventory()
+	end
+	-- Number keys to equip tools (2-8 are tools, 1 is logs)
+	local slotNum = numberKeys[input.KeyCode]
+	if slotNum and slotNum >= 2 then
+		equipToolFromSlot(slotNum)
+		updateHotbar()
 	end
 end)
 
@@ -641,3 +755,27 @@ end)
 -- ─── Init ───
 buildHotbar()
 updateHotbar()
+
+-- Listen for backpack changes to update hotbar
+local backpack = player:WaitForChild("Backpack")
+backpack.ChildAdded:Connect(function() task.wait(0.1) updateHotbar() end)
+backpack.ChildRemoved:Connect(function() task.wait(0.1) updateHotbar() end)
+
+-- Listen for tool equip/unequip (tools move to/from character)
+player.CharacterAdded:Connect(function(char)
+	char.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") then updateHotbar() end
+	end)
+	char.ChildRemoved:Connect(function(child)
+		if child:IsA("Tool") then updateHotbar() end
+	end)
+end)
+
+if player.Character then
+	player.Character.ChildAdded:Connect(function(child)
+		if child:IsA("Tool") then updateHotbar() end
+	end)
+	player.Character.ChildRemoved:Connect(function(child)
+		if child:IsA("Tool") then updateHotbar() end
+	end)
+end
