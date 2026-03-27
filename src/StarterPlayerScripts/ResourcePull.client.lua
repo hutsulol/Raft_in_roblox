@@ -29,7 +29,11 @@ local function getResourceUnderMouse()
 		return nil
 	end
 
-	if not model:FindFirstChild("ResourceDrift") then
+	if not model:FindFirstChildWhichIsA("LinearVelocity", true) then
+		return nil
+	end
+
+	if model.Name == "Boat" then
 		return nil
 	end
 
