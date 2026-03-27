@@ -1,56 +1,21 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
-local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local craftEvent = ReplicatedStorage:WaitForChild("CraftItem")
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
-
-local WORKBENCH_RANGE = 15
-local HOLD_TIME = 0.5
+local openWorkbenchEvent = ReplicatedStorage:WaitForChild("OpenWorkbench")
 
 local inventory = {Log = 0}
 local recipes = {}
 local selectedRecipe = nil
 local isOpen = false
-local holdStart = nil
 local screenGui = nil
 
 local LOG_ICON = "rbxassetid://110032041583533"
-
-local function findWorkBench()
-	for _, v in workspace:GetDescendants() do
-		if v:IsA("Model") and v.Name == "WorkBench" then
-			return v
-		end
-	end
-	return nil
-end
-
-local function getWorkBenchPos()
-	local wb = findWorkBench()
-	if not wb then return nil end
-	if wb.PrimaryPart then
-		return wb.PrimaryPart.Position
-	end
-	local part = wb:FindFirstChildWhichIsA("BasePart", true)
-	if part then
-		return part.Position
-	end
-	return nil
-end
-
-local function isNearWorkbench()
-	local char = player.Character
-	if not char or not char:FindFirstChild("HumanoidRootPart") then return false end
-	local wbPos = getWorkBenchPos()
-	if not wbPos then return false end
-	return (char.HumanoidRootPart.Position - wbPos).Magnitude <= WORKBENCH_RANGE
-end
 
 local function canAfford(recipe)
 	if not recipe or not recipe.costs then return false end
@@ -397,12 +362,16 @@ local function buildUI()
 end
 
 local function openUI()
-	if isOpen then return end
-	if not isNearWorkbench() then return end
+	if isOpen then
+		closeUI()
+		return
+	end
 	isOpen = true
 	craftEvent:FireServer("requestRecipes")
 	buildUI()
 end
+
+openWorkbenchEvent.OnClientEvent:Connect(openUI)
 
 inventoryEvent.OnClientEvent:Connect(function(inv)
 	inventory = inv
@@ -445,146 +414,5 @@ craftEvent.OnClientEvent:Connect(function(action, data, inv)
 		tween.Completed:Connect(function()
 			successGui:Destroy()
 		end)
-	end
-end)
-
-local holdingE = false
-local hoveringWorkbench = false
-local promptBillboard = nil
-
-local function isMouseOnWorkbench()
-	local camera = workspace.CurrentCamera
-	local mouse = player:GetMouse()
-	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = {player.Character}
-
-	local result = workspace:Raycast(ray.Origin, ray.Direction * 50, params)
-	if not result or not result.Instance then return false end
-
-	local hit = result.Instance
-	local wb = findWorkBench()
-	if not wb then return false end
-
-	if hit:IsDescendantOf(wb) or hit == wb then
-		return true
-	end
-
-	return false
-end
-
-local function showPrompt()
-	if promptBillboard then return end
-
-	local wb = findWorkBench()
-	if not wb then return end
-
-	local adornee = wb.PrimaryPart or wb:FindFirstChildWhichIsA("BasePart", true)
-	if not adornee then return end
-
-	promptBillboard = Instance.new("BillboardGui")
-	promptBillboard.Size = UDim2.new(6, 0, 1.5, 0)
-	promptBillboard.StudsOffset = Vector3.new(0, 4, 0)
-	promptBillboard.AlwaysOnTop = true
-	promptBillboard.Adornee = adornee
-	promptBillboard.Parent = playerGui
-
-	local bg = Instance.new("Frame")
-	bg.Size = UDim2.new(1, 0, 1, 0)
-	bg.BackgroundColor3 = Color3.fromRGB(30, 30, 35)
-	bg.BackgroundTransparency = 0.2
-	bg.BorderSizePixel = 0
-	bg.Parent = promptBillboard
-
-	local bgCorner = Instance.new("UICorner")
-	bgCorner.CornerRadius = UDim.new(0.2, 0)
-	bgCorner.Parent = bg
-
-	local eKey = Instance.new("TextLabel")
-	eKey.Size = UDim2.new(0.15, 0, 0.6, 0)
-	eKey.Position = UDim2.new(0.15, 0, 0.2, 0)
-	eKey.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
-	eKey.Text = "E"
-	eKey.TextColor3 = Color3.new(1, 1, 1)
-	eKey.TextScaled = true
-	eKey.Font = Enum.Font.GothamBold
-	eKey.BorderSizePixel = 0
-	eKey.Parent = bg
-
-	local eCorner = Instance.new("UICorner")
-	eCorner.CornerRadius = UDim.new(0.2, 0)
-	eCorner.Parent = eKey
-
-	local eStroke = Instance.new("UIStroke")
-	eStroke.Color = Color3.fromRGB(120, 120, 130)
-	eStroke.Thickness = 1
-	eStroke.Parent = eKey
-
-	local txt = Instance.new("TextLabel")
-	txt.Size = UDim2.new(0.5, 0, 0.6, 0)
-	txt.Position = UDim2.new(0.35, 0, 0.2, 0)
-	txt.BackgroundTransparency = 1
-	txt.Text = "Craft"
-	txt.TextColor3 = Color3.new(1, 1, 1)
-	txt.TextScaled = true
-	txt.Font = Enum.Font.GothamBold
-	txt.TextXAlignment = Enum.TextXAlignment.Left
-	txt.Parent = bg
-end
-
-local function hidePrompt()
-	if promptBillboard then
-		promptBillboard:Destroy()
-		promptBillboard = nil
-	end
-end
-
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
-	if input.KeyCode == Enum.KeyCode.E then
-		if isOpen then
-			closeUI()
-			return
-		end
-		if not hoveringWorkbench then return end
-		if not isNearWorkbench() then return end
-		holdingE = true
-		holdStart = tick()
-
-		task.spawn(function()
-			while holdingE do
-				task.wait(0.05)
-				if holdingE and tick() - holdStart >= HOLD_TIME then
-					openUI()
-					holdingE = false
-					hidePrompt()
-					break
-				end
-			end
-		end)
-	end
-end)
-
-UserInputService.InputEnded:Connect(function(input)
-	if input.KeyCode == Enum.KeyCode.E then
-		holdingE = false
-	end
-end)
-
-RunService.RenderStepped:Connect(function()
-	local onWB = isMouseOnWorkbench()
-	local near = isNearWorkbench()
-
-	if onWB and near and not isOpen then
-		hoveringWorkbench = true
-		showPrompt()
-	else
-		hoveringWorkbench = false
-		hidePrompt()
-	end
-
-	if isOpen and not near then
-		closeUI()
 	end
 end)
