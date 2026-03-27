@@ -29,7 +29,11 @@ end
 local _G_Inventories = {}
 _G.GetInventory = function(player)
 	if not _G_Inventories[player] then
-		_G_Inventories[player] = {Log = 0}
+		_G_Inventories[player] = {Log = 0, Plastic = 0}
+	end
+	-- Ensure Plastic field exists for old inventories
+	if not _G_Inventories[player].Plastic then
+		_G_Inventories[player].Plastic = 0
 	end
 	return _G_Inventories[player]
 end
@@ -39,6 +43,9 @@ _G.SendInventory = function(player)
 end
 
 local clickCounts = {}
+
+-- Spawn cycle counter for different spawn rates
+local spawnCycle = 0
 
 local function getBoat()
 	return workspace:FindFirstChild("Raft")
@@ -97,21 +104,20 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 	if clicks >= CLICKS_TO_COLLECT then
 		clickCounts[resource] = nil
 		local inv = _G.GetInventory(player)
-		inv.Log = (inv.Log or 0) + 1
-		collectNotify:FireClient(player, "collected", resource)
+
+		-- Determine what resource this gives based on its attribute
+		local resType = resource:GetAttribute("ResourceType") or "Log"
+		local resAmount = resource:GetAttribute("ResourceAmount") or 1
+
+		inv[resType] = (inv[resType] or 0) + resAmount
+		collectNotify:FireClient(player, "collected", resource, resType, resAmount)
 		_G.SendInventory(player)
 		resource:Destroy()
 	end
 end)
 
-while true do
-	task.wait(3)
-
-	local boat = getBoat()
-	if not boat then continue end
-
+local function spawnResource(templateName, resourceType, resourceAmount, boat)
 	local root = boat.PrimaryPart
-
 	local waterY = root.Position.Y
 	local spawnPos = Vector3.new(
 		root.Position.X + root.CFrame.LookVector.X * math.random(400, 600) + math.random(-100, 100),
@@ -119,12 +125,11 @@ while true do
 		root.Position.Z + root.CFrame.LookVector.Z * math.random(400, 600) + math.random(-100, 100)
 	)
 
-	local logTemplate = rs:FindFirstChild("Log")
-	if not logTemplate then
-		warn("ResourceSpawner: No 'Log' model found in ReplicatedStorage!")
-		continue
+	local template = rs:FindFirstChild(templateName)
+	if not template then
+		return
 	end
-	local clone = logTemplate:Clone()
+	local clone = template:Clone()
 
 	if not clone.PrimaryPart then
 		local first = clone:FindFirstChildWhichIsA("BasePart", true)
@@ -132,6 +137,9 @@ while true do
 			clone.PrimaryPart = first
 		end
 	end
+
+	clone:SetAttribute("ResourceType", resourceType)
+	clone:SetAttribute("ResourceAmount", resourceAmount)
 
 	clone:PivotTo(CFrame.new(spawnPos))
 	clone.Parent = workspace
@@ -151,4 +159,26 @@ while true do
 			clone:Destroy()
 		end
 	end)
+end
+
+while true do
+	task.wait(3)
+
+	local boat = getBoat()
+	if not boat then continue end
+
+	spawnCycle = spawnCycle + 1
+
+	-- Log: every cycle
+	spawnResource("Log", "Log", 1, boat)
+
+	-- plastic_bottle: every 2nd cycle (half as often)
+	if spawnCycle % 2 == 0 then
+		spawnResource("plastic_bottle", "Plastic", 1, boat)
+	end
+
+	-- plastic_canister: every 4th cycle (quarter as often)
+	if spawnCycle % 4 == 0 then
+		spawnResource("plastic_canister", "Plastic", 3, boat)
+	end
 end

@@ -14,8 +14,14 @@ local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local inventoryCraftEvent = ReplicatedStorage:WaitForChild("InventoryCraft")
 
 local LOG_ICON = "rbxassetid://110032041583533"
+local PLASTIC_ICON = "rbxassetid://110032041583533" -- same icon for now
 
-local inventory = {Log = 0}
+local RESOURCE_ICONS = {
+	Log = LOG_ICON,
+	Plastic = PLASTIC_ICON,
+}
+
+local inventory = {Log = 0, Plastic = 0}
 local recipes = {}
 local selectedRecipe = nil
 local isOpen = false
@@ -165,22 +171,35 @@ local function distributeResource(name, totalCount, icon)
 	end
 end
 
+local function updateResourceSlots(name, count, icon)
+	if count > 0 then
+		distributeResource(name, count, icon)
+	else
+		for i = 1, TOTAL_SLOTS do
+			if slotData[i] and slotData[i].type == "resource" and slotData[i].name == name then
+				slotData[i] = nil
+			end
+		end
+	end
+end
+
 local function rebuildSlotData()
 	local tools = getToolList()
-	local logCount = inventory.Log or 0
 
 	if not slotsInitialized then
 		for i = 1, TOTAL_SLOTS do slotData[i] = nil end
 
-		if logCount > 0 then
-			distributeResource("Log", logCount, LOG_ICON)
+		for resName, resIcon in RESOURCE_ICONS do
+			local count = inventory[resName] or 0
+			if count > 0 then
+				distributeResource(resName, count, resIcon)
+			end
 		end
 
 		local slot = 2
 		for _, tool in tools do
-			if slot > HOTBAR_SLOTS then break end
-			-- Skip if slot already taken by resource
-			if slotData[slot] then
+			-- Find next free hotbar slot
+			while slot <= HOTBAR_SLOTS and slotData[slot] do
 				slot = slot + 1
 			end
 			if slot > HOTBAR_SLOTS then break end
@@ -193,16 +212,9 @@ local function rebuildSlotData()
 		return
 	end
 
-	-- Update logs: distribute total across existing + new slots
-	if logCount > 0 then
-		distributeResource("Log", logCount, LOG_ICON)
-	else
-		-- Remove all log slots
-		for i = 1, TOTAL_SLOTS do
-			if slotData[i] and slotData[i].type == "resource" and slotData[i].name == "Log" then
-				slotData[i] = nil
-			end
-		end
+	-- Update all resources
+	for resName, resIcon in RESOURCE_ICONS do
+		updateResourceSlots(resName, inventory[resName] or 0, resIcon)
 	end
 
 	-- Remove tools that no longer exist
@@ -306,10 +318,10 @@ function renderAllSlots()
 			end
 		end
 
-		local resCount = screenGui:FindFirstChild("ResCount", true)
-		if resCount then
-			resCount.Text = tostring(inventory.Log or 0)
-		end
+		local lc = screenGui:FindFirstChild("LogCount", true)
+		if lc then lc.Text = tostring(inventory.Log or 0) end
+		local pc = screenGui:FindFirstChild("PlasticCount", true)
+		if pc then pc.Text = tostring(inventory.Plastic or 0) end
 	end
 end
 
@@ -721,20 +733,42 @@ local function buildUI()
 	sep.BorderSizePixel = 0
 	sep.Parent = centerPanel
 
-	local resIcon = Instance.new("ImageLabel")
-	resIcon.Size = UDim2.new(0, 22, 0, 22)
-	resIcon.Position = UDim2.new(1, -75, 0, 12)
-	resIcon.BackgroundTransparency = 1
-	resIcon.Image = LOG_ICON
-	resIcon.ScaleType = Enum.ScaleType.Fit
-	resIcon.Parent = centerPanel
+	-- Log counter
+	local logIcon = Instance.new("ImageLabel")
+	logIcon.Size = UDim2.new(0, 20, 0, 20)
+	logIcon.Position = UDim2.new(1, -130, 0, 13)
+	logIcon.BackgroundTransparency = 1
+	logIcon.Image = LOG_ICON
+	logIcon.ScaleType = Enum.ScaleType.Fit
+	logIcon.Parent = centerPanel
 
-	local resCount = Instance.new("TextLabel")
-	resCount.Name = "ResCount"
-	resCount.Size = UDim2.new(0, 40, 0, 22)
-	resCount.Position = UDim2.new(1, -50, 0, 12)
-	resCount.BackgroundTransparency = 1
-	resCount.Text = tostring(inventory.Log or 0)
+	local logCount = Instance.new("TextLabel")
+	logCount.Name = "LogCount"
+	logCount.Size = UDim2.new(0, 30, 0, 20)
+	logCount.Position = UDim2.new(1, -108, 0, 13)
+	logCount.BackgroundTransparency = 1
+	logCount.Text = tostring(inventory.Log or 0)
+	logCount.TextColor3 = COLORS.titleText
+	logCount.Font = Enum.Font.GothamBold
+	logCount.TextSize = 14
+	logCount.TextXAlignment = Enum.TextXAlignment.Left
+	logCount.Parent = centerPanel
+
+	-- Plastic counter
+	local plasticIcon = Instance.new("ImageLabel")
+	plasticIcon.Size = UDim2.new(0, 20, 0, 20)
+	plasticIcon.Position = UDim2.new(1, -70, 0, 13)
+	plasticIcon.BackgroundTransparency = 1
+	plasticIcon.Image = PLASTIC_ICON
+	plasticIcon.ScaleType = Enum.ScaleType.Fit
+	plasticIcon.Parent = centerPanel
+
+	local plasticCount = Instance.new("TextLabel")
+	plasticCount.Name = "PlasticCount"
+	plasticCount.Size = UDim2.new(0, 30, 0, 20)
+	plasticCount.Position = UDim2.new(1, -48, 0, 13)
+	plasticCount.BackgroundTransparency = 1
+	plasticCount.Text = tostring(inventory.Plastic or 0)
 	resCount.TextColor3 = COLORS.titleText
 	resCount.Font = Enum.Font.GothamBold
 	resCount.TextSize = 16

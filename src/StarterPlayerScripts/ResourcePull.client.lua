@@ -119,9 +119,17 @@ local function removeProgress(resource)
 	end
 end
 
-local function showCollectedPopup(worldPos)
+local RESOURCE_ICONS = {
+	Log = "rbxassetid://110032041583533",
+	Plastic = "rbxassetid://110032041583533",
+}
+
+local function showCollectedPopup(worldPos, resType, resAmount)
 	local screenPos, onScreen = camera:WorldToScreenPoint(worldPos)
 	if not onScreen then return end
+
+	local amount = resAmount or 1
+	local iconId = RESOURCE_ICONS[resType or "Log"] or "rbxassetid://110032041583533"
 
 	local screenGui = Instance.new("ScreenGui")
 	screenGui.Parent = playerGui
@@ -136,7 +144,7 @@ local function showCollectedPopup(worldPos)
 	label.Size = UDim2.new(0, 50, 1, 0)
 	label.Position = UDim2.new(0, 0, 0, 0)
 	label.BackgroundTransparency = 1
-	label.Text = "+ 1"
+	label.Text = "+ " .. tostring(amount)
 	label.TextColor3 = Color3.fromRGB(255, 220, 100)
 	label.TextStrokeTransparency = 0.5
 	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
@@ -148,7 +156,7 @@ local function showCollectedPopup(worldPos)
 	icon.Size = UDim2.new(0, 40, 0, 40)
 	icon.Position = UDim2.new(0, 55, 0.5, -20)
 	icon.BackgroundTransparency = 1
-	icon.Image = "rbxassetid://110032041583533"
+	icon.Image = iconId
 	icon.ScaleType = Enum.ScaleType.Fit
 	icon.Parent = container
 
@@ -173,14 +181,16 @@ end
 
 local lastResourcePositions = {}
 
-collectNotify.OnClientEvent:Connect(function(action, resource, clicks, maxClicks)
+collectNotify.OnClientEvent:Connect(function(action, resource, arg3, arg4)
 	if action == "progress" then
-		updateProgress(resource, clicks, maxClicks)
+		-- arg3 = clicks, arg4 = maxClicks
+		updateProgress(resource, arg3, arg4)
 		local adornee = getAdornee(resource)
 		if adornee and adornee:IsA("BasePart") then
 			lastResourcePositions[resource] = adornee.Position
 		end
 	elseif action == "collected" then
+		-- arg3 = resType, arg4 = resAmount
 		local worldPos = lastResourcePositions[resource]
 		if not worldPos then
 			local adornee = getAdornee(resource)
@@ -192,7 +202,7 @@ collectNotify.OnClientEvent:Connect(function(action, resource, clicks, maxClicks
 		clearHighlight()
 		lastResourcePositions[resource] = nil
 		if worldPos then
-			showCollectedPopup(worldPos)
+			showCollectedPopup(worldPos, arg3, arg4)
 		end
 	end
 end)
