@@ -112,10 +112,12 @@ while true do
 
 	local root = boat.PrimaryPart
 
-	local spawnPos =
-		root.Position
-		+ root.CFrame.LookVector * math.random(400, 600)
-		+ Vector3.new(math.random(-100, 100), 0, math.random(-100, 100))
+	local waterY = root.Position.Y
+	local spawnPos = Vector3.new(
+		root.Position.X + root.CFrame.LookVector.X * math.random(400, 600) + math.random(-100, 100),
+		waterY,
+		root.Position.Z + root.CFrame.LookVector.Z * math.random(400, 600) + math.random(-100, 100)
+	)
 
 	local logTemplate = rs:FindFirstChild("Log")
 	if not logTemplate then
@@ -136,7 +138,7 @@ while true do
 
 	for _, part in clone:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.Anchored = false
+			part.Anchored = true
 		end
 	end
 
