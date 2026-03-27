@@ -1,7 +1,7 @@
 local SPEED = 20
 local FORCE_MAGNITUDE = 5000
 
-local boat = workspace:WaitForChild("raft")
+local boat = workspace:WaitForChild("Raft")
 while not boat.PrimaryPart do
 	task.wait(0.1)
 end

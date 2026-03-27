@@ -41,7 +41,7 @@ end
 local clickCounts = {}
 
 local function getBoat()
-	return workspace:FindFirstChild("raft")
+	return workspace:FindFirstChild("Raft")
 end
 
 local function getResourceFromPart(part)
