@@ -107,6 +107,41 @@ local function findItemSlot(itemType, itemName)
 	return nil
 end
 
+local MAX_STACK = 30
+
+-- Distribute logs across slots respecting MAX_STACK
+local function distributeResource(name, totalCount, icon)
+	-- Find all existing slots with this resource
+	local existingSlots = {}
+	for i = 1, TOTAL_SLOTS do
+		if slotData[i] and slotData[i].type == "resource" and slotData[i].name == name then
+			table.insert(existingSlots, i)
+		end
+	end
+
+	local remaining = totalCount
+
+	-- Fill existing slots first
+	for _, idx in existingSlots do
+		if remaining <= 0 then
+			slotData[idx] = nil
+		else
+			local amount = math.min(remaining, MAX_STACK)
+			slotData[idx].count = amount
+			remaining = remaining - amount
+		end
+	end
+
+	-- If there's still remaining, create new slots
+	while remaining > 0 do
+		local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, TOTAL_SLOTS)
+		if not empty then break end -- inventory full
+		local amount = math.min(remaining, MAX_STACK)
+		slotData[empty] = {type = "resource", name = name, count = amount, icon = icon}
+		remaining = remaining - amount
+	end
+end
+
 local function rebuildSlotData()
 	local tools = getToolList()
 	local logCount = inventory.Log or 0
@@ -115,11 +150,16 @@ local function rebuildSlotData()
 		for i = 1, TOTAL_SLOTS do slotData[i] = nil end
 
 		if logCount > 0 then
-			slotData[1] = {type = "resource", name = "Log", count = logCount, icon = LOG_ICON}
+			distributeResource("Log", logCount, LOG_ICON)
 		end
 
 		local slot = 2
 		for _, tool in tools do
+			if slot > HOTBAR_SLOTS then break end
+			-- Skip if slot already taken by resource
+			if slotData[slot] then
+				slot = slot + 1
+			end
 			if slot > HOTBAR_SLOTS then break end
 			local toolIcon = (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
 			slotData[slot] = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon}
@@ -130,19 +170,16 @@ local function rebuildSlotData()
 		return
 	end
 
-	-- Update log counts wherever they are, or add if new
-	local logSlot = findItemSlot("resource", "Log")
+	-- Update logs: distribute total across existing + new slots
 	if logCount > 0 then
-		if logSlot then
-			slotData[logSlot].count = logCount
-		else
-			local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, TOTAL_SLOTS)
-			if empty then
-				slotData[empty] = {type = "resource", name = "Log", count = logCount, icon = LOG_ICON}
+		distributeResource("Log", logCount, LOG_ICON)
+	else
+		-- Remove all log slots
+		for i = 1, TOTAL_SLOTS do
+			if slotData[i] and slotData[i].type == "resource" and slotData[i].name == "Log" then
+				slotData[i] = nil
 			end
 		end
-	else
-		if logSlot then slotData[logSlot] = nil end
 	end
 
 	-- Remove tools that no longer exist
@@ -385,8 +422,6 @@ local function endDrag(mousePos)
 	if targetSlot and targetSlot ~= srcSlot then
 		local srcData = slotData[srcSlot]
 		local dstData = slotData[targetSlot]
-
-		local MAX_STACK = 30
 
 		if isSplit and srcData and srcData.type == "resource" and srcData.count and srcData.count > 1 then
 			-- Right-click split: move exactly 1 to target
