@@ -123,24 +123,45 @@ local function showCollectedPopup()
 	local screenGui = Instance.new("ScreenGui")
 	screenGui.Parent = playerGui
 
+	local container = Instance.new("Frame")
+	container.Size = UDim2.new(0, 120, 0, 50)
+	container.Position = UDim2.new(0, 20, 0.5, -25)
+	container.BackgroundTransparency = 1
+	container.Parent = screenGui
+
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(0, 200, 0, 50)
-	label.Position = UDim2.new(0.5, -100, 0.4, 0)
+	label.Size = UDim2.new(0, 50, 1, 0)
+	label.Position = UDim2.new(0, 0, 0, 0)
 	label.BackgroundTransparency = 1
-	label.Text = "+1 Log"
+	label.Text = "+ 1"
 	label.TextColor3 = Color3.fromRGB(255, 220, 100)
 	label.TextStrokeTransparency = 0.5
 	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 	label.TextScaled = true
 	label.Font = Enum.Font.GothamBold
-	label.Parent = screenGui
+	label.Parent = container
 
-	local tweenUp = TweenService:Create(label, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
-		Position = UDim2.new(0.5, -100, 0.3, 0),
+	local icon = Instance.new("ImageLabel")
+	icon.Size = UDim2.new(0, 40, 0, 40)
+	icon.Position = UDim2.new(0, 55, 0.5, -20)
+	icon.BackgroundTransparency = 1
+	icon.Image = "rbxassetid://110032041583533"
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.Parent = container
+
+	local tweenUp = TweenService:Create(container, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		Position = UDim2.new(0, 20, 0.5, -75),
+	})
+	local tweenFadeText = TweenService:Create(label, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
 		TextTransparency = 1,
 		TextStrokeTransparency = 1,
 	})
+	local tweenFadeIcon = TweenService:Create(icon, TweenInfo.new(1, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+		ImageTransparency = 1,
+	})
 	tweenUp:Play()
+	tweenFadeText:Play()
+	tweenFadeIcon:Play()
 	tweenUp.Completed:Connect(function()
 		screenGui:Destroy()
 	end)
