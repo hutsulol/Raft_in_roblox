@@ -12,7 +12,7 @@ local PULL_FORCE = 1500
 local RESOURCE_LIFETIME = 30
 local WATER_LEVEL = 0
 
-local boat = workspace:WaitForChild("Model")
+local boat = workspace:WaitForChild("Boat")
 local primaryPart = boat.PrimaryPart
 
 local pullEvent = Instance.new("RemoteEvent")
