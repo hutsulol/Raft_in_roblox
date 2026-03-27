@@ -63,7 +63,10 @@ local dragState = {
 	data = nil,
 	ghost = nil,       -- floating ImageLabel
 	ghostGui = nil,
+	didDrag = false,   -- true if mouse moved during drag (prevents click-equip)
+	startPos = nil,
 }
+local DRAG_THRESHOLD = 5 -- pixels before drag activates
 
 -- ─── Helpers ───
 
@@ -99,39 +102,126 @@ local function getToolList()
 	return tools
 end
 
--- Rebuild slot data from inventory + backpack, preserving existing slot positions
+local slotsInitialized = false
+
+-- Find first empty slot in an array
+local function findEmptySlot(arr, maxSlots)
+	for i = 1, maxSlots do
+		if not arr[i] then return i end
+	end
+	return nil
+end
+
+-- Check if an item already exists in an array
+local function findItemInSlots(arr, maxSlots, itemType, itemName)
+	for i = 1, maxSlots do
+		if arr[i] and arr[i].type == itemType and arr[i].name == itemName then
+			return i
+		end
+	end
+	return nil
+end
+
+-- Smart rebuild: preserves positions, only adds/removes/updates as needed
 local function rebuildSlotData()
-	-- Clear all slots
-	for i = 1, HOTBAR_SLOTS do hotbarData[i] = nil end
-	for i = 1, INVENTORY_SLOTS do invData[i] = nil end
-
-	-- Slot 1 of hotbar: Logs (if any)
-	if (inventory.Log or 0) > 0 then
-		hotbarData[1] = {type = "resource", name = "Log", count = inventory.Log, icon = LOG_ICON}
-	end
-
-	-- Tools go to hotbar slots 2+
 	local tools = getToolList()
-	local toolSlot = 2
-	for _, tool in tools do
-		if toolSlot > HOTBAR_SLOTS then break end
-		local toolIcon = (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
-		hotbarData[toolSlot] = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon}
-		toolSlot = toolSlot + 1
+	local logCount = inventory.Log or 0
+
+	if not slotsInitialized then
+		-- First time: place everything in default positions
+		for i = 1, HOTBAR_SLOTS do hotbarData[i] = nil end
+		for i = 1, INVENTORY_SLOTS do invData[i] = nil end
+
+		if logCount > 0 then
+			hotbarData[1] = {type = "resource", name = "Log", count = logCount, icon = LOG_ICON}
+		end
+
+		local toolSlot = 2
+		for _, tool in tools do
+			if toolSlot > HOTBAR_SLOTS then break end
+			local toolIcon = (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+			hotbarData[toolSlot] = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon}
+			toolSlot = toolSlot + 1
+		end
+
+		slotsInitialized = true
+		return
 	end
 
-	-- Resources also shown in inventory grid slot 1 when inventory is open
-	if (inventory.Log or 0) > 0 then
-		invData[1] = {type = "resource", name = "Log", count = inventory.Log, icon = LOG_ICON}
+	-- ─── Update existing items, add new ones, remove stale ones ───
+
+	-- Update Log counts in both arrays (or add if new, remove if zero)
+	local function updateResource(arr, maxSlots)
+		local idx = findItemInSlots(arr, maxSlots, "resource", "Log")
+		if logCount > 0 then
+			if idx then
+				arr[idx].count = logCount
+			end
+			-- Don't auto-add to this array - only add if not in any array
+		else
+			if idx then arr[idx] = nil end
+		end
 	end
 
-	-- Tools also shown in inventory grid
-	local invSlot = 2
+	updateResource(hotbarData, HOTBAR_SLOTS)
+	updateResource(invData, INVENTORY_SLOTS)
+
+	-- If Log not found anywhere and count > 0, add to first empty hotbar slot
+	if logCount > 0 then
+		local inHotbar = findItemInSlots(hotbarData, HOTBAR_SLOTS, "resource", "Log")
+		local inInv = findItemInSlots(invData, INVENTORY_SLOTS, "resource", "Log")
+		if not inHotbar and not inInv then
+			local empty = findEmptySlot(hotbarData, HOTBAR_SLOTS)
+			if empty then
+				hotbarData[empty] = {type = "resource", name = "Log", count = logCount, icon = LOG_ICON}
+			else
+				empty = findEmptySlot(invData, INVENTORY_SLOTS)
+				if empty then
+					invData[empty] = {type = "resource", name = "Log", count = logCount, icon = LOG_ICON}
+				end
+			end
+		end
+	end
+
+	-- Build set of current tool names
+	local currentTools = {}
 	for _, tool in tools do
-		if invSlot > INVENTORY_SLOTS then break end
-		local toolIcon = (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
-		invData[invSlot] = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon}
-		invSlot = invSlot + 1
+		currentTools[tool.Name] = tool
+	end
+
+	-- Remove tools from slots that no longer exist
+	for i = 1, HOTBAR_SLOTS do
+		if hotbarData[i] and hotbarData[i].type == "tool" then
+			if not currentTools[hotbarData[i].toolName] then
+				hotbarData[i] = nil
+			end
+		end
+	end
+	for i = 1, INVENTORY_SLOTS do
+		if invData[i] and invData[i].type == "tool" then
+			if not currentTools[invData[i].toolName] then
+				invData[i] = nil
+			end
+		end
+	end
+
+	-- Add new tools that aren't in any slot
+	for _, tool in tools do
+		local inHotbar = findItemInSlots(hotbarData, HOTBAR_SLOTS, "tool", tool.Name)
+		local inInv = findItemInSlots(invData, INVENTORY_SLOTS, "tool", tool.Name)
+		if not inHotbar and not inInv then
+			local toolIcon = (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+			local entry = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon}
+			local empty = findEmptySlot(hotbarData, HOTBAR_SLOTS)
+			if empty then
+				hotbarData[empty] = entry
+			else
+				empty = findEmptySlot(invData, INVENTORY_SLOTS)
+				if empty then
+					invData[empty] = entry
+				end
+			end
+		end
 	end
 end
 
@@ -177,15 +267,22 @@ end
 
 -- ─── Drag & Drop ───
 
-local function startDrag(sourceType, sourceIndex, data, mousePos)
+local function beginDragPending(sourceType, sourceIndex, data, mousePos)
 	if not data then return end
-
-	dragState.active = true
 	dragState.sourceType = sourceType
 	dragState.sourceIndex = sourceIndex
 	dragState.data = data
+	dragState.startPos = mousePos
+	dragState.active = false
+	dragState.didDrag = false
+end
 
-	-- Create floating ghost icon
+local function activateDrag(mousePos)
+	if dragState.active then return end
+	dragState.active = true
+	dragState.didDrag = true
+
+	local data = dragState.data
 	local ghostGui = Instance.new("ScreenGui")
 	ghostGui.Name = "DragGhost"
 	ghostGui.DisplayOrder = 100
@@ -221,6 +318,15 @@ local function startDrag(sourceType, sourceIndex, data, mousePos)
 end
 
 local function updateDragPosition(mousePos)
+	-- Check if we should activate drag (threshold)
+	if dragState.startPos and not dragState.active and dragState.data then
+		local dx = mousePos.X - dragState.startPos.X
+		local dy = mousePos.Y - dragState.startPos.Y
+		if math.sqrt(dx * dx + dy * dy) >= DRAG_THRESHOLD then
+			activateDrag(mousePos)
+		end
+	end
+
 	if dragState.active and dragState.ghost then
 		dragState.ghost.Position = UDim2.new(0, mousePos.X - (SLOT_SIZE - 8) / 2, 0, mousePos.Y - (SLOT_SIZE - 8) / 2)
 	end
@@ -266,19 +372,36 @@ local function findSlotUnderMouse(mousePos)
 	return nil, nil, nil
 end
 
+local function cancelDrag()
+	if dragState.ghostGui then
+		dragState.ghostGui:Destroy()
+	end
+	dragState.active = false
+	dragState.sourceType = nil
+	dragState.sourceIndex = nil
+	dragState.data = nil
+	dragState.ghost = nil
+	dragState.ghostGui = nil
+	dragState.startPos = nil
+end
+
 local function endDrag(mousePos)
-	if not dragState.active then return end
+	local wasDragging = dragState.active
+
+	if not wasDragging then
+		-- Mouse released without reaching threshold, just cancel
+		cancelDrag()
+		return
+	end
 
 	local targetType, targetIndex = findSlotUnderMouse(mousePos)
 
 	if targetType and targetIndex then
-		-- Get source and target data arrays
 		local srcArr = dragState.sourceType == "hotbar" and hotbarData or invData
 		local dstArr = targetType == "hotbar" and hotbarData or invData
 		local srcIdx = dragState.sourceIndex
 		local dstIdx = targetIndex
 
-		-- Don't swap with self
 		if not (dragState.sourceType == targetType and srcIdx == dstIdx) then
 			-- Swap
 			local temp = dstArr[dstIdx]
@@ -287,19 +410,8 @@ local function endDrag(mousePos)
 		end
 	end
 
-	-- Cleanup ghost
-	if dragState.ghostGui then
-		dragState.ghostGui:Destroy()
-	end
-
-	dragState.active = false
-	dragState.sourceType = nil
-	dragState.sourceIndex = nil
-	dragState.data = nil
-	dragState.ghost = nil
-	dragState.ghostGui = nil
-
-	-- Re-render
+	cancelDrag()
+	dragState.didDrag = true -- keep this flag until next mouse down
 	renderAllSlots()
 end
 
@@ -435,31 +547,27 @@ local function buildHotbar()
 
 		local slotIndex = i
 
-		-- Mouse down = start drag or click to equip
+		-- Mouse down = begin drag pending
 		slot.MouseButton1Down:Connect(function()
+			dragState.didDrag = false
 			local mousePos = UserInputService:GetMouseLocation()
 			local data = hotbarData[slotIndex]
 			if data then
-				startDrag("hotbar", slotIndex, data, mousePos)
+				beginDragPending("hotbar", slotIndex, data, mousePos)
 			end
 		end)
 
-		slot.MouseButton1Up:Connect(function()
-			if dragState.active then
-				local mousePos = UserInputService:GetMouseLocation()
-				endDrag(mousePos)
-			end
-		end)
-
-		-- Double-click / single click to equip tool
+		-- Click to equip tool (only if we didn't drag)
 		slot.MouseButton1Click:Connect(function()
-			if not dragState.active then
-				local data = hotbarData[slotIndex]
-				if data and data.type == "tool" then
-					equipToolByName(data.toolName)
-					task.wait(0.1)
-					renderAllSlots()
-				end
+			if dragState.didDrag then
+				dragState.didDrag = false
+				return
+			end
+			local data = hotbarData[slotIndex]
+			if data and data.type == "tool" then
+				equipToolByName(data.toolName)
+				task.wait(0.1)
+				renderAllSlots()
 			end
 		end)
 	end
@@ -638,17 +746,11 @@ local function buildUI()
 		local slotIndex = i
 
 		slot.MouseButton1Down:Connect(function()
+			dragState.didDrag = false
 			local mousePos = UserInputService:GetMouseLocation()
 			local data = invData[slotIndex]
 			if data then
-				startDrag("inventory", slotIndex, data, mousePos)
-			end
-		end)
-
-		slot.MouseButton1Up:Connect(function()
-			if dragState.active then
-				local mousePos = UserInputService:GetMouseLocation()
-				endDrag(mousePos)
+				beginDragPending("inventory", slotIndex, data, mousePos)
 			end
 		end)
 	end
