@@ -93,8 +93,8 @@ while true do
 
 	local spawnPos =
 		root.Position
-		+ root.CFrame.LookVector * math.random(160, 240)
-		+ Vector3.new(math.random(-60, 60), 0, math.random(-60, 60))
+		+ root.CFrame.LookVector * math.random(400, 600)
+		+ Vector3.new(math.random(-100, 100), 0, math.random(-100, 100))
 
 	local clone = rs:FindFirstChild("Log"):Clone()
 
