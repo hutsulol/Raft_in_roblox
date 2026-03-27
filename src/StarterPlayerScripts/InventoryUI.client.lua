@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
+local GuiService = game:GetService("GuiService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -316,6 +317,11 @@ local function updateDragPosition(mousePos)
 end
 
 local function findSlotUnderMouse(mousePos)
+	-- GetMouseLocation() includes the GUI inset, AbsolutePosition does not
+	local inset = GuiService:GetGuiInset()
+	local mx = mousePos.X
+	local my = mousePos.Y - inset.Y
+
 	-- Check hotbar slots (1-8)
 	if hotbarGui then
 		local bar = hotbarGui:FindFirstChild("Hotbar")
@@ -325,7 +331,7 @@ local function findSlotUnderMouse(mousePos)
 				if slot then
 					local p = slot.AbsolutePosition
 					local s = slot.AbsoluteSize
-					if mousePos.X >= p.X and mousePos.X <= p.X + s.X and mousePos.Y >= p.Y and mousePos.Y <= p.Y + s.Y then
+					if mx >= p.X and mx <= p.X + s.X and my >= p.Y and my <= p.Y + s.Y then
 						return i
 					end
 				end
@@ -342,7 +348,7 @@ local function findSlotUnderMouse(mousePos)
 				if slot then
 					local p = slot.AbsolutePosition
 					local s = slot.AbsoluteSize
-					if mousePos.X >= p.X and mousePos.X <= p.X + s.X and mousePos.Y >= p.Y and mousePos.Y <= p.Y + s.Y then
+					if mx >= p.X and mx <= p.X + s.X and my >= p.Y and my <= p.Y + s.Y then
 						return HOTBAR_SLOTS + i
 					end
 				end
