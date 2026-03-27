@@ -138,7 +138,8 @@ while true do
 
 	for _, part in clone:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.Anchored = true
+			part.Anchored = false
+			part:SetNetworkOwner(nil)
 		end
 	end
 
