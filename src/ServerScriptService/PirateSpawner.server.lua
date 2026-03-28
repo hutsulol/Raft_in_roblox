@@ -1,12 +1,12 @@
 local TweenService = game:GetService("TweenService")
 local rs = game:GetService("ReplicatedStorage")
 
-local SPAWN_INTERVAL = 5 -- seconds between spawn checks
-local SPAWN_CHANCE = 1.0 -- 100% chance (testing)
-local PIRATE_COUNT = 2 -- pirates per raft
-local APPROACH_SPEED = 80 -- studs per second (fast for testing)
-local SINK_DURATION = 4 -- seconds to sink and fade
-local FIRST_SPAWN_DELAY = 3 -- seconds before first spawn
+local SPAWN_INTERVAL = 5
+local SPAWN_CHANCE = 1.0
+local PIRATE_COUNT = 2
+local APPROACH_SPEED = 80
+local SINK_DURATION = 4
+local FIRST_SPAWN_DELAY = 3
 
 local raftPartTemplate = rs:WaitForChild("Raft_part")
 local pirateTemplate = rs:FindFirstChild("Pirate lvl1")
@@ -21,7 +21,6 @@ local function spawnPirateRaft()
 
 	local raftPos = playerRaft.PrimaryPart.Position
 
-	-- Spawn 80-150 studs away in a random direction (close for testing)
 	local angle = math.random() * math.pi * 2
 	local dist = math.random(80, 150)
 	local spawnPos = Vector3.new(
@@ -30,29 +29,48 @@ local function spawnPirateRaft()
 		raftPos.Z + math.sin(angle) * dist
 	)
 
-	-- Create the pirate raft model
+	-- Create a simple Part as the pirate raft floor
+	local floorPart = Instance.new("Part")
+	floorPart.Name = "PirateRaftFloor"
+	floorPart.Size = Vector3.new(8, 1, 8)
+	floorPart.CFrame = CFrame.new(spawnPos)
+	floorPart.Anchored = false
+	floorPart.Material = Enum.Material.Wood
+	floorPart.BrickColor = BrickColor.new("Brown")
+	floorPart:SetNetworkOwner(nil)
+
 	local pirateRaft = Instance.new("Model")
 	pirateRaft.Name = "PirateRaft"
+	pirateRaft.PrimaryPart = floorPart
+	floorPart.Parent = pirateRaft
 
-	-- Clone a raft floor piece
-	local floor = raftPartTemplate:Clone()
-	if floor:IsA("Model") then
-		floor:PivotTo(CFrame.new(spawnPos))
-		pirateRaft.PrimaryPart = floor.PrimaryPart
-		floor.Parent = pirateRaft
-		for _, desc in floor:GetDescendants() do
+	-- Also clone the visual Raft_part and weld it on top for looks
+	local visual = raftPartTemplate:Clone()
+	if visual:IsA("Model") then
+		visual:PivotTo(CFrame.new(spawnPos))
+		visual.Parent = pirateRaft
+		for _, desc in visual:GetDescendants() do
 			if desc:IsA("BasePart") then
 				desc.Anchored = false
-				desc:SetNetworkOwner(nil)
+				desc.CanCollide = true
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = desc
+				weld.Part1 = floorPart
+				weld.Parent = desc
 			end
 		end
-	elseif floor:IsA("BasePart") then
-		floor.CFrame = CFrame.new(spawnPos)
-		floor.Anchored = false
-		floor:SetNetworkOwner(nil)
-		pirateRaft.PrimaryPart = floor
-		floor.Parent = pirateRaft
+	elseif visual:IsA("BasePart") then
+		visual.CFrame = CFrame.new(spawnPos)
+		visual.Anchored = false
+		visual.Parent = pirateRaft
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = visual
+		weld.Part1 = floorPart
+		weld.Parent = visual
 	end
+
+	-- Hide the base part inside the visual
+	floorPart.Transparency = 1
 
 	pirateRaft.Parent = workspace
 
@@ -61,28 +79,22 @@ local function spawnPirateRaft()
 	if pirateTemplate then
 		for i = 1, PIRATE_COUNT do
 			local pirate = pirateTemplate:Clone()
-
-			-- Offset pirates slightly so they don't overlap
 			local offsetX = (i - 1) * 3 - 1.5
-			local piratePos = spawnPos + Vector3.new(offsetX, 3, 0)
+			local piratePos = spawnPos + Vector3.new(offsetX, 4, 0)
 
 			if pirate:IsA("Model") then
 				pirate:PivotTo(CFrame.new(piratePos))
 			end
-			pirate.Parent = pirateRaft
+			pirate.Parent = workspace
 
 			table.insert(pirates, pirate)
 		end
 	end
 
-	-- Move the pirate raft toward the player raft
+	-- Movement: approach the player raft
 	task.spawn(function()
-		-- Use BodyVelocity-like approach with AlignPosition on the floor
-		local rootPart = pirateRaft.PrimaryPart
-		if not rootPart then return end
-
 		local attachment = Instance.new("Attachment")
-		attachment.Parent = rootPart
+		attachment.Parent = floorPart
 
 		local alignPos = Instance.new("AlignPosition")
 		alignPos.Attachment0 = attachment
@@ -90,7 +102,7 @@ local function spawnPirateRaft()
 		alignPos.MaxForce = 50000
 		alignPos.MaxVelocity = APPROACH_SPEED
 		alignPos.Responsiveness = 10
-		alignPos.Parent = rootPart
+		alignPos.Parent = floorPart
 
 		local alignOri = Instance.new("AlignOrientation")
 		alignOri.Attachment0 = attachment
@@ -98,27 +110,23 @@ local function spawnPirateRaft()
 		alignOri.RigidityEnabled = false
 		alignOri.MaxTorque = 10000
 		alignOri.Responsiveness = 10
-		alignOri.Parent = rootPart
+		alignOri.Parent = floorPart
 
-		-- Update target position toward player raft
-		while pirateRaft and pirateRaft.Parent and rootPart and rootPart.Parent do
+		while pirateRaft and pirateRaft.Parent and floorPart and floorPart.Parent do
 			local pRaft = getPlayerRaft()
 			if not pRaft or not pRaft.PrimaryPart then break end
 
 			local targetPos = pRaft.PrimaryPart.Position
-			alignPos.Position = Vector3.new(targetPos.X, rootPart.Position.Y, targetPos.Z)
+			alignPos.Position = Vector3.new(targetPos.X, floorPart.Position.Y, targetPos.Z)
 
-			-- Face toward player raft
-			local dir = (targetPos - rootPart.Position)
-			dir = Vector3.new(dir.X, 0, dir.Z)
+			local dir = Vector3.new(targetPos.X - floorPart.Position.X, 0, targetPos.Z - floorPart.Position.Z)
 			if dir.Magnitude > 1 then
 				local lookCF = CFrame.lookAt(Vector3.zero, dir.Unit)
 				local _, yaw, _ = lookCF:ToEulerAnglesYXZ()
 				alignOri.CFrame = CFrame.Angles(0, yaw, 0)
 			end
 
-			-- Stop approaching when close enough (within 15 studs)
-			local flatDist = (Vector3.new(targetPos.X, 0, targetPos.Z) - Vector3.new(rootPart.Position.X, 0, rootPart.Position.Z)).Magnitude
+			local flatDist = dir.Magnitude
 			if flatDist < 15 then
 				alignPos.MaxVelocity = 0
 			else
@@ -134,7 +142,6 @@ local function spawnPirateRaft()
 		while pirateRaft and pirateRaft.Parent do
 			task.wait(1)
 
-			-- Check if all pirates are dead
 			local allDead = true
 			for _, pirate in pirates do
 				if pirate and pirate.Parent then
@@ -147,62 +154,47 @@ local function spawnPirateRaft()
 			end
 
 			if allDead then
-				-- Begin sinking
-				local rootPart = pirateRaft.PrimaryPart
-				if not rootPart then
-					pirateRaft:Destroy()
-					return
-				end
-
-				-- Remove movement forces
+				-- Remove movement
 				for _, desc in pirateRaft:GetDescendants() do
 					if desc:IsA("AlignPosition") or desc:IsA("AlignOrientation") or desc:IsA("Attachment") then
 						desc:Destroy()
 					end
 				end
 
-				-- Collect all base parts for fading
+				-- Collect all parts for sinking
 				local allParts = {}
 				for _, desc in pirateRaft:GetDescendants() do
 					if desc:IsA("BasePart") then
+						desc.Anchored = true
+						desc.CanCollide = false
 						table.insert(allParts, desc)
 					end
 				end
 
-				-- Sink downward and fade out
-				local startY = rootPart.Position.Y
-				local sinkY = startY - 15
-
-				-- Anchor all parts for controlled sinking
-				for _, part in allParts do
-					part.Anchored = true
-					part.CanCollide = false
-				end
-
-				local elapsed = 0
-				local steps = SINK_DURATION / 0.05
+				-- Sink and fade
+				local sinkPerStep = -15 * (0.05 / SINK_DURATION)
+				local steps = math.floor(SINK_DURATION / 0.05)
 				for step = 1, steps do
 					if not pirateRaft or not pirateRaft.Parent then break end
-
-					elapsed = step * 0.05
-					local alpha = elapsed / SINK_DURATION
-
-					-- Move down
-					local currentY = startY + (sinkY - startY) * alpha
+					local alpha = step / steps
 
 					for _, part in allParts do
 						if part and part.Parent then
-							part.CFrame = part.CFrame * CFrame.new(0, (sinkY - startY) * (0.05 / SINK_DURATION), 0)
+							part.CFrame = part.CFrame + Vector3.new(0, sinkPerStep, 0)
 							part.Transparency = alpha
 						end
 					end
-
 					task.wait(0.05)
 				end
 
-				-- Fully remove
 				if pirateRaft and pirateRaft.Parent then
 					pirateRaft:Destroy()
+				end
+				-- Clean up dead pirate bodies
+				for _, pirate in pirates do
+					if pirate and pirate.Parent then
+						pirate:Destroy()
+					end
 				end
 				return
 			end
