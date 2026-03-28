@@ -92,16 +92,16 @@ local function wallCFrame(raft, gx, gz, side)
 	local localPos, localRot
 	if side == 0 then -- front (+Z)
 		localPos = Vector3.new(gx * GRID_SIZE, WALL_HEIGHT / 2, gz * GRID_SIZE + half)
-		localRot = CFrame.Angles(0, 0, 0)
+		localRot = CFrame.Angles(0, math.rad(180), 0)
 	elseif side == 1 then -- back (-Z)
 		localPos = Vector3.new(gx * GRID_SIZE, WALL_HEIGHT / 2, gz * GRID_SIZE - half)
-		localRot = CFrame.Angles(0, math.rad(180), 0)
+		localRot = CFrame.Angles(0, 0, 0)
 	elseif side == 2 then -- left (-X)
 		localPos = Vector3.new(gx * GRID_SIZE - half, WALL_HEIGHT / 2, gz * GRID_SIZE)
-		localRot = CFrame.Angles(0, math.rad(90), 0)
+		localRot = CFrame.Angles(0, math.rad(-90), 0)
 	elseif side == 3 then -- right (+X)
 		localPos = Vector3.new(gx * GRID_SIZE + half, WALL_HEIGHT / 2, gz * GRID_SIZE)
-		localRot = CFrame.Angles(0, math.rad(-90), 0)
+		localRot = CFrame.Angles(0, math.rad(90), 0)
 	end
 
 	return primaryCF * CFrame.new(localPos) * localRot

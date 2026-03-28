@@ -172,16 +172,16 @@ local function getWallFromMouse()
 	local localPos, localRot
 	if side == 0 then
 		localPos = Vector3.new(gx * GRID_SIZE, WALL_HEIGHT / 2, gz * GRID_SIZE + half)
-		localRot = CFrame.Angles(0, 0, 0)
+		localRot = CFrame.Angles(0, math.rad(180), 0)
 	elseif side == 1 then
 		localPos = Vector3.new(gx * GRID_SIZE, WALL_HEIGHT / 2, gz * GRID_SIZE - half)
-		localRot = CFrame.Angles(0, math.rad(180), 0)
+		localRot = CFrame.Angles(0, 0, 0)
 	elseif side == 2 then
 		localPos = Vector3.new(gx * GRID_SIZE - half, WALL_HEIGHT / 2, gz * GRID_SIZE)
-		localRot = CFrame.Angles(0, math.rad(90), 0)
+		localRot = CFrame.Angles(0, math.rad(-90), 0)
 	elseif side == 3 then
 		localPos = Vector3.new(gx * GRID_SIZE + half, WALL_HEIGHT / 2, gz * GRID_SIZE)
-		localRot = CFrame.Angles(0, math.rad(-90), 0)
+		localRot = CFrame.Angles(0, math.rad(90), 0)
 	end
 
 	local worldCF = primaryCF * CFrame.new(localPos) * localRot
