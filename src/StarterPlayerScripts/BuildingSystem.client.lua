@@ -12,7 +12,18 @@ local placeBlockEvent = ReplicatedStorage:WaitForChild("PlaceBlock")
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local raftPartTemplate = ReplicatedStorage:WaitForChild("Raft_part")
 
-local RAFT_PART_SIZE = 6
+-- Wait for server to set GridSize attribute, fallback to measuring
+local GRID_SIZE = raftPartTemplate:GetAttribute("GridSize")
+if not GRID_SIZE then
+	if raftPartTemplate:IsA("Model") and raftPartTemplate.PrimaryPart then
+		GRID_SIZE = raftPartTemplate.PrimaryPart.Size.X
+	elseif raftPartTemplate:IsA("BasePart") then
+		GRID_SIZE = raftPartTemplate.Size.X
+	else
+		GRID_SIZE = 6
+	end
+end
+
 local PREVIEW_COLOR_VALID = Color3.fromRGB(80, 200, 80)
 local PREVIEW_COLOR_INVALID = Color3.fromRGB(200, 80, 80)
 local LOG_COST = 2
@@ -31,22 +42,20 @@ local function getRaft()
 	return workspace:FindFirstChild("Raft")
 end
 
--- Get occupied grid offsets in raft-local space
+-- Get occupied grid offsets using stored GridX/GridZ attributes
 local function getOccupiedOffsets()
 	local raft = getRaft()
 	if not raft or not raft.PrimaryPart then return {} end
 
-	local primaryCF = raft.PrimaryPart.CFrame
 	local offsets = {}
 
 	-- Main raft at (0,0)
 	table.insert(offsets, {x = 0, z = 0})
 
-	for _, child in raft:GetDescendants() do
-		if child:IsA("BasePart") and child:GetAttribute("RaftPart") then
-			local localPos = primaryCF:PointToObjectSpace(child.Position)
-			local gx = math.round(localPos.X / RAFT_PART_SIZE)
-			local gz = math.round(localPos.Z / RAFT_PART_SIZE)
+	for _, child in raft:GetChildren() do
+		local gx = child:GetAttribute("GridX")
+		local gz = child:GetAttribute("GridZ")
+		if gx and gz then
 			table.insert(offsets, {x = gx, z = gz})
 		end
 	end
@@ -72,7 +81,6 @@ local function isAdjacent(offsets, gx, gz)
 	return false
 end
 
--- Convert mouse screen position to raft-local grid coordinates
 local function getGridFromMouse()
 	local raft = getRaft()
 	if not raft or not raft.PrimaryPart then return nil, nil, nil end
@@ -81,8 +89,6 @@ local function getGridFromMouse()
 
 	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
 
-	-- Intersect with raft's local XZ plane (world plane at raft height, matching raft orientation)
-	-- The raft's up vector defines the plane normal
 	local planeNormal = primaryCF.UpVector
 	local planePoint = primaryCF.Position
 
@@ -94,15 +100,12 @@ local function getGridFromMouse()
 
 	local hitWorld = ray.Origin + ray.Direction * t
 
-	-- Convert to raft-local space
 	local localHit = primaryCF:PointToObjectSpace(hitWorld)
 
-	-- Snap to grid in local space
-	local gx = math.round(localHit.X / RAFT_PART_SIZE)
-	local gz = math.round(localHit.Z / RAFT_PART_SIZE)
+	local gx = math.round(localHit.X / GRID_SIZE)
+	local gz = math.round(localHit.Z / GRID_SIZE)
 
-	-- Convert back to world CFrame for preview
-	local localOffset = Vector3.new(gx * RAFT_PART_SIZE, 0, gz * RAFT_PART_SIZE)
+	local localOffset = Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE)
 	local worldCF = primaryCF * CFrame.new(localOffset)
 
 	return gx, gz, worldCF
@@ -248,7 +251,6 @@ local function startBuildMode()
 
 		local gx, gz, worldCF = getGridFromMouse()
 		if not gx then
-			-- Hide preview
 			if previewPart:IsA("Model") then
 				for _, desc in previewPart:GetDescendants() do
 					if desc:IsA("BasePart") then desc.Transparency = 1 end
@@ -272,7 +274,6 @@ local function startBuildMode()
 	end)
 end
 
--- Detect Hammer equip/unequip
 local function onCharacterAdded(character)
 	character.ChildAdded:Connect(function(child)
 		if child:IsA("Tool") and child.Name == "Hammer" then
@@ -299,7 +300,6 @@ if player.Character then
 end
 player.CharacterAdded:Connect(onCharacterAdded)
 
--- Click to place
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	if not isBuilding then return end
@@ -313,7 +313,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if not isAdjacent(offsets, gx, gz) then return end
 	if (inventory.Log or 0) < LOG_COST then return end
 
-	-- Send grid coordinates (not world position)
 	placeBlockEvent:FireServer(gx, gz)
 end)
 
