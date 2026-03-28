@@ -219,12 +219,15 @@ local function spawnPirateRaft()
 	end)
 end
 
--- Immediate first spawn
-task.wait(3)
+-- First spawn after 10 seconds, guaranteed
+task.wait(10)
 spawnPirateRaft()
 
--- Spawn loop
+-- Then every 60 seconds with 20% chance
 while true do
-	task.wait(SPAWN_INTERVAL)
-	spawnPirateRaft()
+	task.wait(60)
+	if math.random() < 0.2 then
+		spawnPirateRaft()
+	end
+end
 end
