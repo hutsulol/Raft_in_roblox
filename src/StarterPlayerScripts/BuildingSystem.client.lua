@@ -10,6 +10,7 @@ local camera = workspace.CurrentCamera
 
 local placeBlockEvent = ReplicatedStorage:WaitForChild("PlaceBlock")
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
+local raftPartTemplate = ReplicatedStorage:WaitForChild("Raft_part")
 
 local RAFT_PART_SIZE = 6
 local PREVIEW_COLOR_VALID = Color3.fromRGB(80, 200, 80)
@@ -107,17 +108,33 @@ local function getGridFromMouse()
 	return gx, gz, worldCF
 end
 
+local function setPreviewAppearance(color)
+	if not previewPart then return end
+
+	local function applyToPart(part)
+		part.Anchored = true
+		part.CanCollide = false
+		part.Transparency = 0.5
+		part.Color = color
+	end
+
+	if previewPart:IsA("Model") then
+		for _, desc in previewPart:GetDescendants() do
+			if desc:IsA("BasePart") then
+				applyToPart(desc)
+			end
+		end
+	elseif previewPart:IsA("BasePart") then
+		applyToPart(previewPart)
+	end
+end
+
 local function createPreview()
 	if previewPart then previewPart:Destroy() end
 
-	previewPart = Instance.new("Part")
+	previewPart = raftPartTemplate:Clone()
 	previewPart.Name = "BuildPreview"
-	previewPart.Size = Vector3.new(RAFT_PART_SIZE, 1, RAFT_PART_SIZE)
-	previewPart.Anchored = true
-	previewPart.CanCollide = false
-	previewPart.Material = Enum.Material.Wood
-	previewPart.Transparency = 0.5
-	previewPart.Color = PREVIEW_COLOR_VALID
+	setPreviewAppearance(PREVIEW_COLOR_VALID)
 	previewPart.Parent = workspace
 end
 
@@ -231,17 +248,27 @@ local function startBuildMode()
 
 		local gx, gz, worldCF = getGridFromMouse()
 		if not gx then
-			previewPart.Transparency = 1
+			-- Hide preview
+			if previewPart:IsA("Model") then
+				for _, desc in previewPart:GetDescendants() do
+					if desc:IsA("BasePart") then desc.Transparency = 1 end
+				end
+			elseif previewPart:IsA("BasePart") then
+				previewPart.Transparency = 1
+			end
 			return
 		end
 
-		previewPart.CFrame = worldCF
-		previewPart.Transparency = 0.5
+		if previewPart:IsA("Model") then
+			previewPart:PivotTo(worldCF)
+		elseif previewPart:IsA("BasePart") then
+			previewPart.CFrame = worldCF
+		end
 
 		local offsets = getOccupiedOffsets()
 		local canAfford = (inventory.Log or 0) >= LOG_COST
 		local valid = not isOccupied(offsets, gx, gz) and isAdjacent(offsets, gx, gz) and canAfford
-		previewPart.Color = valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID
+		setPreviewAppearance(valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID)
 	end)
 end
 

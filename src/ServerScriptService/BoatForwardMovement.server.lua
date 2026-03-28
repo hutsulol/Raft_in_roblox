@@ -1,5 +1,5 @@
 local SPEED = 20
-local FORCE_MAGNITUDE = 5000
+local FORCE_PER_MASS = 5 -- force scales with total raft mass
 
 local boat = workspace:WaitForChild("Raft")
 while not boat.PrimaryPart do
@@ -39,7 +39,8 @@ game:GetService("RunService").Heartbeat:Connect(function()
 	local forceFactor = math.clamp(1 - (flatSpeed / SPEED), 0, 1)
 	local forceDirection = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
 
-	vectorForce.Force = forceDirection * FORCE_MAGNITUDE * forceFactor
+	local totalMass = primaryPart.AssemblyMass
+	vectorForce.Force = forceDirection * FORCE_PER_MASS * totalMass * forceFactor
 
 	local currentCFrame = primaryPart.CFrame
 	local _, currentY, _ = currentCFrame:ToEulerAnglesYXZ()
