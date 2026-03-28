@@ -2,7 +2,7 @@ local rs = game:GetService("ReplicatedStorage")
 
 local SPAWN_INTERVAL = 5
 local PIRATE_COUNT = 2
-local APPROACH_SPEED = 60
+local APPROACH_SPEED = 20
 local SINK_DURATION = 4
 
 local function getBoat()
@@ -90,6 +90,8 @@ local function spawnPirateRaft()
 
 	-- Spawn pirates on top
 	local pirates = {}
+	local deadCount = 0
+	local allDeadEvent = Instance.new("BindableEvent")
 	local pirateTemplate = rs:FindFirstChild("Pirate lvl1")
 	if pirateTemplate then
 		for i = 1, PIRATE_COUNT do
@@ -102,6 +104,17 @@ local function spawnPirateRaft()
 			end
 			pirate.Parent = workspace
 			table.insert(pirates, pirate)
+
+			-- Connect Humanoid.Died for reliable death detection
+			local hum = pirate:FindFirstChildWhichIsA("Humanoid")
+			if hum then
+				hum.Died:Connect(function()
+					deadCount = deadCount + 1
+					if deadCount >= PIRATE_COUNT then
+						allDeadEvent:Fire()
+					end
+				end)
+			end
 		end
 	else
 		warn("PirateSpawner: Pirate lvl1 not found in ReplicatedStorage")
@@ -154,66 +167,60 @@ local function spawnPirateRaft()
 
 	-- Monitor: when all pirates dead, sink the raft
 	task.spawn(function()
-		while floor and floor.Parent do
-			task.wait(1)
+		-- Wait for all pirates to die via event (with 120s timeout)
+		local timeout = false
+		task.delay(120, function()
+			timeout = true
+			allDeadEvent:Fire()
+		end)
 
-			local allDead = true
-			for _, pirate in pirates do
-				if pirate and pirate.Parent then
-					local hum = pirate:FindFirstChildWhichIsA("Humanoid")
-					if hum and hum.Health > 0 then
-						allDead = false
-						break
-					end
+		allDeadEvent.Event:Wait()
+		allDeadEvent:Destroy()
+
+		if not floor or not floor.Parent then return end
+
+		-- Stop movement
+		if attachment then attachment:Destroy() end
+		if alignPos then alignPos:Destroy() end
+		if alignOri then alignOri:Destroy() end
+
+		-- Gather all parts
+		local parts = {}
+		if floor:IsA("Model") then
+			for _, d in floor:GetDescendants() do
+				if d:IsA("BasePart") then
+					d.Anchored = true
+					d.CanCollide = false
+					table.insert(parts, d)
 				end
 			end
+		elseif floor:IsA("BasePart") then
+			floor.Anchored = true
+			floor.CanCollide = false
+			table.insert(parts, floor)
+		end
 
-			if allDead then
-				-- Stop movement
-				if attachment then attachment:Destroy() end
-				if alignPos then alignPos:Destroy() end
-				if alignOri then alignOri:Destroy() end
+		-- Sink and fade
+		local steps = math.floor(SINK_DURATION / 0.05)
+		local sinkPerStep = -15 / steps
+		for step = 1, steps do
+			if not floor or not floor.Parent then break end
+			local alpha = step / steps
+			for _, p in parts do
+				if p and p.Parent then
+					p.CFrame = p.CFrame + Vector3.new(0, sinkPerStep, 0)
+					p.Transparency = alpha
+				end
+			end
+			task.wait(0.05)
+		end
 
-				-- Gather all parts
-				local parts = {}
-				if floor:IsA("Model") then
-					for _, d in floor:GetDescendants() do
-						if d:IsA("BasePart") then
-							d.Anchored = true
-							d.CanCollide = false
-							table.insert(parts, d)
-						end
-					end
-				elseif floor:IsA("BasePart") then
-					floor.Anchored = true
-					floor.CanCollide = false
-					table.insert(parts, floor)
-				end
-
-				-- Sink and fade
-				local steps = math.floor(SINK_DURATION / 0.05)
-				local sinkPerStep = -15 / steps
-				for step = 1, steps do
-					if not floor or not floor.Parent then break end
-					local alpha = step / steps
-					for _, p in parts do
-						if p and p.Parent then
-							p.CFrame = p.CFrame + Vector3.new(0, sinkPerStep, 0)
-							p.Transparency = alpha
-						end
-					end
-					task.wait(0.05)
-				end
-
-				if floor and floor.Parent then
-					floor:Destroy()
-				end
-				for _, pirate in pirates do
-					if pirate and pirate.Parent then
-						pirate:Destroy()
-					end
-				end
-				return
+		if floor and floor.Parent then
+			floor:Destroy()
+		end
+		for _, pirate in pirates do
+			if pirate and pirate.Parent then
+				pirate:Destroy()
 			end
 		end
 	end)
