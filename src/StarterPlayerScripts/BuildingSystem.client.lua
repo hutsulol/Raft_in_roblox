@@ -35,8 +35,9 @@ end
 local WALL_HEIGHT = 0
 if wallTemplate then
 	if wallTemplate:IsA("Model") then
+		local scale = wallTemplate:GetScale()
 		local size = wallTemplate:GetExtentsSize()
-		WALL_HEIGHT = size.Y
+		WALL_HEIGHT = size.Y / scale -- height at scale 1.0
 	elseif wallTemplate:IsA("BasePart") then
 		WALL_HEIGHT = wallTemplate.Size.Y
 	end
@@ -246,6 +247,9 @@ local function createPreview()
 	local template = (selectedType == "wall" and wallTemplate) and wallTemplate or raftPartTemplate
 	previewPart = template:Clone()
 	previewPart.Name = "BuildPreview"
+	if previewPart:IsA("Model") then
+		previewPart:ScaleTo(1)
+	end
 	setPreviewAppearance(PREVIEW_COLOR_VALID)
 	previewPart.Parent = workspace
 end

@@ -31,12 +31,13 @@ elseif raftPartTemplate:IsA("BasePart") then
 	FLOOR_HEIGHT = raftPartTemplate.Size.Y
 end
 
--- Measure wall height for vertical offset
+-- Measure wall height at scale 1.0 for vertical offset
 local WALL_HEIGHT = 0
 if wallTemplate then
 	if wallTemplate:IsA("Model") then
+		local scale = wallTemplate:GetScale()
 		local size = wallTemplate:GetExtentsSize()
-		WALL_HEIGHT = size.Y
+		WALL_HEIGHT = size.Y / scale -- height at scale 1.0
 	elseif wallTemplate:IsA("BasePart") then
 		WALL_HEIGHT = wallTemplate.Size.Y
 	end
@@ -214,6 +215,9 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		inv.Log = inv.Log - WALL_COST
 
 		local newWall = wallTemplate:Clone()
+		if newWall:IsA("Model") then
+			newWall:ScaleTo(1)
+		end
 		newWall:SetAttribute("WallKey", wallKey)
 		newWall:SetAttribute("BuildType", "wall")
 		newWall:SetAttribute("GridX", gx)
