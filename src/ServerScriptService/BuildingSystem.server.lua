@@ -165,7 +165,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		newPart:SetAttribute("GridZ", gz)
 		newPart:SetAttribute("BuildType", "raft")
 
-		if newPart:IsA("Model") and newPart.PrimaryPart then
+		if newPart:IsA("Model") then
 			newPart:PivotTo(worldCF)
 		elseif newPart:IsA("BasePart") then
 			newPart.CFrame = worldCF
@@ -204,7 +204,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		newWall:SetAttribute("GridX", gx)
 		newWall:SetAttribute("GridZ", gz)
 
-		if newWall:IsA("Model") and newWall.PrimaryPart then
+		if newWall:IsA("Model") then
 			newWall:PivotTo(wCF)
 		elseif newWall:IsA("BasePart") then
 			newWall.CFrame = wCF

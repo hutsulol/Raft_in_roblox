@@ -346,10 +346,10 @@ local function buildUI()
 	local function selectType(newType)
 		if selectedType == newType then return end
 		selectedType = newType
+		-- Rebuild UI first to update highlight, then recreate preview
+		buildUI()
 		destroyPreview()
 		createPreview()
-		-- Rebuild UI to update selection highlight
-		buildUI()
 	end
 
 	raftBtn.MouseButton1Click:Connect(function() selectType("raft") end)
