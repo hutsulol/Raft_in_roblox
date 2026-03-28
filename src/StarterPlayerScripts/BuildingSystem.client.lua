@@ -176,8 +176,11 @@ local function getWallFromMouse()
 		if dz > 0 then side = 0 else side = 1 end
 	end
 
-	-- Compute wall world CFrame (wall sits on top of the floor)
+	-- Compute wall world CFrame (wall stays vertical, only uses raft yaw)
 	local wallY = FLOOR_HEIGHT / 2 + WALL_HEIGHT / 2
+	local _, yaw, _ = primaryCF:ToEulerAnglesYXZ()
+	local flatCF = CFrame.new(primaryCF.Position) * CFrame.Angles(0, yaw, 0)
+
 	local localPos, localRot
 	if side == 0 then
 		localPos = Vector3.new(gx * GRID_SIZE, wallY, gz * GRID_SIZE + half)
@@ -193,7 +196,7 @@ local function getWallFromMouse()
 		localRot = CFrame.Angles(0, math.rad(90), 0)
 	end
 
-	local worldCF = primaryCF * CFrame.new(localPos) * localRot
+	local worldCF = flatCF * CFrame.new(localPos) * localRot
 
 	return gx, gz, side, worldCF
 end
