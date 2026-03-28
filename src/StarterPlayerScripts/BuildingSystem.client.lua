@@ -11,7 +11,7 @@ local camera = workspace.CurrentCamera
 local placeBlockEvent = ReplicatedStorage:WaitForChild("PlaceBlock")
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local raftPartTemplate = ReplicatedStorage:WaitForChild("Raft_part")
-local wallTemplate = ReplicatedStorage:FindFirstChild("Wall")
+local wallTemplate = ReplicatedStorage:FindFirstChild("Wood Wall")
 
 local GRID_SIZE = raftPartTemplate:GetAttribute("GridSize")
 if not GRID_SIZE then

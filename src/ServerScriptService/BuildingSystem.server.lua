@@ -8,7 +8,7 @@ if not placeBlockEvent then
 end
 
 local raftPartTemplate = rs:WaitForChild("Raft_part")
-local wallTemplate = rs:FindFirstChild("Wall")
+local wallTemplate = rs:FindFirstChild("Wood Wall")
 
 -- Measure grid size from the actual template
 local GRID_SIZE
