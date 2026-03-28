@@ -1,11 +1,12 @@
 local TweenService = game:GetService("TweenService")
 local rs = game:GetService("ReplicatedStorage")
 
-local SPAWN_INTERVAL = 10 -- seconds between spawn checks
-local SPAWN_CHANCE = 0.7 -- 70% chance each check (high for testing)
+local SPAWN_INTERVAL = 5 -- seconds between spawn checks
+local SPAWN_CHANCE = 1.0 -- 100% chance (testing)
 local PIRATE_COUNT = 2 -- pirates per raft
-local APPROACH_SPEED = 40 -- studs per second
+local APPROACH_SPEED = 80 -- studs per second (fast for testing)
 local SINK_DURATION = 4 -- seconds to sink and fade
+local FIRST_SPAWN_DELAY = 3 -- seconds before first spawn
 
 local raftPartTemplate = rs:WaitForChild("Raft_part")
 local pirateTemplate = rs:FindFirstChild("Pirate lvl1")
@@ -20,9 +21,9 @@ local function spawnPirateRaft()
 
 	local raftPos = playerRaft.PrimaryPart.Position
 
-	-- Spawn 200-400 studs away in a random direction
+	-- Spawn 80-150 studs away in a random direction (close for testing)
 	local angle = math.random() * math.pi * 2
-	local dist = math.random(200, 400)
+	local dist = math.random(80, 150)
 	local spawnPos = Vector3.new(
 		raftPos.X + math.cos(angle) * dist,
 		raftPos.Y,
@@ -209,11 +210,18 @@ local function spawnPirateRaft()
 	end)
 end
 
+-- First spawn quickly for testing
+task.wait(FIRST_SPAWN_DELAY)
+local raft = getPlayerRaft()
+if raft then
+	spawnPirateRaft()
+end
+
 -- Main spawn loop
 while true do
 	task.wait(SPAWN_INTERVAL)
 
-	local raft = getPlayerRaft()
+	raft = getPlayerRaft()
 	if not raft then continue end
 
 	if math.random() < SPAWN_CHANCE then
