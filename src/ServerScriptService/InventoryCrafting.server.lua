@@ -29,6 +29,13 @@ local recipes = {
 		costs = {Log = 1},
 		craftType = "tool",
 	},
+	{
+		name = "Machete",
+		displayName = "Machete",
+		icon = "rbxassetid://110032041583533",
+		costs = {Log = 1},
+		craftType = "tool",
+	},
 }
 
 inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
