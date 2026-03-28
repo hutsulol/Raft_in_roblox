@@ -31,13 +31,12 @@ elseif raftPartTemplate:IsA("BasePart") then
 	FLOOR_HEIGHT = raftPartTemplate.Size.Y
 end
 
--- Measure wall height at scale 1.0 for vertical offset
+-- Measure wall height for vertical offset
 local WALL_HEIGHT = 0
 if wallTemplate then
 	if wallTemplate:IsA("Model") then
-		local scale = wallTemplate:GetScale()
 		local size = wallTemplate:GetExtentsSize()
-		WALL_HEIGHT = size.Y / scale -- height at scale 1.0
+		WALL_HEIGHT = size.Y
 	elseif wallTemplate:IsA("BasePart") then
 		WALL_HEIGHT = wallTemplate.Size.Y
 	end
@@ -99,7 +98,7 @@ local function wallCFrame(raft, gx, gz, side)
 	local primaryCF = raft.PrimaryPart.CFrame
 	local half = GRID_SIZE / 2
 	-- Wall bottom sits on top of the floor surface
-	local wallY = FLOOR_HEIGHT / 2 + WALL_HEIGHT / 2
+	local wallY = FLOOR_HEIGHT / 2
 
 	-- Use raft's flat (yaw-only) orientation so walls stay vertical
 	local _, yaw, _ = primaryCF:ToEulerAnglesYXZ()
@@ -215,9 +214,6 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		inv.Log = inv.Log - WALL_COST
 
 		local newWall = wallTemplate:Clone()
-		if newWall:IsA("Model") then
-			newWall:ScaleTo(1)
-		end
 		newWall:SetAttribute("WallKey", wallKey)
 		newWall:SetAttribute("BuildType", "wall")
 		newWall:SetAttribute("GridX", gx)
