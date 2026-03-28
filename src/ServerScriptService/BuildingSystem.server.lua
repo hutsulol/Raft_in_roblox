@@ -8,7 +8,7 @@ if not placeBlockEvent then
 end
 
 local raftPartTemplate = rs:WaitForChild("Raft_part")
-local wallTemplate = rs:WaitForChild("Wall")
+local wallTemplate = rs:FindFirstChild("Wall")
 
 -- Measure grid size from the actual template
 local GRID_SIZE
@@ -24,11 +24,13 @@ raftPartTemplate:SetAttribute("GridSize", GRID_SIZE)
 
 -- Measure wall height for vertical offset
 local WALL_HEIGHT = 0
-if wallTemplate:IsA("Model") then
-	local size = wallTemplate:GetExtentsSize()
-	WALL_HEIGHT = size.Y
-elseif wallTemplate:IsA("BasePart") then
-	WALL_HEIGHT = wallTemplate.Size.Y
+if wallTemplate then
+	if wallTemplate:IsA("Model") then
+		local size = wallTemplate:GetExtentsSize()
+		WALL_HEIGHT = size.Y
+	elseif wallTemplate:IsA("BasePart") then
+		WALL_HEIGHT = wallTemplate.Size.Y
+	end
 end
 
 local RAFT_COST = 2
@@ -172,6 +174,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		weldToRaft(newPart, raft)
 
 	elseif buildType == "wall" then
+		if not wallTemplate then return end
 		local gridX, gridZ, side = ...
 		if type(gridX) ~= "number" or type(gridZ) ~= "number" or type(side) ~= "number" then return end
 		if (inv.Log or 0) < WALL_COST then return end

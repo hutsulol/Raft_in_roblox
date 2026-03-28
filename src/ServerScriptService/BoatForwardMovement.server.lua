@@ -1,4 +1,4 @@
-local SPEED = 20
+local SPEED = 300
 local FORCE_PER_MASS = 100 -- force scales with total raft mass
 
 local boat = workspace:WaitForChild("Raft")

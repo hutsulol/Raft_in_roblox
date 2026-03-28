@@ -11,7 +11,7 @@ local camera = workspace.CurrentCamera
 local placeBlockEvent = ReplicatedStorage:WaitForChild("PlaceBlock")
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local raftPartTemplate = ReplicatedStorage:WaitForChild("Raft_part")
-local wallTemplate = ReplicatedStorage:WaitForChild("Wall")
+local wallTemplate = ReplicatedStorage:FindFirstChild("Wall")
 
 local GRID_SIZE = raftPartTemplate:GetAttribute("GridSize")
 if not GRID_SIZE then
@@ -25,11 +25,13 @@ if not GRID_SIZE then
 end
 
 local WALL_HEIGHT = 0
-if wallTemplate:IsA("Model") then
-	local size = wallTemplate:GetExtentsSize()
-	WALL_HEIGHT = size.Y
-elseif wallTemplate:IsA("BasePart") then
-	WALL_HEIGHT = wallTemplate.Size.Y
+if wallTemplate then
+	if wallTemplate:IsA("Model") then
+		local size = wallTemplate:GetExtentsSize()
+		WALL_HEIGHT = size.Y
+	elseif wallTemplate:IsA("BasePart") then
+		WALL_HEIGHT = wallTemplate.Size.Y
+	end
 end
 
 local PREVIEW_COLOR_VALID = Color3.fromRGB(80, 200, 80)
@@ -229,7 +231,7 @@ end
 local function createPreview()
 	if previewPart then previewPart:Destroy() end
 
-	local template = selectedType == "wall" and wallTemplate or raftPartTemplate
+	local template = (selectedType == "wall" and wallTemplate) and wallTemplate or raftPartTemplate
 	previewPart = template:Clone()
 	previewPart.Name = "BuildPreview"
 	setPreviewAppearance(PREVIEW_COLOR_VALID)
@@ -262,6 +264,7 @@ local function buildUI()
 	buildingUI = Instance.new("ScreenGui")
 	buildingUI.Name = "BuildingGui"
 	buildingUI.ResetOnSpawn = false
+	buildingUI.DisplayOrder = 20
 	buildingUI.Parent = playerGui
 
 	-- Panel - moved higher above hotbar
