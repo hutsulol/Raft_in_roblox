@@ -24,6 +24,14 @@ if not GRID_SIZE then
 	end
 end
 
+local FLOOR_HEIGHT = 0
+if raftPartTemplate:IsA("Model") then
+	local size = raftPartTemplate:GetExtentsSize()
+	FLOOR_HEIGHT = size.Y
+elseif raftPartTemplate:IsA("BasePart") then
+	FLOOR_HEIGHT = raftPartTemplate.Size.Y
+end
+
 local WALL_HEIGHT = 0
 if wallTemplate then
 	if wallTemplate:IsA("Model") then
@@ -168,19 +176,20 @@ local function getWallFromMouse()
 		if dz > 0 then side = 0 else side = 1 end
 	end
 
-	-- Compute wall world CFrame
+	-- Compute wall world CFrame (wall sits on top of the floor)
+	local wallY = FLOOR_HEIGHT / 2 + WALL_HEIGHT / 2
 	local localPos, localRot
 	if side == 0 then
-		localPos = Vector3.new(gx * GRID_SIZE, WALL_HEIGHT / 2, gz * GRID_SIZE + half)
+		localPos = Vector3.new(gx * GRID_SIZE, wallY, gz * GRID_SIZE + half)
 		localRot = CFrame.Angles(0, math.rad(180), 0)
 	elseif side == 1 then
-		localPos = Vector3.new(gx * GRID_SIZE, WALL_HEIGHT / 2, gz * GRID_SIZE - half)
+		localPos = Vector3.new(gx * GRID_SIZE, wallY, gz * GRID_SIZE - half)
 		localRot = CFrame.Angles(0, 0, 0)
 	elseif side == 2 then
-		localPos = Vector3.new(gx * GRID_SIZE - half, WALL_HEIGHT / 2, gz * GRID_SIZE)
+		localPos = Vector3.new(gx * GRID_SIZE - half, wallY, gz * GRID_SIZE)
 		localRot = CFrame.Angles(0, math.rad(-90), 0)
 	elseif side == 3 then
-		localPos = Vector3.new(gx * GRID_SIZE + half, WALL_HEIGHT / 2, gz * GRID_SIZE)
+		localPos = Vector3.new(gx * GRID_SIZE + half, wallY, gz * GRID_SIZE)
 		localRot = CFrame.Angles(0, math.rad(90), 0)
 	end
 

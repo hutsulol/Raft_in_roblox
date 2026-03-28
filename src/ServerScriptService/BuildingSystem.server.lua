@@ -22,6 +22,15 @@ end
 
 raftPartTemplate:SetAttribute("GridSize", GRID_SIZE)
 
+-- Measure raft floor thickness
+local FLOOR_HEIGHT = 0
+if raftPartTemplate:IsA("Model") then
+	local size = raftPartTemplate:GetExtentsSize()
+	FLOOR_HEIGHT = size.Y
+elseif raftPartTemplate:IsA("BasePart") then
+	FLOOR_HEIGHT = raftPartTemplate.Size.Y
+end
+
 -- Measure wall height for vertical offset
 local WALL_HEIGHT = 0
 if wallTemplate then
@@ -88,19 +97,21 @@ end
 local function wallCFrame(raft, gx, gz, side)
 	local primaryCF = raft.PrimaryPart.CFrame
 	local half = GRID_SIZE / 2
+	-- Wall bottom sits on top of the floor surface
+	local wallY = FLOOR_HEIGHT / 2 + WALL_HEIGHT / 2
 
 	local localPos, localRot
 	if side == 0 then -- front (+Z)
-		localPos = Vector3.new(gx * GRID_SIZE, WALL_HEIGHT / 2, gz * GRID_SIZE + half)
+		localPos = Vector3.new(gx * GRID_SIZE, wallY, gz * GRID_SIZE + half)
 		localRot = CFrame.Angles(0, math.rad(180), 0)
 	elseif side == 1 then -- back (-Z)
-		localPos = Vector3.new(gx * GRID_SIZE, WALL_HEIGHT / 2, gz * GRID_SIZE - half)
+		localPos = Vector3.new(gx * GRID_SIZE, wallY, gz * GRID_SIZE - half)
 		localRot = CFrame.Angles(0, 0, 0)
 	elseif side == 2 then -- left (-X)
-		localPos = Vector3.new(gx * GRID_SIZE - half, WALL_HEIGHT / 2, gz * GRID_SIZE)
+		localPos = Vector3.new(gx * GRID_SIZE - half, wallY, gz * GRID_SIZE)
 		localRot = CFrame.Angles(0, math.rad(-90), 0)
 	elseif side == 3 then -- right (+X)
-		localPos = Vector3.new(gx * GRID_SIZE + half, WALL_HEIGHT / 2, gz * GRID_SIZE)
+		localPos = Vector3.new(gx * GRID_SIZE + half, wallY, gz * GRID_SIZE)
 		localRot = CFrame.Angles(0, math.rad(90), 0)
 	end
 
