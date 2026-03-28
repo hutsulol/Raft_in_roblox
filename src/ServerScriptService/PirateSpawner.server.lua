@@ -223,11 +223,8 @@ end
 task.wait(10)
 spawnPirateRaft()
 
--- Then every 60 seconds with 20% chance
+-- Then every 60 seconds with 100% chance (testing)
 while true do
 	task.wait(60)
-	if math.random() < 0.2 then
-		spawnPirateRaft()
-	end
-end
+	spawnPirateRaft()
 end
