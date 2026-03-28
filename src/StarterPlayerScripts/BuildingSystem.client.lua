@@ -44,11 +44,30 @@ end
 
 local PREVIEW_COLOR_VALID = Color3.fromRGB(80, 200, 80)
 local PREVIEW_COLOR_INVALID = Color3.fromRGB(200, 80, 80)
-local RAFT_COST = 2
-local WALL_COST = 3
+
+local LOG_ICON = "rbxassetid://110032041583533"
+
+-- Building items organized by category
+local categories = {
+	{
+		name = "Floors",
+		icon = LOG_ICON,
+		items = {
+			{id = "raft", name = "Raft Floor", icon = LOG_ICON, cost = 2, costType = "Log", buildType = "raft"},
+		},
+	},
+	{
+		name = "Walls",
+		icon = LOG_ICON,
+		items = {
+			{id = "wall", name = "Wood Wall", icon = LOG_ICON, cost = 3, costType = "Log", buildType = "wall"},
+		},
+	},
+}
 
 local isBuilding = false
-local selectedType = "raft" -- "raft" or "wall"
+local selectedCategory = 1
+local selectedItem = nil -- reference to item table
 local buildingUI = nil
 local previewPart = nil
 local inventory = { Log = 0 }
@@ -127,7 +146,6 @@ local function raycastToRaftPlane()
 	return localHit
 end
 
--- For raft floor placement
 local function getFloorGridFromMouse()
 	local localHit = raycastToRaftPlane()
 	if not localHit then return nil, nil, nil end
@@ -143,8 +161,6 @@ local function getFloorGridFromMouse()
 	return gx, gz, worldCF
 end
 
--- For wall placement: find nearest edge of a floor tile
--- side: 0=front(+Z), 1=back(-Z), 2=left(-X), 3=right(+X)
 local function getWallFromMouse()
 	local localHit = raycastToRaftPlane()
 	if not localHit then return nil, nil, nil, nil end
@@ -152,31 +168,25 @@ local function getWallFromMouse()
 	local raft = getRaft()
 	local primaryCF = raft.PrimaryPart.CFrame
 
-	-- Find grid cell
 	local gx = math.round(localHit.X / GRID_SIZE)
 	local gz = math.round(localHit.Z / GRID_SIZE)
 
-	-- Local position within the cell (relative to cell center)
 	local cellCenterX = gx * GRID_SIZE
 	local cellCenterZ = gz * GRID_SIZE
 	local dx = localHit.X - cellCenterX
 	local dz = localHit.Z - cellCenterZ
 
-	-- Determine closest edge
 	local side
 	local half = GRID_SIZE / 2
 	local absDx = math.abs(dx)
 	local absDz = math.abs(dz)
 
 	if absDx > absDz then
-		-- Closer to left or right edge
 		if dx > 0 then side = 3 else side = 2 end
 	else
-		-- Closer to front or back edge
 		if dz > 0 then side = 0 else side = 1 end
 	end
 
-	-- Compute wall world CFrame (wall stays vertical, only uses raft yaw)
 	local wallY = FLOOR_HEIGHT / 2
 	local _, yaw, _ = primaryCF:ToEulerAnglesYXZ()
 	local flatCF = CFrame.new(primaryCF.Position) * CFrame.Angles(0, yaw, 0)
@@ -197,20 +207,17 @@ local function getWallFromMouse()
 	end
 
 	local worldCF = flatCF * CFrame.new(localPos) * localRot
-
 	return gx, gz, side, worldCF
 end
 
 local function setPreviewAppearance(color)
 	if not previewPart then return end
-
 	local function applyToPart(part)
 		part.Anchored = true
 		part.CanCollide = false
 		part.Transparency = 0.5
 		part.Color = color
 	end
-
 	if previewPart:IsA("Model") then
 		for _, desc in previewPart:GetDescendants() do
 			if desc:IsA("BasePart") then applyToPart(desc) end
@@ -240,10 +247,17 @@ local function movePreview(cf)
 	end
 end
 
+local function getTemplateForItem(item)
+	if not item then return raftPartTemplate end
+	if item.buildType == "wall" then
+		return wallTemplate or raftPartTemplate
+	end
+	return raftPartTemplate
+end
+
 local function createPreview()
 	if previewPart then previewPart:Destroy() end
-
-	local template = (selectedType == "wall" and wallTemplate) and wallTemplate or raftPartTemplate
+	local template = getTemplateForItem(selectedItem)
 	previewPart = template:Clone()
 	previewPart.Name = "BuildPreview"
 	setPreviewAppearance(PREVIEW_COLOR_VALID)
@@ -270,6 +284,18 @@ local function closeBuildMode()
 	end
 end
 
+-- ===================== UI =====================
+
+local CAT_SIZE = 50
+local CAT_PAD = 4
+local ITEM_SIZE = 60
+local ITEM_PAD = 6
+local PANEL_BG = Color3.fromRGB(139, 109, 63)
+local PANEL_DARK = Color3.fromRGB(105, 80, 45)
+local PANEL_SELECTED = Color3.fromRGB(170, 135, 75)
+local PANEL_ITEM_BG = Color3.fromRGB(160, 128, 68)
+local PANEL_ITEM_SEL = Color3.fromRGB(195, 160, 90)
+
 local function buildUI()
 	if buildingUI then buildingUI:Destroy() end
 
@@ -279,128 +305,211 @@ local function buildUI()
 	buildingUI.DisplayOrder = 20
 	buildingUI.Parent = playerGui
 
-	-- Panel - moved higher above hotbar
-	local panel = Instance.new("Frame")
-	panel.Name = "BuildPanel"
-	panel.Size = UDim2.new(0, 260, 0, 90)
-	panel.Position = UDim2.new(0.5, -130, 1, -200)
-	panel.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
-	panel.BorderSizePixel = 0
-	panel.Parent = buildingUI
+	local cat = categories[selectedCategory]
 
-	local panelCorner = Instance.new("UICorner")
-	panelCorner.CornerRadius = UDim.new(0, 10)
-	panelCorner.Parent = panel
+	-- Category tabs (vertical, left side)
+	local catCount = #categories
+	local catPanelH = catCount * (CAT_SIZE + CAT_PAD) + CAT_PAD
+	local catPanel = Instance.new("Frame")
+	catPanel.Name = "CategoryPanel"
+	catPanel.Size = UDim2.new(0, CAT_SIZE + CAT_PAD * 2, 0, catPanelH)
+	catPanel.Position = UDim2.new(0, 10, 0.5, -catPanelH / 2)
+	catPanel.BackgroundColor3 = PANEL_BG
+	catPanel.BorderSizePixel = 0
+	catPanel.Parent = buildingUI
 
-	local panelStroke = Instance.new("UIStroke")
-	panelStroke.Color = Color3.fromRGB(80, 80, 90)
-	panelStroke.Thickness = 2
-	panelStroke.Parent = panel
+	local catCorner = Instance.new("UICorner")
+	catCorner.CornerRadius = UDim.new(0, 8)
+	catCorner.Parent = catPanel
 
-	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, 0, 0, 22)
-	title.Position = UDim2.new(0, 0, 0, 4)
-	title.BackgroundTransparency = 1
-	title.Text = "Building"
-	title.TextColor3 = Color3.new(1, 1, 1)
-	title.TextScaled = true
-	title.Font = Enum.Font.GothamBold
-	title.Parent = panel
+	local catStroke = Instance.new("UIStroke")
+	catStroke.Color = PANEL_DARK
+	catStroke.Thickness = 2
+	catStroke.Parent = catPanel
 
-	-- Helper to create a build option button
-	local function createBuildBtn(name, label, cost, xOffset, isSelected)
-		local btn = Instance.new("TextButton")
-		btn.Name = name
-		btn.Size = UDim2.new(0, 70, 0, 50)
-		btn.Position = UDim2.new(0.5, xOffset, 0, 30)
-		btn.BackgroundColor3 = isSelected and Color3.fromRGB(140, 90, 40) or Color3.fromRGB(80, 55, 30)
-		btn.BorderSizePixel = 0
-		btn.Text = ""
-		btn.AutoButtonColor = false
-		btn.Parent = panel
+	for i, catData in categories do
+		local isActive = (i == selectedCategory)
 
-		local corner = Instance.new("UICorner")
-		corner.CornerRadius = UDim.new(0, 6)
-		corner.Parent = btn
+		local catBtn = Instance.new("TextButton")
+		catBtn.Name = "Cat_" .. catData.name
+		catBtn.Size = UDim2.new(0, CAT_SIZE, 0, CAT_SIZE)
+		catBtn.Position = UDim2.new(0, CAT_PAD, 0, CAT_PAD + (i - 1) * (CAT_SIZE + CAT_PAD))
+		catBtn.BackgroundColor3 = isActive and PANEL_SELECTED or PANEL_DARK
+		catBtn.BorderSizePixel = 0
+		catBtn.Text = ""
+		catBtn.AutoButtonColor = false
+		catBtn.Parent = catPanel
 
-		if isSelected then
+		local btnCorner = Instance.new("UICorner")
+		btnCorner.CornerRadius = UDim.new(0, 6)
+		btnCorner.Parent = catBtn
+
+		if isActive then
 			local selStroke = Instance.new("UIStroke")
 			selStroke.Color = Color3.fromRGB(255, 220, 100)
 			selStroke.Thickness = 2
-			selStroke.Parent = btn
+			selStroke.Parent = catBtn
 		end
 
-		local lbl = Instance.new("TextLabel")
-		lbl.Size = UDim2.new(1, 0, 0.5, 0)
-		lbl.BackgroundTransparency = 1
-		lbl.Text = label
-		lbl.TextColor3 = Color3.new(1, 1, 1)
-		lbl.TextScaled = true
-		lbl.Font = Enum.Font.GothamBold
-		lbl.Parent = btn
+		-- Category icon
+		local catIcon = Instance.new("ImageLabel")
+		catIcon.Size = UDim2.new(0.6, 0, 0.6, 0)
+		catIcon.Position = UDim2.new(0.2, 0, 0.05, 0)
+		catIcon.BackgroundTransparency = 1
+		catIcon.Image = catData.icon
+		catIcon.Parent = catBtn
 
+		-- Category name
+		local catLabel = Instance.new("TextLabel")
+		catLabel.Size = UDim2.new(1, 0, 0.35, 0)
+		catLabel.Position = UDim2.new(0, 0, 0.65, 0)
+		catLabel.BackgroundTransparency = 1
+		catLabel.Text = catData.name
+		catLabel.TextColor3 = Color3.new(1, 1, 1)
+		catLabel.TextScaled = true
+		catLabel.Font = Enum.Font.GothamBold
+		catLabel.Parent = catBtn
+
+		catBtn.MouseButton1Click:Connect(function()
+			if selectedCategory == i then return end
+			selectedCategory = i
+			-- Default to first item in category
+			selectedItem = categories[i].items[1]
+			destroyPreview()
+			buildUI()
+			createPreview()
+		end)
+	end
+
+	-- Items panel (horizontal, next to category tabs)
+	local items = cat.items
+	local itemCount = #items
+	local itemPanelW = itemCount * (ITEM_SIZE + ITEM_PAD) + ITEM_PAD
+	local itemPanelH = ITEM_SIZE + ITEM_PAD * 2 + 20 -- extra for name label
+
+	local itemPanel = Instance.new("Frame")
+	itemPanel.Name = "ItemPanel"
+	itemPanel.Size = UDim2.new(0, itemPanelW, 0, itemPanelH)
+	itemPanel.Position = UDim2.new(0, 10 + CAT_SIZE + CAT_PAD * 2 + 6, 0.5, -itemPanelH / 2)
+	itemPanel.BackgroundColor3 = PANEL_BG
+	itemPanel.BorderSizePixel = 0
+	itemPanel.Parent = buildingUI
+
+	local itemCorner = Instance.new("UICorner")
+	itemCorner.CornerRadius = UDim.new(0, 8)
+	itemCorner.Parent = itemPanel
+
+	local itemStroke = Instance.new("UIStroke")
+	itemStroke.Color = PANEL_DARK
+	itemStroke.Thickness = 2
+	itemStroke.Parent = itemPanel
+
+	for i, item in items do
+		local isActive = (selectedItem and selectedItem.id == item.id)
+
+		local itemBtn = Instance.new("TextButton")
+		itemBtn.Name = "Item_" .. item.id
+		itemBtn.Size = UDim2.new(0, ITEM_SIZE, 0, ITEM_SIZE)
+		itemBtn.Position = UDim2.new(0, ITEM_PAD + (i - 1) * (ITEM_SIZE + ITEM_PAD), 0, ITEM_PAD)
+		itemBtn.BackgroundColor3 = isActive and PANEL_ITEM_SEL or PANEL_ITEM_BG
+		itemBtn.BorderSizePixel = 0
+		itemBtn.Text = ""
+		itemBtn.AutoButtonColor = false
+		itemBtn.Parent = itemPanel
+
+		local iBtnCorner = Instance.new("UICorner")
+		iBtnCorner.CornerRadius = UDim.new(0, 6)
+		iBtnCorner.Parent = itemBtn
+
+		if isActive then
+			local iSelStroke = Instance.new("UIStroke")
+			iSelStroke.Color = Color3.fromRGB(255, 220, 100)
+			iSelStroke.Thickness = 2
+			iSelStroke.Parent = itemBtn
+		end
+
+		-- Item icon
+		local itemIcon = Instance.new("ImageLabel")
+		itemIcon.Size = UDim2.new(0.7, 0, 0.7, 0)
+		itemIcon.Position = UDim2.new(0.15, 0, 0.02, 0)
+		itemIcon.BackgroundTransparency = 1
+		itemIcon.Image = item.icon
+		itemIcon.Parent = itemBtn
+
+		-- Cost label
 		local costLbl = Instance.new("TextLabel")
-		costLbl.Size = UDim2.new(1, 0, 0.4, 0)
-		costLbl.Position = UDim2.new(0, 0, 0.55, 0)
+		costLbl.Size = UDim2.new(1, 0, 0.28, 0)
+		costLbl.Position = UDim2.new(0, 0, 0.72, 0)
 		costLbl.BackgroundTransparency = 1
-		costLbl.Text = cost .. " Log"
+		costLbl.Text = item.cost .. " " .. item.costType
 		costLbl.TextColor3 = Color3.fromRGB(255, 220, 100)
 		costLbl.TextScaled = true
 		costLbl.Font = Enum.Font.Gotham
-		costLbl.Parent = btn
+		costLbl.Parent = itemBtn
 
-		return btn
+		itemBtn.MouseButton1Click:Connect(function()
+			selectedItem = item
+			destroyPreview()
+			buildUI()
+			createPreview()
+		end)
 	end
 
-	local raftBtn = createBuildBtn("RaftBtn", "Raft", RAFT_COST, -80, selectedType == "raft")
-	local wallBtn = createBuildBtn("WallBtn", "Wall", WALL_COST, 5, selectedType == "wall")
-
-	local function selectType(newType)
-		if selectedType == newType then return end
-		selectedType = newType
-		-- Rebuild UI first to update highlight, then recreate preview
-		buildUI()
-		destroyPreview()
-		createPreview()
+	-- Item name label below items
+	if selectedItem then
+		local nameLbl = Instance.new("TextLabel")
+		nameLbl.Size = UDim2.new(1, -ITEM_PAD * 2, 0, 18)
+		nameLbl.Position = UDim2.new(0, ITEM_PAD, 1, -20)
+		nameLbl.BackgroundTransparency = 1
+		nameLbl.Text = selectedItem.name
+		nameLbl.TextColor3 = Color3.new(1, 1, 1)
+		nameLbl.TextScaled = true
+		nameLbl.Font = Enum.Font.GothamBold
+		nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+		nameLbl.Parent = itemPanel
 	end
-
-	raftBtn.MouseButton1Click:Connect(function() selectType("raft") end)
-	wallBtn.MouseButton1Click:Connect(function() selectType("wall") end)
 
 	-- Hint text
 	local hint = Instance.new("TextLabel")
-	hint.Size = UDim2.new(0, 300, 0, 18)
-	hint.Position = UDim2.new(0.5, -150, 1, -115)
+	hint.Size = UDim2.new(0, 250, 0, 18)
+	hint.Position = UDim2.new(0, 10, 0.5, catPanelH / 2 + 8)
 	hint.BackgroundTransparency = 1
 	hint.Text = "Click to place | Unequip Hammer to exit"
-	hint.TextColor3 = Color3.fromRGB(180, 180, 180)
+	hint.TextColor3 = Color3.fromRGB(200, 200, 200)
 	hint.TextScaled = true
 	hint.Font = Enum.Font.Gotham
+	hint.TextXAlignment = Enum.TextXAlignment.Left
 	hint.Parent = buildingUI
 end
+
+-- ===================== Build Mode =====================
 
 local function startBuildMode()
 	if isBuilding then return end
 	isBuilding = true
 
+	-- Default selection
+	selectedCategory = 1
+	selectedItem = categories[1].items[1]
+
 	buildUI()
 	createPreview()
 
 	renderConnection = RunService.RenderStepped:Connect(function()
-		if not isBuilding or not previewPart then return end
+		if not isBuilding or not previewPart or not selectedItem then return end
 
-		if selectedType == "raft" then
+		if selectedItem.buildType == "raft" then
 			local gx, gz, worldCF = getFloorGridFromMouse()
 			if not gx then hidePreview(); return end
 
 			movePreview(worldCF)
 
 			local offsets = getFloorOffsets()
-			local canAfford = (inventory.Log or 0) >= RAFT_COST
+			local canAfford = (inventory[selectedItem.costType] or 0) >= selectedItem.cost
 			local valid = not isFloorOccupied(offsets, gx, gz) and isFloorAdjacent(offsets, gx, gz) and canAfford
 			setPreviewAppearance(valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID)
 
-		elseif selectedType == "wall" then
+		elseif selectedItem.buildType == "wall" then
 			local gx, gz, side, worldCF = getWallFromMouse()
 			if not gx then hidePreview(); return end
 
@@ -411,7 +520,7 @@ local function startBuildMode()
 			local wallKey = gx .. "_" .. gz .. "_" .. side
 			local walls = getWallKeys()
 			local alreadyPlaced = walls[wallKey]
-			local canAfford = (inventory.Log or 0) >= WALL_COST
+			local canAfford = (inventory[selectedItem.costType] or 0) >= selectedItem.cost
 			local valid = hasFloor and not alreadyPlaced and canAfford
 			setPreviewAppearance(valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID)
 		end
@@ -447,21 +556,21 @@ player.CharacterAdded:Connect(onCharacterAdded)
 -- Click to place
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
-	if not isBuilding then return end
+	if not isBuilding or not selectedItem then return end
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 
-	if selectedType == "raft" then
+	if selectedItem.buildType == "raft" then
 		local gx, gz, _ = getFloorGridFromMouse()
 		if not gx then return end
 
 		local offsets = getFloorOffsets()
 		if isFloorOccupied(offsets, gx, gz) then return end
 		if not isFloorAdjacent(offsets, gx, gz) then return end
-		if (inventory.Log or 0) < RAFT_COST then return end
+		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
 
 		placeBlockEvent:FireServer("raft", gx, gz)
 
-	elseif selectedType == "wall" then
+	elseif selectedItem.buildType == "wall" then
 		local gx, gz, side, _ = getWallFromMouse()
 		if not gx then return end
 
@@ -470,7 +579,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		local wallKey = gx .. "_" .. gz .. "_" .. side
 		local walls = getWallKeys()
 		if walls[wallKey] then return end
-		if (inventory.Log or 0) < WALL_COST then return end
+		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
 
 		placeBlockEvent:FireServer("wall", gx, gz, side)
 	end
