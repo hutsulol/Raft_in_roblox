@@ -46,14 +46,15 @@ local PREVIEW_COLOR_VALID = Color3.fromRGB(80, 200, 80)
 local PREVIEW_COLOR_INVALID = Color3.fromRGB(200, 80, 80)
 
 local LOG_ICON = "rbxassetid://110032041583533"
+local FLOOR_ICON = "rbxassetid://93002853045949"
 
 -- Building items organized by category
 local categories = {
 	{
 		name = "Floors",
-		icon = LOG_ICON,
+		icon = FLOOR_ICON,
 		items = {
-			{id = "raft", name = "Raft Floor", icon = LOG_ICON, cost = 2, costType = "Log", buildType = "raft"},
+			{id = "raft", name = "Raft Floor", icon = FLOOR_ICON, cost = 2, costType = "Log", buildType = "raft"},
 		},
 	},
 	{
