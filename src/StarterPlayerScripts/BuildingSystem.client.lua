@@ -22,7 +22,6 @@ local previewPart = nil
 local inventory = { Log = 0 }
 local renderConnection = nil
 
--- Track inventory updates
 inventoryEvent.OnClientEvent:Connect(function(inv)
 	inventory = inv
 end)
@@ -31,71 +30,81 @@ local function getRaft()
 	return workspace:FindFirstChild("Raft")
 end
 
-local function getRaftParts()
+-- Get occupied grid offsets in raft-local space
+local function getOccupiedOffsets()
 	local raft = getRaft()
-	if not raft then return {} end
+	if not raft or not raft.PrimaryPart then return {} end
 
-	local parts = {}
-	if raft.PrimaryPart then
-		table.insert(parts, raft.PrimaryPart)
-	end
+	local primaryCF = raft.PrimaryPart.CFrame
+	local offsets = {}
+
+	-- Main raft at (0,0)
+	table.insert(offsets, {x = 0, z = 0})
+
 	for _, child in raft:GetDescendants() do
 		if child:IsA("BasePart") and child:GetAttribute("RaftPart") then
-			table.insert(parts, child)
+			local localPos = primaryCF:PointToObjectSpace(child.Position)
+			local gx = math.round(localPos.X / RAFT_PART_SIZE)
+			local gz = math.round(localPos.Z / RAFT_PART_SIZE)
+			table.insert(offsets, {x = gx, z = gz})
 		end
 	end
-	return parts
+
+	return offsets
 end
 
-local function isOccupied(position)
-	local raftParts = getRaftParts()
-	for _, part in raftParts do
-		local partPos = Vector3.new(part.Position.X, position.Y, part.Position.Z)
-		if (position - partPos).Magnitude < 1 then
+local function isOccupied(offsets, gx, gz)
+	for _, o in offsets do
+		if o.x == gx and o.z == gz then
 			return true
 		end
 	end
 	return false
 end
 
-local function isValidPlacement(position)
-	local raftParts = getRaftParts()
-	if #raftParts == 0 then return false end
-
-	for _, part in raftParts do
-		local partPos = Vector3.new(part.Position.X, position.Y, part.Position.Z)
-		local diff = position - partPos
-		local dist = diff.Magnitude
-
-		if math.abs(dist - RAFT_PART_SIZE) < 1 then
-			local ax = math.abs(diff.X)
-			local az = math.abs(diff.Z)
-			if (math.abs(ax - RAFT_PART_SIZE) < 1 and az < 1) or (math.abs(az - RAFT_PART_SIZE) < 1 and ax < 1) then
-				return true
-			end
+local function isAdjacent(offsets, gx, gz)
+	for _, o in offsets do
+		if (math.abs(o.x - gx) == 1 and o.z == gz) or (math.abs(o.z - gz) == 1 and o.x == gx) then
+			return true
 		end
 	end
 	return false
 end
 
--- Get the snapped grid position nearest to where the mouse is pointing
-local function getSnappedPosition()
+-- Convert mouse screen position to raft-local grid coordinates
+local function getGridFromMouse()
 	local raft = getRaft()
-	if not raft or not raft.PrimaryPart then return nil end
+	if not raft or not raft.PrimaryPart then return nil, nil, nil end
+
+	local primaryCF = raft.PrimaryPart.CFrame
 
 	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
-	local raftY = raft.PrimaryPart.Position.Y
 
-	-- Intersect ray with the raft's Y plane
-	local t = (raftY - ray.Origin.Y) / ray.Direction.Y
-	if t < 0 then return nil end
+	-- Intersect with raft's local XZ plane (world plane at raft height, matching raft orientation)
+	-- The raft's up vector defines the plane normal
+	local planeNormal = primaryCF.UpVector
+	local planePoint = primaryCF.Position
 
-	local hitPoint = ray.Origin + ray.Direction * t
+	local denom = ray.Direction:Dot(planeNormal)
+	if math.abs(denom) < 0.001 then return nil, nil, nil end
 
-	local snappedX = math.round(hitPoint.X / RAFT_PART_SIZE) * RAFT_PART_SIZE
-	local snappedZ = math.round(hitPoint.Z / RAFT_PART_SIZE) * RAFT_PART_SIZE
+	local t = (planePoint - ray.Origin):Dot(planeNormal) / denom
+	if t < 0 then return nil, nil, nil end
 
-	return Vector3.new(snappedX, raftY, snappedZ)
+	local hitWorld = ray.Origin + ray.Direction * t
+
+	-- Convert to raft-local space
+	local localHit = primaryCF:PointToObjectSpace(hitWorld)
+
+	-- Snap to grid in local space
+	local gx = math.round(localHit.X / RAFT_PART_SIZE)
+	local gz = math.round(localHit.Z / RAFT_PART_SIZE)
+
+	-- Convert back to world CFrame for preview
+	local localOffset = Vector3.new(gx * RAFT_PART_SIZE, 0, gz * RAFT_PART_SIZE)
+	local worldCF = primaryCF * CFrame.new(localOffset)
+
+	return gx, gz, worldCF
 end
 
 local function createPreview()
@@ -140,7 +149,6 @@ local function buildUI()
 	buildingUI.ResetOnSpawn = false
 	buildingUI.Parent = playerGui
 
-	-- Bottom panel showing build option
 	local panel = Instance.new("Frame")
 	panel.Name = "BuildPanel"
 	panel.Size = UDim2.new(0, 200, 0, 80)
@@ -158,7 +166,6 @@ local function buildUI()
 	panelStroke.Thickness = 2
 	panelStroke.Parent = panel
 
-	-- Title
 	local title = Instance.new("TextLabel")
 	title.Size = UDim2.new(1, 0, 0, 25)
 	title.Position = UDim2.new(0, 0, 0, 5)
@@ -169,7 +176,6 @@ local function buildUI()
 	title.Font = Enum.Font.GothamBold
 	title.Parent = panel
 
-	-- Raft Part button
 	local btn = Instance.new("Frame")
 	btn.Name = "RaftPartBtn"
 	btn.Size = UDim2.new(0, 60, 0, 40)
@@ -202,7 +208,6 @@ local function buildUI()
 	costLabel.Font = Enum.Font.Gotham
 	costLabel.Parent = btn
 
-	-- Hint text
 	local hint = Instance.new("TextLabel")
 	hint.Size = UDim2.new(0, 300, 0, 20)
 	hint.Position = UDim2.new(0.5, -150, 1, -30)
@@ -224,17 +229,18 @@ local function startBuildMode()
 	renderConnection = RunService.RenderStepped:Connect(function()
 		if not isBuilding or not previewPart then return end
 
-		local pos = getSnappedPosition()
-		if not pos then
+		local gx, gz, worldCF = getGridFromMouse()
+		if not gx then
 			previewPart.Transparency = 1
 			return
 		end
 
-		previewPart.Position = pos
+		previewPart.CFrame = worldCF
 		previewPart.Transparency = 0.5
 
+		local offsets = getOccupiedOffsets()
 		local canAfford = (inventory.Log or 0) >= LOG_COST
-		local valid = not isOccupied(pos) and isValidPlacement(pos) and canAfford
+		local valid = not isOccupied(offsets, gx, gz) and isAdjacent(offsets, gx, gz) and canAfford
 		previewPart.Color = valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID
 	end)
 end
@@ -253,7 +259,6 @@ local function onCharacterAdded(character)
 		end
 	end)
 
-	-- Check if Hammer is already equipped
 	for _, child in character:GetChildren() do
 		if child:IsA("Tool") and child.Name == "Hammer" then
 			startBuildMode()
@@ -267,25 +272,22 @@ if player.Character then
 end
 player.CharacterAdded:Connect(onCharacterAdded)
 
--- Handle click to place
+-- Click to place
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	if not isBuilding then return end
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 
-	local pos = getSnappedPosition()
-	if not pos then return end
+	local gx, gz, _ = getGridFromMouse()
+	if not gx then return end
 
-	if isOccupied(pos) then return end
-	if not isValidPlacement(pos) then return end
+	local offsets = getOccupiedOffsets()
+	if isOccupied(offsets, gx, gz) then return end
+	if not isAdjacent(offsets, gx, gz) then return end
 	if (inventory.Log or 0) < LOG_COST then return end
 
-	placeBlockEvent:FireServer(pos)
+	-- Send grid coordinates (not world position)
+	placeBlockEvent:FireServer(gx, gz)
 end)
 
--- Server confirmation
-placeBlockEvent.OnClientEvent:Connect(function(action, _data)
-	if action == "placed" then
-		-- Preview will auto-update on next frame
-	end
-end)
+placeBlockEvent.OnClientEvent:Connect(function() end)

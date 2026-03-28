@@ -1,6 +1,6 @@
 local rs = game:GetService("ReplicatedStorage")
 
-local RAFT_PART_SIZE = 6 -- studs, square raft piece
+local RAFT_PART_SIZE = 6
 
 local placeBlockEvent = rs:FindFirstChild("PlaceBlock")
 if not placeBlockEvent then
@@ -9,71 +9,52 @@ if not placeBlockEvent then
 	placeBlockEvent.Parent = rs
 end
 
+local raftPartTemplate = rs:WaitForChild("Raft_part")
+
 local function getRaft()
 	return workspace:FindFirstChild("Raft")
 end
 
--- Get all parts that are valid anchors for new placement (main raft + placed Raft_parts)
-local function getRaftParts()
-	local raft = getRaft()
-	if not raft then return {} end
+-- Get local grid offsets of all existing raft parts (including main)
+local function getOccupiedOffsets(raft)
+	local offsets = {}
+	local primaryCF = raft.PrimaryPart.CFrame
 
-	local parts = {}
+	-- Main raft at offset (0, 0)
+	table.insert(offsets, {x = 0, z = 0})
 
-	-- The main raft primary part
-	if raft.PrimaryPart then
-		table.insert(parts, raft.PrimaryPart)
-	end
-
-	-- All Raft_part children
 	for _, child in raft:GetDescendants() do
 		if child:IsA("BasePart") and child:GetAttribute("RaftPart") then
-			table.insert(parts, child)
+			local localPos = primaryCF:PointToObjectSpace(child.Position)
+			local gx = math.round(localPos.X / RAFT_PART_SIZE)
+			local gz = math.round(localPos.Z / RAFT_PART_SIZE)
+			table.insert(offsets, {x = gx, z = gz})
 		end
 	end
 
-	return parts
+	return offsets
 end
 
--- Check if a position is adjacent to any existing raft part
-local function isValidPlacement(position)
-	local raftParts = getRaftParts()
-	if #raftParts == 0 then return false end
-
-	for _, part in raftParts do
-		local partPos = Vector3.new(part.Position.X, position.Y, part.Position.Z)
-		local diff = position - partPos
-		local dist = diff.Magnitude
-
-		-- Must be exactly one RAFT_PART_SIZE away (adjacent)
-		if math.abs(dist - RAFT_PART_SIZE) < 1 then
-			-- Must be aligned on one axis (not diagonal)
-			local ax = math.abs(diff.X)
-			local az = math.abs(diff.Z)
-			if (math.abs(ax - RAFT_PART_SIZE) < 1 and az < 1) or (math.abs(az - RAFT_PART_SIZE) < 1 and ax < 1) then
-				return true
-			end
-		end
-	end
-
-	return false
-end
-
--- Check if a position is already occupied by a raft part
-local function isOccupied(position)
-	local raftParts = getRaftParts()
-	for _, part in raftParts do
-		local partPos = Vector3.new(part.Position.X, position.Y, part.Position.Z)
-		local dist = (position - partPos).Magnitude
-		if dist < 1 then
+local function isOccupied(offsets, gx, gz)
+	for _, o in offsets do
+		if o.x == gx and o.z == gz then
 			return true
 		end
 	end
 	return false
 end
 
-placeBlockEvent.OnServerEvent:Connect(function(player, worldPosition)
-	if typeof(worldPosition) ~= "Vector3" then return end
+local function isAdjacent(offsets, gx, gz)
+	for _, o in offsets do
+		if (math.abs(o.x - gx) == 1 and o.z == gz) or (math.abs(o.z - gz) == 1 and o.x == gx) then
+			return true
+		end
+	end
+	return false
+end
+
+placeBlockEvent.OnServerEvent:Connect(function(player, gridX, gridZ)
+	if type(gridX) ~= "number" or type(gridZ) ~= "number" then return end
 
 	local char = player.Character
 	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
@@ -85,50 +66,63 @@ placeBlockEvent.OnServerEvent:Connect(function(player, worldPosition)
 	local tool = char:FindFirstChildWhichIsA("Tool")
 	if not tool or tool.Name ~= "Hammer" then return end
 
-	-- Check player has enough resources (2 Logs per raft piece)
+	-- Check resources
 	local inv = _G.GetInventory and _G.GetInventory(player) or {}
 	if (inv.Log or 0) < 2 then return end
 
-	-- Snap position to raft grid
-	local raftY = raft.PrimaryPart.Position.Y
-	local snappedPos = Vector3.new(
-		math.round(worldPosition.X / RAFT_PART_SIZE) * RAFT_PART_SIZE,
-		raftY,
-		math.round(worldPosition.Z / RAFT_PART_SIZE) * RAFT_PART_SIZE
-	)
+	local gx = math.round(gridX)
+	local gz = math.round(gridZ)
 
-	-- Validate placement
-	if isOccupied(snappedPos) then return end
-	if not isValidPlacement(snappedPos) then return end
+	local offsets = getOccupiedOffsets(raft)
+
+	if isOccupied(offsets, gx, gz) then return end
+	if not isAdjacent(offsets, gx, gz) then return end
+
+	-- Compute world CFrame from raft-local grid offset
+	local localOffset = Vector3.new(gx * RAFT_PART_SIZE, 0, gz * RAFT_PART_SIZE)
+	local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset)
 
 	-- Check distance from player
-	local dist = (char.HumanoidRootPart.Position - snappedPos).Magnitude
-	if dist > 80 then return end
+	if (char.HumanoidRootPart.Position - worldCF.Position).Magnitude > 80 then return end
 
 	-- Deduct cost
 	inv.Log = inv.Log - 2
 
-	-- Create raft part
-	local part = Instance.new("Part")
-	part.Name = "Raft_part"
-	part.Size = Vector3.new(RAFT_PART_SIZE, 1, RAFT_PART_SIZE)
-	part.Position = snappedPos
-	part.Anchored = false
-	part.Material = Enum.Material.Wood
-	part.BrickColor = BrickColor.new("Brown")
-	part:SetAttribute("RaftPart", true)
-	part.Parent = raft
+	-- Clone Raft_part from ReplicatedStorage
+	local newPart = raftPartTemplate:Clone()
+	newPart:SetAttribute("RaftPart", true)
 
-	-- Weld to the raft so it moves together
-	local weld = Instance.new("WeldConstraint")
-	weld.Part0 = part
-	weld.Part1 = raft.PrimaryPart
-	weld.Parent = part
+	if newPart:IsA("Model") then
+		if newPart.PrimaryPart then
+			newPart:PivotTo(worldCF)
+		end
+		newPart.Parent = raft
 
-	-- Notify client
+		-- Weld all base parts to the raft
+		for _, desc in newPart:GetDescendants() do
+			if desc:IsA("BasePart") then
+				desc.Anchored = false
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = desc
+				weld.Part1 = raft.PrimaryPart
+				weld.Parent = desc
+			end
+		end
+	elseif newPart:IsA("BasePart") then
+		newPart.CFrame = worldCF
+		newPart.Anchored = false
+		newPart.Parent = raft
+
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = newPart
+		weld.Part1 = raft.PrimaryPart
+		weld.Parent = newPart
+	end
+
+	-- Sync inventory
 	if _G.SendInventory then
 		_G.SendInventory(player)
 	end
 
-	placeBlockEvent:FireClient(player, "placed", snappedPos)
+	placeBlockEvent:FireClient(player, "placed")
 end)
