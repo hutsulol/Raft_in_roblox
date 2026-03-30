@@ -84,8 +84,9 @@ local function spawnPirateRaft()
 		return
 	end
 
-	-- Spawn pirates anchored on the pirate raft
+	-- Spawn pirates welded to the pirate raft for transit
 	local pirates = {}
+	local transitWelds = {}
 	local deadCount = 0
 	local allDeadEvent = Instance.new("BindableEvent")
 	local pirateTemplate = rs:FindFirstChild("Pirate lvl1")
@@ -99,15 +100,27 @@ local function spawnPirateRaft()
 				pirate:PivotTo(CFrame.new(piratePos))
 			end
 
+			pirate.Parent = workspace
+
+			-- Weld HumanoidRootPart to pirate raft so they move smoothly with it
 			local hrp = pirate:FindFirstChild("HumanoidRootPart")
 			if hrp then
-				hrp.Anchored = true
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = rootPart
+				weld.Part1 = hrp
+				weld.Parent = rootPart
+				table.insert(transitWelds, weld)
 			end
 
-			pirate.Parent = workspace
+			-- Disable walking during transit
+			local hum = pirate:FindFirstChildWhichIsA("Humanoid")
+			if hum then
+				hum.WalkSpeed = 0
+				hum.JumpPower = 0
+			end
+
 			table.insert(pirates, pirate)
 
-			local hum = pirate:FindFirstChildWhichIsA("Humanoid")
 			if hum then
 				hum.Died:Connect(function()
 					deadCount = deadCount + 1
@@ -158,19 +171,6 @@ local function spawnPirateRaft()
 				alignOri.CFrame = CFrame.Angles(0, yaw, 0)
 			end
 
-			-- Move anchored pirates with the pirate raft
-			if not docked then
-				for idx, pirate in pirates do
-					if pirate and pirate.Parent then
-						local hrp = pirate:FindFirstChild("HumanoidRootPart")
-						if hrp and hrp.Anchored then
-							local offsetX = (idx - 1) * 3 - 1.5
-							pirate:PivotTo(CFrame.new(rootPart.Position + Vector3.new(offsetX, 5, 0)))
-						end
-					end
-				end
-			end
-
 			-- When close enough, dock to player raft
 			if not docked and dir.Magnitude < 15 then
 				docked = true
@@ -202,14 +202,25 @@ local function spawnPirateRaft()
 					weld.Parent = floor
 				end
 
+				-- Remove transit welds and restore pirate movement
+				for _, w in transitWelds do
+					if w and w.Parent then
+						w:Destroy()
+					end
+				end
+
 				-- Release pirates onto the player raft
 				for idx, pirate in pirates do
 					if pirate and pirate.Parent then
+						local hum = pirate:FindFirstChildWhichIsA("Humanoid")
+						if hum then
+							hum.WalkSpeed = 16
+							hum.JumpPower = 50
+						end
 						local hrp = pirate:FindFirstChild("HumanoidRootPart")
 						if hrp then
 							local offsetX = (idx - 1) * 3 - 1.5
 							pirate:PivotTo(CFrame.new(raftPrimary.Position + Vector3.new(offsetX, 5, 0)))
-							hrp.Anchored = false
 						end
 					end
 				end
