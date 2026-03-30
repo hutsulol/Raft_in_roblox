@@ -279,7 +279,7 @@ local function isCursorOverWater()
 
 	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 200, params)
 
-	if not result then return true end -- nothing hit = open ocean
+	if not result then return false end -- nothing hit (sky) = not water
 	if result.Instance:IsA("Terrain") then return true end
 
 	-- Check if we hit something that's NOT the raft or a purifier

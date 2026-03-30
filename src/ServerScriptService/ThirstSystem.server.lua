@@ -80,9 +80,8 @@ local function getCupState(tool)
 	return tool:GetAttribute("CupState") or "empty"
 end
 
-local function setCupState(tool, state)
-	tool:SetAttribute("CupState", state)
-	-- Swap visual model
+local function setCupState(player, tool, state)
+	-- Replace the entire tool with a new one from the correct template
 	local modelName
 	if state == "empty" then
 		modelName = "Cup"
@@ -95,48 +94,64 @@ local function setCupState(tool, state)
 	local template = rs:FindFirstChild(modelName)
 	if not template then
 		warn("ThirstSystem: cup model not found: " .. tostring(modelName))
-		return
+		return nil
 	end
 
-	-- Remove ALL children from the tool (visual parts, meshes, etc.)
-	for _, child in tool:GetChildren() do
-		child:Destroy()
-	end
+	-- Determine where to put the new tool (character if equipped, backpack otherwise)
+	local char = player.Character
+	local wasEquipped = tool.Parent == char
+	local destination = wasEquipped and char or player:FindFirstChild("Backpack")
+	if not destination then return nil end
 
-	-- Clone new visual parts from template
+	-- Create new Tool wrapping the template
+	local newTool = Instance.new("Tool")
+	newTool.Name = "Cup"
+	newTool.CanBeDropped = false
+	newTool:SetAttribute("CupState", state)
+
+	-- Clone template parts into the tool
 	local hasHandle = false
 	if template:IsA("Model") then
 		for _, child in template:GetChildren() do
 			local clone = child:Clone()
-			clone.Parent = tool
-			-- First BasePart becomes Handle (required for Tool)
+			clone.Parent = newTool
 			if not hasHandle and clone:IsA("BasePart") then
 				clone.Name = "Handle"
 				hasHandle = true
 			end
 		end
-		-- If no direct BasePart child, search descendants
 		if not hasHandle then
-			local firstPart = tool:FindFirstChildWhichIsA("BasePart", true)
+			local firstPart = newTool:FindFirstChildWhichIsA("BasePart", true)
 			if firstPart then
 				firstPart.Name = "Handle"
-				firstPart.Parent = tool -- move to direct child
+				firstPart.Parent = newTool
 			end
 		end
 	elseif template:IsA("BasePart") then
 		local clone = template:Clone()
 		clone.Name = "Handle"
-		clone.Parent = tool
+		clone.Parent = newTool
+	elseif template:IsA("Tool") then
+		-- Template is already a Tool, just clone it
+		newTool:Destroy()
+		newTool = template:Clone()
+		newTool:SetAttribute("CupState", state)
 	end
 
-	-- Update tool name for display
+	-- Remove old tool and add new one
+	tool:Destroy()
+	newTool.Parent = destination
+
+	-- Update display name
 	if state == "empty" then
-		tool.Name = "Cup"
+		newTool.Name = "Cup"
 	elseif state == "salty" then
-		tool.Name = "Cup (Saltwater)"
+		newTool.Name = "Cup (Saltwater)"
 	elseif state == "fresh" then
-		tool.Name = "Cup (Fresh Water)"
+		newTool.Name = "Cup (Fresh Water)"
 	end
+
+	return newTool
 end
 
 -- ─── Purifier Helpers ───
@@ -276,7 +291,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		-- Player has empty cup equipped, wants to scoop saltwater
 		if not tool or not tool:GetAttribute("CupState") then return end
 		if getCupState(tool) ~= "empty" then return end
-		setCupState(tool, "salty")
+		setCupState(player, tool, "salty")
 
 	elseif action == "fillPurifier" then
 		-- Player has salty cup, clicks on purifier
@@ -309,7 +324,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		purifier:SetAttribute("WaterLevel", waterLevel + 1)
 		purifier:SetAttribute("WaterType", "salty")
-		setCupState(tool, "empty")
+		setCupState(player, tool, "empty")
 		swapPurifierModel(purifier)
 
 		-- Start or restart purification timer
@@ -344,7 +359,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		if waterLevel - 1 <= 0 then
 			purifier:SetAttribute("WaterType", "none")
 		end
-		setCupState(tool, "fresh")
+		setCupState(player, tool, "fresh")
 		swapPurifierModel(purifier)
 
 	elseif action == "drink" then
@@ -375,7 +390,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 			end
 		end
 
-		setCupState(tool, "empty")
+		setCupState(player, tool, "empty")
 
 	elseif action == "placePurifier" then
 		-- Player has Destitalor tool, place it on the raft
