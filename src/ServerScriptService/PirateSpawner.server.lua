@@ -163,7 +163,7 @@ local function spawnPirateRaft()
 			if not b or not b.PrimaryPart then break end
 
 			local target = b.PrimaryPart.Position
-			alignPos.Position = Vector3.new(target.X, rootPart.Position.Y, target.Z)
+			alignPos.Position = target
 
 			local dir = Vector3.new(target.X - rootPart.Position.X, 0, target.Z - rootPart.Position.Z)
 			if dir.Magnitude > 1 then
@@ -216,8 +216,11 @@ local function spawnPirateRaft()
 					end
 				end
 
-				local dockPos = closestPart.CFrame:PointToWorldSpace(dockOffset)
-				rootPart.CFrame = CFrame.new(dockPos.X, closestPart.Position.Y, dockPos.Z)
+				-- Match the closest part's rotation and snap to its edge
+				local _, yaw, _ = closestPart.CFrame:ToEulerAnglesYXZ()
+				local flatCF = CFrame.new(closestPart.Position) * CFrame.Angles(0, yaw, 0)
+				local dockWorld = flatCF:PointToWorldSpace(dockOffset)
+				rootPart.CFrame = CFrame.new(dockWorld.X, closestPart.Position.Y, dockWorld.Z) * CFrame.Angles(0, yaw, 0)
 
 				-- Weld all pirate raft parts to the player raft
 				for _, part in floor:GetDescendants() do
