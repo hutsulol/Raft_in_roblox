@@ -4,7 +4,7 @@ local rs = game:GetService("ReplicatedStorage")
 -- ─── Config ───
 local MAX_THIRST = 100
 local THIRST_DRAIN_AMOUNT = 2
-local THIRST_DRAIN_INTERVAL = 5  -- lose 2 thirst every 5 seconds
+local THIRST_DRAIN_INTERVAL = 10 -- lose 2 thirst every 10 seconds
 local DRINK_RESTORE = 25
 local PURIFY_TIME = 20
 local THIRST_DAMAGE = 5  -- damage per second at 0 thirst
@@ -360,11 +360,17 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		-- Play drinking animation
 		local hum = char:FindFirstChildWhichIsA("Humanoid")
 		if hum then
-			local drinkAnim = rs:FindFirstChild("Drinking Animation")
+			local drinkAnim = rs:FindFirstChild("R6 Drinking Animation")
+				or rs:FindFirstChild("Drinking Animation")
 				or rs:FindFirstChild("DrinkingAnimation")
 				or rs:FindFirstChild("Drinking")
 			if drinkAnim then
-				local track = hum:LoadAnimation(drinkAnim)
+				local animator = hum:FindFirstChildOfClass("Animator")
+				if not animator then
+					animator = Instance.new("Animator")
+					animator.Parent = hum
+				end
+				local track = animator:LoadAnimation(drinkAnim)
 				track:Play()
 			end
 		end

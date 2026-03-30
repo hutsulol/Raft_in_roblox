@@ -19,8 +19,8 @@ screenGui.Parent = playerGui
 local container = Instance.new("Frame")
 container.Name = "ThirstContainer"
 container.AnchorPoint = Vector2.new(0, 1)
-container.Position = UDim2.new(0, 20, 1, -120)
-container.Size = UDim2.new(0, 180, 0, 40)
+container.Position = UDim2.new(0, 20, 1, -80)
+container.Size = UDim2.new(0, 160, 0, 40)
 container.BackgroundTransparency = 1
 container.Parent = screenGui
 
@@ -68,20 +68,6 @@ local fillCorner = Instance.new("UICorner")
 fillCorner.CornerRadius = UDim.new(0, 6)
 fillCorner.Parent = barFill
 
--- Percentage text
-local percentText = Instance.new("TextLabel")
-percentText.Name = "Percent"
-percentText.AnchorPoint = Vector2.new(0, 0.5)
-percentText.Position = UDim2.new(0, 160, 0.5, 0)
-percentText.Size = UDim2.new(0, 40, 0, 20)
-percentText.BackgroundTransparency = 1
-percentText.Text = "100%"
-percentText.TextSize = 14
-percentText.Font = Enum.Font.GothamBold
-percentText.TextColor3 = Color3.fromRGB(220, 230, 255)
-percentText.TextXAlignment = Enum.TextXAlignment.Left
-percentText.Parent = container
-
 -- ─── Update Handler ───
 local currentThirst = 100
 local maxThirst = 100
@@ -110,8 +96,6 @@ local function updateBar(thirst, max)
 	TweenService:Create(barFill, TweenInfo.new(0.3), {
 		BackgroundColor3 = color
 	}):Play()
-
-	percentText.Text = math.floor(ratio * 100) .. "%"
 end
 
 thirstEvent.OnClientEvent:Connect(function(thirst, max)

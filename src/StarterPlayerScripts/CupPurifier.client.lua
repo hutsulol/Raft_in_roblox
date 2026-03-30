@@ -48,7 +48,7 @@ local function updateHint()
 	end
 	local cupState = currentTool:GetAttribute("CupState")
 	if cupState == "empty" then
-		hintLabel.Text = "[Q] Fill with saltwater"
+		hintLabel.Text = "[Q] Fill with saltwater (aim at water)"
 		hintLabel.Visible = true
 	elseif cupState == "salty" then
 		hintLabel.Text = "Click purifier to pour saltwater"
@@ -270,7 +270,31 @@ mouse.Button1Down:Connect(function()
 	end
 end)
 
--- ─── Q Key Handler (scoop saltwater from ocean) ───
+-- ─── Check if cursor is hovering over water ───
+local function isCursorOverWater()
+	local unitRay = camera:ViewportPointToRay(mouse.X, mouse.Y)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = {player.Character, ghost}
+
+	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 200, params)
+
+	if not result then return true end -- nothing hit = open ocean
+	if result.Instance:IsA("Terrain") then return true end
+
+	-- Check if we hit something that's NOT the raft or a purifier
+	local raft = workspace:FindFirstChild("Raft")
+	if raft and result.Instance:IsDescendantOf(raft) then return false end
+	if findPurifier(result.Instance) then return false end
+
+	-- Hit a floating resource or other object — not water
+	local model = result.Instance:FindFirstAncestorOfClass("Model")
+	if model and model:FindFirstChildWhichIsA("Humanoid") then return false end
+
+	return true
+end
+
+-- ─── Q Key Handler (scoop saltwater from ocean, cursor must be over water) ───
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode ~= Enum.KeyCode.Q then return end
@@ -279,13 +303,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	local cupState = currentTool:GetAttribute("CupState")
 	if cupState ~= "empty" then return end
 
-	-- Check if player is near water (not standing fully on raft)
-	local char2 = player.Character
-	if not char2 then return end
-	local hrp = char2:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
+	if not isCursorOverWater() then return end
 
-	-- Raycast downward to check if near water edge
-	-- Or just allow it if they have an empty cup equipped — they're on a raft in the ocean
 	cupActionEvent:FireServer("scoopSaltwater")
 end)
