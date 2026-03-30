@@ -10,9 +10,10 @@ local camera = workspace.CurrentCamera
 local cupActionEvent = ReplicatedStorage:WaitForChild("CupAction")
 
 -- ─── State ───
-local ghost = nil         -- ghost preview model for purifier placement
-local currentTool = nil   -- currently equipped tool
+local ghost = nil
+local currentTool = nil
 local placingPurifier = false
+local lastGhostValid = false -- track if ghost is on valid raft surface
 
 -- ─── Ghost Preview for Purifier Placement ───
 local function createGhost()
@@ -38,6 +39,19 @@ local function destroyGhost()
 		ghost:Destroy()
 		ghost = nil
 	end
+	lastGhostValid = false
+end
+
+local function setGhostColor(valid)
+	lastGhostValid = valid
+	local color = valid and Color3.fromRGB(80, 255, 80) or Color3.fromRGB(255, 80, 80)
+	if ghost then
+		for _, part in ghost:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.Color = color
+			end
+		end
+	end
 end
 
 local function updateGhost()
@@ -45,15 +59,11 @@ local function updateGhost()
 
 	local raft = workspace:FindFirstChild("Raft")
 	if not raft or not raft.PrimaryPart then
-		for _, part in ghost:GetDescendants() do
-			if part:IsA("BasePart") then
-				part.Color = Color3.fromRGB(255, 80, 80)
-			end
-		end
+		setGhostColor(false)
 		return
 	end
 
-	-- Raycast from mouse
+	-- Raycast from mouse, only hit raft parts
 	local unitRay = camera:ViewportPointToRay(mouse.X, mouse.Y)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
@@ -61,26 +71,32 @@ local function updateGhost()
 
 	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 200, params)
 
-	if result then
-		local hitPos = result.Position
-		-- Snap to raft surface level
-		local raftY = raft.PrimaryPart.Position.Y
-		local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
+	if result and result.Instance then
+		-- Check if we hit a raft part (must be descendant of the Raft model)
+		local hitOnRaft = result.Instance:IsDescendantOf(raft)
 
-		-- Get ghost size for Y offset
-		local ghostSize = ghost:GetExtentsSize()
-		local placeCF = CFrame.new(hitPos.X, raftY + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw, 0)
-		ghost:PivotTo(placeCF)
+		if hitOnRaft then
+			local hitPos = result.Position
+			local hitNormal = result.Normal
 
-		-- Check if close enough to raft
-		local dist = (hitPos - raft.PrimaryPart.Position).Magnitude
-		local valid = dist < 30
-		local color = valid and Color3.fromRGB(80, 255, 80) or Color3.fromRGB(255, 80, 80)
-		for _, part in ghost:GetDescendants() do
-			if part:IsA("BasePart") then
-				part.Color = color
-			end
+			-- Place on top of the surface we hit
+			local ghostSize = ghost:GetExtentsSize()
+			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
+
+			-- Use the hit position + half ghost height above the surface
+			local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw, 0)
+			ghost:PivotTo(placeCF)
+			setGhostColor(true)
+		else
+			-- Cursor is not on the raft — show red ghost at cursor position
+			local hitPos = result.Position
+			local ghostSize = ghost:GetExtentsSize()
+			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
+			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw, 0))
+			setGhostColor(false)
 		end
+	else
+		setGhostColor(false)
 	end
 end
 
@@ -93,30 +109,18 @@ local function findPurifier(instance)
 		end
 		current = current.Parent
 	end
-	return nil
-end
-
--- ─── Check if clicking on water (not on raft or other solid object) ───
-local function isClickOnWater(hitInstance)
-	if not hitInstance then return true end
-	if hitInstance:IsA("Terrain") then return true end
-
-	-- Check if it's part of the raft
+	-- Also check inside Raft
 	local raft = workspace:FindFirstChild("Raft")
-	if raft and hitInstance:IsDescendantOf(raft) then return false end
-
-	-- Check if it's a purifier
-	if findPurifier(hitInstance) then return false end
-
-	-- Check if it's a player character
-	local char = player.Character
-	if char and hitInstance:IsDescendantOf(char) then return false end
-
-	-- If it's part of a pirate or other model, not water
-	local model = hitInstance:FindFirstAncestorOfClass("Model")
-	if model and model:FindFirstChildWhichIsA("Humanoid") then return false end
-
-	return true
+	if raft then
+		local current2 = instance
+		while current2 and current2 ~= raft do
+			if current2.Name == "Purifier" and current2:GetAttribute("WaterType") ~= nil then
+				return current2
+			end
+			current2 = current2.Parent
+		end
+	end
+	return nil
 end
 
 -- ─── Tool Equip/Unequip Detection ───
@@ -138,7 +142,6 @@ local function onToolUnequipped()
 	destroyGhost()
 end
 
--- Watch character's children for tool equip/unequip
 local function setupCharacter(char)
 	if not char then return end
 
@@ -154,7 +157,6 @@ local function setupCharacter(char)
 		end
 	end)
 
-	-- Check if already has a tool equipped
 	for _, child in char:GetChildren() do
 		if child:IsA("Tool") then
 			onToolEquipped(child)
@@ -174,51 +176,61 @@ RunService.RenderStepped:Connect(function()
 	end
 end)
 
--- ─── Mouse Click Handler ───
+-- ─── Mouse Click Handler (for purifier placement and cup→purifier interactions) ───
 mouse.Button1Down:Connect(function()
 	if not currentTool then return end
 
 	-- Purifier placement
 	if placingPurifier and ghost then
-		local raft = workspace:FindFirstChild("Raft")
-		if not raft or not raft.PrimaryPart then return end
+		if not lastGhostValid then return end -- can only place on raft
 
 		local placeCF = ghost:GetPivot()
-		local dist = (placeCF.Position - raft.PrimaryPart.Position).Magnitude
-		if dist > 30 then return end
-
 		cupActionEvent:FireServer("placePurifier", placeCF)
 		destroyGhost()
 		placingPurifier = false
 		return
 	end
 
-	-- Cup interactions
+	-- Cup click interactions (purifier fill/collect)
 	local cupState = currentTool:GetAttribute("CupState")
-	if cupState == nil then return end -- not a cup
+	if cupState == nil then return end
 
 	local target = mouse.Target
 	local purifier = target and findPurifier(target)
 
 	if cupState == "empty" then
 		if purifier then
-			-- Collect fresh water from purifier
 			local waterType = purifier:GetAttribute("WaterType")
 			local waterLevel = purifier:GetAttribute("WaterLevel") or 0
 			if waterType == "fresh" and waterLevel > 0 then
 				cupActionEvent:FireServer("collectWater", target)
 			end
-		elseif isClickOnWater(target) then
-			-- Scoop saltwater
-			cupActionEvent:FireServer("scoopSaltwater")
 		end
 	elseif cupState == "salty" then
 		if purifier then
-			-- Pour saltwater into purifier
 			cupActionEvent:FireServer("fillPurifier", target)
 		end
 	elseif cupState == "fresh" then
-		-- Drink fresh water
 		cupActionEvent:FireServer("drink")
 	end
+end)
+
+-- ─── E Key Handler (scoop saltwater from ocean) ───
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode ~= Enum.KeyCode.E then return end
+	if not currentTool then return end
+
+	local cupState = currentTool:GetAttribute("CupState")
+	if cupState ~= "empty" then return end
+
+	-- Check if player is near water (not standing fully on raft)
+	local char2 = player.Character
+	if not char2 then return end
+	local hrp = char2:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+
+	-- Raycast downward to check if near water edge
+	-- Or just allow it if they have an empty cup equipped — they're on a raft in the ocean
+	cupActionEvent:FireServer("scoopSaltwater")
 end)
