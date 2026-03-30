@@ -1,9 +1,18 @@
 local Players = game:GetService("Players")
+local rs = game:GetService("ReplicatedStorage")
 
 local DAMAGE_PERCENT = 0.10  -- 10% of max health per second
 local CHECK_INTERVAL = 1
 local SPAWN_IMMUNITY = 5     -- seconds of immunity after spawning
 local WATER_GRACE = 2        -- seconds in water before damage starts
+local MAX_VIGNETTE_TIME = 10 -- seconds in water for max vignette intensity
+
+local vignetteEvent = rs:FindFirstChild("WaterVignette")
+if not vignetteEvent then
+	vignetteEvent = Instance.new("RemoteEvent")
+	vignetteEvent.Name = "WaterVignette"
+	vignetteEvent.Parent = rs
+end
 
 local spawnTimes = {}  -- player -> time they spawned/respawned
 local waterTimes = {}  -- humanoid -> time they entered water
@@ -75,13 +84,21 @@ end
 while true do
 	task.wait(CHECK_INTERVAL)
 
-	-- Damage players in water
+	-- Damage players in water and send vignette intensity
 	for _, player in Players:GetPlayers() do
 		local char = player.Character
 		if char then
 			local hum = char:FindFirstChildWhichIsA("Humanoid")
 			local hrp = char:FindFirstChild("HumanoidRootPart")
 			damageHumanoid(hum, hrp, player)
+
+			-- Send vignette intensity based on time in water
+			local intensity = 0
+			if hum and waterTimes[hum] then
+				local timeInWater = tick() - waterTimes[hum]
+				intensity = math.clamp(timeInWater / MAX_VIGNETTE_TIME, 0, 1)
+			end
+			vignetteEvent:FireClient(player, intensity)
 		end
 	end
 
