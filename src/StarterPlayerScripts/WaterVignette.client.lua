@@ -1,54 +1,29 @@
 local rs = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Create vignette UI
+-- Create vignette UI with a single radial image
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "WaterVignette"
 screenGui.DisplayOrder = 100
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = playerGui
 
--- Four edge frames to create vignette effect
-local edges = {}
-local edgeConfigs = {
-	{anchor = Vector2.new(0, 0), pos = UDim2.new(0, 0, 0, 0), size = UDim2.new(1, 0, 0.25, 0)},      -- top
-	{anchor = Vector2.new(0, 1), pos = UDim2.new(0, 0, 1, 0), size = UDim2.new(1, 0, 0.25, 0)},      -- bottom
-	{anchor = Vector2.new(0, 0), pos = UDim2.new(0, 0, 0, 0), size = UDim2.new(0.2, 0, 1, 0)},       -- left
-	{anchor = Vector2.new(1, 0), pos = UDim2.new(1, 0, 0, 0), size = UDim2.new(0.2, 0, 1, 0)},       -- right
-}
-
--- Gradient directions for each edge (fading inward)
-local gradientConfigs = {
-	{rotation = 180},  -- top: fade from top down
-	{rotation = 0},    -- bottom: fade from bottom up
-	{rotation = 90},   -- left: fade from left to right
-	{rotation = -90},  -- right: fade from right to left
-}
-
-for i, config in edgeConfigs do
-	local frame = Instance.new("Frame")
-	frame.Name = "VignetteEdge" .. i
-	frame.AnchorPoint = config.anchor
-	frame.Position = config.pos
-	frame.Size = config.size
-	frame.BackgroundColor3 = Color3.new(0, 0.15, 0) -- dark green tint for toxic water
-	frame.BackgroundTransparency = 1
-	frame.BorderSizePixel = 0
-	frame.Parent = screenGui
-
-	local gradient = Instance.new("UIGradient")
-	gradient.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0, 0),
-		NumberSequenceKeypoint.new(1, 1),
-	})
-	gradient.Rotation = gradientConfigs[i].rotation
-	gradient.Parent = frame
-
-	table.insert(edges, frame)
-end
+-- Radial vignette using rbxassetid (standard radial gradient vignette)
+local vignette = Instance.new("ImageLabel")
+vignette.Name = "Vignette"
+vignette.AnchorPoint = Vector2.new(0.5, 0.5)
+vignette.Position = UDim2.new(0.5, 0, 0.5, 0)
+vignette.Size = UDim2.new(1, 0, 1, 0)
+vignette.BackgroundTransparency = 1
+vignette.Image = "rbxassetid://330427473" -- standard radial vignette texture
+vignette.ImageColor3 = Color3.fromRGB(15, 40, 10) -- dark toxic green
+vignette.ImageTransparency = 1
+vignette.ScaleType = Enum.ScaleType.Stretch
+vignette.Parent = screenGui
 
 -- Listen for vignette updates from server
 local currentIntensity = 0
@@ -60,15 +35,9 @@ vignetteEvent.OnClientEvent:Connect(function(intensity)
 end)
 
 -- Smooth interpolation loop
-game:GetService("RunService").Heartbeat:Connect(function(dt)
-	-- Lerp toward target for smooth transition
+RunService.Heartbeat:Connect(function(dt)
 	currentIntensity = currentIntensity + (targetIntensity - currentIntensity) * math.min(1, dt * 3)
 
-	-- Map intensity to transparency (1 = fully transparent, 0 = fully visible)
-	-- At max intensity (1.0), edges should be quite visible (~0.3 transparency)
-	local transparency = 1 - (currentIntensity * 0.7)
-
-	for _, edge in edges do
-		edge.BackgroundTransparency = transparency
-	end
+	-- At max intensity, image should be clearly visible (transparency ~0.15)
+	vignette.ImageTransparency = 1 - (currentIntensity * 0.85)
 end)
