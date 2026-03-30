@@ -180,29 +180,52 @@ local function spawnPirateRaft()
 				alignOri:Destroy()
 				attachment:Destroy()
 
-				-- Find the closest raft part to dock against
+				-- Find the closest raft floor tile to dock against
 				local raftPrimary = b.PrimaryPart
 				local piratePos = rootPart.Position
 				local closestPart = nil
+				local closestPos = nil
 				local closestDist = math.huge
-				for _, child in b:GetDescendants() do
-					if child:IsA("BasePart") then
-						local d = (child.Position - piratePos).Magnitude
+
+				-- Check the primary part itself
+				local d0 = (raftPrimary.Position - piratePos).Magnitude
+				closestPart = raftPrimary
+				closestPos = raftPrimary.Position
+				closestDist = d0
+
+				-- Check all children of the raft (placed floor tiles are child Models)
+				for _, child in b:GetChildren() do
+					local pos
+					if child:IsA("Model") and child:GetAttribute("BuildType") == "raft" then
+						pos = child:GetPivot().Position
+					elseif child:IsA("BasePart") then
+						pos = child.Position
+					end
+					if pos then
+						local d = (pos - piratePos).Magnitude
 						if d < closestDist then
 							closestDist = d
+							closestPos = pos
 							closestPart = child
 						end
 					end
 				end
-				if not closestPart then closestPart = raftPrimary end
 
-				-- Use yaw-only CFrame to avoid wave tilt affecting alignment
-				local _, raftYaw, _ = closestPart.CFrame:ToEulerAnglesYXZ()
-				local flatCF = CFrame.new(closestPart.Position) * CFrame.Angles(0, raftYaw, 0)
+				-- Get the size of the closest part for offset calculation
+				local partSize
+				if closestPart:IsA("Model") then
+					partSize = closestPart:GetExtentsSize()
+				else
+					partSize = closestPart.Size
+				end
+
+				-- Use raft primary part's yaw for consistent alignment
+				local _, raftYaw, _ = raftPrimary.CFrame:ToEulerAnglesYXZ()
+				local flatCF = CFrame.new(closestPos) * CFrame.Angles(0, raftYaw, 0)
 
 				-- Determine which side the pirate raft is approaching from (in flat space)
 				local localDir = flatCF:PointToObjectSpace(piratePos)
-				local halfSize = closestPart.Size / 2
+				local halfSize = partSize / 2
 				local pirateHalf = rootPart.Size.X / 2
 
 				local dockOffset
@@ -222,7 +245,7 @@ local function spawnPirateRaft()
 
 				-- Snap pirate raft flush to the edge, matching raft rotation
 				local dockWorld = flatCF:PointToWorldSpace(dockOffset)
-				rootPart.CFrame = CFrame.new(dockWorld.X, closestPart.Position.Y, dockWorld.Z) * CFrame.Angles(0, raftYaw, 0)
+				rootPart.CFrame = CFrame.new(dockWorld.X, raftPrimary.Position.Y, dockWorld.Z) * CFrame.Angles(0, raftYaw, 0)
 
 				-- Weld all pirate raft parts to the player raft
 				for _, part in floor:GetDescendants() do
