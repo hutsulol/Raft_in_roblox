@@ -2,7 +2,9 @@ local rs = game:GetService("ReplicatedStorage")
 
 local SPAWN_INTERVAL = 5
 local PIRATE_COUNT = 2
-local APPROACH_SPEED = 10
+local CHASE_SPEED = 40       -- faster than raft to catch up
+local MATCH_SPEED = 15        -- match raft speed once caught up
+local CATCH_UP_DIST = 30      -- distance at which they "caught up"
 local SINK_DURATION = 4
 
 local function getBoat()
@@ -128,7 +130,7 @@ local function spawnPirateRaft()
 	alignPos.Attachment0 = attachment
 	alignPos.Mode = Enum.PositionAlignmentMode.OneAttachment
 	alignPos.MaxForce = 50000
-	alignPos.MaxVelocity = APPROACH_SPEED
+	alignPos.MaxVelocity = CHASE_SPEED
 	alignPos.Responsiveness = 10
 	alignPos.Parent = rootPart
 
@@ -157,8 +159,10 @@ local function spawnPirateRaft()
 
 			if dir.Magnitude < 15 then
 				alignPos.MaxVelocity = 0
+			elseif dir.Magnitude < CATCH_UP_DIST then
+				alignPos.MaxVelocity = MATCH_SPEED
 			else
-				alignPos.MaxVelocity = APPROACH_SPEED
+				alignPos.MaxVelocity = CHASE_SPEED
 			end
 
 			task.wait(0.5)
