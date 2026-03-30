@@ -4,7 +4,8 @@ local rs = game:GetService("ReplicatedStorage")
 
 local CLICKS_TO_COLLECT = 5
 local LIFETIME = 120
-local MAX_RESOURCES = 15
+local AREA_SIZE = 25
+local MAX_PER_AREA = 25
 
 local collectEvent = rs:FindFirstChild("CollectResource")
 if not collectEvent then
@@ -126,6 +127,21 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 		root.Position.Z + root.CFrame.LookVector.Z * math.random(160, 240) + math.random(-40, 40)
 	)
 
+	-- Check density in the area around the spawn position
+	local nearby = 0
+	for _, res in CollectionService:GetTagged("Resource") do
+		local resPos
+		if res:IsA("Model") then
+			resPos = res:GetPivot().Position
+		else
+			resPos = res.Position
+		end
+		if math.abs(resPos.X - spawnPos.X) < AREA_SIZE / 2 and math.abs(resPos.Z - spawnPos.Z) < AREA_SIZE / 2 then
+			nearby = nearby + 1
+		end
+	end
+	if nearby >= MAX_PER_AREA then return end
+
 	local template = rs:FindFirstChild(templateName)
 	if not template then
 		return
@@ -167,10 +183,6 @@ while true do
 
 	local boat = getBoat()
 	if not boat then continue end
-
-	-- Skip spawning if too many resources already exist
-	local activeResources = CollectionService:GetTagged("Resource")
-	if #activeResources >= MAX_RESOURCES then continue end
 
 	spawnCycle = spawnCycle + 1
 
