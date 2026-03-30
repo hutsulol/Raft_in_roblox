@@ -81,76 +81,7 @@ local function getCupState(tool)
 end
 
 local function setCupState(player, tool, state)
-	-- Swap the cup's visual model by unequipping, replacing parts, re-equipping
-	local modelName
-	if state == "empty" then
-		modelName = "Cup"
-	elseif state == "salty" then
-		modelName = "Cup_full_salty"
-	elseif state == "fresh" then
-		modelName = "Cup_full"
-	end
-
-	local template = rs:FindFirstChild(modelName)
-	if not template then
-		warn("ThirstSystem: cup model not found: " .. tostring(modelName))
-		-- Fallback: at least update the attribute on the existing tool
-		tool:SetAttribute("CupState", state)
-		return tool
-	end
-
-	local char = player.Character
-	if not char then return tool end
-	local hum = char:FindFirstChildWhichIsA("Humanoid")
-	local backpack = player:FindFirstChild("Backpack")
-	if not backpack then return tool end
-
-	local wasEquipped = tool.Parent == char
-
-	-- Step 1: Move tool to Backpack so Handle can be safely removed
-	if wasEquipped and hum then
-		hum:UnequipTools()
-	end
-
-	-- Step 2: Remove all old visual parts from the tool
-	for _, child in tool:GetChildren() do
-		child:Destroy()
-	end
-
-	-- Step 3: Clone new visual parts from template
-	if template:IsA("Tool") then
-		-- Template is a Tool — copy its children into our tool
-		for _, child in template:GetChildren() do
-			local clone = child:Clone()
-			clone.Parent = tool
-		end
-	elseif template:IsA("Model") then
-		local hasHandle = false
-		for _, child in template:GetChildren() do
-			local clone = child:Clone()
-			clone.Parent = tool
-			if not hasHandle and clone:IsA("BasePart") then
-				clone.Name = "Handle"
-				hasHandle = true
-			end
-		end
-		if not hasHandle then
-			local firstPart = tool:FindFirstChildWhichIsA("BasePart", true)
-			if firstPart then
-				firstPart.Name = "Handle"
-				firstPart.Parent = tool
-			end
-		end
-	elseif template:IsA("BasePart") then
-		local clone = template:Clone()
-		clone.Name = "Handle"
-		clone.Parent = tool
-	end
-
-	-- Step 4: Update attributes and display name
 	tool:SetAttribute("CupState", state)
-	tool.CanBeDropped = false
-
 	if state == "empty" then
 		tool.Name = "Cup"
 	elseif state == "salty" then
@@ -158,12 +89,6 @@ local function setCupState(player, tool, state)
 	elseif state == "fresh" then
 		tool.Name = "Cup (Fresh Water)"
 	end
-
-	-- Step 5: Re-equip if it was equipped before
-	if wasEquipped then
-		tool.Parent = char
-	end
-
 	return tool
 end
 
