@@ -180,11 +180,44 @@ local function spawnPirateRaft()
 				alignOri:Destroy()
 				attachment:Destroy()
 
-				-- Position pirate raft next to player raft and weld it
+				-- Find the closest raft part to dock against
 				local raftPrimary = b.PrimaryPart
-				local side = raftPrimary.CFrame:VectorToWorldSpace(Vector3.new(rootPart.Size.X + 1, 0, 0))
-				local dockPos = raftPrimary.Position + side
-				rootPart.CFrame = CFrame.new(dockPos.X, raftPrimary.Position.Y, dockPos.Z)
+				local piratePos = rootPart.Position
+				local closestPart = nil
+				local closestDist = math.huge
+				for _, child in b:GetDescendants() do
+					if child:IsA("BasePart") then
+						local d = (child.Position - piratePos).Magnitude
+						if d < closestDist then
+							closestDist = d
+							closestPart = child
+						end
+					end
+				end
+				if not closestPart then closestPart = raftPrimary end
+
+				-- Determine which side the pirate raft is approaching from
+				local localDir = closestPart.CFrame:PointToObjectSpace(piratePos)
+				local halfSize = closestPart.Size / 2
+				local pirateHalf = rootPart.Size.X / 2
+
+				local dockOffset
+				if math.abs(localDir.X) > math.abs(localDir.Z) then
+					if localDir.X > 0 then
+						dockOffset = Vector3.new(halfSize.X + pirateHalf + 0.5, 0, 0)
+					else
+						dockOffset = Vector3.new(-halfSize.X - pirateHalf - 0.5, 0, 0)
+					end
+				else
+					if localDir.Z > 0 then
+						dockOffset = Vector3.new(0, 0, halfSize.Z + pirateHalf + 0.5)
+					else
+						dockOffset = Vector3.new(0, 0, -halfSize.Z - pirateHalf - 0.5)
+					end
+				end
+
+				local dockPos = closestPart.CFrame:PointToWorldSpace(dockOffset)
+				rootPart.CFrame = CFrame.new(dockPos.X, closestPart.Position.Y, dockPos.Z)
 
 				-- Weld all pirate raft parts to the player raft
 				for _, part in floor:GetDescendants() do
