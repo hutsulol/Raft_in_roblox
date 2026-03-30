@@ -36,6 +36,21 @@ local recipes = {
 		costs = {Log = 1},
 		craftType = "tool",
 	},
+	{
+		name = "Cup",
+		displayName = "Cup",
+		icon = "rbxassetid://110032041583533",
+		costs = {Plastic = 2},
+		craftType = "tool",
+		initAttributes = {CupState = "empty"},
+	},
+	{
+		name = "Destitalor",
+		displayName = "Water Purifier",
+		icon = "rbxassetid://110032041583533",
+		costs = {Plastic = 4},
+		craftType = "tool",
+	},
 }
 
 inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
@@ -76,6 +91,12 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	if recipe.craftType == "tool" then
 		if template then
 			local tool = template:Clone()
+			-- Set initial attributes if defined
+			if recipe.initAttributes then
+				for attr, val in recipe.initAttributes do
+					tool:SetAttribute(attr, val)
+				end
+			end
 			local backpack = player:FindFirstChild("Backpack")
 			if backpack then
 				tool.Parent = backpack
