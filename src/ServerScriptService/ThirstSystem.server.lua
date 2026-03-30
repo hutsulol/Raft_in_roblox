@@ -150,9 +150,8 @@ local function swapPurifierModel(purifier)
 		return
 	end
 
-	-- Save position and parent
+	-- Save the current world CFrame
 	local cf = purifier:GetPivot()
-	local par = purifier.Parent
 
 	-- Save attributes
 	local waterLevel = purifier:GetAttribute("WaterLevel")
@@ -160,23 +159,19 @@ local function swapPurifierModel(purifier)
 	local purifyStart = purifier:GetAttribute("PurifyStartTime")
 	local placedBy = purifier:GetAttribute("PlacedBy")
 
-	-- Remove old visual parts, keep welds
-	local welds = {}
-	for _, d in purifier:GetDescendants() do
-		if d:IsA("WeldConstraint") then
-			table.insert(welds, {Part0 = d.Part0, Part1 = d.Part1})
-		end
-	end
-
-	-- Clear old children
+	-- Clear all old children
 	for _, child in purifier:GetChildren() do
 		child:Destroy()
 	end
 
-	-- Clone new model contents
+	-- Clone new model contents, anchor everything first so nothing moves
 	if template:IsA("Model") then
 		for _, part in template:GetChildren() do
-			part:Clone().Parent = purifier
+			local clone = part:Clone()
+			if clone:IsA("BasePart") then
+				clone.Anchored = true
+			end
+			clone.Parent = purifier
 		end
 		if template.PrimaryPart then
 			local newPrimary = purifier:FindFirstChild(template.PrimaryPart.Name)
@@ -186,7 +181,22 @@ local function swapPurifierModel(purifier)
 		end
 	end
 
+	-- Position at the saved CFrame while parts are anchored
 	purifier:PivotTo(cf)
+
+	-- Now weld to raft, then unanchor
+	local raft = workspace:FindFirstChild("Raft")
+	if raft and raft.PrimaryPart then
+		for _, part in purifier:GetDescendants() do
+			if part:IsA("BasePart") then
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = part
+				weld.Part1 = raft.PrimaryPart
+				weld.Parent = part
+				part.Anchored = false
+			end
+		end
+	end
 
 	-- Restore attributes
 	purifier:SetAttribute("WaterLevel", waterLevel)
@@ -194,20 +204,6 @@ local function swapPurifierModel(purifier)
 	purifier:SetAttribute("PurifyStartTime", purifyStart)
 	purifier:SetAttribute("PlacedBy", placedBy)
 	purifier.Name = "Purifier"
-
-	-- Re-weld to raft
-	local raft = workspace:FindFirstChild("Raft")
-	if raft and raft.PrimaryPart then
-		for _, part in purifier:GetDescendants() do
-			if part:IsA("BasePart") then
-				part.Anchored = false
-				local weld = Instance.new("WeldConstraint")
-				weld.Part0 = part
-				weld.Part1 = raft.PrimaryPart
-				weld.Parent = part
-			end
-		end
-	end
 end
 
 local function startPurification(purifier)
