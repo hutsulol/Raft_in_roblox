@@ -2,7 +2,7 @@ local rs = game:GetService("ReplicatedStorage")
 
 local SPAWN_INTERVAL = 5
 local PIRATE_COUNT = 2
-local APPROACH_SPEED = 20
+local APPROACH_SPEED = 10
 local SINK_DURATION = 4
 
 local function getBoat()

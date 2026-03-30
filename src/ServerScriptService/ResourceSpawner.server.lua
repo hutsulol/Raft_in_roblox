@@ -120,9 +120,9 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 	local root = boat.PrimaryPart
 	local waterY = root.Position.Y
 	local spawnPos = Vector3.new(
-		root.Position.X + root.CFrame.LookVector.X * math.random(400, 600) + math.random(-100, 100),
+		root.Position.X + root.CFrame.LookVector.X * math.random(160, 240) + math.random(-40, 40),
 		waterY,
-		root.Position.Z + root.CFrame.LookVector.Z * math.random(400, 600) + math.random(-100, 100)
+		root.Position.Z + root.CFrame.LookVector.Z * math.random(160, 240) + math.random(-40, 40)
 	)
 
 	local template = rs:FindFirstChild(templateName)
