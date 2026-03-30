@@ -93,23 +93,35 @@ local function setCupState(tool, state)
 	end
 
 	local template = rs:FindFirstChild(modelName)
-	if not template then return end
+	if not template then
+		warn("ThirstSystem: cup model not found: " .. tostring(modelName))
+		return
+	end
 
-	-- Remove old visual parts (except the tool's core properties)
+	-- Remove ALL children from the tool (visual parts, meshes, etc.)
 	for _, child in tool:GetChildren() do
-		if child:IsA("BasePart") or child:IsA("Model") or child:IsA("MeshPart") or child:IsA("SpecialMesh") or child:IsA("UnionOperation") then
-			child:Destroy()
-		end
+		child:Destroy()
 	end
 
 	-- Clone new visual parts from template
+	local hasHandle = false
 	if template:IsA("Model") then
-		for _, part in template:GetChildren() do
-			local clone = part:Clone()
-			if not tool:FindFirstChild("Handle") and clone:IsA("BasePart") then
-				clone.Name = "Handle"
-			end
+		for _, child in template:GetChildren() do
+			local clone = child:Clone()
 			clone.Parent = tool
+			-- First BasePart becomes Handle (required for Tool)
+			if not hasHandle and clone:IsA("BasePart") then
+				clone.Name = "Handle"
+				hasHandle = true
+			end
+		end
+		-- If no direct BasePart child, search descendants
+		if not hasHandle then
+			local firstPart = tool:FindFirstChildWhichIsA("BasePart", true)
+			if firstPart then
+				firstPart.Name = "Handle"
+				firstPart.Parent = tool -- move to direct child
+			end
 		end
 	elseif template:IsA("BasePart") then
 		local clone = template:Clone()
@@ -150,8 +162,19 @@ local function swapPurifierModel(purifier)
 		return
 	end
 
-	-- Save the current world CFrame
-	local cf = purifier:GetPivot()
+	-- Save the current world CFrame from an actual part (more reliable than GetPivot)
+	local savedCF = nil
+	local primaryPart = purifier.PrimaryPart
+	if primaryPart then
+		savedCF = primaryPart.CFrame
+	else
+		local firstPart = purifier:FindFirstChildWhichIsA("BasePart", true)
+		if firstPart then
+			savedCF = firstPart.CFrame
+		else
+			savedCF = purifier:GetPivot()
+		end
+	end
 
 	-- Save attributes
 	local waterLevel = purifier:GetAttribute("WaterLevel")
@@ -166,25 +189,48 @@ local function swapPurifierModel(purifier)
 
 	-- Clone new model contents, anchor everything first so nothing moves
 	if template:IsA("Model") then
-		for _, part in template:GetChildren() do
-			local clone = part:Clone()
+		for _, child in template:GetChildren() do
+			local clone = child:Clone()
 			if clone:IsA("BasePart") then
 				clone.Anchored = true
 			end
+			-- Also anchor descendants (nested parts)
+			for _, desc in clone:GetDescendants() do
+				if desc:IsA("BasePart") then
+					desc.Anchored = true
+				end
+			end
 			clone.Parent = purifier
 		end
+		-- Set PrimaryPart from template
 		if template.PrimaryPart then
 			local newPrimary = purifier:FindFirstChild(template.PrimaryPart.Name)
 			if newPrimary then
 				purifier.PrimaryPart = newPrimary
 			end
 		end
+		-- Fallback: set first BasePart as PrimaryPart
+		if not purifier.PrimaryPart then
+			local first = purifier:FindFirstChildWhichIsA("BasePart", true)
+			if first then
+				purifier.PrimaryPart = first
+			end
+		end
 	end
 
-	-- Position at the saved CFrame while parts are anchored
-	purifier:PivotTo(cf)
+	-- Get the template's PrimaryPart CFrame to compute the offset
+	-- Then position so purifier.PrimaryPart ends up at savedCF
+	if purifier.PrimaryPart and savedCF then
+		-- Use PivotTo which accounts for the model's pivot/PrimaryPart
+		local templatePivot = template:GetPivot()
+		local templatePrimaryCF = template.PrimaryPart and template.PrimaryPart.CFrame or templatePivot
+		-- Simply PivotTo the saved CFrame
+		purifier:PivotTo(savedCF)
+	elseif savedCF then
+		purifier:PivotTo(savedCF)
+	end
 
-	-- Now weld to raft, then unanchor
+	-- Weld to raft, then unanchor
 	local raft = workspace:FindFirstChild("Raft")
 	if raft and raft.PrimaryPart then
 		for _, part in purifier:GetDescendants() do
@@ -343,6 +389,18 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		purifier:SetAttribute("WaterLevel", 0)
 		purifier:SetAttribute("WaterType", "none")
 		purifier:SetAttribute("PlacedBy", player.UserId)
+
+		-- Ensure PrimaryPart is set
+		if purifier:IsA("Model") and not purifier.PrimaryPart then
+			if template.PrimaryPart then
+				local pp = purifier:FindFirstChild(template.PrimaryPart.Name)
+				if pp then purifier.PrimaryPart = pp end
+			end
+			if not purifier.PrimaryPart then
+				local first = purifier:FindFirstChildWhichIsA("BasePart", true)
+				if first then purifier.PrimaryPart = first end
+			end
+		end
 
 		purifier:PivotTo(target)
 		purifier.Parent = raft
