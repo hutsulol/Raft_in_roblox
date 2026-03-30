@@ -1,5 +1,16 @@
 local rs = game:GetService("ReplicatedStorage")
 
+-- Measure grid size from Raft_part template
+local raftPartTemplate = rs:WaitForChild("Raft_part")
+local GRID_SIZE
+if raftPartTemplate:IsA("Model") and raftPartTemplate.PrimaryPart then
+	GRID_SIZE = raftPartTemplate.PrimaryPart.Size.X
+elseif raftPartTemplate:IsA("BasePart") then
+	GRID_SIZE = raftPartTemplate.Size.X
+else
+	GRID_SIZE = 6
+end
+
 local PIRATE_COUNT = 2
 local CHASE_SPEED = 20
 local SINK_DURATION = 4
@@ -180,71 +191,64 @@ local function spawnPirateRaft()
 				alignOri:Destroy()
 				attachment:Destroy()
 
-				-- Find the closest raft floor tile to dock against
+				-- Find the closest raft floor tile using grid coordinates
 				local raftPrimary = b.PrimaryPart
 				local piratePos = rootPart.Position
-				local closestPart = nil
-				local closestPos = nil
-				local closestDist = math.huge
 
-				-- Check the primary part itself
-				local d0 = (raftPrimary.Position - piratePos).Magnitude
-				closestPart = raftPrimary
-				closestPos = raftPrimary.Position
-				closestDist = d0
-
-				-- Check all children of the raft (placed floor tiles are child Models)
-				for _, child in b:GetChildren() do
-					local pos
-					if child:IsA("Model") and child:GetAttribute("BuildType") == "raft" then
-						pos = child:GetPivot().Position
-					elseif child:IsA("BasePart") then
-						pos = child.Position
-					end
-					if pos then
-						local d = (pos - piratePos).Magnitude
-						if d < closestDist then
-							closestDist = d
-							closestPos = pos
-							closestPart = child
-						end
-					end
-				end
-
-				-- Get the size of the closest part for offset calculation
-				local partSize
-				if closestPart:IsA("Model") then
-					partSize = closestPart:GetExtentsSize()
-				else
-					partSize = closestPart.Size
-				end
-
-				-- Use raft primary part's yaw for consistent alignment
+				-- Use yaw-only CFrame for consistent grid calculations
 				local _, raftYaw, _ = raftPrimary.CFrame:ToEulerAnglesYXZ()
-				local flatCF = CFrame.new(closestPos) * CFrame.Angles(0, raftYaw, 0)
+				local flatCF = CFrame.new(raftPrimary.Position) * CFrame.Angles(0, raftYaw, 0)
 
-				-- Determine which side the pirate raft is approaching from (in flat space)
-				local localDir = flatCF:PointToObjectSpace(piratePos)
-				local halfSize = partSize / 2
+				-- Collect all floor tile world positions (origin + placed tiles)
+				local tilePositions = {}
+				-- The original raft tile is at grid (0,0)
+				table.insert(tilePositions, flatCF:PointToWorldSpace(Vector3.new(0, 0, 0)))
+				-- Player-built tiles have GridX/GridZ attributes
+				for _, child in b:GetChildren() do
+					local gx = child:GetAttribute("GridX")
+					local gz = child:GetAttribute("GridZ")
+					if gx and gz and child:GetAttribute("BuildType") == "raft" then
+						local worldPos = flatCF:PointToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
+						table.insert(tilePositions, worldPos)
+					end
+				end
+
+				-- Find closest tile to the pirate raft
+				local closestPos = tilePositions[1]
+				local closestDist = (closestPos - piratePos).Magnitude
+				for _, pos in tilePositions do
+					local d = (pos - piratePos).Magnitude
+					if d < closestDist then
+						closestDist = d
+						closestPos = pos
+					end
+				end
+
+				-- Build flatCF centered on the closest tile
+				local tileCF = CFrame.new(closestPos) * CFrame.Angles(0, raftYaw, 0)
+
+				-- Determine which side the pirate raft is approaching from
+				local localDir = tileCF:PointToObjectSpace(piratePos)
+				local halfGrid = GRID_SIZE / 2
 				local pirateHalf = rootPart.Size.X / 2
 
 				local dockOffset
 				if math.abs(localDir.X) > math.abs(localDir.Z) then
 					if localDir.X > 0 then
-						dockOffset = Vector3.new(halfSize.X + pirateHalf, 0, 0)
+						dockOffset = Vector3.new(halfGrid + pirateHalf, 0, 0)
 					else
-						dockOffset = Vector3.new(-halfSize.X - pirateHalf, 0, 0)
+						dockOffset = Vector3.new(-halfGrid - pirateHalf, 0, 0)
 					end
 				else
 					if localDir.Z > 0 then
-						dockOffset = Vector3.new(0, 0, halfSize.Z + pirateHalf)
+						dockOffset = Vector3.new(0, 0, halfGrid + pirateHalf)
 					else
-						dockOffset = Vector3.new(0, 0, -halfSize.Z - pirateHalf)
+						dockOffset = Vector3.new(0, 0, -halfGrid - pirateHalf)
 					end
 				end
 
 				-- Snap pirate raft flush to the edge, matching raft rotation
-				local dockWorld = flatCF:PointToWorldSpace(dockOffset)
+				local dockWorld = tileCF:PointToWorldSpace(dockOffset)
 				rootPart.CFrame = CFrame.new(dockWorld.X, raftPrimary.Position.Y, dockWorld.Z) * CFrame.Angles(0, raftYaw, 0)
 
 				-- Weld all pirate raft parts to the player raft

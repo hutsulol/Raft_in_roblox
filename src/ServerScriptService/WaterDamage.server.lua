@@ -3,20 +3,16 @@ local Players = game:GetService("Players")
 local DAMAGE_PERCENT = 0.10  -- 10% of max health per second
 local CHECK_INTERVAL = 1
 
-local function getWaterLevel()
-	local raft = workspace:FindFirstChild("Raft")
-	if raft and raft.PrimaryPart then
-		-- Water surface is roughly at raft level minus half the raft height
-		return raft.PrimaryPart.Position.Y - 2
-	end
-	return -10 -- fallback
-end
-
 local function damageIfInWater(humanoid, rootPart)
 	if not humanoid or humanoid.Health <= 0 then return end
 	if not rootPart then return end
 
-	local waterY = getWaterLevel()
+	-- Water level = raft surface. Standing on raft, HRP is ~3 studs above raft center.
+	-- In water, HRP is at or below raft center level.
+	local raft = workspace:FindFirstChild("Raft")
+	if not raft or not raft.PrimaryPart then return end
+
+	local waterY = raft.PrimaryPart.Position.Y
 	if rootPart.Position.Y < waterY then
 		local damage = humanoid.MaxHealth * DAMAGE_PERCENT
 		humanoid:TakeDamage(damage)
