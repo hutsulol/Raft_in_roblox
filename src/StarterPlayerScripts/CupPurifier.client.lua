@@ -275,7 +275,10 @@ local function isCursorOverWater()
 	local unitRay = camera:ViewportPointToRay(mouse.X, mouse.Y)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	params.FilterDescendantsInstances = {player.Character, ghost}
+	local filterList = {}
+	if player.Character then table.insert(filterList, player.Character) end
+	if ghost then table.insert(filterList, ghost) end
+	params.FilterDescendantsInstances = filterList
 
 	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 200, params)
 
