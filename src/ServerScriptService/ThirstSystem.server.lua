@@ -304,31 +304,34 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		-- Player has fresh cup, drinks it
 		if not tool or getCupState(tool) ~= "fresh" then return end
 
+		-- Empty the cup FIRST (before anything that could error)
+		setCupState(player, tool, "empty")
+
 		-- Restore thirst
 		if thirstData[player] then
 			thirstData[player] = math.min(MAX_THIRST, thirstData[player] + DRINK_RESTORE)
 			thirstEvent:FireClient(player, thirstData[player], MAX_THIRST)
 		end
 
-		-- Play drinking animation
-		local hum = char:FindFirstChildWhichIsA("Humanoid")
-		if hum then
-			local drinkAnim = rs:FindFirstChild("R6 Drinking Animation")
-				or rs:FindFirstChild("Drinking Animation")
-				or rs:FindFirstChild("DrinkingAnimation")
-				or rs:FindFirstChild("Drinking")
-			if drinkAnim then
-				local animator = hum:FindFirstChildOfClass("Animator")
-				if not animator then
-					animator = Instance.new("Animator")
-					animator.Parent = hum
+		-- Play drinking animation (pcall to prevent errors from blocking)
+		pcall(function()
+			local hum = char:FindFirstChildWhichIsA("Humanoid")
+			if hum then
+				local drinkAnim = rs:FindFirstChild("R6 Drinking Animation")
+					or rs:FindFirstChild("Drinking Animation")
+					or rs:FindFirstChild("DrinkingAnimation")
+					or rs:FindFirstChild("Drinking")
+				if drinkAnim and drinkAnim:IsA("Animation") then
+					local animator = hum:FindFirstChildOfClass("Animator")
+					if not animator then
+						animator = Instance.new("Animator")
+						animator.Parent = hum
+					end
+					local track = animator:LoadAnimation(drinkAnim)
+					track:Play()
 				end
-				local track = animator:LoadAnimation(drinkAnim)
-				track:Play()
 			end
-		end
-
-		setCupState(player, tool, "empty")
+		end)
 
 	elseif action == "placePurifier" then
 		-- Player has Destitalor tool, place it on the raft
