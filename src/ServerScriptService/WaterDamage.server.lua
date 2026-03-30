@@ -2,37 +2,73 @@ local Players = game:GetService("Players")
 
 local DAMAGE_PERCENT = 0.10  -- 10% of max health per second
 local CHECK_INTERVAL = 1
+local SPAWN_IMMUNITY = 5     -- seconds of immunity after spawning
+local WATER_GRACE = 2        -- seconds in water before damage starts
+
+local spawnTimes = {}  -- player -> time they spawned/respawned
+local waterTimes = {}  -- humanoid -> time they entered water
+
+Players.PlayerAdded:Connect(function(player)
+	spawnTimes[player] = tick()
+	player.CharacterAdded:Connect(function()
+		spawnTimes[player] = tick()
+	end)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	spawnTimes[player] = nil
+end)
+
+-- Initialize for players already in game
+for _, player in Players:GetPlayers() do
+	spawnTimes[player] = tick()
+	player.CharacterAdded:Connect(function()
+		spawnTimes[player] = tick()
+	end)
+end
 
 local function isOverWater(rootPart)
-	-- Raycast down from character's feet to check if they're standing on something solid
 	local rayOrigin = rootPart.Position
-	local rayDirection = Vector3.new(0, -20, 0) -- check 20 studs below
+	local rayDirection = Vector3.new(0, -20, 0)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	-- Exclude the character model
 	params.FilterDescendantsInstances = {rootPart.Parent}
 
 	local result = workspace:Raycast(rayOrigin, rayDirection, params)
 	if result and result.Instance then
-		-- Hit something solid below — check if it's a raft part or other solid ground
-		-- If it's water (Terrain) or nothing, they're over water
 		if result.Instance:IsA("Terrain") then
 			return true
 		end
-		return false -- standing on a solid part (raft, pirate raft, etc.)
+		return false
 	end
 
-	-- Nothing below at all — over open water
 	return true
 end
 
-local function damageIfInWater(humanoid, rootPart)
+local function damageHumanoid(humanoid, rootPart, player)
 	if not humanoid or humanoid.Health <= 0 then return end
 	if not rootPart then return end
 
+	-- Spawn immunity for players
+	if player and spawnTimes[player] then
+		if tick() - spawnTimes[player] < SPAWN_IMMUNITY then
+			return
+		end
+	end
+
 	if isOverWater(rootPart) then
-		local damage = humanoid.MaxHealth * DAMAGE_PERCENT
-		humanoid:TakeDamage(damage)
+		-- Track when they first entered water
+		if not waterTimes[humanoid] then
+			waterTimes[humanoid] = tick()
+		end
+		-- Only damage after grace period
+		if tick() - waterTimes[humanoid] >= WATER_GRACE then
+			local damage = humanoid.MaxHealth * DAMAGE_PERCENT
+			humanoid:TakeDamage(damage)
+		end
+	else
+		-- Back on solid ground, reset water timer
+		waterTimes[humanoid] = nil
 	end
 end
 
@@ -45,17 +81,17 @@ while true do
 		if char then
 			local hum = char:FindFirstChildWhichIsA("Humanoid")
 			local hrp = char:FindFirstChild("HumanoidRootPart")
-			damageIfInWater(hum, hrp)
+			damageHumanoid(hum, hrp, player)
 		end
 	end
 
-	-- Damage NPCs (pirates etc.) in water
+	-- Damage NPCs in water
 	for _, obj in workspace:GetChildren() do
 		if obj:IsA("Model") and not Players:GetPlayerFromCharacter(obj) then
 			local hum = obj:FindFirstChildWhichIsA("Humanoid")
 			if hum then
 				local hrp = obj:FindFirstChild("HumanoidRootPart")
-				damageIfInWater(hum, hrp)
+				damageHumanoid(hum, hrp, nil)
 			end
 		end
 	end
