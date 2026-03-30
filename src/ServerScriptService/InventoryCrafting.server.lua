@@ -14,6 +14,8 @@ local recipes = {
 		icon = "rbxassetid://110032041583533",
 		costs = {Log = 10},
 		craftType = "tool",
+		category = "Tools",
+		description = "A sharp wooden spear for fighting off pirates and defending your raft.",
 	},
 	{
 		name = "WorkBench",
@@ -21,6 +23,8 @@ local recipes = {
 		icon = "rbxassetid://110032041583533",
 		costs = {Log = 3},
 		craftType = "place",
+		category = "Technology",
+		description = "A workbench that allows crafting of advanced items when placed on the raft.",
 	},
 	{
 		name = "Hammer",
@@ -28,6 +32,8 @@ local recipes = {
 		icon = "rbxassetid://110032041583533",
 		costs = {Log = 1},
 		craftType = "tool",
+		category = "Tools",
+		description = "Used to build and expand your raft with new floor tiles.",
 	},
 	{
 		name = "Machete",
@@ -35,6 +41,8 @@ local recipes = {
 		icon = "rbxassetid://110032041583533",
 		costs = {Log = 1},
 		craftType = "tool",
+		category = "Tools",
+		description = "A sharp blade for close combat against enemies.",
 	},
 	{
 		name = "Cup",
@@ -43,6 +51,8 @@ local recipes = {
 		costs = {Plastic = 2},
 		craftType = "tool",
 		initAttributes = {CupState = "empty"},
+		category = "Misc",
+		description = "A cup for scooping ocean water. Fill it, purify it, and drink to quench your thirst.",
 	},
 	{
 		name = "Destitalor",
@@ -50,6 +60,8 @@ local recipes = {
 		icon = "rbxassetid://110032041583533",
 		costs = {Plastic = 4},
 		craftType = "tool",
+		category = "Technology",
+		description = "Purifies saltwater into drinkable fresh water. Place on your raft to use.",
 	},
 }
 
