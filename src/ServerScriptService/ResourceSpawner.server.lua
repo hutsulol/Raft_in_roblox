@@ -122,9 +122,9 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 	local root = boat.PrimaryPart
 	local waterY = root.Position.Y
 	local spawnPos = Vector3.new(
-		root.Position.X + root.CFrame.LookVector.X * math.random(240, 360) + math.random(-60, 60),
+		root.Position.X + root.CFrame.LookVector.X * math.random(300, 450) + math.random(-75, 75),
 		waterY,
-		root.Position.Z + root.CFrame.LookVector.Z * math.random(240, 360) + math.random(-60, 60)
+		root.Position.Z + root.CFrame.LookVector.Z * math.random(300, 450) + math.random(-75, 75)
 	)
 
 	-- Check density in the area around the spawn position
