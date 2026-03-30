@@ -254,7 +254,24 @@ local function spawnPirateRaft()
 
 		if not floor or not floor.Parent then return end
 
-		-- Gather all parts
+		-- Remove all welds connecting pirate raft to player raft before sinking
+		local function removeWelds(obj)
+			for _, d in obj:GetDescendants() do
+				if d:IsA("WeldConstraint") then
+					d:Destroy()
+				end
+			end
+			if obj:IsA("BasePart") then
+				for _, w in obj:GetChildren() do
+					if w:IsA("WeldConstraint") then
+						w:Destroy()
+					end
+				end
+			end
+		end
+		removeWelds(floor)
+
+		-- Gather pirate raft parts only
 		local parts = {}
 		if floor:IsA("Model") then
 			for _, d in floor:GetDescendants() do
