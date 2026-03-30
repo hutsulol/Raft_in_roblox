@@ -196,31 +196,33 @@ local function spawnPirateRaft()
 				end
 				if not closestPart then closestPart = raftPrimary end
 
-				-- Determine which side the pirate raft is approaching from
-				local localDir = closestPart.CFrame:PointToObjectSpace(piratePos)
+				-- Use yaw-only CFrame to avoid wave tilt affecting alignment
+				local _, raftYaw, _ = closestPart.CFrame:ToEulerAnglesYXZ()
+				local flatCF = CFrame.new(closestPart.Position) * CFrame.Angles(0, raftYaw, 0)
+
+				-- Determine which side the pirate raft is approaching from (in flat space)
+				local localDir = flatCF:PointToObjectSpace(piratePos)
 				local halfSize = closestPart.Size / 2
 				local pirateHalf = rootPart.Size.X / 2
 
 				local dockOffset
 				if math.abs(localDir.X) > math.abs(localDir.Z) then
 					if localDir.X > 0 then
-						dockOffset = Vector3.new(halfSize.X + pirateHalf + 0.5, 0, 0)
+						dockOffset = Vector3.new(halfSize.X + pirateHalf, 0, 0)
 					else
-						dockOffset = Vector3.new(-halfSize.X - pirateHalf - 0.5, 0, 0)
+						dockOffset = Vector3.new(-halfSize.X - pirateHalf, 0, 0)
 					end
 				else
 					if localDir.Z > 0 then
-						dockOffset = Vector3.new(0, 0, halfSize.Z + pirateHalf + 0.5)
+						dockOffset = Vector3.new(0, 0, halfSize.Z + pirateHalf)
 					else
-						dockOffset = Vector3.new(0, 0, -halfSize.Z - pirateHalf - 0.5)
+						dockOffset = Vector3.new(0, 0, -halfSize.Z - pirateHalf)
 					end
 				end
 
-				-- Match the closest part's rotation and snap to its edge
-				local _, yaw, _ = closestPart.CFrame:ToEulerAnglesYXZ()
-				local flatCF = CFrame.new(closestPart.Position) * CFrame.Angles(0, yaw, 0)
+				-- Snap pirate raft flush to the edge, matching raft rotation
 				local dockWorld = flatCF:PointToWorldSpace(dockOffset)
-				rootPart.CFrame = CFrame.new(dockWorld.X, closestPart.Position.Y, dockWorld.Z) * CFrame.Angles(0, yaw, 0)
+				rootPart.CFrame = CFrame.new(dockWorld.X, closestPart.Position.Y, dockWorld.Z) * CFrame.Angles(0, raftYaw, 0)
 
 				-- Weld all pirate raft parts to the player raft
 				for _, part in floor:GetDescendants() do
@@ -251,7 +253,14 @@ local function spawnPirateRaft()
 						local hum = pirate:FindFirstChildWhichIsA("Humanoid")
 						if hum then
 							hum.WalkSpeed = 16
-							hum.JumpPower = 50
+							hum.JumpPower = 0  -- No jumping so they stay on the raft
+							hum.JumpHeight = 0
+						end
+						-- Disable respawn in their AI config
+						local configs = pirate:FindFirstChild("Configurations")
+						if configs then
+							local canRespawn = configs:FindFirstChild("CanRespawn")
+							if canRespawn then canRespawn.Value = false end
 						end
 						local hrp = pirate:FindFirstChild("HumanoidRootPart")
 						if hrp then
