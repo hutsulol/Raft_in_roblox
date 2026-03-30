@@ -1,11 +1,9 @@
 local rs = game:GetService("ReplicatedStorage")
 
-local SPAWN_INTERVAL = 5
 local PIRATE_COUNT = 2
-local CHASE_SPEED = 40       -- faster than raft to catch up
-local MATCH_SPEED = 15        -- match raft speed once caught up
-local CATCH_UP_DIST = 30      -- distance at which they "caught up"
+local CHASE_SPEED = 20
 local SINK_DURATION = 4
+local SELF_DESTRUCT_TIME = 120
 
 local function getBoat()
 	return workspace:FindFirstChild("Raft")
@@ -28,7 +26,7 @@ local function spawnPirateRaft()
 	local root = boat.PrimaryPart
 	local waterY = root.Position.Y
 
-	-- Spawn nearby, like resources but closer
+	-- Spawn nearby
 	local angle = math.random() * math.pi * 2
 	local dist = math.random(100, 200)
 	local spawnPos = Vector3.new(
@@ -47,7 +45,6 @@ local function spawnPirateRaft()
 	local floor = floorTemplate:Clone()
 	floor.Name = "PirateRaftFloor"
 
-	-- Ensure it has a PrimaryPart
 	if floor:IsA("Model") and not floor.PrimaryPart then
 		local first = floor:FindFirstChildWhichIsA("BasePart", true)
 		if first then
@@ -55,7 +52,6 @@ local function spawnPirateRaft()
 		end
 	end
 
-	-- Position it
 	if floor:IsA("Model") then
 		floor:PivotTo(CFrame.new(spawnPos))
 	elseif floor:IsA("BasePart") then
@@ -64,7 +60,6 @@ local function spawnPirateRaft()
 
 	floor.Parent = workspace
 
-	-- Unanchor and set network owner
 	for _, part in floor:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
@@ -76,7 +71,6 @@ local function spawnPirateRaft()
 		floor:SetNetworkOwner(nil)
 	end
 
-	-- Get the root part for physics
 	local rootPart
 	if floor:IsA("Model") then
 		rootPart = floor.PrimaryPart
@@ -90,9 +84,8 @@ local function spawnPirateRaft()
 		return
 	end
 
-	-- Spawn pirates on the pirate raft
+	-- Spawn pirates anchored on the pirate raft
 	local pirates = {}
-	local piratesReleased = false
 	local deadCount = 0
 	local allDeadEvent = Instance.new("BindableEvent")
 	local pirateTemplate = rs:FindFirstChild("Pirate lvl1")
@@ -106,7 +99,6 @@ local function spawnPirateRaft()
 				pirate:PivotTo(CFrame.new(piratePos))
 			end
 
-			-- Anchor HumanoidRootPart during transit so they stay on the raft
 			local hrp = pirate:FindFirstChild("HumanoidRootPart")
 			if hrp then
 				hrp.Anchored = true
@@ -115,7 +107,6 @@ local function spawnPirateRaft()
 			pirate.Parent = workspace
 			table.insert(pirates, pirate)
 
-			-- Connect Humanoid.Died for reliable death detection
 			local hum = pirate:FindFirstChildWhichIsA("Humanoid")
 			if hum then
 				hum.Died:Connect(function()
@@ -130,7 +121,7 @@ local function spawnPirateRaft()
 		warn("PirateSpawner: Pirate lvl1 not found in ReplicatedStorage")
 	end
 
-	-- Move toward player raft using AlignPosition
+	-- Approach using AlignPosition
 	local attachment = Instance.new("Attachment")
 	attachment.Parent = rootPart
 
@@ -139,7 +130,7 @@ local function spawnPirateRaft()
 	alignPos.Mode = Enum.PositionAlignmentMode.OneAttachment
 	alignPos.MaxForce = 50000
 	alignPos.MaxVelocity = CHASE_SPEED
-	alignPos.Responsiveness = 10
+	alignPos.Responsiveness = 5
 	alignPos.Parent = rootPart
 
 	local alignOri = Instance.new("AlignOrientation")
@@ -147,10 +138,12 @@ local function spawnPirateRaft()
 	alignOri.Mode = Enum.OrientationAlignmentMode.OneAttachment
 	alignOri.RigidityEnabled = false
 	alignOri.MaxTorque = 10000
-	alignOri.Responsiveness = 10
+	alignOri.Responsiveness = 5
 	alignOri.Parent = rootPart
 
-	-- Movement loop
+	local docked = false
+
+	-- Movement loop: approach then dock (weld) to player raft
 	task.spawn(function()
 		while floor and floor.Parent and rootPart and rootPart.Parent do
 			local b = getBoat()
@@ -166,7 +159,7 @@ local function spawnPirateRaft()
 			end
 
 			-- Move anchored pirates with the pirate raft
-			if not piratesReleased then
+			if not docked then
 				for idx, pirate in pirates do
 					if pirate and pirate.Parent then
 						local hrp = pirate:FindFirstChild("HumanoidRootPart")
@@ -178,39 +171,70 @@ local function spawnPirateRaft()
 				end
 			end
 
-			if dir.Magnitude < 15 then
-				alignPos.MaxVelocity = 0
-				-- Release pirates: unanchor and teleport onto the player raft
-				if not piratesReleased then
-					piratesReleased = true
-					for idx, pirate in pirates do
-						if pirate and pirate.Parent then
-							local hrp = pirate:FindFirstChild("HumanoidRootPart")
-							if hrp then
-								-- Place them on top of the player raft
-								local offsetX = (idx - 1) * 3 - 1.5
-								pirate:PivotTo(CFrame.new(target + Vector3.new(offsetX, 5, 0)))
-								hrp.Anchored = false
-							end
+			-- When close enough, dock to player raft
+			if not docked and dir.Magnitude < 15 then
+				docked = true
+
+				-- Remove AlignPosition/Orientation
+				alignPos:Destroy()
+				alignOri:Destroy()
+				attachment:Destroy()
+
+				-- Position pirate raft next to player raft and weld it
+				local raftPrimary = b.PrimaryPart
+				local side = raftPrimary.CFrame:VectorToWorldSpace(Vector3.new(rootPart.Size.X + 1, 0, 0))
+				local dockPos = raftPrimary.Position + side
+				rootPart.CFrame = CFrame.new(dockPos.X, raftPrimary.Position.Y, dockPos.Z)
+
+				-- Weld all pirate raft parts to the player raft
+				for _, part in floor:GetDescendants() do
+					if part:IsA("BasePart") then
+						local weld = Instance.new("WeldConstraint")
+						weld.Part0 = raftPrimary
+						weld.Part1 = part
+						weld.Parent = part
+					end
+				end
+				if floor:IsA("BasePart") then
+					local weld = Instance.new("WeldConstraint")
+					weld.Part0 = raftPrimary
+					weld.Part1 = floor
+					weld.Parent = floor
+				end
+
+				-- Release pirates onto the player raft
+				for idx, pirate in pirates do
+					if pirate and pirate.Parent then
+						local hrp = pirate:FindFirstChild("HumanoidRootPart")
+						if hrp then
+							local offsetX = (idx - 1) * 3 - 1.5
+							pirate:PivotTo(CFrame.new(raftPrimary.Position + Vector3.new(offsetX, 5, 0)))
+							hrp.Anchored = false
 						end
 					end
 				end
-			elseif dir.Magnitude < CATCH_UP_DIST then
-				alignPos.MaxVelocity = MATCH_SPEED
-			else
-				alignPos.MaxVelocity = CHASE_SPEED
+
+				break -- stop movement loop
 			end
 
 			task.wait(0.5)
 		end
 	end)
 
-	-- Monitor: when all pirates dead, sink the raft
+	-- Cleanup: when all pirates dead OR self-destruct after 2 minutes
 	task.spawn(function()
-		-- Wait for all pirates to die via event (with 120s timeout)
-		local timeout = false
-		task.delay(120, function()
-			timeout = true
+		-- Self-destruct timer
+		task.delay(SELF_DESTRUCT_TIME, function()
+			-- Kill all living pirates
+			for _, pirate in pirates do
+				if pirate and pirate.Parent then
+					local hum = pirate:FindFirstChildWhichIsA("Humanoid")
+					if hum and hum.Health > 0 then
+						hum.Health = 0
+					end
+				end
+			end
+			-- Fire in case Died events didn't cover all
 			allDeadEvent:Fire()
 		end)
 
@@ -218,11 +242,6 @@ local function spawnPirateRaft()
 		allDeadEvent:Destroy()
 
 		if not floor or not floor.Parent then return end
-
-		-- Stop movement
-		if attachment then attachment:Destroy() end
-		if alignPos then alignPos:Destroy() end
-		if alignOri then alignOri:Destroy() end
 
 		-- Gather all parts
 		local parts = {}
