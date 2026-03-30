@@ -90,8 +90,9 @@ local function spawnPirateRaft()
 		return
 	end
 
-	-- Spawn pirates on top
+	-- Spawn pirates on top of the pirate raft, welded so they ride along
 	local pirates = {}
+	local pirateWelds = {}
 	local deadCount = 0
 	local allDeadEvent = Instance.new("BindableEvent")
 	local pirateTemplate = rs:FindFirstChild("Pirate lvl1")
@@ -106,6 +107,16 @@ local function spawnPirateRaft()
 			end
 			pirate.Parent = workspace
 			table.insert(pirates, pirate)
+
+			-- Weld pirate to pirate raft so they move with it
+			local hrp = pirate:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = rootPart
+				weld.Part1 = hrp
+				weld.Parent = rootPart
+				table.insert(pirateWelds, weld)
+			end
 
 			-- Connect Humanoid.Died for reliable death detection
 			local hum = pirate:FindFirstChildWhichIsA("Humanoid")
@@ -159,6 +170,12 @@ local function spawnPirateRaft()
 
 			if dir.Magnitude < 15 then
 				alignPos.MaxVelocity = 0
+				-- Release pirates so they can walk and fight
+				for _, w in pirateWelds do
+					if w and w.Parent then
+						w:Destroy()
+					end
+				end
 			elseif dir.Magnitude < CATCH_UP_DIST then
 				alignPos.MaxVelocity = MATCH_SPEED
 			else
