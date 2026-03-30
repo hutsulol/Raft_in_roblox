@@ -4,6 +4,7 @@ local rs = game:GetService("ReplicatedStorage")
 
 local CLICKS_TO_COLLECT = 5
 local LIFETIME = 120
+local MAX_RESOURCES = 15
 
 local collectEvent = rs:FindFirstChild("CollectResource")
 if not collectEvent then
@@ -166,6 +167,10 @@ while true do
 
 	local boat = getBoat()
 	if not boat then continue end
+
+	-- Skip spawning if too many resources already exist
+	local activeResources = CollectionService:GetTagged("Resource")
+	if #activeResources >= MAX_RESOURCES then continue end
 
 	spawnCycle = spawnCycle + 1
 
