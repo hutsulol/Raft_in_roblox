@@ -90,9 +90,9 @@ local function spawnPirateRaft()
 		return
 	end
 
-	-- Spawn pirates on top of the pirate raft, welded so they ride along
+	-- Spawn pirates on the pirate raft
 	local pirates = {}
-	local pirateWelds = {}
+	local piratesReleased = false
 	local deadCount = 0
 	local allDeadEvent = Instance.new("BindableEvent")
 	local pirateTemplate = rs:FindFirstChild("Pirate lvl1")
@@ -105,18 +105,15 @@ local function spawnPirateRaft()
 			if pirate:IsA("Model") then
 				pirate:PivotTo(CFrame.new(piratePos))
 			end
-			pirate.Parent = workspace
-			table.insert(pirates, pirate)
 
-			-- Weld pirate to pirate raft so they move with it
+			-- Anchor HumanoidRootPart during transit so they stay on the raft
 			local hrp = pirate:FindFirstChild("HumanoidRootPart")
 			if hrp then
-				local weld = Instance.new("WeldConstraint")
-				weld.Part0 = rootPart
-				weld.Part1 = hrp
-				weld.Parent = rootPart
-				table.insert(pirateWelds, weld)
+				hrp.Anchored = true
 			end
+
+			pirate.Parent = workspace
+			table.insert(pirates, pirate)
 
 			-- Connect Humanoid.Died for reliable death detection
 			local hum = pirate:FindFirstChildWhichIsA("Humanoid")
@@ -168,12 +165,34 @@ local function spawnPirateRaft()
 				alignOri.CFrame = CFrame.Angles(0, yaw, 0)
 			end
 
+			-- Move anchored pirates with the pirate raft
+			if not piratesReleased then
+				for idx, pirate in pirates do
+					if pirate and pirate.Parent then
+						local hrp = pirate:FindFirstChild("HumanoidRootPart")
+						if hrp and hrp.Anchored then
+							local offsetX = (idx - 1) * 3 - 1.5
+							pirate:PivotTo(CFrame.new(rootPart.Position + Vector3.new(offsetX, 5, 0)))
+						end
+					end
+				end
+			end
+
 			if dir.Magnitude < 15 then
 				alignPos.MaxVelocity = 0
-				-- Release pirates so they can walk and fight
-				for _, w in pirateWelds do
-					if w and w.Parent then
-						w:Destroy()
+				-- Release pirates: unanchor and teleport onto the player raft
+				if not piratesReleased then
+					piratesReleased = true
+					for idx, pirate in pirates do
+						if pirate and pirate.Parent then
+							local hrp = pirate:FindFirstChild("HumanoidRootPart")
+							if hrp then
+								-- Place them on top of the player raft
+								local offsetX = (idx - 1) * 3 - 1.5
+								pirate:PivotTo(CFrame.new(target + Vector3.new(offsetX, 5, 0)))
+								hrp.Anchored = false
+							end
+						end
 					end
 				end
 			elseif dir.Magnitude < CATCH_UP_DIST then
