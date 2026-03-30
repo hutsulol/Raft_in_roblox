@@ -13,7 +13,53 @@ local cupActionEvent = ReplicatedStorage:WaitForChild("CupAction")
 local ghost = nil
 local currentTool = nil
 local placingPurifier = false
-local lastGhostValid = false -- track if ghost is on valid raft surface
+local lastGhostValid = false
+
+-- ─── Hint UI ───
+local playerGui = player:WaitForChild("PlayerGui")
+local hintGui = Instance.new("ScreenGui")
+hintGui.Name = "CupHint"
+hintGui.DisplayOrder = 50
+hintGui.IgnoreGuiInset = true
+hintGui.Parent = playerGui
+
+local hintLabel = Instance.new("TextLabel")
+hintLabel.Name = "HintText"
+hintLabel.AnchorPoint = Vector2.new(0.5, 1)
+hintLabel.Position = UDim2.new(0.5, 0, 0.85, 0)
+hintLabel.Size = UDim2.new(0, 300, 0, 40)
+hintLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+hintLabel.BackgroundTransparency = 0.4
+hintLabel.Text = ""
+hintLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+hintLabel.TextSize = 18
+hintLabel.Font = Enum.Font.GothamBold
+hintLabel.Visible = false
+hintLabel.Parent = hintGui
+
+local hintCorner = Instance.new("UICorner")
+hintCorner.CornerRadius = UDim.new(0, 8)
+hintCorner.Parent = hintLabel
+
+local function updateHint()
+	if not currentTool then
+		hintLabel.Visible = false
+		return
+	end
+	local cupState = currentTool:GetAttribute("CupState")
+	if cupState == "empty" then
+		hintLabel.Text = "[Q] Fill with saltwater"
+		hintLabel.Visible = true
+	elseif cupState == "salty" then
+		hintLabel.Text = "Click purifier to pour saltwater"
+		hintLabel.Visible = true
+	elseif cupState == "fresh" then
+		hintLabel.Text = "Click to drink fresh water"
+		hintLabel.Visible = true
+	else
+		hintLabel.Visible = false
+	end
+end
 
 -- ─── Ghost Preview for Purifier Placement ───
 local function createGhost()
@@ -134,12 +180,21 @@ local function onToolEquipped(tool)
 		placingPurifier = false
 		destroyGhost()
 	end
+
+	updateHint()
+	-- Listen for CupState changes to update hint
+	tool:GetAttributeChangedSignal("CupState"):Connect(function()
+		if currentTool == tool then
+			updateHint()
+		end
+	end)
 end
 
 local function onToolUnequipped()
 	currentTool = nil
 	placingPurifier = false
 	destroyGhost()
+	updateHint()
 end
 
 local function setupCharacter(char)
@@ -215,10 +270,10 @@ mouse.Button1Down:Connect(function()
 	end
 end)
 
--- ─── E Key Handler (scoop saltwater from ocean) ───
+-- ─── Q Key Handler (scoop saltwater from ocean) ───
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
-	if input.KeyCode ~= Enum.KeyCode.E then return end
+	if input.KeyCode ~= Enum.KeyCode.Q then return end
 	if not currentTool then return end
 
 	local cupState = currentTool:GetAttribute("CupState")
