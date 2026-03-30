@@ -231,6 +231,11 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		if getCupState(tool) ~= "empty" then return end
 		setCupState(player, tool, "salty")
 
+	elseif action == "dumpWater" then
+		-- Player has salty cup, dumps it back into the ocean
+		if not tool or getCupState(tool) ~= "salty" then return end
+		setCupState(player, tool, "empty")
+
 	elseif action == "fillPurifier" then
 		-- Player has salty cup, clicks on purifier
 		if not tool or getCupState(tool) ~= "salty" then return end

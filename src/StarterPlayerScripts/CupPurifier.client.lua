@@ -51,7 +51,7 @@ local function updateHint()
 		hintLabel.Text = "[Q] Fill with saltwater (aim at water)"
 		hintLabel.Visible = true
 	elseif cupState == "salty" then
-		hintLabel.Text = "Click purifier to pour saltwater"
+		hintLabel.Text = "Click purifier to pour | [Q] Dump into ocean"
 		hintLabel.Visible = true
 	elseif cupState == "fresh" then
 		hintLabel.Text = "Click to drink fresh water"
@@ -304,9 +304,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if not currentTool then return end
 
 	local cupState = currentTool:GetAttribute("CupState")
-	if cupState ~= "empty" then return end
 
-	if not isCursorOverWater() then return end
-
-	cupActionEvent:FireServer("scoopSaltwater")
+	if cupState == "empty" then
+		if not isCursorOverWater() then return end
+		cupActionEvent:FireServer("scoopSaltwater")
+	elseif cupState == "salty" then
+		cupActionEvent:FireServer("dumpWater")
+	end
 end)
