@@ -90,7 +90,39 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 
 	if recipe.craftType == "tool" then
 		if template then
-			local tool = template:Clone()
+			local cloned = template:Clone()
+			local tool
+
+			if cloned:IsA("Tool") then
+				tool = cloned
+			else
+				-- Wrap Model/BasePart in a Tool so it appears in Backpack
+				tool = Instance.new("Tool")
+				tool.Name = recipe.name
+				tool.CanBeDropped = false
+
+				-- Find or create a Handle part
+				if cloned:IsA("Model") then
+					local handle = cloned:FindFirstChild("Handle")
+					if not handle then
+						handle = cloned:FindFirstChildWhichIsA("BasePart", true)
+					end
+					-- Move all parts into the Tool
+					for _, child in cloned:GetChildren() do
+						child.Parent = tool
+					end
+					-- Ensure one part is named Handle
+					if handle and handle.Name ~= "Handle" then
+						handle.Name = "Handle"
+					end
+				elseif cloned:IsA("BasePart") then
+					cloned.Name = "Handle"
+					cloned.Parent = tool
+				end
+
+				cloned:Destroy()
+			end
+
 			-- Set initial attributes if defined
 			if recipe.initAttributes then
 				for attr, val in recipe.initAttributes do
