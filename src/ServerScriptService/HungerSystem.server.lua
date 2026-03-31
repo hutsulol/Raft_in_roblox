@@ -223,16 +223,32 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			return
 		end
 
+		local gardenIsWatered = target:GetAttribute("IsWatered") == true
+
 		local bush = template:Clone()
 		bush.Name = "Bush"
 		bush:SetAttribute("IsBush", true)
-		bush:SetAttribute("GrapesAvailable", target:GetAttribute("IsWatered") == true)
+		bush:SetAttribute("GrapesAvailable", gardenIsWatered)
 		bush:SetAttribute("PlacedBy", player.UserId)
 
 		-- Remove any existing scripts inside the bush
 		for _, desc in bush:GetDescendants() do
 			if desc:IsA("Script") or desc:IsA("LocalScript") then
 				desc:Destroy()
+			end
+		end
+
+		-- If garden is dry, hide grape parts so bush looks fruitless
+		if not gardenIsWatered then
+			local grapes = bush:FindFirstChild("grapes") or bush:FindFirstChild("Grapes")
+			if grapes then
+				if grapes:IsA("BasePart") then
+					grapes.Transparency = 1
+				elseif grapes:IsA("Model") then
+					for _, p in grapes:GetDescendants() do
+						if p:IsA("BasePart") then p.Transparency = 1 end
+					end
+				end
 			end
 		end
 

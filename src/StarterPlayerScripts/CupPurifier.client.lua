@@ -98,7 +98,7 @@ local function updateHint()
 		hintLabel.Text = "Click purifier to pour | [Q] Dump into ocean"
 		hintLabel.Visible = true
 	elseif cupState == "fresh" then
-		hintLabel.Text = "Click to drink fresh water"
+		hintLabel.Text = "Click to drink | [E] Water garden bed"
 		hintLabel.Visible = true
 	else
 		hintLabel.Visible = false
@@ -468,18 +468,44 @@ local function isCursorOverWater()
 	return true
 end
 
+-- ─── Find garden bed from raycast at cursor ───
+local function findGardenAtCursor()
+	local unitRay = camera:ViewportPointToRay(mouse.X, mouse.Y)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	local filterList = {}
+	if player.Character then table.insert(filterList, player.Character) end
+	if ghost then table.insert(filterList, ghost) end
+	params.FilterDescendantsInstances = filterList
+
+	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 200, params)
+	if not result or not result.Instance then return nil end
+	return findGardenBed(result.Instance)
+end
+
 -- ─── Q Key Handler (scoop saltwater from ocean, cursor must be over water) ───
+-- ─── E Key Handler (water garden bed with fresh water cup) ───
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
-	if input.KeyCode ~= Enum.KeyCode.Q then return end
 	if not currentTool then return end
 
-	local cupState = currentTool:GetAttribute("CupState")
+	if input.KeyCode == Enum.KeyCode.Q then
+		local cupState = currentTool:GetAttribute("CupState")
+		if cupState == "empty" then
+			if not isCursorOverWater() then return end
+			cupActionEvent:FireServer("scoopSaltwater")
+		elseif cupState == "salty" then
+			cupActionEvent:FireServer("dumpWater")
+		end
 
-	if cupState == "empty" then
-		if not isCursorOverWater() then return end
-		cupActionEvent:FireServer("scoopSaltwater")
-	elseif cupState == "salty" then
-		cupActionEvent:FireServer("dumpWater")
+	elseif input.KeyCode == Enum.KeyCode.E then
+		local cupState = currentTool:GetAttribute("CupState")
+		if cupState ~= "fresh" then return end
+
+		local garden = findGardenAtCursor()
+		if not garden then return end
+		if garden:GetAttribute("IsWatered") == true then return end
+
+		gardenActionEvent:FireServer("waterGarden", garden)
 	end
 end)

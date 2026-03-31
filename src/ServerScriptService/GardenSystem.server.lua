@@ -17,8 +17,24 @@ end
 
 local gardenActionEvent = getOrCreate("GardenAction")
 
--- ─── Forward declarations ───
-local setupGardenPrompt
+-- ─── Enable grapes on bushes inside a garden ───
+local function enableBushGrapes(garden)
+	for _, child in garden:GetChildren() do
+		if child:GetAttribute("IsBush") then
+			child:SetAttribute("GrapesAvailable", true)
+			local grapes = child:FindFirstChild("grapes") or child:FindFirstChild("Grapes")
+			if grapes then
+				if grapes:IsA("BasePart") then
+					grapes.Transparency = 0
+				elseif grapes:IsA("Model") then
+					for _, p in grapes:GetDescendants() do
+						if p:IsA("BasePart") then p.Transparency = 0 end
+					end
+				end
+			end
+		end
+	end
+end
 
 -- ─── Model Swap (dry ↔ watered, like purifier) ───
 local function swapGardenModel(garden, watered)
@@ -113,62 +129,43 @@ local function swapGardenModel(garden, watered)
 	garden:SetAttribute("PlacedBy", placedBy)
 	garden.Name = "Garden"
 
-	-- Re-setup ProximityPrompt on the new model
-	setupGardenPrompt(garden)
+	-- If just watered, enable grapes on any bushes
+	if watered then
+		enableBushGrapes(garden)
+	end
 end
 
--- ─── Setup ProximityPrompt for watering ───
-setupGardenPrompt = function(garden)
-	-- Remove any existing prompts
-	for _, desc in garden:GetDescendants() do
-		if desc:IsA("ProximityPrompt") then
-			desc:Destroy()
+-- ─── Water a garden bed ───
+local function waterGarden(garden, player)
+	-- Check if player has a cup with fresh water equipped
+	local char = player.Character
+	if not char then return end
+
+	local tool = char:FindFirstChildWhichIsA("Tool")
+	if not tool then return end
+
+	local cupState = tool:GetAttribute("CupState")
+	if cupState ~= "fresh" then return end
+
+	-- Empty the cup
+	tool:SetAttribute("CupState", "empty")
+	tool.Name = "Cup"
+
+	-- Water the garden
+	garden:SetAttribute("IsWatered", true)
+	swapGardenModel(garden, true)
+
+	-- Start dry timer
+	local wateredTime = tick()
+	garden:SetAttribute("WateredTime", wateredTime)
+
+	task.delay(WATER_DRY_TIME, function()
+		if not garden or not garden.Parent then return end
+		-- Only dry out if this is still the same watering session
+		if garden:GetAttribute("WateredTime") == wateredTime then
+			garden:SetAttribute("IsWatered", false)
+			swapGardenModel(garden, false)
 		end
-	end
-
-	local promptPart = garden.PrimaryPart or garden:FindFirstChildWhichIsA("BasePart", true)
-	if not promptPart then return end
-
-	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = "Water"
-	prompt.ObjectText = "Garden Bed"
-	prompt.KeyboardKeyCode = Enum.KeyCode.E
-	prompt.HoldDuration = 0.5
-	prompt.MaxActivationDistance = 10
-	prompt.RequiresLineOfSight = true
-	prompt.Parent = promptPart
-
-	prompt.Triggered:Connect(function(triggerPlayer)
-		-- Check if player has a cup with fresh water equipped
-		local char = triggerPlayer.Character
-		if not char then return end
-
-		local tool = char:FindFirstChildWhichIsA("Tool")
-		if not tool then return end
-
-		local cupState = tool:GetAttribute("CupState")
-		if cupState ~= "fresh" then return end
-
-		-- Empty the cup
-		tool:SetAttribute("CupState", "empty")
-		tool.Name = "Cup"
-
-		-- Water the garden
-		garden:SetAttribute("IsWatered", true)
-		swapGardenModel(garden, true)
-
-		-- Start dry timer
-		local wateredTime = tick()
-		garden:SetAttribute("WateredTime", wateredTime)
-
-		task.delay(WATER_DRY_TIME, function()
-			if not garden or not garden.Parent then return end
-			-- Only dry out if this is still the same watering session
-			if garden:GetAttribute("WateredTime") == wateredTime then
-				garden:SetAttribute("IsWatered", false)
-				swapGardenModel(garden, false)
-			end
-		end)
 	end)
 end
 
@@ -228,10 +225,13 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 			end
 		end
 
-		-- Setup ProximityPrompt for watering
-		setupGardenPrompt(garden)
-
 		-- Remove tool from player
 		tool:Destroy()
+
+	elseif action == "waterGarden" then
+		-- Player presses E while looking at a garden bed with fresh water cup
+		if not target or not target:IsA("Model") or not target:GetAttribute("IsGarden") then return end
+		if target:GetAttribute("IsWatered") == true then return end -- already watered
+		waterGarden(target, player)
 	end
 end)
