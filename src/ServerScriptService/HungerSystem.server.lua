@@ -10,6 +10,10 @@ local HUNGER_DAMAGE = 5 -- damage per second at 0 hunger
 local HP_REGEN_AMOUNT = 5 -- HP restored when eating
 local GRAPE_REGROW_TIME = 20
 
+local HP_REGEN_INTERVAL = 1 -- base: regen every 1 second
+local HP_REGEN_PER_TICK = 1 -- heal 1 HP per tick (1% of 100 max)
+local HP_REGEN_SLOW_MULT = 5 -- 5x slower when hunger < 50%
+
 -- ─── Remote Events ───
 local function getOrCreate(name)
 	local e = rs:FindFirstChild(name)
@@ -71,6 +75,64 @@ task.spawn(function()
 					end
 				end
 			end
+		end
+	end
+end)
+
+-- ─── Disable default Roblox health regen ───
+-- Remove the default "Health" script from each character
+Players.PlayerAdded:Connect(function(player)
+	player.CharacterAdded:Connect(function(char)
+		local defaultHealth = char:WaitForChild("Health", 3)
+		if defaultHealth and defaultHealth:IsA("Script") then
+			defaultHealth:Destroy()
+		end
+	end)
+end)
+for _, player in Players:GetPlayers() do
+	player.CharacterAdded:Connect(function(char)
+		local defaultHealth = char:WaitForChild("Health", 3)
+		if defaultHealth and defaultHealth:IsA("Script") then
+			defaultHealth:Destroy()
+		end
+	end)
+	-- Also handle current character
+	if player.Character then
+		local defaultHealth = player.Character:FindFirstChild("Health")
+		if defaultHealth and defaultHealth:IsA("Script") then
+			defaultHealth:Destroy()
+		end
+	end
+end
+
+-- ─── Health Regen Loop (slowed when hunger < 50%) ───
+task.spawn(function()
+	while true do
+		task.wait(HP_REGEN_INTERVAL)
+		for _, player in Players:GetPlayers() do
+			local char = player.Character
+			if not char then continue end
+			local hum = char:FindFirstChildWhichIsA("Humanoid")
+			if not hum or hum.Health <= 0 or hum.Health >= hum.MaxHealth then continue end
+
+			local hunger = hungerData[player] or 0
+			local hungerRatio = hunger / MAX_HUNGER
+
+			-- At 0 hunger, no regen (already taking damage)
+			if hunger <= 0 then continue end
+
+			-- Below 50% hunger: regen 5x slower (only heal every 5th tick)
+			if hungerRatio < 0.5 then
+				-- Use a counter attribute to track slow ticks
+				local counter = (player:GetAttribute("_regenCounter") or 0) + 1
+				if counter < HP_REGEN_SLOW_MULT then
+					player:SetAttribute("_regenCounter", counter)
+					continue
+				end
+				player:SetAttribute("_regenCounter", 0)
+			end
+
+			hum.Health = math.min(hum.MaxHealth, hum.Health + HP_REGEN_PER_TICK)
 		end
 	end
 end)
