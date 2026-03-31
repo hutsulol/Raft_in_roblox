@@ -15,6 +15,7 @@ local ghost = nil
 local currentTool = nil
 local placingPurifier = false
 local placingBush = false
+local placingWorkbench = false
 local lastGhostValid = false
 local lastGhostCF = nil
 local lastGhostRaftOffset = nil -- CFrame offset relative to raft
@@ -58,9 +59,15 @@ local function updateHint()
 		return
 	end
 
-	-- Purifier placement hint
+	-- Placement hints
 	if placingPurifier then
 		hintLabel.Text = "Click on raft to place purifier"
+		hintLabel.Visible = true
+		return
+	end
+
+	if placingWorkbench then
+		hintLabel.Text = "Click on raft to place workbench"
 		hintLabel.Visible = true
 		return
 	end
@@ -210,14 +217,22 @@ local function onToolEquipped(tool)
 	if tool.Name == "Destitalor" then
 		placingPurifier = true
 		placingBush = false
+		placingWorkbench = false
 		createGhost("Destitalor")
 	elseif tool.Name == "bush" or tool.Name == "Bush" then
 		placingBush = true
 		placingPurifier = false
+		placingWorkbench = false
 		createGhost("bush")
+	elseif tool.Name == "WorkBench" then
+		placingWorkbench = true
+		placingPurifier = false
+		placingBush = false
+		createGhost("WorkBench")
 	else
 		placingPurifier = false
 		placingBush = false
+		placingWorkbench = false
 		destroyGhost()
 	end
 
@@ -234,6 +249,7 @@ local function onToolUnequipped()
 	currentTool = nil
 	placingPurifier = false
 	placingBush = false
+	placingWorkbench = false
 	destroyGhost()
 	updateHint()
 end
@@ -267,7 +283,7 @@ player.CharacterAdded:Connect(setupCharacter)
 
 -- ─── Update ghost every frame ───
 RunService.RenderStepped:Connect(function()
-	if (placingPurifier or placingBush) and ghost then
+	if (placingPurifier or placingBush or placingWorkbench) and ghost then
 		updateGhost()
 	end
 end)
@@ -291,6 +307,15 @@ mouse.Button1Down:Connect(function()
 		bushActionEvent:FireServer("placeBush", lastGhostRaftOffset)
 		destroyGhost()
 		placingBush = false
+		return
+	end
+
+	-- Workbench placement
+	if placingWorkbench and ghost then
+		if not lastGhostValid or not lastGhostRaftOffset then return end
+		cupActionEvent:FireServer("placeWorkbench", lastGhostRaftOffset)
+		destroyGhost()
+		placingWorkbench = false
 		return
 	end
 

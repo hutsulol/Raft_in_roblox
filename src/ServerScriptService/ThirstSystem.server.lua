@@ -388,5 +388,78 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		-- Remove tool from player
 		tool:Destroy()
+
+	elseif action == "placeWorkbench" then
+		-- Player places a workbench on the raft
+		if not tool or tool.Name ~= "WorkBench" then return end
+
+		local raft = workspace:FindFirstChild("Raft")
+		if not raft or not raft.PrimaryPart then return end
+
+		if typeof(target) ~= "CFrame" then return end
+
+		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
+
+		local template = rs:FindFirstChild("WorkBench")
+		if not template then return end
+
+		local workbench = template:Clone()
+		workbench.Name = "WorkBench"
+
+		-- Ensure PrimaryPart
+		if workbench:IsA("Model") and not workbench.PrimaryPart then
+			if template.PrimaryPart then
+				local pp = workbench:FindFirstChild(template.PrimaryPart.Name)
+				if pp then workbench.PrimaryPart = pp end
+			end
+			if not workbench.PrimaryPart then
+				local first = workbench:FindFirstChildWhichIsA("BasePart", true)
+				if first then workbench.PrimaryPart = first end
+			end
+		end
+
+		workbench:PivotTo(worldCF)
+		workbench.Parent = raft
+
+		-- Weld to raft
+		for _, part in workbench:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.Anchored = false
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = part
+				weld.Part1 = raft.PrimaryPart
+				weld.Parent = part
+			end
+		end
+
+		-- Add ProximityPrompt if not already present
+		local hasPrompt = workbench:FindFirstChildWhichIsA("ProximityPrompt", true)
+		if not hasPrompt then
+			local promptPart = workbench.PrimaryPart or workbench:FindFirstChildWhichIsA("BasePart", true)
+			if promptPart then
+				local openEvent = rs:FindFirstChild("OpenWorkbench")
+				if not openEvent then
+					openEvent = Instance.new("RemoteEvent")
+					openEvent.Name = "OpenWorkbench"
+					openEvent.Parent = rs
+				end
+
+				local prompt = Instance.new("ProximityPrompt")
+				prompt.ActionText = "Craft"
+				prompt.ObjectText = "WorkBench"
+				prompt.KeyboardKeyCode = Enum.KeyCode.E
+				prompt.HoldDuration = 0.5
+				prompt.MaxActivationDistance = 10
+				prompt.RequiresLineOfSight = true
+				prompt.Parent = promptPart
+
+				prompt.Triggered:Connect(function(triggerPlayer)
+					openEvent:FireClient(triggerPlayer)
+				end)
+			end
+		end
+
+		-- Remove tool from player
+		tool:Destroy()
 	end
 end)

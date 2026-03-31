@@ -20,9 +20,9 @@ local recipes = {
 	{
 		name = "WorkBench",
 		displayName = "Work Bench",
-		icon = "rbxassetid://110032041583533",
+		icon = "rbxassetid://104306543647624",
 		costs = {Log = 3},
-		craftType = "place",
+		craftType = "placeable",
 		category = "Technology",
 		description = "A workbench that allows crafting of advanced items when placed on the raft.",
 	},
