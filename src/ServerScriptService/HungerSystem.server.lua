@@ -31,6 +31,14 @@ local bushActionEvent = getOrCreate("BushAction")
 -- ─── Player Hunger Data ───
 local hungerData = {}
 
+-- Expose drain function for other systems (e.g. radiation)
+_G.DrainHunger = function(player, amount)
+	if hungerData[player] then
+		hungerData[player] = math.max(0, hungerData[player] - amount)
+		hungerEvent:FireClient(player, hungerData[player], MAX_HUNGER)
+	end
+end
+
 local function initPlayer(player)
 	hungerData[player] = MAX_HUNGER
 	hungerEvent:FireClient(player, hungerData[player], MAX_HUNGER)
