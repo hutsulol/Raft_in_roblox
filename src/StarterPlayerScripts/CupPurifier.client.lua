@@ -110,7 +110,7 @@ local function createGhost(templateName)
 
 	-- Bush template is oriented sideways; apply corrective rotation
 	if templateName == "bush" then
-		ghost.WorldPivot = CFrame.new(bbCF.Position) * CFrame.Angles(0, 0, math.rad(90))
+		ghost.WorldPivot = CFrame.new(bbCF.Position) * CFrame.Angles(math.rad(-90), 0, 0)
 	end
 
 	for _, part in ghost:GetDescendants() do

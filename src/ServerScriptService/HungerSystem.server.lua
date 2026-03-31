@@ -205,7 +205,7 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		if bush:IsA("Model") then
 			local bbCF = bush:GetBoundingBox()
 			-- Bush template is oriented sideways; apply corrective rotation
-			bush.WorldPivot = CFrame.new(bbCF.Position) * CFrame.Angles(0, 0, math.rad(90))
+			bush.WorldPivot = CFrame.new(bbCF.Position) * CFrame.Angles(math.rad(-90), 0, 0)
 		end
 
 		bush:PivotTo(worldCF)
