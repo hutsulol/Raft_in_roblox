@@ -8,11 +8,13 @@ local mouse = player:GetMouse()
 local camera = workspace.CurrentCamera
 
 local cupActionEvent = ReplicatedStorage:WaitForChild("CupAction")
+local bushActionEvent = ReplicatedStorage:WaitForChild("BushAction")
 
 -- ─── State ───
 local ghost = nil
 local currentTool = nil
 local placingPurifier = false
+local placingBush = false
 local lastGhostValid = false
 
 -- ─── Hint UI ───
@@ -46,6 +48,28 @@ local function updateHint()
 		hintLabel.Visible = false
 		return
 	end
+
+	-- Bush placement hint
+	if placingBush then
+		hintLabel.Text = "Click on raft to place grape bush"
+		hintLabel.Visible = true
+		return
+	end
+
+	-- Purifier placement hint
+	if placingPurifier then
+		hintLabel.Text = "Click on raft to place purifier"
+		hintLabel.Visible = true
+		return
+	end
+
+	-- Grape tool hint
+	if currentTool.Name == "[GRAPES]" or currentTool.Name == "Grapes" then
+		hintLabel.Text = "Click to eat grapes"
+		hintLabel.Visible = true
+		return
+	end
+
 	local cupState = currentTool:GetAttribute("CupState")
 	if cupState == "empty" then
 		hintLabel.Text = "[Q] Fill with saltwater (aim at water)"
@@ -61,20 +85,24 @@ local function updateHint()
 	end
 end
 
--- ─── Ghost Preview for Purifier Placement ───
-local function createGhost()
+-- ─── Ghost Preview for Placement ───
+local function createGhost(templateName)
 	if ghost then ghost:Destroy() end
-	local template = ReplicatedStorage:FindFirstChild("Destitalor")
+	local template = ReplicatedStorage:FindFirstChild(templateName or "Destitalor")
 	if not template then return end
 
 	ghost = template:Clone()
-	ghost.Name = "PurifierGhost"
+	ghost.Name = "PlacementGhost"
 	for _, part in ghost:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Transparency = 0.5
 			part.CanCollide = false
 			part.Anchored = true
 			part.Color = Color3.fromRGB(80, 255, 80)
+		end
+		-- Remove scripts from ghost
+		if part:IsA("Script") or part:IsA("LocalScript") then
+			part:Destroy()
 		end
 	end
 	ghost.Parent = workspace
@@ -175,9 +203,15 @@ local function onToolEquipped(tool)
 
 	if tool.Name == "Destitalor" then
 		placingPurifier = true
-		createGhost()
+		placingBush = false
+		createGhost("Destitalor")
+	elseif tool.Name == "Bush" then
+		placingBush = true
+		placingPurifier = false
+		createGhost("bush")
 	else
 		placingPurifier = false
+		placingBush = false
 		destroyGhost()
 	end
 
@@ -193,6 +227,7 @@ end
 local function onToolUnequipped()
 	currentTool = nil
 	placingPurifier = false
+	placingBush = false
 	destroyGhost()
 	updateHint()
 end
@@ -226,23 +261,38 @@ player.CharacterAdded:Connect(setupCharacter)
 
 -- ─── Update ghost every frame ───
 RunService.RenderStepped:Connect(function()
-	if placingPurifier and ghost then
+	if (placingPurifier or placingBush) and ghost then
 		updateGhost()
 	end
 end)
 
--- ─── Mouse Click Handler (for purifier placement and cup→purifier interactions) ───
+-- ─── Mouse Click Handler (for purifier/bush placement and cup→purifier interactions) ───
 mouse.Button1Down:Connect(function()
 	if not currentTool then return end
 
 	-- Purifier placement
 	if placingPurifier and ghost then
-		if not lastGhostValid then return end -- can only place on raft
-
+		if not lastGhostValid then return end
 		local placeCF = ghost:GetPivot()
 		cupActionEvent:FireServer("placePurifier", placeCF)
 		destroyGhost()
 		placingPurifier = false
+		return
+	end
+
+	-- Bush placement
+	if placingBush and ghost then
+		if not lastGhostValid then return end
+		local placeCF = ghost:GetPivot()
+		bushActionEvent:FireServer("placeBush", placeCF)
+		destroyGhost()
+		placingBush = false
+		return
+	end
+
+	-- Grape eating
+	if currentTool.Name == "[GRAPES]" or currentTool.Name == "Grapes" then
+		bushActionEvent:FireServer("eatGrape")
 		return
 	end
 

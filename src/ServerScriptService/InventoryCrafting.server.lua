@@ -63,6 +63,15 @@ local recipes = {
 		category = "Technology",
 		description = "Purifies saltwater into drinkable fresh water. Place on your raft to use.",
 	},
+	{
+		name = "Bush",
+		displayName = "Grape Bush",
+		icon = "rbxassetid://110032041583533",
+		costs = {Log = 1},
+		craftType = "tool",
+		category = "Technology",
+		description = "A grape bush that grows berries every 20 seconds. Place on your raft and click to harvest.",
+	},
 }
 
 inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
