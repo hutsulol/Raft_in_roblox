@@ -68,7 +68,7 @@ local recipes = {
 		displayName = "Grape Bush",
 		icon = "rbxassetid://110032041583533",
 		costs = {Log = 1},
-		craftType = "tool",
+		craftType = "placeable",
 		category = "Technology",
 		description = "A grape bush that grows berries every 20 seconds. Place on your raft and click to harvest.",
 	},
@@ -155,6 +155,23 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 				tool.Parent = backpack
 			end
 		end
+	elseif recipe.craftType == "placeable" then
+		-- Create a small placeholder tool (the full model is cloned on placement)
+		local tool = Instance.new("Tool")
+		tool.Name = recipe.name
+		tool.CanBeDropped = false
+
+		local handle = Instance.new("Part")
+		handle.Name = "Handle"
+		handle.Size = Vector3.new(1, 1, 1)
+		handle.Transparency = 1
+		handle.Parent = tool
+
+		local backpack = player:FindFirstChild("Backpack")
+		if backpack then
+			tool.Parent = backpack
+		end
+
 	elseif recipe.craftType == "place" then
 		if template then
 			local clone = template:Clone()
