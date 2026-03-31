@@ -205,7 +205,7 @@ local function onToolEquipped(tool)
 		placingPurifier = true
 		placingBush = false
 		createGhost("Destitalor")
-	elseif tool.Name == "Bush" then
+	elseif tool.Name == "bush" or tool.Name == "Bush" then
 		placingBush = true
 		placingPurifier = false
 		createGhost("bush")

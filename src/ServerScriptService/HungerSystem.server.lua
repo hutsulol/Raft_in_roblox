@@ -171,7 +171,7 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 	elseif action == "placeBush" then
 		-- Player places a bush on the raft
 		local tool = char:FindFirstChildWhichIsA("Tool")
-		if not tool or tool.Name ~= "Bush" then return end
+		if not tool or (tool.Name ~= "bush" and tool.Name ~= "Bush") then return end
 
 		local raft = workspace:FindFirstChild("Raft")
 		if not raft or not raft.PrimaryPart then return end

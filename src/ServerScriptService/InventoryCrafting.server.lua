@@ -64,7 +64,7 @@ local recipes = {
 		description = "Purifies saltwater into drinkable fresh water. Place on your raft to use.",
 	},
 	{
-		name = "Bush",
+		name = "bush",
 		displayName = "Grape Bush",
 		icon = "rbxassetid://110032041583533",
 		costs = {Log = 1},
