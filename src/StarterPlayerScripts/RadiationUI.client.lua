@@ -1,14 +1,21 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Lighting = game:GetService("Lighting")
-local ContextActionService = game:GetService("ContextActionService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local camera = workspace.CurrentCamera
 
-local radiationEvent = ReplicatedStorage:WaitForChild("RadiationUpdate")
+-- Wait for event with timeout to avoid hanging
+local radiationEvent = ReplicatedStorage:WaitForChild("RadiationUpdate", 30)
+if not radiationEvent then
+	-- Create it ourselves so the script doesn't break
+	radiationEvent = Instance.new("RemoteEvent")
+	radiationEvent.Name = "RadiationUpdate"
+	radiationEvent.Parent = ReplicatedStorage
+end
 
 -- ─── State ───
 local radiationActive = false
@@ -58,7 +65,7 @@ local clipFrame = Instance.new("Frame")
 clipFrame.Name = "ClipFrame"
 clipFrame.AnchorPoint = Vector2.new(0, 1)
 clipFrame.Position = UDim2.new(0, 0, 1, 0)
-clipFrame.Size = UDim2.new(1, 0, 1, 0) -- full height = full icon
+clipFrame.Size = UDim2.new(1, 0, 1, 0)
 clipFrame.BackgroundTransparency = 1
 clipFrame.ClipDescendants = true
 clipFrame.Parent = container
@@ -148,84 +155,6 @@ blur.Size = 0
 blur.Enabled = false
 blur.Parent = Lighting
 
--- ─── Confused Movement (swap WASD) ───
-local movementConfused = false
-
-local function enableConfusedMovement()
-	if movementConfused then return end
-	movementConfused = true
-
-	-- Override WASD with swapped directions
-	local char = player.Character
-	if not char then return end
-	local humanoid = char:FindFirstChildWhichIsA("Humanoid")
-	if not humanoid then return end
-
-	ContextActionService:BindAction("RadiationMoveForward", function(_, state)
-		if state == Enum.UserInputState.Begin then
-			humanoid:Move(Vector3.new(0, 0, 1), true) -- backward
-		elseif state == Enum.UserInputState.End then
-			humanoid:Move(Vector3.new(0, 0, 0), true)
-		end
-		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.W)
-
-	ContextActionService:BindAction("RadiationMoveBackward", function(_, state)
-		if state == Enum.UserInputState.Begin then
-			humanoid:Move(Vector3.new(0, 0, -1), true) -- forward
-		elseif state == Enum.UserInputState.End then
-			humanoid:Move(Vector3.new(0, 0, 0), true)
-		end
-		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.S)
-
-	ContextActionService:BindAction("RadiationMoveLeft", function(_, state)
-		if state == Enum.UserInputState.Begin then
-			humanoid:Move(Vector3.new(1, 0, 0), true) -- right
-		elseif state == Enum.UserInputState.End then
-			humanoid:Move(Vector3.new(0, 0, 0), true)
-		end
-		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.A)
-
-	ContextActionService:BindAction("RadiationMoveRight", function(_, state)
-		if state == Enum.UserInputState.Begin then
-			humanoid:Move(Vector3.new(-1, 0, 0), true) -- left
-		elseif state == Enum.UserInputState.End then
-			humanoid:Move(Vector3.new(0, 0, 0), true)
-		end
-		return Enum.ContextActionResult.Sink
-	end, false, Enum.KeyCode.D)
-end
-
-local function disableConfusedMovement()
-	if not movementConfused then return end
-	movementConfused = false
-
-	ContextActionService:UnbindAction("RadiationMoveForward")
-	ContextActionService:UnbindAction("RadiationMoveBackward")
-	ContextActionService:UnbindAction("RadiationMoveLeft")
-	ContextActionService:UnbindAction("RadiationMoveRight")
-end
-
--- ─── Enable/Disable radiation effects ───
-local function enableEffects()
-	colorCorrection.Enabled = true
-	blur.Enabled = true
-	enableConfusedMovement()
-end
-
-local function disableEffects()
-	colorCorrection.Enabled = false
-	colorCorrection.Brightness = 0
-	colorCorrection.Contrast = 0
-	colorCorrection.Saturation = 0
-	colorCorrection.TintColor = Color3.fromRGB(255, 255, 255)
-	blur.Enabled = false
-	blur.Size = 0
-	disableConfusedMovement()
-end
-
 -- ─── Listen for radiation updates from server ───
 radiationEvent.OnClientEvent:Connect(function(active, remaining, duration)
 	radiationActive = active
@@ -234,16 +163,23 @@ radiationEvent.OnClientEvent:Connect(function(active, remaining, duration)
 
 	if active then
 		container.Visible = true
-		enableEffects()
+		colorCorrection.Enabled = true
+		blur.Enabled = true
 	else
 		container.Visible = false
 		tooltip.Visible = false
-		disableEffects()
+		colorCorrection.Enabled = false
+		colorCorrection.Brightness = 0
+		colorCorrection.Contrast = 0
+		colorCorrection.Saturation = 0
+		colorCorrection.TintColor = Color3.fromRGB(255, 255, 255)
+		blur.Enabled = false
+		blur.Size = 0
 	end
 end)
 
--- ─── Frame update: icon timer + headache effects ───
-RunService.RenderStepped:Connect(function(dt)
+-- ─── Frame update: icon timer + headache + confused movement ───
+RunService.RenderStepped:Connect(function()
 	if not radiationActive then return end
 
 	-- Update clip frame to show remaining portion (bottom-up reveal)
@@ -251,7 +187,7 @@ RunService.RenderStepped:Connect(function(dt)
 	clipFrame.Size = UDim2.new(1, 0, ratio, 0)
 
 	-- Headache visual: pulsing color correction + blur
-	local pulse = math.sin(tick() * 3) * 0.5 + 0.5 -- 0 to 1 pulsing
+	local pulse = math.sin(tick() * 3) * 0.5 + 0.5
 	colorCorrection.Saturation = -0.4 - pulse * 0.2
 	colorCorrection.Contrast = 0.1 + pulse * 0.15
 	colorCorrection.TintColor = Color3.fromRGB(
@@ -259,7 +195,6 @@ RunService.RenderStepped:Connect(function(dt)
 		math.floor(230 - pulse * 40),
 		math.floor(220 - pulse * 50)
 	)
-
 	blur.Size = 3 + pulse * 4
 
 	-- Camera wobble for headache feel
@@ -267,11 +202,30 @@ RunService.RenderStepped:Connect(function(dt)
 	local wobbleY = math.cos(tick() * 1.7) * 0.008
 	local wobbleZ = math.sin(tick() * 3.1) * 0.006
 	camera.CFrame = camera.CFrame * CFrame.Angles(wobbleX, wobbleY, wobbleZ)
-end)
 
--- ─── Reset on respawn ───
-player.CharacterAdded:Connect(function()
-	if radiationActive then
-		enableConfusedMovement()
+	-- Confused movement: continuously override WASD with reversed directions
+	local char = player.Character
+	if not char then return end
+	local humanoid = char:FindFirstChildWhichIsA("Humanoid")
+	if not humanoid then return end
+
+	local moveDir = Vector3.new(0, 0, 0)
+	if UserInputService:IsKeyDown(Enum.KeyCode.W) then
+		moveDir = moveDir + Vector3.new(0, 0, 1) -- backward
 	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.S) then
+		moveDir = moveDir + Vector3.new(0, 0, -1) -- forward
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.A) then
+		moveDir = moveDir + Vector3.new(1, 0, 0) -- right
+	end
+	if UserInputService:IsKeyDown(Enum.KeyCode.D) then
+		moveDir = moveDir + Vector3.new(-1, 0, 0) -- left
+	end
+
+	if moveDir.Magnitude > 0 then
+		moveDir = moveDir.Unit
+	end
+
+	humanoid:Move(moveDir, true)
 end)
