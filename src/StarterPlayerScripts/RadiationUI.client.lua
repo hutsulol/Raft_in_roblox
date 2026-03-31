@@ -6,16 +6,6 @@ local Lighting = game:GetService("Lighting")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
-local camera = workspace.CurrentCamera
-
--- Wait for event with timeout to avoid hanging
-local radiationEvent = ReplicatedStorage:WaitForChild("RadiationUpdate", 30)
-if not radiationEvent then
-	-- Create it ourselves so the script doesn't break
-	radiationEvent = Instance.new("RemoteEvent")
-	radiationEvent.Name = "RadiationUpdate"
-	radiationEvent.Parent = ReplicatedStorage
-end
 
 -- ─── State ───
 local radiationActive = false
@@ -128,7 +118,6 @@ tooltipBody.TextYAlignment = Enum.TextYAlignment.Top
 tooltipBody.TextWrapped = true
 tooltipBody.Parent = tooltip
 
--- Hover detection
 iconBg.MouseEnter:Connect(function()
 	if radiationActive then
 		tooltip.Visible = true
@@ -139,13 +128,9 @@ iconBg.MouseLeave:Connect(function()
 	tooltip.Visible = false
 end)
 
--- ─── Headache Visual Effect (ColorCorrection + blur) ───
+-- ─── Headache Visual Effect ───
 local colorCorrection = Instance.new("ColorCorrectionEffect")
 colorCorrection.Name = "RadiationCC"
-colorCorrection.Brightness = 0
-colorCorrection.Contrast = 0
-colorCorrection.Saturation = 0
-colorCorrection.TintColor = Color3.fromRGB(255, 255, 255)
 colorCorrection.Enabled = false
 colorCorrection.Parent = Lighting
 
@@ -156,7 +141,10 @@ blur.Enabled = false
 blur.Parent = Lighting
 
 -- ─── Listen for radiation updates from server ───
-radiationEvent.OnClientEvent:Connect(function(active, remaining, duration)
+-- Use GetAttributeChangedSignal as backup detection
+local radiationEvent = ReplicatedStorage:FindFirstChild("RadiationUpdate")
+
+local function onRadiationUpdate(active, remaining, duration)
 	radiationActive = active
 	timeRemaining = remaining or 0
 	totalDuration = duration or 60
@@ -169,24 +157,47 @@ radiationEvent.OnClientEvent:Connect(function(active, remaining, duration)
 		container.Visible = false
 		tooltip.Visible = false
 		colorCorrection.Enabled = false
-		colorCorrection.Brightness = 0
-		colorCorrection.Contrast = 0
 		colorCorrection.Saturation = 0
+		colorCorrection.Contrast = 0
 		colorCorrection.TintColor = Color3.fromRGB(255, 255, 255)
 		blur.Enabled = false
 		blur.Size = 0
 	end
+end
+
+-- Connect immediately if event exists, otherwise wait for it
+if radiationEvent then
+	radiationEvent.OnClientEvent:Connect(onRadiationUpdate)
+else
+	task.spawn(function()
+		radiationEvent = ReplicatedStorage:WaitForChild("RadiationUpdate")
+		radiationEvent.OnClientEvent:Connect(onRadiationUpdate)
+	end)
+end
+
+-- Also watch the player attribute as a backup trigger
+player:GetAttributeChangedSignal("RadiationSick"):Connect(function()
+	local sick = player:GetAttribute("RadiationSick")
+	if sick and not radiationActive then
+		onRadiationUpdate(true, 60, 60)
+	elseif not sick and radiationActive then
+		onRadiationUpdate(false, 0, 60)
+	end
 end)
 
 -- ─── Frame update: icon timer + headache + confused movement ───
-RunService.RenderStepped:Connect(function()
+-- Use BindToRenderStep at priority AFTER default controls (200+)
+-- so our humanoid:Move() overrides the PlayerModule's movement
+RunService:BindToRenderStep("RadiationEffects", Enum.RenderPriority.Camera.Value - 1, function()
 	if not radiationActive then return end
 
-	-- Update clip frame to show remaining portion (bottom-up reveal)
+	local camera = workspace.CurrentCamera
+
+	-- Update clip frame to show remaining portion
 	local ratio = math.clamp(timeRemaining / totalDuration, 0, 1)
 	clipFrame.Size = UDim2.new(1, 0, ratio, 0)
 
-	-- Headache visual: pulsing color correction + blur
+	-- Headache visual
 	local pulse = math.sin(tick() * 3) * 0.5 + 0.5
 	colorCorrection.Saturation = -0.4 - pulse * 0.2
 	colorCorrection.Contrast = 0.1 + pulse * 0.15
@@ -197,18 +208,21 @@ RunService.RenderStepped:Connect(function()
 	)
 	blur.Size = 3 + pulse * 4
 
-	-- Camera wobble for headache feel
-	local wobbleX = math.sin(tick() * 2.3) * 0.012
-	local wobbleY = math.cos(tick() * 1.7) * 0.008
-	local wobbleZ = math.sin(tick() * 3.1) * 0.006
-	camera.CFrame = camera.CFrame * CFrame.Angles(wobbleX, wobbleY, wobbleZ)
+	-- Camera wobble
+	if camera then
+		local wobbleX = math.sin(tick() * 2.3) * 0.012
+		local wobbleY = math.cos(tick() * 1.7) * 0.008
+		local wobbleZ = math.sin(tick() * 3.1) * 0.006
+		camera.CFrame = camera.CFrame * CFrame.Angles(wobbleX, wobbleY, wobbleZ)
+	end
 
-	-- Confused movement: continuously override WASD with reversed directions
+	-- Confused movement: override AFTER default controls
 	local char = player.Character
 	if not char then return end
 	local humanoid = char:FindFirstChildWhichIsA("Humanoid")
 	if not humanoid then return end
 
+	-- Read which keys are currently held and apply reversed directions
 	local moveDir = Vector3.new(0, 0, 0)
 	if UserInputService:IsKeyDown(Enum.KeyCode.W) then
 		moveDir = moveDir + Vector3.new(0, 0, 1) -- backward
