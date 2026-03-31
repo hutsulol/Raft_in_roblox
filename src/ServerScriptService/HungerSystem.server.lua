@@ -201,10 +201,10 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			end
 		end
 
-		-- Ensure PrimaryPart
-		if bush:IsA("Model") and not bush.PrimaryPart then
-			local first = bush:FindFirstChildWhichIsA("BasePart", true)
-			if first then bush.PrimaryPart = first end
+		-- Reset WorldPivot to bounding box center with no rotation (match client ghost)
+		if bush:IsA("Model") then
+			local bbCF = bush:GetBoundingBox()
+			bush.WorldPivot = CFrame.new(bbCF.Position)
 		end
 
 		bush:PivotTo(worldCF)

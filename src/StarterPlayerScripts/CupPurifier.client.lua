@@ -19,7 +19,6 @@ local placingWorkbench = false
 local lastGhostValid = false
 local lastGhostCF = nil
 local lastGhostRaftOffset = nil -- CFrame offset relative to raft
-local ghostOriginalRotation = nil -- template's upright rotation
 
 -- ─── Hint UI ───
 local playerGui = player:WaitForChild("PlayerGui")
@@ -104,8 +103,10 @@ local function createGhost(templateName)
 	ghost = template:Clone()
 	ghost.Name = "PlacementGhost"
 
-	-- Save the template's original rotation so we can keep models upright
-	ghostOriginalRotation = ghost:GetPivot() - ghost:GetPivot().Position
+	-- Reset WorldPivot to bounding box center with NO rotation
+	-- so PivotTo only applies position + yaw, keeping the model upright
+	local bbCF, bbSize = ghost:GetBoundingBox()
+	ghost.WorldPivot = CFrame.new(bbCF.Position)
 
 	for _, part in ghost:GetDescendants() do
 		if part:IsA("BasePart") then
@@ -130,7 +131,6 @@ local function destroyGhost()
 	lastGhostValid = false
 	lastGhostCF = nil
 	lastGhostRaftOffset = nil
-	ghostOriginalRotation = nil
 end
 
 local function setGhostColor(valid)
@@ -174,9 +174,7 @@ local function updateGhost()
 			local ghostSize = ghost:GetExtentsSize()
 			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
 
-			-- Combine raft yaw with model's original rotation to keep it upright
-			local rotation = CFrame.Angles(0, raftYaw, 0) * (ghostOriginalRotation or CFrame.new())
-			local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * rotation
+			local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw, 0)
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
 			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
@@ -186,8 +184,7 @@ local function updateGhost()
 			local hitPos = result.Position
 			local ghostSize = ghost:GetExtentsSize()
 			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
-			local rotation = CFrame.Angles(0, raftYaw, 0) * (ghostOriginalRotation or CFrame.new())
-			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * rotation)
+			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw, 0))
 			setGhostColor(false)
 		end
 	else

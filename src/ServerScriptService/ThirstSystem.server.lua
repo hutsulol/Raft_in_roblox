@@ -360,16 +360,10 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		purifier:SetAttribute("WaterType", "none")
 		purifier:SetAttribute("PlacedBy", player.UserId)
 
-		-- Ensure PrimaryPart is set
-		if purifier:IsA("Model") and not purifier.PrimaryPart then
-			if template.PrimaryPart then
-				local pp = purifier:FindFirstChild(template.PrimaryPart.Name)
-				if pp then purifier.PrimaryPart = pp end
-			end
-			if not purifier.PrimaryPart then
-				local first = purifier:FindFirstChildWhichIsA("BasePart", true)
-				if first then purifier.PrimaryPart = first end
-			end
+		-- Reset WorldPivot to bounding box center with no rotation (match client ghost)
+		if purifier:IsA("Model") then
+			local bbCF = purifier:GetBoundingBox()
+			purifier.WorldPivot = CFrame.new(bbCF.Position)
 		end
 
 		purifier:PivotTo(worldCF)
@@ -406,16 +400,10 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		local workbench = template:Clone()
 		workbench.Name = "WorkBench"
 
-		-- Ensure PrimaryPart
-		if workbench:IsA("Model") and not workbench.PrimaryPart then
-			if template.PrimaryPart then
-				local pp = workbench:FindFirstChild(template.PrimaryPart.Name)
-				if pp then workbench.PrimaryPart = pp end
-			end
-			if not workbench.PrimaryPart then
-				local first = workbench:FindFirstChildWhichIsA("BasePart", true)
-				if first then workbench.PrimaryPart = first end
-			end
+		-- Reset WorldPivot to bounding box center with no rotation (match client ghost)
+		if workbench:IsA("Model") then
+			local bbCF = workbench:GetBoundingBox()
+			workbench.WorldPivot = CFrame.new(bbCF.Position)
 		end
 
 		workbench:PivotTo(worldCF)
