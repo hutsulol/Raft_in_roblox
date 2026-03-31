@@ -64,13 +64,22 @@ local recipes = {
 		description = "Purifies saltwater into drinkable fresh water. Place on your raft to use.",
 	},
 	{
+		name = "Garden",
+		displayName = "Garden Bed",
+		icon = "rbxassetid://110032041583533",
+		costs = {Log = 4},
+		craftType = "placeable",
+		category = "Technology",
+		description = "A garden bed for planting bushes. Water it with fresh water to let your plants bear fruit.",
+	},
+	{
 		name = "bush",
 		displayName = "Grape Bush",
 		icon = "rbxassetid://97055584624105",
 		costs = {Log = 1},
 		craftType = "placeable",
 		category = "Technology",
-		description = "A grape bush that grows berries every 20 seconds. Place on your raft and click to harvest.",
+		description = "A grape bush that grows berries every 20 seconds. Must be planted on a garden bed.",
 	},
 }
 

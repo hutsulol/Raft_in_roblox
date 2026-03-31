@@ -93,6 +93,12 @@ local function setupBushClickDetector(bush)
 	cd.MouseClick:Connect(function(clickPlayer)
 		if bush:GetAttribute("GrapesAvailable") == false then return end
 
+		-- Bush must be on a watered garden bed to produce fruit
+		local garden = bush.Parent
+		if garden and garden:GetAttribute("IsGarden") and not garden:GetAttribute("IsWatered") then
+			return
+		end
+
 		-- Hide grapes
 		bush:SetAttribute("GrapesAvailable", false)
 		local grapes = bush:FindFirstChild("grapes") or bush:FindFirstChild("Grapes")
@@ -125,9 +131,14 @@ local function setupBushClickDetector(bush)
 			grapeTool.Parent = backpack
 		end
 
-		-- Regrow
+		-- Regrow (only if garden is watered)
 		task.delay(GRAPE_REGROW_TIME, function()
-			if bush and bush.Parent then
+			if not bush or not bush.Parent then return end
+
+			local g = bush.Parent
+			local isWatered = g and g:GetAttribute("IsGarden") and g:GetAttribute("IsWatered") == true
+
+			if isWatered then
 				bush:SetAttribute("GrapesAvailable", true)
 				if grapes then
 					if grapes:IsA("BasePart") then
@@ -138,6 +149,27 @@ local function setupBushClickDetector(bush)
 						end
 					end
 				end
+			else
+				-- Garden is dry; poll until it's watered again
+				task.spawn(function()
+					while bush and bush.Parent do
+						task.wait(3)
+						local g2 = bush.Parent
+						if g2 and g2:GetAttribute("IsGarden") and g2:GetAttribute("IsWatered") == true then
+							bush:SetAttribute("GrapesAvailable", true)
+							if grapes then
+								if grapes:IsA("BasePart") then
+									grapes.Transparency = 0
+								elseif grapes:IsA("Model") then
+									for _, p in grapes:GetDescendants() do
+										if p:IsA("BasePart") then p.Transparency = 0 end
+									end
+								end
+							end
+							break
+						end
+					end
+				end)
 			end
 		end)
 	end)
@@ -170,17 +202,20 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		tool:Destroy()
 
 	elseif action == "placeBush" then
-		-- Player places a bush on the raft
+		-- Player places a bush on a garden bed
 		local tool = char:FindFirstChildWhichIsA("Tool")
 		if not tool or (tool.Name ~= "bush" and tool.Name ~= "Bush") then return end
+
+		-- target is the garden bed instance (sent from client)
+		if not target or not target:IsA("Model") or not target:GetAttribute("IsGarden") then return end
 
 		local raft = workspace:FindFirstChild("Raft")
 		if not raft or not raft.PrimaryPart then return end
 
-		if typeof(target) ~= "CFrame" then return end
-
-		-- Convert raft-relative offset to world space
-		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
+		-- Check garden doesn't already have a bush
+		for _, child in target:GetChildren() do
+			if child:GetAttribute("IsBush") then return end
+		end
 
 		local template = rs:FindFirstChild("bush")
 		if not template then
@@ -191,24 +226,34 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		local bush = template:Clone()
 		bush.Name = "Bush"
 		bush:SetAttribute("IsBush", true)
-		bush:SetAttribute("GrapesAvailable", true)
+		bush:SetAttribute("GrapesAvailable", target:GetAttribute("IsWatered") == true)
 		bush:SetAttribute("PlacedBy", player.UserId)
 
-		-- Remove any existing scripts inside the bush (we handle logic server-side)
+		-- Remove any existing scripts inside the bush
 		for _, desc in bush:GetDescendants() do
 			if desc:IsA("Script") or desc:IsA("LocalScript") then
 				desc:Destroy()
 			end
 		end
 
-		-- Reset WorldPivot to identity rotation; the worldCF from client already includes template rotation
+		-- Reset WorldPivot to identity rotation
 		if bush:IsA("Model") then
 			local bbCF = bush:GetBoundingBox()
 			bush.WorldPivot = CFrame.new(bbCF.Position)
 		end
 
-		bush:PivotTo(worldCF)
-		bush.Parent = raft
+		-- Position on top of garden bed center
+		local gardenCF, gardenSize = target:GetBoundingBox()
+		local bushSize = bush:GetExtentsSize()
+		local topY = gardenCF.Position.Y + gardenSize.Y / 2 + bushSize.Y / 2
+		local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
+
+		-- Apply template rotation for bush (same as client ghost)
+		local bushBBCF = bush:GetBoundingBox()
+		local bushTemplateRot = bushBBCF.Rotation
+
+		bush:PivotTo(CFrame.new(gardenCF.Position.X, topY, gardenCF.Position.Z) * CFrame.Angles(0, raftYaw, 0) * bushTemplateRot)
+		bush.Parent = target -- parent bush to the garden bed
 
 		-- Weld to raft
 		for _, part in bush:GetDescendants() do

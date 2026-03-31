@@ -9,6 +9,7 @@ local camera = workspace.CurrentCamera
 
 local cupActionEvent = ReplicatedStorage:WaitForChild("CupAction")
 local bushActionEvent = ReplicatedStorage:WaitForChild("BushAction")
+local gardenActionEvent = ReplicatedStorage:WaitForChild("GardenAction")
 
 -- ─── State ───
 local ghost = nil
@@ -16,10 +17,12 @@ local currentTool = nil
 local placingPurifier = false
 local placingBush = false
 local placingWorkbench = false
+local placingGarden = false
 local lastGhostValid = false
 local lastGhostCF = nil
 local lastGhostRaftOffset = nil -- CFrame offset relative to raft
 local ghostTemplateRotation = CFrame.new() -- template model rotation (identity for most)
+local lastTargetGarden = nil -- garden bed reference for bush placement
 
 -- ─── Hint UI ───
 local playerGui = player:WaitForChild("PlayerGui")
@@ -55,7 +58,14 @@ local function updateHint()
 
 	-- Bush placement hint
 	if placingBush then
-		hintLabel.Text = "Click on raft to place grape bush"
+		hintLabel.Text = "Click on garden bed to plant bush"
+		hintLabel.Visible = true
+		return
+	end
+
+	-- Garden placement hint
+	if placingGarden then
+		hintLabel.Text = "Click on raft to place garden bed"
 		hintLabel.Visible = true
 		return
 	end
@@ -139,6 +149,7 @@ local function destroyGhost()
 	lastGhostValid = false
 	lastGhostCF = nil
 	lastGhostRaftOffset = nil
+	lastTargetGarden = nil
 end
 
 local function setGhostColor(valid)
@@ -153,6 +164,29 @@ local function setGhostColor(valid)
 	end
 end
 
+-- ─── Find garden bed from hit instance ───
+local function findGardenBed(instance)
+	local current = instance
+	while current and current ~= workspace do
+		if current:GetAttribute("IsGarden") then
+			return current
+		end
+		current = current.Parent
+	end
+	return nil
+end
+
+-- ─── Check if garden already has a bush ───
+local function gardenHasBush(garden)
+	for _, child in garden:GetChildren() do
+		if child:GetAttribute("IsBush") then
+			return true
+		end
+	end
+	return false
+end
+
+-- ─── Update ghost position each frame ───
 local function updateGhost()
 	if not ghost then return end
 
@@ -162,7 +196,7 @@ local function updateGhost()
 		return
 	end
 
-	-- Raycast from mouse, only hit raft parts
+	-- Raycast from mouse
 	local unitRay = camera:ViewportPointToRay(mouse.X, mouse.Y)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
@@ -170,15 +204,42 @@ local function updateGhost()
 
 	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 200, params)
 
-	if result and result.Instance then
-		-- Check if we hit a raft part (must be descendant of the Raft model)
+	if not result or not result.Instance then
+		setGhostColor(false)
+		return
+	end
+
+	if placingBush then
+		-- Bush: only valid on garden beds
+		local garden = findGardenBed(result.Instance)
+		if garden and not gardenHasBush(garden) then
+			-- Snap to top center of garden bed
+			local gardenCF, gardenSize = garden:GetBoundingBox()
+			local ghostSize = ghost:GetExtentsSize()
+			local topY = gardenCF.Position.Y + gardenSize.Y / 2 + ghostSize.Y / 2
+			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
+
+			local placeCF = CFrame.new(gardenCF.Position.X, topY, gardenCF.Position.Z) * CFrame.Angles(0, raftYaw, 0) * ghostTemplateRotation
+			ghost:PivotTo(placeCF)
+			lastGhostCF = placeCF
+			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
+			lastTargetGarden = garden
+			setGhostColor(true)
+		else
+			-- Not on a valid garden bed — show red ghost at cursor
+			lastTargetGarden = nil
+			local hitPos = result.Position
+			local ghostSize = ghost:GetExtentsSize()
+			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
+			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw, 0) * ghostTemplateRotation)
+			setGhostColor(false)
+		end
+	else
+		-- Other placeables: place on raft surface
 		local hitOnRaft = result.Instance:IsDescendantOf(raft)
 
 		if hitOnRaft then
 			local hitPos = result.Position
-			local hitNormal = result.Normal
-
-			-- Place on top of the surface we hit
 			local ghostSize = ghost:GetExtentsSize()
 			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
 
@@ -195,8 +256,6 @@ local function updateGhost()
 			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw, 0))
 			setGhostColor(false)
 		end
-	else
-		setGhostColor(false)
 	end
 end
 
@@ -231,21 +290,31 @@ local function onToolEquipped(tool)
 		placingPurifier = true
 		placingBush = false
 		placingWorkbench = false
+		placingGarden = false
 		createGhost("Destitalor")
 	elseif tool.Name == "bush" or tool.Name == "Bush" then
 		placingBush = true
 		placingPurifier = false
 		placingWorkbench = false
+		placingGarden = false
 		createGhost("bush")
 	elseif tool.Name == "WorkBench" then
 		placingWorkbench = true
 		placingPurifier = false
 		placingBush = false
+		placingGarden = false
 		createGhost("WorkBench")
+	elseif tool.Name == "Garden" then
+		placingGarden = true
+		placingPurifier = false
+		placingBush = false
+		placingWorkbench = false
+		createGhost("Garden")
 	else
 		placingPurifier = false
 		placingBush = false
 		placingWorkbench = false
+		placingGarden = false
 		destroyGhost()
 	end
 
@@ -263,6 +332,7 @@ local function onToolUnequipped()
 	placingPurifier = false
 	placingBush = false
 	placingWorkbench = false
+	placingGarden = false
 	destroyGhost()
 	updateHint()
 end
@@ -296,12 +366,12 @@ player.CharacterAdded:Connect(setupCharacter)
 
 -- ─── Update ghost every frame ───
 RunService.RenderStepped:Connect(function()
-	if (placingPurifier or placingBush or placingWorkbench) and ghost then
+	if (placingPurifier or placingBush or placingWorkbench or placingGarden) and ghost then
 		updateGhost()
 	end
 end)
 
--- ─── Mouse Click Handler (for purifier/bush placement and cup→purifier interactions) ───
+-- ─── Mouse Click Handler ───
 mouse.Button1Down:Connect(function()
 	if not currentTool then return end
 
@@ -314,10 +384,10 @@ mouse.Button1Down:Connect(function()
 		return
 	end
 
-	-- Bush placement
+	-- Bush placement (on garden bed)
 	if placingBush and ghost then
-		if not lastGhostValid or not lastGhostRaftOffset then return end
-		bushActionEvent:FireServer("placeBush", lastGhostRaftOffset)
+		if not lastGhostValid or not lastTargetGarden then return end
+		bushActionEvent:FireServer("placeBush", lastTargetGarden)
 		destroyGhost()
 		placingBush = false
 		return
@@ -329,6 +399,15 @@ mouse.Button1Down:Connect(function()
 		cupActionEvent:FireServer("placeWorkbench", lastGhostRaftOffset)
 		destroyGhost()
 		placingWorkbench = false
+		return
+	end
+
+	-- Garden placement
+	if placingGarden and ghost then
+		if not lastGhostValid or not lastGhostRaftOffset then return end
+		gardenActionEvent:FireServer("placeGarden", lastGhostRaftOffset)
+		destroyGhost()
+		placingGarden = false
 		return
 	end
 
