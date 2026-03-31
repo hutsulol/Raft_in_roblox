@@ -66,7 +66,7 @@ local recipes = {
 	{
 		name = "bush",
 		displayName = "Grape Bush",
-		icon = "rbxassetid://110032041583533",
+		icon = "rbxassetid://97055584624105",
 		costs = {Log = 1},
 		craftType = "placeable",
 		category = "Technology",

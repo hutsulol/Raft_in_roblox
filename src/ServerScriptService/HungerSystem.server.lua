@@ -110,6 +110,7 @@ local function setupBushClickDetector(bush)
 		local grapeTool = Instance.new("Tool")
 		grapeTool.Name = "[GRAPES]"
 		grapeTool.CanBeDropped = false
+		grapeTool.TextureId = "rbxassetid://108688760959398"
 		grapeTool:SetAttribute("IsGrape", true)
 
 		local handle = Instance.new("Part")
