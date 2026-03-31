@@ -1325,6 +1325,11 @@ backpack.ChildAdded:Connect(function() task.wait(0.1) updateUI() end)
 backpack.ChildRemoved:Connect(function() task.wait(0.1) updateUI() end)
 
 player.CharacterAdded:Connect(function(char)
+	-- Reconnect to new Backpack after respawn
+	local newBackpack = player:WaitForChild("Backpack")
+	newBackpack.ChildAdded:Connect(function() task.wait(0.1) updateUI() end)
+	newBackpack.ChildRemoved:Connect(function() task.wait(0.1) updateUI() end)
+
 	char.ChildAdded:Connect(function(child)
 		if child:IsA("Tool") then task.wait(0.1) updateUI() end
 	end)
