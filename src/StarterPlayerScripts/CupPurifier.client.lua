@@ -17,6 +17,7 @@ local placingPurifier = false
 local placingBush = false
 local lastGhostValid = false
 local lastGhostCF = nil
+local lastGhostRaftOffset = nil -- CFrame offset relative to raft
 
 -- ─── Hint UI ───
 local playerGui = player:WaitForChild("PlayerGui")
@@ -116,6 +117,7 @@ local function destroyGhost()
 	end
 	lastGhostValid = false
 	lastGhostCF = nil
+	lastGhostRaftOffset = nil
 end
 
 local function setGhostColor(valid)
@@ -163,6 +165,7 @@ local function updateGhost()
 			local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw, 0)
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
+			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
 			setGhostColor(true)
 		else
 			-- Cursor is not on the raft — show red ghost at cursor position
@@ -275,8 +278,8 @@ mouse.Button1Down:Connect(function()
 
 	-- Purifier placement
 	if placingPurifier and ghost then
-		if not lastGhostValid or not lastGhostCF then return end
-		cupActionEvent:FireServer("placePurifier", lastGhostCF)
+		if not lastGhostValid or not lastGhostRaftOffset then return end
+		cupActionEvent:FireServer("placePurifier", lastGhostRaftOffset)
 		destroyGhost()
 		placingPurifier = false
 		return
@@ -284,8 +287,8 @@ mouse.Button1Down:Connect(function()
 
 	-- Bush placement
 	if placingBush and ghost then
-		if not lastGhostValid or not lastGhostCF then return end
-		bushActionEvent:FireServer("placeBush", lastGhostCF)
+		if not lastGhostValid or not lastGhostRaftOffset then return end
+		bushActionEvent:FireServer("placeBush", lastGhostRaftOffset)
 		destroyGhost()
 		placingBush = false
 		return

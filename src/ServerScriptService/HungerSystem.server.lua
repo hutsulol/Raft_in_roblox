@@ -179,6 +179,9 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		if typeof(target) ~= "CFrame" then return end
 
+		-- Convert raft-relative offset to world space
+		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
+
 		local template = rs:FindFirstChild("bush")
 		if not template then
 			warn("HungerSystem: bush template not found in ReplicatedStorage")
@@ -204,7 +207,7 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			if first then bush.PrimaryPart = first end
 		end
 
-		bush:PivotTo(target)
+		bush:PivotTo(worldCF)
 		bush.Parent = raft
 
 		-- Weld to raft

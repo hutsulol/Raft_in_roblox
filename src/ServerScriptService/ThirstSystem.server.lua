@@ -345,8 +345,11 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		local raft = workspace:FindFirstChild("Raft")
 		if not raft or not raft.PrimaryPart then return end
 
-		-- Get placement position from target (CFrame sent from client)
+		-- Get placement offset relative to raft (CFrame sent from client)
 		if typeof(target) ~= "CFrame" then return end
+
+		-- Convert raft-relative offset to world space
+		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
 
 		local template = rs:FindFirstChild("Destitalor")
 		if not template then return end
@@ -369,7 +372,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 			end
 		end
 
-		purifier:PivotTo(target)
+		purifier:PivotTo(worldCF)
 		purifier.Parent = raft
 
 		-- Weld to raft
