@@ -201,11 +201,10 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			end
 		end
 
-		-- Reset WorldPivot to bounding box center with no rotation (match client ghost)
+		-- Preserve the bush template's original orientation (bounding box CFrame includes rotation)
 		if bush:IsA("Model") then
 			local bbCF = bush:GetBoundingBox()
-			-- Bush template is oriented sideways; apply corrective rotation
-			bush.WorldPivot = CFrame.new(bbCF.Position) * CFrame.Angles(math.rad(-90), 0, 0)
+			bush.WorldPivot = bbCF
 		end
 
 		bush:PivotTo(worldCF)

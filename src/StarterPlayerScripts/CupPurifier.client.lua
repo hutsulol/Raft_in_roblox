@@ -103,14 +103,14 @@ local function createGhost(templateName)
 	ghost = template:Clone()
 	ghost.Name = "PlacementGhost"
 
-	-- Reset WorldPivot to bounding box center with NO rotation
-	-- so PivotTo only applies position + yaw, keeping the model upright
+	-- Reset WorldPivot to bounding box center
 	local bbCF, bbSize = ghost:GetBoundingBox()
-	ghost.WorldPivot = CFrame.new(bbCF.Position)
-
-	-- Bush template is oriented sideways; apply corrective rotation
 	if templateName == "bush" then
-		ghost.WorldPivot = CFrame.new(bbCF.Position) * CFrame.Angles(math.rad(-90), 0, 0)
+		-- Bush template has correct orientation baked in; preserve its rotation
+		ghost.WorldPivot = bbCF
+	else
+		-- Strip rotation for other models (workbench, purifier)
+		ghost.WorldPivot = CFrame.new(bbCF.Position)
 	end
 
 	for _, part in ghost:GetDescendants() do
