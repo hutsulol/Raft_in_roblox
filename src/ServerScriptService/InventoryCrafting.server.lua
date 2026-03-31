@@ -160,6 +160,9 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 		local tool = Instance.new("Tool")
 		tool.Name = recipe.name
 		tool.CanBeDropped = false
+		if recipe.icon then
+			tool.TextureId = recipe.icon
+		end
 
 		local handle = Instance.new("Part")
 		handle.Name = "Handle"
