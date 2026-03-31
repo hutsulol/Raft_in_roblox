@@ -34,6 +34,58 @@ stroke.Color = Color3.fromRGB(90, 60, 30)
 stroke.Thickness = 2
 stroke.Parent = icon
 
+-- ─── Tooltip (hover description) ───
+local tooltip = Instance.new("Frame")
+tooltip.Name = "Tooltip"
+tooltip.Position = UDim2.new(1, 8, 0, 0)
+tooltip.Size = UDim2.new(0, 200, 0, 60)
+tooltip.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+tooltip.BackgroundTransparency = 0.15
+tooltip.Visible = false
+tooltip.Parent = icon
+
+local tooltipCorner = Instance.new("UICorner")
+tooltipCorner.CornerRadius = UDim.new(0, 6)
+tooltipCorner.Parent = tooltip
+
+local tooltipStroke = Instance.new("UIStroke")
+tooltipStroke.Color = Color3.fromRGB(120, 80, 30)
+tooltipStroke.Thickness = 1.5
+tooltipStroke.Parent = tooltip
+
+local tooltipTitle = Instance.new("TextLabel")
+tooltipTitle.Size = UDim2.new(1, -12, 0, 20)
+tooltipTitle.Position = UDim2.new(0, 6, 0, 4)
+tooltipTitle.BackgroundTransparency = 1
+tooltipTitle.Text = "Radiation Sickness"
+tooltipTitle.TextColor3 = Color3.fromRGB(255, 100, 100)
+tooltipTitle.TextSize = 14
+tooltipTitle.Font = Enum.Font.GothamBold
+tooltipTitle.TextXAlignment = Enum.TextXAlignment.Left
+tooltipTitle.Parent = tooltip
+
+local tooltipBody = Instance.new("TextLabel")
+tooltipBody.Size = UDim2.new(1, -12, 0, 32)
+tooltipBody.Position = UDim2.new(0, 6, 0, 24)
+tooltipBody.BackgroundTransparency = 1
+tooltipBody.Text = "Headache, increased hunger drain"
+tooltipBody.TextColor3 = Color3.fromRGB(200, 200, 200)
+tooltipBody.TextSize = 12
+tooltipBody.Font = Enum.Font.Gotham
+tooltipBody.TextXAlignment = Enum.TextXAlignment.Left
+tooltipBody.TextWrapped = true
+tooltipBody.Parent = tooltip
+
+icon.MouseEnter:Connect(function()
+	if icon.Visible then
+		tooltip.Visible = true
+	end
+end)
+
+icon.MouseLeave:Connect(function()
+	tooltip.Visible = false
+end)
+
 -- ─── Headache Visual Effect ───
 local colorCorrection = Instance.new("ColorCorrectionEffect")
 colorCorrection.Name = "RadiationCC"
