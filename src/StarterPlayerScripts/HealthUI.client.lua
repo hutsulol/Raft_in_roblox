@@ -1,25 +1,28 @@
 local Players = game:GetService("Players")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local StarterGui = game:GetService("StarterGui")
 local TweenService = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local hungerEvent = ReplicatedStorage:WaitForChild("HungerUpdate")
+-- Hide default Roblox health bar
+pcall(function()
+	StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Health, false)
+end)
 
 -- ─── Create UI ───
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "HungerUI"
+screenGui.Name = "HealthUI"
 screenGui.DisplayOrder = 15
 screenGui.IgnoreGuiInset = true
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
--- Container — middle bar (thirst, hunger, health)
+-- Container — bottom bar of the three (thirst, hunger, health)
 local container = Instance.new("Frame")
-container.Name = "HungerContainer"
+container.Name = "HealthContainer"
 container.AnchorPoint = Vector2.new(0, 1)
-container.Position = UDim2.new(0, 12, 1, -118)
+container.Position = UDim2.new(0, 12, 1, -84)
 container.Size = UDim2.new(0, 200, 0, 28)
 container.BackgroundTransparency = 1
 container.Parent = screenGui
@@ -47,7 +50,7 @@ local icon = Instance.new("TextLabel")
 icon.Name = "Icon"
 icon.Size = UDim2.new(1, 0, 1, 0)
 icon.BackgroundTransparency = 1
-icon.Text = "\u{1F356}"
+icon.Text = "\u{2764}"
 icon.TextSize = 16
 icon.Font = Enum.Font.GothamBold
 icon.TextColor3 = Color3.fromRGB(255, 255, 255)
@@ -76,7 +79,7 @@ barBgStroke.Parent = barBg
 local barFill = Instance.new("Frame")
 barFill.Name = "Fill"
 barFill.Size = UDim2.new(1, 0, 1, 0)
-barFill.BackgroundColor3 = Color3.fromRGB(200, 150, 50)
+barFill.BackgroundColor3 = Color3.fromRGB(180, 45, 40)
 barFill.BorderSizePixel = 0
 barFill.Parent = barBg
 
@@ -84,9 +87,9 @@ local fillCorner = Instance.new("UICorner")
 fillCorner.CornerRadius = UDim.new(0, 4)
 fillCorner.Parent = barFill
 
--- ─── Update Handler ───
-local function updateBar(hunger, max)
-	local ratio = math.clamp(hunger / max, 0, 1)
+-- ─── Update from Humanoid Health ───
+local function updateBar(health, maxHealth)
+	local ratio = math.clamp(health / maxHealth, 0, 1)
 
 	TweenService:Create(barFill, TweenInfo.new(0.3, Enum.EasingStyle.Quad), {
 		Size = UDim2.new(ratio, 0, 1, 0)
@@ -94,11 +97,11 @@ local function updateBar(hunger, max)
 
 	local color
 	if ratio > 0.5 then
-		color = Color3.fromRGB(200, 150, 50)
+		color = Color3.fromRGB(180, 45, 40)
 	elseif ratio > 0.25 then
-		color = Color3.fromRGB(220, 170, 50)
+		color = Color3.fromRGB(200, 100, 30)
 	else
-		color = Color3.fromRGB(200, 50, 50)
+		color = Color3.fromRGB(150, 20, 20)
 	end
 
 	TweenService:Create(barFill, TweenInfo.new(0.3), {
@@ -106,6 +109,22 @@ local function updateBar(hunger, max)
 	}):Play()
 end
 
-hungerEvent.OnClientEvent:Connect(function(hunger, max)
-	updateBar(hunger, max)
+local function onCharacterAdded(char)
+	local hum = char:WaitForChild("Humanoid")
+	updateBar(hum.Health, hum.MaxHealth)
+
+	hum.HealthChanged:Connect(function(newHealth)
+		updateBar(newHealth, hum.MaxHealth)
+	end)
+end
+
+local char = player.Character
+if char then
+	task.spawn(onCharacterAdded, char)
+end
+player.CharacterAdded:Connect(function(newChar)
+	-- Reset to full on respawn
+	barFill.Size = UDim2.new(1, 0, 1, 0)
+	barFill.BackgroundColor3 = Color3.fromRGB(180, 45, 40)
+	onCharacterAdded(newChar)
 end)
