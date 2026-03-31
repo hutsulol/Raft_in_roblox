@@ -108,6 +108,11 @@ local function createGhost(templateName)
 	local bbCF, bbSize = ghost:GetBoundingBox()
 	ghost.WorldPivot = CFrame.new(bbCF.Position)
 
+	-- Bush template is oriented sideways; apply corrective rotation
+	if templateName == "bush" then
+		ghost.WorldPivot = CFrame.new(bbCF.Position) * CFrame.Angles(0, 0, math.rad(90))
+	end
+
 	for _, part in ghost:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Transparency = 0.5
