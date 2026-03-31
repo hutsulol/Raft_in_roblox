@@ -19,6 +19,7 @@ local placingWorkbench = false
 local lastGhostValid = false
 local lastGhostCF = nil
 local lastGhostRaftOffset = nil -- CFrame offset relative to raft
+local ghostTemplateRotation = CFrame.new() -- template model rotation (identity for most)
 
 -- ─── Hint UI ───
 local playerGui = player:WaitForChild("PlayerGui")
@@ -103,14 +104,16 @@ local function createGhost(templateName)
 	ghost = template:Clone()
 	ghost.Name = "PlacementGhost"
 
-	-- Reset WorldPivot to bounding box center
+	-- Reset WorldPivot to bounding box center with identity rotation
 	local bbCF, bbSize = ghost:GetBoundingBox()
+	ghost.WorldPivot = CFrame.new(bbCF.Position)
+
+	-- Store the template's original rotation so we can apply it during placement
+	-- (bush template needs this to stay upright; others have identity rotation)
 	if templateName == "bush" then
-		-- Bush template has correct orientation baked in; preserve its rotation
-		ghost.WorldPivot = bbCF
+		ghostTemplateRotation = bbCF.Rotation
 	else
-		-- Strip rotation for other models (workbench, purifier)
-		ghost.WorldPivot = CFrame.new(bbCF.Position)
+		ghostTemplateRotation = CFrame.new()
 	end
 
 	for _, part in ghost:GetDescendants() do
@@ -179,7 +182,7 @@ local function updateGhost()
 			local ghostSize = ghost:GetExtentsSize()
 			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
 
-			local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw, 0)
+			local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw, 0) * ghostTemplateRotation
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
 			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)

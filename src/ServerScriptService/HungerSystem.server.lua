@@ -201,10 +201,10 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			end
 		end
 
-		-- Preserve the bush template's original orientation (bounding box CFrame includes rotation)
+		-- Reset WorldPivot to identity rotation; the worldCF from client already includes template rotation
 		if bush:IsA("Model") then
 			local bbCF = bush:GetBoundingBox()
-			bush.WorldPivot = bbCF
+			bush.WorldPivot = CFrame.new(bbCF.Position)
 		end
 
 		bush:PivotTo(worldCF)
