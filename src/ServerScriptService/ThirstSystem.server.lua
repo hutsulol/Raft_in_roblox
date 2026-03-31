@@ -7,7 +7,7 @@ local THIRST_DRAIN_AMOUNT = 2
 local THIRST_DRAIN_INTERVAL = 10 -- lose 2 thirst every 10 seconds
 local DRINK_RESTORE = 25
 local PURIFY_TIME = 20
-local THIRST_DAMAGE = 5  -- damage per second at 0 thirst
+local THIRST_DAMAGE = 0.625  -- damage per tick at 0 thirst (5 / 8)
 local MAX_PURIFIER_WATER = 3
 
 -- ─── Remote Events ───

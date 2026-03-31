@@ -6,7 +6,7 @@ local MAX_HUNGER = 100
 local HUNGER_DRAIN_AMOUNT = 2
 local HUNGER_DRAIN_INTERVAL = 15 -- lose 2 hunger every 15 seconds
 local EAT_RESTORE = 20
-local HUNGER_DAMAGE = 5 -- damage per second at 0 hunger
+local HUNGER_DAMAGE = 0.625 -- damage per tick at 0 hunger (5 / 8)
 local HP_REGEN_AMOUNT = 5 -- HP restored when eating
 local GRAPE_REGROW_TIME = 20
 
