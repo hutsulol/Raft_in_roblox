@@ -14,6 +14,14 @@ if not vignetteEvent then
 	vignetteEvent.Parent = rs
 end
 
+-- BindableEvent for triggering radiation (server-to-server)
+local triggerRadiation = rs:FindFirstChild("TriggerRadiation")
+if not triggerRadiation then
+	triggerRadiation = Instance.new("BindableEvent")
+	triggerRadiation.Name = "TriggerRadiation"
+	triggerRadiation.Parent = rs
+end
+
 local spawnTimes = {}  -- player -> time they spawned/respawned
 local waterTimes = {}  -- humanoid -> time they entered water
 local waterHitCounts = {} -- player -> number of ocean damage ticks
@@ -85,9 +93,7 @@ local function damageHumanoid(humanoid, rootPart, player)
 				waterHitCounts[player] = (waterHitCounts[player] or 0) + 1
 				if waterHitCounts[player] >= RADIATION_HIT_THRESHOLD then
 					waterHitCounts[player] = 0 -- reset counter
-					if _G.ApplyRadiation then
-						_G.ApplyRadiation(player)
-					end
+					triggerRadiation:Fire(player)
 				end
 			end
 		end

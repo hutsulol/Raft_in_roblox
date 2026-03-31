@@ -65,6 +65,19 @@ end
 -- Expose globally so other scripts can trigger radiation
 _G.ApplyRadiation = applyRadiation
 
+-- ─── Listen for BindableEvent trigger (from WaterDamage etc.) ───
+local triggerRadiation = rs:FindFirstChild("TriggerRadiation")
+if not triggerRadiation then
+	triggerRadiation = Instance.new("BindableEvent")
+	triggerRadiation.Name = "TriggerRadiation"
+	triggerRadiation.Parent = rs
+end
+triggerRadiation.Event:Connect(function(player)
+	if player and player:IsA("Player") then
+		applyRadiation(player)
+	end
+end)
+
 -- ─── Increased hunger drain while sick ───
 -- We hook into the hunger system by periodically draining extra hunger
 task.spawn(function()
