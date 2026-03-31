@@ -16,16 +16,20 @@ end
 
 local spawnTimes = {}  -- player -> time they spawned/respawned
 local waterTimes = {}  -- humanoid -> time they entered water
+local waterHitCounts = {} -- player -> number of ocean damage ticks
+local RADIATION_HIT_THRESHOLD = 3 -- radiation sickness after this many damage ticks
 
 Players.PlayerAdded:Connect(function(player)
 	spawnTimes[player] = tick()
 	player.CharacterAdded:Connect(function()
 		spawnTimes[player] = tick()
+		waterHitCounts[player] = 0
 	end)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
 	spawnTimes[player] = nil
+	waterHitCounts[player] = nil
 end)
 
 -- Initialize for players already in game
@@ -33,6 +37,7 @@ for _, player in Players:GetPlayers() do
 	spawnTimes[player] = tick()
 	player.CharacterAdded:Connect(function()
 		spawnTimes[player] = tick()
+		waterHitCounts[player] = 0
 	end)
 end
 
@@ -74,6 +79,17 @@ local function damageHumanoid(humanoid, rootPart, player)
 		if tick() - waterTimes[humanoid] >= WATER_GRACE then
 			local damage = humanoid.MaxHealth * DAMAGE_PERCENT
 			humanoid:TakeDamage(damage)
+
+			-- Track ocean damage hits for radiation sickness
+			if player then
+				waterHitCounts[player] = (waterHitCounts[player] or 0) + 1
+				if waterHitCounts[player] >= RADIATION_HIT_THRESHOLD then
+					waterHitCounts[player] = 0 -- reset counter
+					if _G.ApplyRadiation then
+						_G.ApplyRadiation(player)
+					end
+				end
+			end
 		end
 	else
 		-- Back on solid ground, reset water timer
