@@ -1,43 +1,56 @@
-local rs = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Create vignette UI with a single radial image
+-- Create vignette UI
 local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "WaterVignette"
+screenGui.Name = "DamageVignette"
 screenGui.DisplayOrder = 100
 screenGui.IgnoreGuiInset = true
 screenGui.Parent = playerGui
 
--- Radial vignette using rbxassetid (standard radial gradient vignette)
 local vignette = Instance.new("ImageLabel")
 vignette.Name = "Vignette"
 vignette.AnchorPoint = Vector2.new(0.5, 0.5)
 vignette.Position = UDim2.new(0.5, 0, 0.5, 0)
 vignette.Size = UDim2.new(1, 0, 1, 0)
 vignette.BackgroundTransparency = 1
-vignette.Image = "rbxassetid://330427473" -- standard radial vignette texture
-vignette.ImageColor3 = Color3.fromRGB(15, 40, 10) -- dark toxic green
+vignette.Image = "rbxassetid://131740207102347"
 vignette.ImageTransparency = 1
 vignette.ScaleType = Enum.ScaleType.Stretch
 vignette.Parent = screenGui
 
--- Listen for vignette updates from server
-local currentIntensity = 0
-local targetIntensity = 0
+-- Track current opacity for smooth transitions
+local currentTransparency = 1
+local targetTransparency = 1
 
-local vignetteEvent = rs:WaitForChild("WaterVignette")
-vignetteEvent.OnClientEvent:Connect(function(intensity)
-	targetIntensity = intensity
+local function onCharacterAdded(char)
+	local hum = char:WaitForChild("Humanoid")
+
+	hum.HealthChanged:Connect(function(newHealth)
+		local ratio = newHealth / hum.MaxHealth
+		-- Full health = fully transparent (1), no health = fully visible (0)
+		targetTransparency = ratio
+	end)
+
+	-- Initialize
+	targetTransparency = hum.Health / hum.MaxHealth
+end
+
+local char = player.Character
+if char then
+	task.spawn(onCharacterAdded, char)
+end
+player.CharacterAdded:Connect(function(newChar)
+	currentTransparency = 1
+	targetTransparency = 1
+	onCharacterAdded(newChar)
 end)
 
 -- Smooth interpolation loop
 RunService.Heartbeat:Connect(function(dt)
-	currentIntensity = currentIntensity + (targetIntensity - currentIntensity) * math.min(1, dt * 3)
-
-	-- At max intensity, image should be clearly visible (transparency ~0.15)
-	vignette.ImageTransparency = 1 - (currentIntensity * 0.85)
+	currentTransparency = currentTransparency + (targetTransparency - currentTransparency) * math.min(1, dt * 5)
+	vignette.ImageTransparency = currentTransparency
 end)
