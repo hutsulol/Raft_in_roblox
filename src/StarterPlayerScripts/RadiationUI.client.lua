@@ -49,14 +49,16 @@ cooldownOverlay.ZIndex = 2
 cooldownOverlay.Parent = icon
 
 -- ─── Tooltip (hover description) ───
+-- Parented to screenGui (not icon) to avoid ClipsDescendants clipping
 local tooltip = Instance.new("Frame")
 tooltip.Name = "Tooltip"
-tooltip.Position = UDim2.new(1, 8, 0, 0)
+tooltip.AnchorPoint = Vector2.new(0, 1)
+tooltip.Position = UDim2.new(0, 16 + 36 + 8, 1, -188)
 tooltip.Size = UDim2.new(0, 200, 0, 60)
 tooltip.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 tooltip.BackgroundTransparency = 0.15
 tooltip.Visible = false
-tooltip.Parent = icon
+tooltip.Parent = screenGui
 
 local tooltipCorner = Instance.new("UICorner")
 tooltipCorner.CornerRadius = UDim.new(0, 6)
