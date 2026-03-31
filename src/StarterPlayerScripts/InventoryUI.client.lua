@@ -199,16 +199,25 @@ local function rebuildSlotData()
 			end
 		end
 
-		local slot = 2
+		-- Count duplicate tools for stacking
+		local toolCounts = {}
 		for _, tool in tools do
-			-- Find next free hotbar slot
-			while slot <= HOTBAR_SLOTS and slotData[slot] do
+			toolCounts[tool.Name] = (toolCounts[tool.Name] or 0) + 1
+		end
+
+		local slot = 2
+		local addedTools = {}
+		for _, tool in tools do
+			if not addedTools[tool.Name] then
+				addedTools[tool.Name] = true
+				while slot <= HOTBAR_SLOTS and slotData[slot] do
+					slot = slot + 1
+				end
+				if slot > HOTBAR_SLOTS then break end
+				local toolIcon = (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+				slotData[slot] = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon, count = toolCounts[tool.Name]}
 				slot = slot + 1
 			end
-			if slot > HOTBAR_SLOTS then break end
-			local toolIcon = (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
-			slotData[slot] = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon}
-			slot = slot + 1
 		end
 
 		slotsInitialized = true
@@ -232,11 +241,20 @@ local function rebuildSlotData()
 		end
 	end
 
-	-- Add new tools
+	-- Add new tools (count duplicates for stacking)
+	local toolCounts = {}
 	for _, tool in tools do
-		if not findItemSlot("tool", tool.Name) then
+		toolCounts[tool.Name] = (toolCounts[tool.Name] or 0) + 1
+	end
+
+	for _, tool in tools do
+		local existing = findItemSlot("tool", tool.Name)
+		if existing then
+			-- Update count for stackable tools
+			slotData[existing].count = toolCounts[tool.Name]
+		else
 			local toolIcon = (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
-			local entry = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon}
+			local entry = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon, count = toolCounts[tool.Name]}
 			local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, TOTAL_SLOTS)
 			if empty then slotData[empty] = entry end
 		end
@@ -266,7 +284,7 @@ local function renderSlot(slot, data)
 	img.ScaleType = Enum.ScaleType.Fit
 	img.Parent = slot
 
-	if data.count and data.count > 0 then
+	if data.count and data.count > 1 then
 		local count = Instance.new("TextLabel")
 		count.Name = "ItemCount"
 		count.Size = UDim2.new(0, 25, 0, 16)
