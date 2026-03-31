@@ -25,6 +25,8 @@ icon.ScaleType = Enum.ScaleType.Stretch
 icon.Visible = false
 icon.Parent = screenGui
 
+icon.ClipsDescendants = true
+
 local corner = Instance.new("UICorner")
 corner.CornerRadius = UDim.new(0, 6)
 corner.Parent = icon
@@ -33,6 +35,18 @@ local stroke = Instance.new("UIStroke")
 stroke.Color = Color3.fromRGB(90, 60, 30)
 stroke.Thickness = 2
 stroke.Parent = icon
+
+-- ─── Cooldown overlay (grows top→bottom as radiation expires) ───
+local cooldownOverlay = Instance.new("Frame")
+cooldownOverlay.Name = "CooldownOverlay"
+cooldownOverlay.AnchorPoint = Vector2.new(0, 0)
+cooldownOverlay.Position = UDim2.new(0, 0, 0, 0)
+cooldownOverlay.Size = UDim2.new(1, 0, 0, 0) -- starts hidden
+cooldownOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+cooldownOverlay.BackgroundTransparency = 0.5
+cooldownOverlay.BorderSizePixel = 0
+cooldownOverlay.ZIndex = 2
+cooldownOverlay.Parent = icon
 
 -- ─── Tooltip (hover description) ───
 local tooltip = Instance.new("Frame")
@@ -98,6 +112,21 @@ blur.Size = 0
 blur.Enabled = false
 blur.Parent = Lighting
 
+-- ─── Radiation timer tracking ───
+local RADIATION_DURATION = 60
+local radiationStartTime = 0
+
+local radiationEvent = game:GetService("ReplicatedStorage"):WaitForChild("RadiationUpdate", 10)
+
+if radiationEvent then
+	radiationEvent.OnClientEvent:Connect(function(active, remaining, duration)
+		if active then
+			RADIATION_DURATION = duration or 60
+			radiationStartTime = tick() - (RADIATION_DURATION - (remaining or RADIATION_DURATION))
+		end
+	end)
+end
+
 -- ─── Watch the RadiationSick attribute directly ───
 local function onRadiationChanged()
 	local sick = player:GetAttribute("RadiationSick") == true
@@ -105,11 +134,19 @@ local function onRadiationChanged()
 	colorCorrection.Enabled = sick
 	blur.Enabled = sick
 
-	if not sick then
+	if sick then
+		-- If we don't have a start time yet, assume just started
+		if radiationStartTime == 0 then
+			radiationStartTime = tick()
+		end
+		cooldownOverlay.Size = UDim2.new(1, 0, 0, 0)
+	else
 		colorCorrection.Saturation = 0
 		colorCorrection.Contrast = 0
 		colorCorrection.TintColor = Color3.fromRGB(255, 255, 255)
 		blur.Size = 0
+		cooldownOverlay.Size = UDim2.new(1, 0, 0, 0)
+		radiationStartTime = 0
 	end
 end
 
@@ -119,7 +156,7 @@ player:GetAttributeChangedSignal("RadiationSick"):Connect(onRadiationChanged)
 -- Check initial state
 onRadiationChanged()
 
--- ─── Headache pulsing effect while sick ───
+-- ─── Headache pulsing effect + cooldown overlay while sick ───
 game:GetService("RunService").Heartbeat:Connect(function()
 	if not icon.Visible then return end
 
@@ -132,4 +169,9 @@ game:GetService("RunService").Heartbeat:Connect(function()
 		math.floor(220 - pulse * 50)
 	)
 	blur.Size = 3 + pulse * 4
+
+	-- Update cooldown overlay (grows from top to bottom)
+	local elapsed = tick() - radiationStartTime
+	local progress = math.clamp(elapsed / RADIATION_DURATION, 0, 1)
+	cooldownOverlay.Size = UDim2.new(1, 0, progress, 0)
 end)
