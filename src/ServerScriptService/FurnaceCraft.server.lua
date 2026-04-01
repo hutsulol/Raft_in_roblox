@@ -208,6 +208,9 @@ local function tryAutoSmelt(furnace, state, player)
 	state.smelting = true
 	state.startTime = tick()
 	state.smeltPlayer = player
+	-- Increment smelt ID so old loops know they're stale
+	state.smeltId = (state.smeltId or 0) + 1
+	local mySmeltId = state.smeltId
 
 	local totalTime = recipe.time
 	furnaceEvent:FireClient(player, "smeltStart", totalTime, state.fuelCount)
@@ -216,11 +219,11 @@ local function tryAutoSmelt(furnace, state, player)
 	task.spawn(function()
 		local elapsed = 0
 
-		while state.smelting and furnaceStates[furnace] do
+		while state.smelting and furnaceStates[furnace] and state.smeltId == mySmeltId do
 			task.wait(FUEL_BURN_TIME)
 			elapsed = elapsed + FUEL_BURN_TIME
 
-			if not state.smelting or not furnaceStates[furnace] then break end
+			if not state.smelting or not furnaceStates[furnace] or state.smeltId ~= mySmeltId then break end
 
 			state.fuelCount = state.fuelCount - 1
 
