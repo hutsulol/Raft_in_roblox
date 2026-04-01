@@ -393,7 +393,7 @@ end)
 
 craftEvent.OnClientEvent:Connect(function(action, data, inv)
 	if action == "recipes" then
-		recipes = data
+		-- Use server inventory data but keep client-side recipe list
 		if inv then
 			inventory = inv
 		end
