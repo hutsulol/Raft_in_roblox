@@ -127,6 +127,16 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 		root.Position.Z + root.CFrame.LookVector.Z * math.random(300, 450) + math.random(-75, 75)
 	)
 
+	-- Don't spawn resources on islands
+	local islandPositions = _G.IslandPositions or {}
+	for _, island in islandPositions do
+		local dx = spawnPos.X - island.center.X
+		local dz = spawnPos.Z - island.center.Z
+		if math.sqrt(dx * dx + dz * dz) < (island.radius or 100) + 20 then
+			return
+		end
+	end
+
 	-- Check density in the area around the spawn position
 	local nearby = 0
 	for _, res in CollectionService:GetTagged("Resource") do

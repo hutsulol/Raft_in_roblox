@@ -6,22 +6,22 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 -- ─── Config ───
-local SPAWN_INTERVAL = 8        -- check every 8 seconds
-local SPAWN_DISTANCE_MIN = 100  -- min distance from raft to spawn
-local SPAWN_DISTANCE_MAX = 300  -- max distance from raft
-local DESPAWN_DISTANCE = 600    -- remove islands too far away
-local MAX_ISLANDS = 8           -- max islands at a time
-local ISLAND_Y_OFFSET = -2      -- slightly below raft level
+local SPAWN_INTERVAL = 8
+local SPAWN_DISTANCE_MIN = 100
+local SPAWN_DISTANCE_MAX = 300
+local DESPAWN_DISTANCE = 600
+local MAX_ISLANDS = 8
+local ISLAND_Y_OFFSET = -2
 
--- Island size ranges (bigger)
-local ISLAND_MIN_RADIUS = 40
-local ISLAND_MAX_RADIUS = 70
+-- Island size ranges (doubled)
+local ISLAND_MIN_RADIUS = 80
+local ISLAND_MAX_RADIUS = 140
 
 -- Tree/grass config
-local TREES_PER_ISLAND_MIN = 4
-local TREES_PER_ISLAND_MAX = 10
-local GRASS_PER_ISLAND_MIN = 8
-local GRASS_PER_ISLAND_MAX = 20
+local TREES_PER_ISLAND_MIN = 6
+local TREES_PER_ISLAND_MAX = 14
+local GRASS_PER_ISLAND_MIN = 12
+local GRASS_PER_ISLAND_MAX = 30
 
 -- ─── Materials ───
 local SAND_COLOR = Color3.fromRGB(220, 200, 150)
@@ -42,6 +42,19 @@ local GRASS_COLORS = {
 }
 
 local islands = {}
+
+-- ─── Expose island positions so ResourceSpawner can avoid them ───
+_G.IslandPositions = {}
+
+local function updateGlobalIslandPositions()
+	local positions = {}
+	for _, island in islands do
+		if island.model and island.model.Parent then
+			table.insert(positions, {center = island.center, radius = island.radius})
+		end
+	end
+	_G.IslandPositions = positions
+end
 
 -- ─── Helper: random point on island surface ───
 local function randomPointOnIsland(center, radiusX, radiusZ)
@@ -108,16 +121,16 @@ end
 
 -- ─── Create uneven terrain bumps ───
 local function createTerrainBumps(parent, centerPos, radiusX, radiusZ, surfaceY, baseColor, baseMaterial)
-	local numBumps = math.random(5, 10)
+	local numBumps = math.random(10, 20)
 	for _ = 1, numBumps do
 		local angle = math.random() * math.pi * 2
 		local dist = math.random() * 0.85
 		local bx = centerPos.X + math.cos(angle) * radiusX * dist
 		local bz = centerPos.Z + math.sin(angle) * radiusZ * dist
 
-		local bumpWidth = math.random(8, 20)
-		local bumpHeight = math.random() * 2 + 0.5
-		local bumpDepth = math.random(8, 20)
+		local bumpWidth = math.random(12, 30)
+		local bumpHeight = math.random() * 3 + 0.5
+		local bumpDepth = math.random(12, 30)
 
 		local bump = Instance.new("Part")
 		bump.Name = "TerrainBump"
@@ -138,7 +151,7 @@ end
 
 -- ─── Create rock formations ───
 local function createRocks(parent, centerPos, radiusX, radiusZ, surfaceY)
-	local numRocks = math.random(2, 5)
+	local numRocks = math.random(3, 8)
 	for _ = 1, numRocks do
 		local angle = math.random() * math.pi * 2
 		local dist = math.random() * 0.9
@@ -160,7 +173,6 @@ local function createRocks(parent, centerPos, radiusX, radiusZ, surfaceY)
 		rock.CanCollide = true
 		rock.Parent = parent
 
-		-- Random rotation for variety
 		rock.CFrame = rock.CFrame * CFrame.Angles(
 			math.rad(math.random(-15, 15)),
 			math.rad(math.random(0, 360)),
@@ -175,30 +187,45 @@ local function spawnIslandPirate(model, centerPos, surfaceY)
 	if not pirateTemplate then return end
 
 	local pirate = pirateTemplate:Clone()
-	-- Place near center of island
-	local px, pz = randomPointOnIsland(centerPos, 10, 10)
-	local piratePos = Vector3.new(px, surfaceY + 5, pz)
+	local px, pz = randomPointOnIsland(centerPos, 15, 15)
+	local piratePos = Vector3.new(px, surfaceY + 3, pz)
 
 	if pirate:IsA("Model") then
 		pirate:PivotTo(CFrame.new(piratePos))
 	end
 	pirate.Parent = workspace
 
+	-- Make sure all parts are unanchored so physics works
+	local hrp = pirate:FindFirstChild("HumanoidRootPart")
+	for _, part in pirate:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
+		end
+	end
+
 	local hum = pirate:FindFirstChildWhichIsA("Humanoid")
 	if hum then
-		hum.WalkSpeed = 10
-		hum.JumpPower = 0
+		hum.WalkSpeed = 12
+		hum.JumpPower = 30
 
-		-- Clean up pirate when it dies
+		-- Make pirate wander around the island
+		task.spawn(function()
+			while pirate.Parent and hum.Health > 0 do
+				local wx, wz = randomPointOnIsland(centerPos, 25, 25)
+				local target = Vector3.new(wx, surfaceY + 2, wz)
+				hum:MoveTo(target)
+				hum.MoveToFinished:Wait()
+				task.wait(math.random(2, 5))
+			end
+		end)
+
 		hum.Died:Connect(function()
 			task.wait(3)
 			pirate:Destroy()
 		end)
 	end
 
-	-- Store reference so it gets cleaned up with island
 	pirate:SetAttribute("IslandPirate", true)
-
 	return pirate
 end
 
@@ -208,9 +235,8 @@ local function placeDestroyedHouse(parent, centerPos, surfaceY)
 	if not houseTemplate then return end
 
 	local house = houseTemplate:Clone()
-	-- Place slightly off-center
-	local hx = centerPos.X + (math.random() - 0.5) * 15
-	local hz = centerPos.Z + (math.random() - 0.5) * 15
+	local hx = centerPos.X + (math.random() - 0.5) * 20
+	local hz = centerPos.Z + (math.random() - 0.5) * 20
 
 	if house:IsA("Model") then
 		house:PivotTo(CFrame.new(hx, surfaceY, hz) * CFrame.Angles(0, math.rad(math.random(0, 360)), 0))
@@ -218,7 +244,6 @@ local function placeDestroyedHouse(parent, centerPos, surfaceY)
 		house.CFrame = CFrame.new(hx, surfaceY, hz)
 	end
 
-	-- Anchor all parts
 	for _, part in house:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = true
@@ -240,10 +265,10 @@ local function createIsland(centerPos, waterY)
 	local baseColor = islandType == "sand" and SAND_COLOR or DIRT_COLOR
 	local baseMaterial = islandType == "sand" and Enum.Material.Sand or Enum.Material.Ground
 
-	local topHeight = math.random(3, 5)
+	local topHeight = math.random(4, 7)
 	local islandY = waterY + ISLAND_Y_OFFSET
 
-	-- Main top surface (uneven shape using multiple overlapping parts)
+	-- Main top surface
 	local top = Instance.new("Part")
 	top.Name = "IslandTop"
 	top.Size = Vector3.new(radiusX * 2, topHeight, radiusZ * 2)
@@ -260,12 +285,12 @@ local function createIsland(centerPos, waterY)
 	topMesh.Parent = top
 
 	-- Add offset lobes to break the symmetry
-	local numLobes = math.random(3, 6)
+	local numLobes = math.random(4, 8)
 	for _ = 1, numLobes do
 		local lobeAngle = math.random() * math.pi * 2
 		local lobeDist = math.random() * 0.4 + 0.3
-		local lobeRadiusX = radiusX * (math.random() * 0.4 + 0.3)
-		local lobeRadiusZ = radiusZ * (math.random() * 0.4 + 0.3)
+		local lobeRadiusX = radiusX * (math.random() * 0.5 + 0.3)
+		local lobeRadiusZ = radiusZ * (math.random() * 0.5 + 0.3)
 
 		local lobe = Instance.new("Part")
 		lobe.Name = "IslandLobe"
@@ -288,7 +313,7 @@ local function createIsland(centerPos, waterY)
 	end
 
 	-- Underwater base
-	local baseHeight = math.random(8, 15)
+	local baseHeight = math.random(10, 20)
 	local base = Instance.new("Part")
 	base.Name = "IslandBase"
 	base.Size = Vector3.new(radiusX * 2.2, baseHeight, radiusZ * 2.2)
@@ -361,6 +386,7 @@ local function createIsland(centerPos, waterY)
 	return {
 		model = model,
 		center = centerPos,
+		radius = math.max(radiusX, radiusZ),
 		pirate = pirate,
 	}
 end
@@ -419,6 +445,8 @@ while true do
 		end
 	end
 
+	updateGlobalIslandPositions()
+
 	-- Spawn new islands if under limit
 	if #islands < MAX_ISLANDS then
 		local angle = math.random() * math.pi * 2
@@ -430,9 +458,10 @@ while true do
 			raftPos.Z + math.sin(angle) * dist
 		)
 
-		if not isTooCloseToIsland(spawnPos, ISLAND_MIN_RADIUS * 4) then
+		if not isTooCloseToIsland(spawnPos, ISLAND_MIN_RADIUS * 3) then
 			local island = createIsland(spawnPos, waterY)
 			table.insert(islands, island)
+			updateGlobalIslandPositions()
 		end
 	end
 end
