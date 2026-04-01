@@ -35,6 +35,7 @@ local fuelCount = 0
 local smelting = false
 local outputReady = false
 local outputType = nil
+local outputAmount = 0
 local smeltStartTime = 0
 local smeltDuration = 20
 
@@ -217,10 +218,10 @@ local function updateSlots()
 	if outputSlot then
 		local icon = outputSlot:FindFirstChild("SlotIcon")
 		local label = outputSlot:FindFirstChild("SlotLabel")
-		if outputReady then
+		if outputReady and outputAmount > 0 then
 			local outIcon = RESOURCE_ICONS[outputType] or RESOURCE_ICONS.Iron_Ingot
 			if icon then icon.Image = outIcon; icon.ImageTransparency = 0 end
-			if label then label.Text = "Take"; label.Visible = true end
+			if label then label.Text = "x" .. outputAmount; label.Visible = true end
 			outputSlot.BackgroundColor3 = SLOT_OUTPUT
 		else
 			if icon then icon.Image = ""; icon.ImageTransparency = 1 end
@@ -249,7 +250,7 @@ local function updateSlots()
 	-- Status
 	if statusLabel and not smelting then
 		if outputReady then
-			statusLabel.Text = "Done! Click output to collect"
+			statusLabel.Text = "Done! Shift+Right-click output to collect"
 			statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
 		elseif oreType and fuelCount > 0 then
 			statusLabel.Text = "Ready - press Smelt"
@@ -361,11 +362,6 @@ local function buildUI()
 
 	-- Ore slot
 	oreSlot = createSlot(content, UDim2.new(0, 0, 0, 0), UDim2.new(0, 80, 0, 70))
-	-- Click loaded ore to return to inventory
-	oreSlot.MouseButton1Click:Connect(function()
-		if smelting or outputReady then return end
-		if oreType then furnaceEvent:FireServer("removeOre") end
-	end)
 
 	local oreTitle = Instance.new("TextLabel")
 	oreTitle.Size = UDim2.new(0, 80, 0, 12); oreTitle.Position = UDim2.new(0, 0, 0, 72)
@@ -374,11 +370,6 @@ local function buildUI()
 
 	-- Fuel slot
 	fuelSlot = createSlot(content, UDim2.new(0, 0, 0, 92), UDim2.new(0, 80, 0, 70))
-	-- Click fuel to remove 1 back to inventory
-	fuelSlot.MouseButton1Click:Connect(function()
-		if smelting or outputReady then return end
-		if fuelCount > 0 then furnaceEvent:FireServer("removeFuel") end
-	end)
 
 	local fuelTitle = Instance.new("TextLabel")
 	fuelTitle.Size = UDim2.new(0, 80, 0, 12); fuelTitle.Position = UDim2.new(0, 0, 0, 164)
@@ -422,11 +413,8 @@ local function buildUI()
 		furnaceEvent:FireServer("startSmelt")
 	end)
 
-	-- Output slot
+	-- Output slot (Shift+Right-click to collect)
 	outputSlot = createSlot(content, UDim2.new(0, 240, 0, 15), UDim2.new(0, 110, 0, 70))
-	outputSlot.MouseButton1Click:Connect(function()
-		if outputReady then furnaceEvent:FireServer("collectOutput") end
-	end)
 
 	local outTitle = Instance.new("TextLabel")
 	outTitle.Size = UDim2.new(0, 110, 0, 12); outTitle.Position = UDim2.new(0, 240, 0, 87)
@@ -478,9 +466,9 @@ local function openUI(furnaceModel, state)
 	if state then
 		oreType = state.oreType; fuelCount = state.fuelCount or 0
 		smelting = state.smelting or false; outputReady = state.outputReady or false
-		outputType = state.outputType
+		outputType = state.outputType; outputAmount = state.outputAmount or 0
 	else
-		oreType = nil; fuelCount = 0; smelting = false; outputReady = false; outputType = nil
+		oreType = nil; fuelCount = 0; smelting = false; outputReady = false; outputType = nil; outputAmount = 0
 	end
 
 	buildUI()
@@ -497,7 +485,7 @@ furnaceEvent.OnClientEvent:Connect(function(action, data, extra1, extra2)
 		if data then
 			oreType = data.oreType; fuelCount = data.fuelCount or 0
 			smelting = data.smelting or false; outputReady = data.outputReady or false
-			outputType = data.outputType
+			outputType = data.outputType; outputAmount = data.outputAmount or 0
 		end
 		updateSlots()
 
@@ -513,7 +501,7 @@ furnaceEvent.OnClientEvent:Connect(function(action, data, extra1, extra2)
 		if data then
 			oreType = data.oreType; fuelCount = data.fuelCount or 0
 			smelting = data.smelting or false; outputReady = data.outputReady or false
-			outputType = data.outputType
+			outputType = data.outputType; outputAmount = data.outputAmount or 0
 		else
 			smelting = false; outputReady = true; oreType = nil; fuelCount = 0
 		end
@@ -521,7 +509,7 @@ furnaceEvent.OnClientEvent:Connect(function(action, data, extra1, extra2)
 		updateSlots()
 
 	elseif action == "smeltFailed" then
-		smelting = false; oreType = nil; fuelCount = 0; outputReady = false
+		smelting = false; oreType = nil; fuelCount = 0; outputReady = false; outputAmount = 0
 		if arrowFill then arrowFill.Size = UDim2.new(0, 0, 1, 0) end
 		updateSlots()
 		if statusLabel then
@@ -539,7 +527,7 @@ furnaceEvent.OnClientEvent:Connect(function(action, data, extra1, extra2)
 		if data then
 			oreType = data.oreType; fuelCount = data.fuelCount or 0
 			smelting = data.smelting or false; outputReady = data.outputReady or false
-			outputType = data.outputType
+			outputType = data.outputType; outputAmount = data.outputAmount or 0
 		end
 		if smelting and extra1 and extra2 then
 			smeltDuration = extra2; smeltStartTime = tick() - extra1
@@ -612,4 +600,26 @@ UserInputService.InputEnded:Connect(function(input)
 	end
 
 	cancelDrag()
+end)
+
+-- ─── Shift + Right-click: return all items from a slot ───
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
+	if not isOpen then return end
+	if not UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and not UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then return end
+
+	-- Ore slot: return ore to inventory
+	if oreSlot and isMouseOver(oreSlot) and oreType and not smelting then
+		furnaceEvent:FireServer("removeOre")
+	end
+
+	-- Fuel slot: return all fuel to inventory
+	if fuelSlot and isMouseOver(fuelSlot) and fuelCount > 0 and not smelting then
+		furnaceEvent:FireServer("removeFuel")
+	end
+
+	-- Output slot: collect all output
+	if outputSlot and isMouseOver(outputSlot) and outputReady then
+		furnaceEvent:FireServer("collectOutput")
+	end
 end)

@@ -9,6 +9,7 @@ local SMELT_TIME = 20 -- seconds
 local FURNACE_RANGE = 12
 local FUEL_BURN_TIME = 5 -- seconds per wood
 local FUEL_NEEDED = 4 -- 4 wood × 5s = 20s
+local MAX_SLOT = 30 -- max items per furnace slot
 
 -- ─── RemoteEvents ───
 local craftEvent = rs:WaitForChild("CraftItem")
@@ -239,7 +240,9 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		if (inv.Log or 0) < 1 then return end
 
 		local count = (typeof(data2) == "number") and math.floor(data2) or 1
-		count = math.clamp(count, 1, inv.Log)
+		local space = MAX_SLOT - state.fuelCount
+		if space <= 0 then return end
+		count = math.clamp(count, 1, math.min(inv.Log, space))
 
 		inv.Log = inv.Log - count
 		state.fuelCount = state.fuelCount + count
@@ -251,16 +254,23 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		if state.smelting or state.outputReady then return end
 		if state.fuelCount <= 0 then return end
 
-		inv.Log = (inv.Log or 0) + 1
-		state.fuelCount = state.fuelCount - 1
+		local removeCount = state.fuelCount
+		inv.Log = (inv.Log or 0) + removeCount
+		state.fuelCount = 0
 
 		if _G.SendInventory then _G.SendInventory(player) end
 		furnaceEvent:FireClient(player, "stateUpdate", state)
 
 	elseif action == "startSmelt" then
-		if state.smelting or state.outputReady then return end
+		if state.smelting then return end
 		if not state.oreType then return end
 		if state.fuelCount <= 0 then return end
+
+		-- Block if output slot is full
+		if (state.outputAmount or 0) >= MAX_SLOT then
+			furnaceEvent:FireClient(player, "smeltError", "Output slot is full")
+			return
+		end
 
 		-- Check if ore has a valid recipe
 		local recipe = SMELT_RECIPES[state.oreType]
@@ -305,7 +315,8 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 					state.smelting = false
 					state.outputReady = true
 					state.outputType = recipe.output
-					state.outputAmount = recipe.outputAmount
+					state.outputAmount = (state.outputAmount or 0) + recipe.outputAmount
+					if state.outputAmount > MAX_SLOT then state.outputAmount = MAX_SLOT end
 					state.oreType = nil
 					state.smeltPlayer = nil
 
