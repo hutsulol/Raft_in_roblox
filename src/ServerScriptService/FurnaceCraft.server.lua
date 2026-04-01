@@ -1,0 +1,284 @@
+-- FurnaceCraft.server.lua
+-- Crafting, placement, ProximityPrompt, and smelting logic for the Furnace
+
+local rs = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+local WORKBENCH_RANGE = 15
+local SMELT_TIME = 20 -- seconds
+local FURNACE_RANGE = 12
+
+-- ─── RemoteEvents ───
+local craftEvent = rs:WaitForChild("CraftItem")
+local cupActionEvent = rs:WaitForChild("CupAction")
+
+local furnaceEvent = Instance.new("RemoteEvent")
+furnaceEvent.Name = "FurnaceAction"
+furnaceEvent.Parent = rs
+
+local openFurnaceEvent = Instance.new("RemoteEvent")
+openFurnaceEvent.Name = "OpenFurnace"
+openFurnaceEvent.Parent = rs
+
+-- ─── Track furnace smelting state ───
+local furnaceStates = {} -- [furnaceModel] = {smelting, startTime, oreLoaded, fuelLoaded, outputReady}
+
+-- ─── Find workbench ───
+local function getWorkBenchPos()
+	for _, v in workspace:GetDescendants() do
+		if v:IsA("Model") and v.Name == "WorkBench" then
+			if v.PrimaryPart then return v.PrimaryPart.Position end
+			local part = v:FindFirstChildWhichIsA("BasePart", true)
+			if part then return part.Position end
+			return v:GetPivot().Position
+		end
+	end
+	return nil
+end
+
+-- ─── Setup ProximityPrompt on a placed furnace ───
+local function setupFurnacePrompt(furnaceModel)
+	local part = furnaceModel.PrimaryPart or furnaceModel:FindFirstChildWhichIsA("BasePart", true)
+	if not part then return end
+
+	local prompt = Instance.new("ProximityPrompt")
+	prompt.ActionText = "Smelt"
+	prompt.ObjectText = "Furnace"
+	prompt.KeyboardKeyCode = Enum.KeyCode.E
+	prompt.HoldDuration = 0.5
+	prompt.MaxActivationDistance = FURNACE_RANGE
+	prompt.RequiresLineOfSight = true
+	prompt.Parent = part
+
+	-- Init state
+	furnaceStates[furnaceModel] = {
+		smelting = false,
+		oreLoaded = false,
+		fuelLoaded = false,
+		outputReady = false,
+	}
+
+	prompt.Triggered:Connect(function(player)
+		local state = furnaceStates[furnaceModel]
+		openFurnaceEvent:FireClient(player, furnaceModel, state)
+	end)
+end
+
+-- ─── Find nearest furnace to player ───
+local function findNearestFurnace(player)
+	local char = player.Character
+	if not char or not char:FindFirstChild("HumanoidRootPart") then return nil end
+	local hrp = char.HumanoidRootPart
+
+	local closest, closestDist = nil, FURNACE_RANGE
+	for furnace in furnaceStates do
+		local part = furnace.PrimaryPart or furnace:FindFirstChildWhichIsA("BasePart", true)
+		if part then
+			local dist = (hrp.Position - part.Position).Magnitude
+			if dist < closestDist then
+				closest = furnace
+				closestDist = dist
+			end
+		end
+	end
+	return closest
+end
+
+-- ═══════════════════════════════════════════
+-- CRAFTING: 10 Stone + 5 Log at workbench
+-- ═══════════════════════════════════════════
+craftEvent.OnServerEvent:Connect(function(player, action, data)
+	if action ~= "craft" or data ~= "Furnace" then return end
+
+	local char = player.Character
+	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+
+	local wbPos = getWorkBenchPos()
+	if not wbPos then return end
+	if (char.HumanoidRootPart.Position - wbPos).Magnitude > WORKBENCH_RANGE then return end
+
+	local inv = _G.GetInventory and _G.GetInventory(player) or {}
+	if (inv.Stone or 0) < 10 then return end
+	if (inv.Log or 0) < 5 then return end
+
+	inv.Stone = inv.Stone - 10
+	inv.Log = inv.Log - 5
+
+	-- Create placeable tool
+	local backpack = player:FindFirstChild("Backpack")
+	if not backpack then return end
+
+	local tool = Instance.new("Tool")
+	tool.Name = "Furnace"
+	tool.CanBeDropped = false
+
+	local handle = Instance.new("Part")
+	handle.Name = "Handle"
+	handle.Size = Vector3.new(1, 1, 1)
+	handle.Transparency = 1
+	handle.Parent = tool
+
+	tool.Parent = backpack
+
+	if _G.SendInventory then _G.SendInventory(player) end
+	craftEvent:FireClient(player, "success", "Furnace")
+end)
+
+-- ═══════════════════════════════════════════
+-- PLACEMENT: Clone from RS, weld to raft
+-- ═══════════════════════════════════════════
+cupActionEvent.OnServerEvent:Connect(function(player, action, target)
+	if action ~= "placeFurnace" then return end
+
+	local char = player.Character
+	if not char then return end
+	local tool = char:FindFirstChildWhichIsA("Tool")
+	if not tool or tool.Name ~= "Furnace" then return end
+
+	local raft = workspace:FindFirstChild("Raft")
+	if not raft or not raft.PrimaryPart then return end
+	if typeof(target) ~= "CFrame" then return end
+
+	local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
+
+	local template = rs:FindFirstChild("Furnace")
+	if not template then return end
+
+	local furnace = template:Clone()
+	furnace.Name = "Furnace"
+
+	-- Remove scripts from clone
+	for _, desc in furnace:GetDescendants() do
+		if desc:IsA("Script") or desc:IsA("LocalScript") then
+			desc:Destroy()
+		end
+	end
+
+	-- Position
+	if furnace:IsA("Model") then
+		local bbCF = furnace:GetBoundingBox()
+		furnace.WorldPivot = CFrame.new(bbCF.Position)
+	end
+
+	furnace:PivotTo(worldCF)
+	furnace.Parent = raft
+
+	-- Weld to raft
+	for _, part in furnace:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = part
+			weld.Part1 = raft.PrimaryPart
+			weld.Parent = part
+		end
+	end
+
+	-- Setup interaction
+	setupFurnacePrompt(furnace)
+
+	tool:Destroy()
+end)
+
+-- ═══════════════════════════════════════════
+-- SMELTING LOGIC
+-- ═══════════════════════════════════════════
+furnaceEvent.OnServerEvent:Connect(function(player, action, furnaceModel)
+	-- Find the furnace if not passed directly
+	local furnace = furnaceModel
+	if not furnace or not furnaceStates[furnace] then
+		furnace = findNearestFurnace(player)
+	end
+	if not furnace or not furnaceStates[furnace] then return end
+
+	local state = furnaceStates[furnace]
+	local inv = _G.GetInventory and _G.GetInventory(player) or {}
+
+	if action == "loadOre" then
+		if state.smelting or state.oreLoaded or state.outputReady then return end
+		if (inv.Iron_Ore or 0) < 1 then return end
+
+		inv.Iron_Ore = inv.Iron_Ore - 1
+		state.oreLoaded = true
+
+		if _G.SendInventory then _G.SendInventory(player) end
+		furnaceEvent:FireClient(player, "stateUpdate", state)
+
+	elseif action == "loadFuel" then
+		if state.smelting or state.fuelLoaded or state.outputReady then return end
+		if (inv.Log or 0) < 1 then return end
+
+		inv.Log = inv.Log - 1
+		state.fuelLoaded = true
+
+		if _G.SendInventory then _G.SendInventory(player) end
+		furnaceEvent:FireClient(player, "stateUpdate", state)
+
+	elseif action == "startSmelt" then
+		if state.smelting or state.outputReady then return end
+		if not state.oreLoaded or not state.fuelLoaded then return end
+
+		state.smelting = true
+		state.startTime = tick()
+
+		-- Notify player smelting started
+		furnaceEvent:FireClient(player, "smeltStart", SMELT_TIME)
+
+		-- Wait for smelt to finish
+		task.spawn(function()
+			task.wait(SMELT_TIME)
+
+			if not furnaceStates[furnace] then return end
+			state.smelting = false
+			state.oreLoaded = false
+			state.fuelLoaded = false
+			state.outputReady = true
+
+			-- Notify all nearby players
+			for _, p in Players:GetPlayers() do
+				local c = p.Character
+				if c and c:FindFirstChild("HumanoidRootPart") then
+					local part = furnace.PrimaryPart or furnace:FindFirstChildWhichIsA("BasePart", true)
+					if part and (c.HumanoidRootPart.Position - part.Position).Magnitude < FURNACE_RANGE then
+						furnaceEvent:FireClient(p, "smeltDone")
+					end
+				end
+			end
+		end)
+
+	elseif action == "collectOutput" then
+		if not state.outputReady then return end
+
+		inv.Iron_Ingot = (inv.Iron_Ingot or 0) + 1
+		state.outputReady = false
+
+		if _G.SendInventory then _G.SendInventory(player) end
+		furnaceEvent:FireClient(player, "stateUpdate", state)
+
+	elseif action == "getState" then
+		local elapsed = 0
+		if state.smelting and state.startTime then
+			elapsed = tick() - state.startTime
+		end
+		furnaceEvent:FireClient(player, "fullState", state, elapsed, SMELT_TIME)
+	end
+end)
+
+-- ─── Ensure Iron_Ingot in inventories ───
+local function ensureIronIngot(player)
+	task.wait(2)
+	local inv = _G.GetInventory and _G.GetInventory(player)
+	if inv and inv.Iron_Ingot == nil then
+		inv.Iron_Ingot = 0
+	end
+end
+
+Players.PlayerAdded:Connect(function(p) task.spawn(ensureIronIngot, p) end)
+for _, p in Players:GetPlayers() do task.spawn(ensureIronIngot, p) end
+
+-- ─── Setup existing furnaces in workspace ───
+for _, child in workspace:GetDescendants() do
+	if child:IsA("Model") and child.Name == "Furnace" then
+		setupFurnacePrompt(child)
+	end
+end
