@@ -1,10 +1,11 @@
 -- FurnaceUI.client.lua
--- Furnace UI with inventory transfer. Click a slot to select it, then click
--- an inventory item to place it. Fuel burns visually during smelting.
+-- Furnace UI with drag-and-drop from inventory to furnace slots.
+-- Inventory displays in stacks of 30 max. Fuel burns 1 every 5s.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -22,6 +23,8 @@ local RESOURCE_ICONS = {
 	Iron_Ingot = "rbxassetid://72890243946368",
 }
 
+local MAX_STACK = 30
+
 -- ─── State ───
 local isOpen = false
 local screenGui = nil
@@ -35,17 +38,19 @@ local outputType = nil
 local smeltStartTime = 0
 local smeltDuration = 20
 
-local selectedSlot = nil -- "ore" or "fuel" or nil
+-- Drag state
+local dragging = false
+local dragItem = nil -- {name, count}
+local dragIcon = nil -- floating ImageLabel
 
 -- UI refs
 local oreSlot, fuelSlot, outputSlot, arrowFill, statusLabel, fuelCountLabel
-local smeltBtn, invGrid, selectedIndicator
+local smeltBtn, invGrid
 
 -- ─── Colors ───
 local SLOT_BG = Color3.fromRGB(60, 60, 65)
 local SLOT_FILLED = Color3.fromRGB(70, 105, 70)
 local SLOT_OUTPUT = Color3.fromRGB(120, 100, 50)
-local SLOT_SELECTED = Color3.fromRGB(90, 90, 45)
 local PANEL_BG = Color3.fromRGB(45, 45, 50)
 local ARROW_BG = Color3.fromRGB(80, 80, 85)
 local ARROW_FILL_COLOR = Color3.fromRGB(220, 140, 40)
@@ -54,27 +59,72 @@ local INV_BG = Color3.fromRGB(55, 55, 60)
 local function closeUI()
 	if screenGui then screenGui:Destroy(); screenGui = nil end
 	isOpen = false
-	selectedSlot = nil
+	dragging = false
+	dragItem = nil
+	if dragIcon then dragIcon:Destroy(); dragIcon = nil end
 end
 
--- ─── Build inventory grid ───
+-- ─── Drag helpers ───
+local function startDrag(itemName)
+	if dragging then return end
+	dragging = true
+	dragItem = itemName
+
+	dragIcon = Instance.new("ImageLabel")
+	dragIcon.Size = UDim2.new(0, 44, 0, 44)
+	dragIcon.BackgroundTransparency = 1
+	dragIcon.Image = RESOURCE_ICONS[itemName] or ""
+	dragIcon.ScaleType = Enum.ScaleType.Fit
+	dragIcon.ZIndex = 100
+	dragIcon.Parent = screenGui
+
+	local mouse = player:GetMouse()
+	dragIcon.Position = UDim2.new(0, mouse.X - 22, 0, mouse.Y - 22)
+end
+
+local function cancelDrag()
+	dragging = false
+	dragItem = nil
+	if dragIcon then dragIcon:Destroy(); dragIcon = nil end
+end
+
+-- Check if mouse is over a GuiObject
+local function isMouseOver(guiObj)
+	if not guiObj then return false end
+	local mouse = player:GetMouse()
+	local pos = guiObj.AbsolutePosition
+	local size = guiObj.AbsoluteSize
+	return mouse.X >= pos.X and mouse.X <= pos.X + size.X
+		and mouse.Y >= pos.Y and mouse.Y <= pos.Y + size.Y
+end
+
+-- ─── Build inventory grid (stacked at 30 max) ───
 local function rebuildInventory()
 	if not invGrid then return end
-	-- Clear existing
 	for _, child in invGrid:GetChildren() do
 		if child:IsA("TextButton") then child:Destroy() end
 	end
 
-	-- Collect items with count > 0
-	local items = {}
+	-- Build stacks: split items into MAX_STACK slots
+	local stacks = {}
+	local order = {}
 	for name, count in inventory do
 		if count > 0 and typeof(count) == "number" then
-			table.insert(items, {name = name, count = count})
+			table.insert(order, name)
 		end
 	end
-	table.sort(items, function(a, b) return a.name < b.name end)
+	table.sort(order)
 
-	for i, item in items do
+	for _, name in order do
+		local remaining = inventory[name]
+		while remaining > 0 do
+			local stackSize = math.min(remaining, MAX_STACK)
+			table.insert(stacks, {name = name, count = stackSize})
+			remaining = remaining - stackSize
+		end
+	end
+
+	for i, stack in stacks do
 		local btn = Instance.new("TextButton")
 		btn.Size = UDim2.new(0, 64, 0, 64)
 		btn.BackgroundColor3 = Color3.fromRGB(70, 70, 75)
@@ -92,42 +142,36 @@ local function rebuildInventory()
 
 		local icon = Instance.new("ImageLabel")
 		icon.Size = UDim2.new(0, 40, 0, 40)
-		icon.Position = UDim2.new(0.5, -20, 0, 3)
+		icon.Position = UDim2.new(0.5, -20, 0, 2)
 		icon.BackgroundTransparency = 1
-		icon.Image = RESOURCE_ICONS[item.name] or ""
+		icon.Image = RESOURCE_ICONS[stack.name] or ""
 		icon.ScaleType = Enum.ScaleType.Fit
 		icon.Parent = btn
 
-		local lbl = Instance.new("TextLabel")
-		lbl.Size = UDim2.new(1, -4, 0, 14)
-		lbl.Position = UDim2.new(0, 2, 1, -16)
-		lbl.BackgroundTransparency = 1
-		lbl.Text = "x" .. item.count
-		lbl.TextColor3 = Color3.fromRGB(220, 220, 220)
-		lbl.TextScaled = true
-		lbl.Font = Enum.Font.GothamBold
-		lbl.Parent = btn
+		local countLbl = Instance.new("TextLabel")
+		countLbl.Size = UDim2.new(1, -4, 0, 14)
+		countLbl.Position = UDim2.new(0, 2, 1, -16)
+		countLbl.BackgroundTransparency = 1
+		countLbl.Text = tostring(stack.count)
+		countLbl.TextColor3 = Color3.fromRGB(220, 220, 220)
+		countLbl.TextScaled = true
+		countLbl.Font = Enum.Font.GothamBold
+		countLbl.Parent = btn
 
-		-- Tooltip-style name
 		local nameLbl = Instance.new("TextLabel")
 		nameLbl.Size = UDim2.new(1, -4, 0, 10)
-		nameLbl.Position = UDim2.new(0, 2, 0, 43)
+		nameLbl.Position = UDim2.new(0, 2, 0, 42)
 		nameLbl.BackgroundTransparency = 1
-		nameLbl.Text = item.name:gsub("_", " ")
+		nameLbl.Text = stack.name:gsub("_", " ")
 		nameLbl.TextColor3 = Color3.fromRGB(160, 160, 160)
 		nameLbl.TextScaled = true
 		nameLbl.Font = Enum.Font.Gotham
 		nameLbl.Parent = btn
 
-		btn.MouseButton1Click:Connect(function()
+		-- Start drag on mousedown
+		btn.MouseButton1Down:Connect(function()
 			if smelting or outputReady then return end
-			if not selectedSlot then return end
-
-			if selectedSlot == "ore" and not oreType then
-				furnaceEvent:FireServer("loadOre", item.name)
-			elseif selectedSlot == "fuel" then
-				furnaceEvent:FireServer("loadFuel", item.name)
-			end
+			startDrag(stack.name)
 		end)
 	end
 end
@@ -142,18 +186,12 @@ local function updateSlots()
 		local label = oreSlot:FindFirstChild("SlotLabel")
 		if oreType then
 			if icon then icon.Image = RESOURCE_ICONS[oreType] or ""; icon.ImageTransparency = 0 end
-			if label then label.Text = oreType:gsub("_", " ") end
+			if label then label.Text = oreType:gsub("_", " "); label.Visible = true end
 			oreSlot.BackgroundColor3 = SLOT_FILLED
 		else
-			if icon then icon.Image = ""; icon.ImageTransparency = 0.5 end
-			if label then label.Text = "Empty" end
-			oreSlot.BackgroundColor3 = (selectedSlot == "ore") and SLOT_SELECTED or SLOT_BG
-		end
-		-- Selection highlight
-		local stroke = oreSlot:FindFirstChildWhichIsA("UIStroke")
-		if stroke then
-			stroke.Color = (selectedSlot == "ore") and Color3.fromRGB(255, 220, 80) or Color3.fromRGB(90, 90, 100)
-			stroke.Thickness = (selectedSlot == "ore") and 3 or 2
+			if icon then icon.Image = ""; icon.ImageTransparency = 1 end
+			if label then label.Visible = false end
+			oreSlot.BackgroundColor3 = SLOT_BG
 		end
 	end
 
@@ -163,24 +201,23 @@ local function updateSlots()
 		local label = fuelSlot:FindFirstChild("SlotLabel")
 		if fuelCount > 0 then
 			if icon then icon.Image = RESOURCE_ICONS.Log; icon.ImageTransparency = 0 end
-			if label then label.Text = "Wood x" .. fuelCount end
+			if label then label.Text = "x" .. fuelCount; label.Visible = true end
 			fuelSlot.BackgroundColor3 = SLOT_FILLED
 		else
-			if icon then icon.Image = ""; icon.ImageTransparency = 0.5 end
-			if label then label.Text = "Empty" end
-			fuelSlot.BackgroundColor3 = (selectedSlot == "fuel") and SLOT_SELECTED or SLOT_BG
-		end
-		local stroke = fuelSlot:FindFirstChildWhichIsA("UIStroke")
-		if stroke then
-			stroke.Color = (selectedSlot == "fuel") and Color3.fromRGB(255, 220, 80) or Color3.fromRGB(90, 90, 100)
-			stroke.Thickness = (selectedSlot == "fuel") and 3 or 2
+			if icon then icon.Image = ""; icon.ImageTransparency = 1 end
+			if label then label.Visible = false end
+			fuelSlot.BackgroundColor3 = SLOT_BG
 		end
 	end
 
 	-- Fuel counter
 	if fuelCountLabel then
-		fuelCountLabel.Text = fuelCount .. " wood loaded"
-		fuelCountLabel.TextColor3 = fuelCount > 0 and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(150, 150, 150)
+		if fuelCount > 0 then
+			fuelCountLabel.Text = fuelCount .. " wood"
+			fuelCountLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+		else
+			fuelCountLabel.Text = ""
+		end
 	end
 
 	-- Output slot
@@ -190,11 +227,11 @@ local function updateSlots()
 		if outputReady then
 			local outIcon = RESOURCE_ICONS[outputType] or RESOURCE_ICONS.Iron_Ingot
 			if icon then icon.Image = outIcon; icon.ImageTransparency = 0 end
-			if label then label.Text = "Click to take" end
+			if label then label.Text = "Take"; label.Visible = true end
 			outputSlot.BackgroundColor3 = SLOT_OUTPUT
 		else
-			if icon then icon.Image = ""; icon.ImageTransparency = 0.7 end
-			if label then label.Text = "" end
+			if icon then icon.Image = ""; icon.ImageTransparency = 1 end
+			if label then label.Visible = false end
 			outputSlot.BackgroundColor3 = SLOT_BG
 		end
 	end
@@ -221,20 +258,17 @@ local function updateSlots()
 		if outputReady then
 			statusLabel.Text = "Done! Click output to collect"
 			statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
-		elseif selectedSlot == "ore" then
-			statusLabel.Text = "Select an item from inventory for ore slot"
-			statusLabel.TextColor3 = Color3.fromRGB(255, 220, 80)
-		elseif selectedSlot == "fuel" then
-			statusLabel.Text = "Select wood from inventory for fuel"
-			statusLabel.TextColor3 = Color3.fromRGB(255, 220, 80)
 		elseif oreType and fuelCount > 0 then
-			statusLabel.Text = "Ready! Press Smelt (may need more fuel)"
+			statusLabel.Text = "Ready - press Smelt"
 			statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
+		elseif not oreType and fuelCount == 0 then
+			statusLabel.Text = "Drag items from inventory into slots"
+			statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
 		elseif not oreType then
-			statusLabel.Text = "Click ore slot, then select item from inventory"
+			statusLabel.Text = "Drag ore into the ore slot"
 			statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
 		else
-			statusLabel.Text = "Click fuel slot, then add wood from inventory"
+			statusLabel.Text = "Drag wood into the fuel slot"
 			statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
 		end
 	end
@@ -250,7 +284,7 @@ local function createSlot(parent, pos, size)
 	slot.BackgroundColor3 = SLOT_BG
 	slot.BorderSizePixel = 0
 	slot.Text = ""
-	slot.AutoButtonColor = true
+	slot.AutoButtonColor = false
 	slot.Parent = parent
 
 	Instance.new("UICorner", slot).CornerRadius = UDim.new(0, 8)
@@ -265,7 +299,7 @@ local function createSlot(parent, pos, size)
 	icon.Position = UDim2.new(0.5, -22, 0, 4)
 	icon.BackgroundTransparency = 1
 	icon.Image = ""
-	icon.ImageTransparency = 0.5
+	icon.ImageTransparency = 1
 	icon.ScaleType = Enum.ScaleType.Fit
 	icon.Parent = slot
 
@@ -274,7 +308,8 @@ local function createSlot(parent, pos, size)
 	label.Size = UDim2.new(1, -6, 0, 14)
 	label.Position = UDim2.new(0, 3, 1, -18)
 	label.BackgroundTransparency = 1
-	label.Text = "Empty"
+	label.Text = ""
+	label.Visible = false
 	label.TextColor3 = Color3.fromRGB(180, 180, 180)
 	label.TextScaled = true
 	label.Font = Enum.Font.Gotham
@@ -333,16 +368,10 @@ local function buildUI()
 
 	-- Ore slot
 	oreSlot = createSlot(content, UDim2.new(0, 0, 0, 0), UDim2.new(0, 80, 0, 70))
+	-- Click loaded ore to return to inventory
 	oreSlot.MouseButton1Click:Connect(function()
 		if smelting or outputReady then return end
-		if oreType then
-			-- Click loaded ore to remove it
-			furnaceEvent:FireServer("removeOre")
-			selectedSlot = nil
-		else
-			selectedSlot = (selectedSlot == "ore") and nil or "ore"
-		end
-		updateSlots()
+		if oreType then furnaceEvent:FireServer("removeOre") end
 	end)
 
 	local oreTitle = Instance.new("TextLabel")
@@ -352,27 +381,8 @@ local function buildUI()
 
 	-- Fuel slot
 	fuelSlot = createSlot(content, UDim2.new(0, 0, 0, 92), UDim2.new(0, 80, 0, 70))
+	-- Click fuel to remove 1 back to inventory
 	fuelSlot.MouseButton1Click:Connect(function()
-		if smelting or outputReady then return end
-		if fuelCount > 0 and selectedSlot ~= "fuel" then
-			-- If clicking fuel slot when not selected, select it to add more
-			selectedSlot = "fuel"
-		elseif selectedSlot == "fuel" then
-			selectedSlot = nil
-		else
-			selectedSlot = "fuel"
-		end
-		updateSlots()
-	end)
-
-	-- Fuel remove button
-	local fuelRemoveBtn = Instance.new("TextButton")
-	fuelRemoveBtn.Size = UDim2.new(0, 20, 0, 20); fuelRemoveBtn.Position = UDim2.new(1, -22, 0, 2)
-	fuelRemoveBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 60); fuelRemoveBtn.Text = "-"
-	fuelRemoveBtn.TextColor3 = Color3.new(1, 1, 1); fuelRemoveBtn.TextScaled = true; fuelRemoveBtn.Font = Enum.Font.GothamBold
-	fuelRemoveBtn.BorderSizePixel = 0; fuelRemoveBtn.ZIndex = 3; fuelRemoveBtn.Parent = fuelSlot
-	Instance.new("UICorner", fuelRemoveBtn).CornerRadius = UDim.new(0, 5)
-	fuelRemoveBtn.MouseButton1Click:Connect(function()
 		if smelting or outputReady then return end
 		if fuelCount > 0 then furnaceEvent:FireServer("removeFuel") end
 	end)
@@ -385,7 +395,7 @@ local function buildUI()
 	-- Fuel counter
 	fuelCountLabel = Instance.new("TextLabel")
 	fuelCountLabel.Size = UDim2.new(0, 80, 0, 14); fuelCountLabel.Position = UDim2.new(0, 85, 0, 130)
-	fuelCountLabel.BackgroundTransparency = 1; fuelCountLabel.Text = "0 wood"
+	fuelCountLabel.BackgroundTransparency = 1; fuelCountLabel.Text = ""
 	fuelCountLabel.TextColor3 = Color3.fromRGB(150, 150, 150); fuelCountLabel.TextScaled = true
 	fuelCountLabel.Font = Enum.Font.GothamBold; fuelCountLabel.TextXAlignment = Enum.TextXAlignment.Left
 	fuelCountLabel.Parent = content
@@ -416,7 +426,6 @@ local function buildUI()
 	smeltBtn.MouseButton1Click:Connect(function()
 		if smelting or outputReady then return end
 		if not oreType or fuelCount <= 0 then return end
-		selectedSlot = nil
 		furnaceEvent:FireServer("startSmelt")
 	end)
 
@@ -434,7 +443,7 @@ local function buildUI()
 	-- ═══ Status ═══
 	statusLabel = Instance.new("TextLabel")
 	statusLabel.Size = UDim2.new(1, -24, 0, 18); statusLabel.Position = UDim2.new(0, 12, 0, 220)
-	statusLabel.BackgroundTransparency = 1; statusLabel.Text = "Click ore slot, then select item from inventory"
+	statusLabel.BackgroundTransparency = 1; statusLabel.Text = "Drag items from inventory into slots"
 	statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150); statusLabel.TextScaled = true
 	statusLabel.Font = Enum.Font.GothamBold; statusLabel.Parent = main
 
@@ -445,14 +454,19 @@ local function buildUI()
 	invTitle.TextScaled = true; invTitle.Font = Enum.Font.GothamBold; invTitle.TextXAlignment = Enum.TextXAlignment.Left
 	invTitle.Parent = main
 
-	local invFrame = Instance.new("Frame")
+	local invFrame = Instance.new("ScrollingFrame")
 	invFrame.Size = UDim2.new(1, -24, 0, 148); invFrame.Position = UDim2.new(0, 12, 0, 264)
-	invFrame.BackgroundColor3 = INV_BG; invFrame.BorderSizePixel = 0; invFrame.ClipsDescendants = true; invFrame.Parent = main
+	invFrame.BackgroundColor3 = INV_BG; invFrame.BorderSizePixel = 0; invFrame.ClipsDescendants = true
+	invFrame.ScrollBarThickness = 6; invFrame.CanvasSize = UDim2.new(0, 0, 0, 0)
+	invFrame.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	invFrame.ScrollingDirection = Enum.ScrollingDirection.Y
+	invFrame.Parent = main
 	Instance.new("UICorner", invFrame).CornerRadius = UDim.new(0, 8)
 
 	invGrid = Instance.new("Frame")
-	invGrid.Size = UDim2.new(1, -12, 1, -8); invGrid.Position = UDim2.new(0, 6, 0, 4)
-	invGrid.BackgroundTransparency = 1; invGrid.Parent = invFrame
+	invGrid.Size = UDim2.new(1, -12, 0, 0); invGrid.Position = UDim2.new(0, 6, 0, 4)
+	invGrid.BackgroundTransparency = 1; invGrid.AutomaticSize = Enum.AutomaticSize.Y
+	invGrid.Parent = invFrame
 
 	local gridLayout = Instance.new("UIGridLayout")
 	gridLayout.CellSize = UDim2.new(0, 64, 0, 64)
@@ -467,13 +481,10 @@ end
 local function openUI(furnaceModel, state)
 	if isOpen then closeUI() end
 	isOpen = true
-	selectedSlot = nil
 
 	if state then
-		oreType = state.oreType
-		fuelCount = state.fuelCount or 0
-		smelting = state.smelting or false
-		outputReady = state.outputReady or false
+		oreType = state.oreType; fuelCount = state.fuelCount or 0
+		smelting = state.smelting or false; outputReady = state.outputReady or false
 		outputType = state.outputType
 	else
 		oreType = nil; fuelCount = 0; smelting = false; outputReady = false; outputType = nil
@@ -495,18 +506,13 @@ furnaceEvent.OnClientEvent:Connect(function(action, data, extra1, extra2)
 			smelting = data.smelting or false; outputReady = data.outputReady or false
 			outputType = data.outputType
 		end
-		selectedSlot = nil
 		updateSlots()
 
 	elseif action == "smeltStart" then
-		smelting = true
-		smeltDuration = data or 20
-		smeltStartTime = tick()
-		selectedSlot = nil
+		smelting = true; smeltDuration = data or 20; smeltStartTime = tick()
 		updateSlots()
 
 	elseif action == "fuelBurn" then
-		-- data = remaining fuel count
 		fuelCount = data or 0
 		updateSlots()
 
@@ -554,17 +560,63 @@ inventoryEvent.OnClientEvent:Connect(function(inv)
 	if isOpen then updateSlots() end
 end)
 
--- ─── Progress bar ───
+-- ─── Drag: follow mouse ───
 RunService.RenderStepped:Connect(function()
-	if not isOpen or not smelting or not arrowFill then return end
-
-	local elapsed = tick() - smeltStartTime
-	local progress = math.clamp(elapsed / smeltDuration, 0, 1)
-	arrowFill.Size = UDim2.new(progress, 0, 1, 0)
-
-	if statusLabel then
-		local remaining = math.max(0, math.ceil(smeltDuration - elapsed))
-		statusLabel.Text = "Smelting... " .. remaining .. "s | Fuel: " .. fuelCount
-		statusLabel.TextColor3 = fuelCount <= 1 and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(255, 200, 80)
+	-- Progress bar
+	if isOpen and smelting and arrowFill then
+		local elapsed = tick() - smeltStartTime
+		local progress = math.clamp(elapsed / smeltDuration, 0, 1)
+		arrowFill.Size = UDim2.new(progress, 0, 1, 0)
+		if statusLabel then
+			local remaining = math.max(0, math.ceil(smeltDuration - elapsed))
+			statusLabel.Text = "Smelting... " .. remaining .. "s | Fuel: " .. fuelCount
+			statusLabel.TextColor3 = fuelCount <= 1 and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(255, 200, 80)
+		end
 	end
+
+	-- Move drag icon
+	if dragging and dragIcon then
+		local mouse = player:GetMouse()
+		dragIcon.Position = UDim2.new(0, mouse.X - 22, 0, mouse.Y - 22)
+
+		-- Highlight slot under cursor
+		if oreSlot then
+			local oreStroke = oreSlot:FindFirstChildWhichIsA("UIStroke")
+			if oreStroke then
+				if isMouseOver(oreSlot) and not oreType then
+					oreStroke.Color = Color3.fromRGB(100, 255, 100); oreStroke.Thickness = 3
+				else
+					oreStroke.Color = Color3.fromRGB(90, 90, 100); oreStroke.Thickness = 2
+				end
+			end
+		end
+		if fuelSlot then
+			local fuelStroke = fuelSlot:FindFirstChildWhichIsA("UIStroke")
+			if fuelStroke then
+				if isMouseOver(fuelSlot) then
+					fuelStroke.Color = Color3.fromRGB(100, 255, 100); fuelStroke.Thickness = 3
+				else
+					fuelStroke.Color = Color3.fromRGB(90, 90, 100); fuelStroke.Thickness = 2
+				end
+			end
+		end
+	end
+end)
+
+-- ─── Drop: mouse release ───
+UserInputService.InputEnded:Connect(function(input)
+	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
+	if not dragging or not dragItem then return end
+
+	if isOpen and not smelting and not outputReady then
+		-- Drop on ore slot
+		if oreSlot and isMouseOver(oreSlot) and not oreType then
+			furnaceEvent:FireServer("loadOre", dragItem)
+		-- Drop on fuel slot
+		elseif fuelSlot and isMouseOver(fuelSlot) then
+			furnaceEvent:FireServer("loadFuel", dragItem)
+		end
+	end
+
+	cancelDrag()
 end)
