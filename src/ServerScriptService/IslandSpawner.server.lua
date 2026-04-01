@@ -7,15 +7,15 @@ local RunService = game:GetService("RunService")
 
 -- ─── Config ───
 local SPAWN_INTERVAL = 8
-local SPAWN_DISTANCE_MIN = 100
-local SPAWN_DISTANCE_MAX = 300
-local DESPAWN_DISTANCE = 600
-local MAX_ISLANDS = 8
+local SPAWN_DISTANCE_MIN = 300
+local SPAWN_DISTANCE_MAX = 600
+local DESPAWN_DISTANCE = 1000
+local MAX_ISLANDS = 6
 local ISLAND_Y_OFFSET = -2
 
--- Island size ranges (doubled)
-local ISLAND_MIN_RADIUS = 80
-local ISLAND_MAX_RADIUS = 140
+-- Island size ranges
+local ISLAND_MIN_RADIUS = 50
+local ISLAND_MAX_RADIUS = 80
 
 -- Tree/grass config
 local TREES_PER_ISLAND_MIN = 6
