@@ -32,7 +32,7 @@ end
 local _G_Inventories = {}
 _G.GetInventory = function(player)
 	if not _G_Inventories[player] then
-		_G_Inventories[player] = {Log = 500, Plastic = 200} -- DEV: starting resources
+		_G_Inventories[player] = {Log = 0, Plastic = 0}
 	end
 	-- Ensure fields exist for old inventories
 	if not _G_Inventories[player].Plastic then
