@@ -264,6 +264,15 @@ local function updateSlots()
 		statusLabel.Text = ""
 	end
 
+	-- Reset arrow when not smelting (except when output is ready - keep it full)
+	if arrowFill and not smelting then
+		if outputReady then
+			arrowFill.Size = UDim2.new(1, 0, 1, 0)
+		else
+			arrowFill.Size = UDim2.new(0, 0, 1, 0)
+		end
+	end
+
 	rebuildInventory()
 end
 
