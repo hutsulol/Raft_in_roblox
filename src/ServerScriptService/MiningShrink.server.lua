@@ -6,8 +6,8 @@ local rs = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 
 -- ─── Config ───
-local ROCK_MAX_HITS = 10
-local ROCK_MIN_SCALE = 0.5
+local ROCK_MAX_HITS = 5
+local ROCK_MIN_SCALE = 0.7
 
 local IRON_HITS = 20
 local IRON_MIN_SCALE = 0.75
@@ -68,10 +68,9 @@ end
 
 local function watchRockHealth(part)
 	storeOriginal(part)
-	-- Set max health attribute for reference
-	if not part:GetAttribute("MineMaxHealth") then
-		part:SetAttribute("MineMaxHealth", ROCK_MAX_HITS)
-	end
+	-- Use PickAxeSystem's MineHealth as the max (it sets initial health = max hits)
+	local initHealth = part:GetAttribute("MineHealth") or ROCK_MAX_HITS
+	part:SetAttribute("MineMaxHealth", initHealth)
 	part:SetAttribute("OreType", "Rock")
 
 	part:GetAttributeChangedSignal("MineHealth"):Connect(function()
