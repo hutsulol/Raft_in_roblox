@@ -9,7 +9,7 @@ local craftEvent = ReplicatedStorage:WaitForChild("CraftItem")
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local openWorkbenchEvent = ReplicatedStorage:WaitForChild("OpenWorkbench")
 
-local inventory = {Log = 0}
+local inventory = {Log = 0, Stone = 0}
 local recipes = {
 	{
 		name = "Wood_Knife",
@@ -22,6 +22,12 @@ local recipes = {
 		displayName = "Bed",
 		icon = "rbxassetid://110032041583533",
 		costs = {Log = 2},
+	},
+	{
+		name = "Furnace",
+		displayName = "Furnace",
+		icon = "rbxassetid://110032041583533",
+		costs = {Stone = 10, Log = 5},
 	},
 }
 local selectedRecipe = nil
@@ -64,10 +70,12 @@ local function updateUI()
 				local rName = btn:GetAttribute("RecipeName")
 				for _, r in recipes do
 					if r.name == rName then
-						local costLabel = btn:FindFirstChild("CostLabel", true)
-						if costLabel then
-							local affordable = canAfford(r)
-							costLabel.TextColor3 = affordable and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 80, 80)
+						local affordable = canAfford(r)
+						local costColor = affordable and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 80, 80)
+						for _, child in btn:GetChildren() do
+							if child.Name == "CostLabel" and child:IsA("TextLabel") then
+								child.TextColor3 = costColor
+							end
 						end
 					end
 				end
@@ -266,29 +274,34 @@ local function buildUI()
 		nameLabel.Font = Enum.Font.Gotham
 		nameLabel.Parent = btn
 
-		local costText = ""
-		for _, amount in recipe.costs do
-			costText = costText .. tostring(amount)
+		local COST_ICONS = {
+			Log = LOG_ICON,
+			Stone = "rbxassetid://134781813180973",
+		}
+
+		local costOffsetX = 8
+		for item, amount in recipe.costs do
+			local cIcon = Instance.new("ImageLabel")
+			cIcon.Size = UDim2.new(0, 18, 0, 18)
+			cIcon.Position = UDim2.new(0, costOffsetX, 1, -27)
+			cIcon.BackgroundTransparency = 1
+			cIcon.Image = COST_ICONS[item] or LOG_ICON
+			cIcon.ScaleType = Enum.ScaleType.Fit
+			cIcon.Parent = btn
+
+			local cLabel = Instance.new("TextLabel")
+			cLabel.Name = "CostLabel"
+			cLabel.Size = UDim2.new(0, 22, 0, 18)
+			cLabel.Position = UDim2.new(0, costOffsetX + 19, 1, -27)
+			cLabel.BackgroundTransparency = 1
+			cLabel.Text = tostring(amount)
+			cLabel.TextScaled = true
+			cLabel.Font = Enum.Font.GothamBold
+			cLabel.TextXAlignment = Enum.TextXAlignment.Left
+			cLabel.Parent = btn
+
+			costOffsetX = costOffsetX + 44
 		end
-
-		local costIcon = Instance.new("ImageLabel")
-		costIcon.Size = UDim2.new(0, 20, 0, 20)
-		costIcon.Position = UDim2.new(0, 8, 1, -28)
-		costIcon.BackgroundTransparency = 1
-		costIcon.Image = LOG_ICON
-		costIcon.ScaleType = Enum.ScaleType.Fit
-		costIcon.Parent = btn
-
-		local costLabel = Instance.new("TextLabel")
-		costLabel.Name = "CostLabel"
-		costLabel.Size = UDim2.new(0, 30, 0, 20)
-		costLabel.Position = UDim2.new(0, 30, 1, -28)
-		costLabel.BackgroundTransparency = 1
-		costLabel.Text = costText
-		costLabel.TextScaled = true
-		costLabel.Font = Enum.Font.GothamBold
-		costLabel.TextXAlignment = Enum.TextXAlignment.Left
-		costLabel.Parent = btn
 
 		btn.MouseButton1Click:Connect(function()
 			selectRecipe(recipe)
