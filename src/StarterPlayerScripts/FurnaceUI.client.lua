@@ -166,10 +166,35 @@ local function rebuildInventory()
 		countLbl.Font = Enum.Font.GothamBold
 		countLbl.Parent = btn
 
-		-- Start drag on mousedown (allowed during smelting for adding fuel)
+		-- Quick-transfer helper for this stack
+		local function quickTransfer()
+			if stack.name == "Log" then
+				furnaceEvent:FireServer("loadFuel", "Log", stack.count)
+			elseif not oreType and not smelting then
+				furnaceEvent:FireServer("loadOre", stack.name)
+			end
+		end
+
+		-- LMB: drag or Shift quick-transfer
 		btn.MouseButton1Down:Connect(function()
 			if outputReady then return end
-			startDrag(stack.name, stack.count)
+			local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+			if shiftHeld then
+				quickTransfer()
+			else
+				startDrag(stack.name, stack.count)
+			end
+		end)
+
+		-- RMB+Shift: same quick-transfer
+		btn.MouseButton2Down:Connect(function()
+			if outputReady then return end
+			local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+			if shiftHeld then
+				quickTransfer()
+			end
 		end)
 	end
 end
@@ -368,7 +393,13 @@ local function buildUI()
 	oreSlot = createSlot(content, UDim2.new(0, 0, 0, 0), UDim2.new(0, 80, 0, 70))
 	oreSlot.MouseButton1Down:Connect(function()
 		if not oreType or smelting then return end
-		startDrag(oreType, 1, "ore")
+		local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+			or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+		if shiftHeld then
+			furnaceEvent:FireServer("removeOre")
+		else
+			startDrag(oreType, 1, "ore")
+		end
 	end)
 
 	local oreTitle = Instance.new("TextLabel")
@@ -380,7 +411,13 @@ local function buildUI()
 	fuelSlot = createSlot(content, UDim2.new(0, 0, 0, 92), UDim2.new(0, 80, 0, 70))
 	fuelSlot.MouseButton1Down:Connect(function()
 		if fuelCount <= 0 or smelting then return end
-		startDrag("Log", fuelCount, "fuel")
+		local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+			or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+		if shiftHeld then
+			furnaceEvent:FireServer("removeFuel") -- all
+		else
+			startDrag("Log", fuelCount, "fuel")
+		end
 	end)
 
 	local fuelTitle = Instance.new("TextLabel")
@@ -429,7 +466,13 @@ local function buildUI()
 	outputSlot = createSlot(content, UDim2.new(0, 240, 0, 15), UDim2.new(0, 110, 0, 70))
 	outputSlot.MouseButton1Down:Connect(function()
 		if not outputReady or outputAmount <= 0 then return end
-		startDrag(outputType or "Iron_Ingot", outputAmount, "output")
+		local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+			or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+		if shiftHeld then
+			furnaceEvent:FireServer("collectOutput") -- all
+		else
+			startDrag(outputType or "Iron_Ingot", outputAmount, "output")
+		end
 	end)
 
 	local outTitle = Instance.new("TextLabel")
