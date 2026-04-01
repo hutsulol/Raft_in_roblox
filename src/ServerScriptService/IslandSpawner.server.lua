@@ -1,9 +1,8 @@
 -- IslandSpawner.server.lua
--- Generates random islands in the ocean around the player's raft
+-- Generates RAFT-style islands: sandy beach rim, elevated green center with rocks
 
 local rs = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
-local RunService = game:GetService("RunService")
 
 -- ─── Config ───
 local SPAWN_INTERVAL = 8
@@ -13,19 +12,17 @@ local DESPAWN_DISTANCE = 1000
 local MAX_ISLANDS = 6
 local ISLAND_Y_OFFSET = -2
 
--- Island size ranges
 local ISLAND_MIN_RADIUS = 50
 local ISLAND_MAX_RADIUS = 80
 
--- Tree/grass config
-local TREES_PER_ISLAND_MIN = 6
-local TREES_PER_ISLAND_MAX = 14
-local GRASS_PER_ISLAND_MIN = 12
-local GRASS_PER_ISLAND_MAX = 30
-
--- ─── Materials ───
-local SAND_COLOR = Color3.fromRGB(220, 200, 150)
-local DIRT_COLOR = Color3.fromRGB(120, 85, 50)
+-- ─── Colors ───
+local SAND_COLOR = Color3.fromRGB(220, 205, 160)
+local SAND_DARK = Color3.fromRGB(190, 175, 130)
+local DIRT_COLOR = Color3.fromRGB(110, 80, 45)
+local DIRT_DARK = Color3.fromRGB(80, 55, 30)
+local GRASS_TOP = Color3.fromRGB(65, 135, 50)
+local ROCK_COLOR = Color3.fromRGB(100, 95, 85)
+local ROCK_DARK = Color3.fromRGB(75, 70, 60)
 
 local TREE_TRUNK_COLOR = Color3.fromRGB(100, 70, 40)
 local TREE_LEAF_COLORS = {
@@ -42,8 +39,6 @@ local GRASS_COLORS = {
 }
 
 local islands = {}
-
--- ─── Expose island positions so ResourceSpawner can avoid them ───
 _G.IslandPositions = {}
 
 local function updateGlobalIslandPositions()
@@ -56,19 +51,22 @@ local function updateGlobalIslandPositions()
 	_G.IslandPositions = positions
 end
 
--- ─── Helper: random point on island surface ───
-local function randomPointOnIsland(center, radiusX, radiusZ)
+local function randomPointInRing(center, innerR, outerR)
 	local angle = math.random() * math.pi * 2
-	local dist = math.random() * 0.75
-	local x = center.X + math.cos(angle) * radiusX * dist
-	local z = center.Z + math.sin(angle) * radiusZ * dist
-	return x, z
+	local dist = innerR + math.random() * (outerR - innerR)
+	return center.X + math.cos(angle) * dist, center.Z + math.sin(angle) * dist
+end
+
+local function randomPointInCircle(center, radius)
+	local angle = math.random() * math.pi * 2
+	local dist = math.random() * radius
+	return center.X + math.cos(angle) * dist, center.Z + math.sin(angle) * dist
 end
 
 -- ─── Create a tree ───
 local function createTree(parent, position)
-	local trunkHeight = math.random(8, 16)
-	local trunkWidth = math.random() * 0.5 + 1
+	local trunkHeight = math.random(10, 18)
+	local trunkWidth = math.random() * 0.6 + 1.2
 
 	local trunk = Instance.new("Part")
 	trunk.Name = "TreeTrunk"
@@ -82,18 +80,17 @@ local function createTree(parent, position)
 	trunk.Parent = parent
 
 	local leafColor = TREE_LEAF_COLORS[math.random(#TREE_LEAF_COLORS)]
-	local numLeafClusters = math.random(2, 4)
-
-	for _ = 1, numLeafClusters do
+	for _ = 1, math.random(3, 5) do
 		local leaf = Instance.new("Part")
 		leaf.Name = "Leaves"
 		leaf.Shape = Enum.PartType.Ball
-		local leafSize = math.random(4, 8)
+		local leafSize = math.random(5, 10)
 		leaf.Size = Vector3.new(leafSize, leafSize, leafSize)
-		local offsetX = (math.random() - 0.5) * 4
-		local offsetY = math.random() * 3
-		local offsetZ = (math.random() - 0.5) * 4
-		leaf.Position = position + Vector3.new(offsetX, trunkHeight + offsetY, offsetZ)
+		leaf.Position = position + Vector3.new(
+			(math.random() - 0.5) * 5,
+			trunkHeight + math.random() * 4 - 1,
+			(math.random() - 0.5) * 5
+		)
 		leaf.Color = leafColor
 		leaf.Material = Enum.Material.Grass
 		leaf.Anchored = true
@@ -119,84 +116,20 @@ local function createGrass(parent, position)
 	grass.Parent = parent
 end
 
--- ─── Create uneven terrain bumps ───
-local function createTerrainBumps(parent, centerPos, radiusX, radiusZ, surfaceY, baseColor, baseMaterial)
-	local numBumps = math.random(10, 20)
-	for _ = 1, numBumps do
-		local angle = math.random() * math.pi * 2
-		local dist = math.random() * 0.85
-		local bx = centerPos.X + math.cos(angle) * radiusX * dist
-		local bz = centerPos.Z + math.sin(angle) * radiusZ * dist
-
-		local bumpWidth = math.random(12, 30)
-		local bumpHeight = math.random() * 3 + 0.5
-		local bumpDepth = math.random(12, 30)
-
-		local bump = Instance.new("Part")
-		bump.Name = "TerrainBump"
-		bump.Size = Vector3.new(bumpWidth, bumpHeight, bumpDepth)
-		bump.Position = Vector3.new(bx, surfaceY + bumpHeight * 0.3, bz)
-		bump.Color = baseColor
-		bump.Material = baseMaterial
-		bump.Anchored = true
-		bump.CanCollide = true
-		bump.Parent = parent
-
-		local mesh = Instance.new("SpecialMesh")
-		mesh.MeshType = Enum.MeshType.Sphere
-		mesh.Scale = Vector3.new(1, 0.4, 1)
-		mesh.Parent = bump
-	end
-end
-
--- ─── Create rock formations ───
-local function createRocks(parent, centerPos, radiusX, radiusZ, surfaceY)
-	local numRocks = math.random(3, 8)
-	for _ = 1, numRocks do
-		local angle = math.random() * math.pi * 2
-		local dist = math.random() * 0.9
-		local rx = centerPos.X + math.cos(angle) * radiusX * dist
-		local rz = centerPos.Z + math.sin(angle) * radiusZ * dist
-
-		local rockSize = math.random(2, 6)
-		local rock = Instance.new("Part")
-		rock.Name = "Rock"
-		rock.Size = Vector3.new(rockSize, rockSize * 0.7, rockSize * 0.9)
-		rock.Position = Vector3.new(rx, surfaceY + rockSize * 0.2, rz)
-		rock.Color = Color3.fromRGB(
-			math.random(80, 120),
-			math.random(80, 110),
-			math.random(80, 100)
-		)
-		rock.Material = Enum.Material.Slate
-		rock.Anchored = true
-		rock.CanCollide = true
-		rock.Parent = parent
-
-		rock.CFrame = rock.CFrame * CFrame.Angles(
-			math.rad(math.random(-15, 15)),
-			math.rad(math.random(0, 360)),
-			math.rad(math.random(-15, 15))
-		)
-	end
-end
-
--- ─── Spawn a pirate on the island ───
+-- ─── Spawn pirate ───
 local function spawnIslandPirate(model, centerPos, surfaceY)
 	local pirateTemplate = rs:FindFirstChild("Pirate lvl1")
 	if not pirateTemplate then return end
 
 	local pirate = pirateTemplate:Clone()
-	local px, pz = randomPointOnIsland(centerPos, 15, 15)
-	local piratePos = Vector3.new(px, surfaceY + 3, pz)
+	local px, pz = randomPointInCircle(centerPos, 15)
+	local piratePos = Vector3.new(px, surfaceY + 5, pz)
 
 	if pirate:IsA("Model") then
 		pirate:PivotTo(CFrame.new(piratePos))
 	end
 	pirate.Parent = workspace
 
-	-- Make sure all parts are unanchored so physics works
-	local hrp = pirate:FindFirstChild("HumanoidRootPart")
 	for _, part in pirate:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
@@ -208,12 +141,10 @@ local function spawnIslandPirate(model, centerPos, surfaceY)
 		hum.WalkSpeed = 12
 		hum.JumpPower = 30
 
-		-- Make pirate wander around the island
 		task.spawn(function()
 			while pirate.Parent and hum.Health > 0 do
-				local wx, wz = randomPointOnIsland(centerPos, 25, 25)
-				local target = Vector3.new(wx, surfaceY + 2, wz)
-				hum:MoveTo(target)
+				local wx, wz = randomPointInCircle(centerPos, 20)
+				hum:MoveTo(Vector3.new(wx, surfaceY + 2, wz))
 				hum.MoveToFinished:Wait()
 				task.wait(math.random(2, 5))
 			end
@@ -229,19 +160,25 @@ local function spawnIslandPirate(model, centerPos, surfaceY)
 	return pirate
 end
 
--- ─── Place Destroyed House on island ───
+-- ─── Place Destroyed House ───
 local function placeDestroyedHouse(parent, centerPos, surfaceY)
 	local houseTemplate = rs:FindFirstChild("Destroyed house")
 	if not houseTemplate then return end
 
 	local house = houseTemplate:Clone()
-	local hx = centerPos.X + (math.random() - 0.5) * 20
-	local hz = centerPos.Z + (math.random() - 0.5) * 20
+	local hx = centerPos.X + (math.random() - 0.5) * 16
+	local hz = centerPos.Z + (math.random() - 0.5) * 16
+
+	-- Place ON the surface (use surfaceY + small offset so it sits on top)
+	local houseY = surfaceY + 1
 
 	if house:IsA("Model") then
-		house:PivotTo(CFrame.new(hx, surfaceY, hz) * CFrame.Angles(0, math.rad(math.random(0, 360)), 0))
+		-- Get bounding box to offset properly
+		local bbCF, bbSize = house:GetBoundingBox()
+		houseY = surfaceY + bbSize.Y / 2
+		house:PivotTo(CFrame.new(hx, houseY, hz) * CFrame.Angles(0, math.rad(math.random(0, 360)), 0))
 	elseif house:IsA("BasePart") then
-		house.CFrame = CFrame.new(hx, surfaceY, hz)
+		house.CFrame = CFrame.new(hx, houseY, hz)
 	end
 
 	for _, part in house:GetDescendants() do
@@ -253,140 +190,246 @@ local function placeDestroyedHouse(parent, centerPos, surfaceY)
 	house.Parent = parent
 end
 
--- ─── Create an island ───
+-- ─── Create RAFT-style island ───
 local function createIsland(centerPos, waterY)
-	local islandType = math.random() > 0.5 and "sand" or "dirt"
 	local radiusX = math.random(ISLAND_MIN_RADIUS, ISLAND_MAX_RADIUS)
 	local radiusZ = math.random(ISLAND_MIN_RADIUS, ISLAND_MAX_RADIUS)
+	local radius = math.max(radiusX, radiusZ)
 
 	local model = Instance.new("Model")
-	model.Name = "Island_" .. islandType
+	model.Name = "Island"
 
-	local baseColor = islandType == "sand" and SAND_COLOR or DIRT_COLOR
-	local baseMaterial = islandType == "sand" and Enum.Material.Sand or Enum.Material.Ground
-
-	local topHeight = math.random(4, 7)
 	local islandY = waterY + ISLAND_Y_OFFSET
 
-	-- Main top surface
-	local top = Instance.new("Part")
-	top.Name = "IslandTop"
-	top.Size = Vector3.new(radiusX * 2, topHeight, radiusZ * 2)
-	top.Position = Vector3.new(centerPos.X, islandY + topHeight / 2, centerPos.Z)
-	top.Color = baseColor
-	top.Material = baseMaterial
-	top.Anchored = true
-	top.CanCollide = true
-	top.Parent = model
+	-- ══════════════════════════════════════
+	-- LAYER 1: Sandy beach rim (outer ring, flat, at water level)
+	-- ══════════════════════════════════════
+	local beachHeight = 2
+	local beach = Instance.new("Part")
+	beach.Name = "Beach"
+	beach.Size = Vector3.new(radiusX * 2.3, beachHeight, radiusZ * 2.3)
+	beach.Position = Vector3.new(centerPos.X, islandY + beachHeight / 2, centerPos.Z)
+	beach.Color = SAND_COLOR
+	beach.Material = Enum.Material.Sand
+	beach.Anchored = true
+	beach.CanCollide = true
+	beach.Parent = model
 
-	local topMesh = Instance.new("SpecialMesh")
-	topMesh.MeshType = Enum.MeshType.Sphere
-	topMesh.Scale = Vector3.new(1, 0.3, 1)
-	topMesh.Parent = top
+	local beachMesh = Instance.new("SpecialMesh")
+	beachMesh.MeshType = Enum.MeshType.Sphere
+	beachMesh.Scale = Vector3.new(1, 0.15, 1)
+	beachMesh.Parent = beach
 
-	-- Add offset lobes to break the symmetry
-	local numLobes = math.random(4, 8)
-	for _ = 1, numLobes do
+	-- Beach lobes for irregular coastline
+	for _ = 1, math.random(3, 6) do
 		local lobeAngle = math.random() * math.pi * 2
-		local lobeDist = math.random() * 0.4 + 0.3
-		local lobeRadiusX = radiusX * (math.random() * 0.5 + 0.3)
-		local lobeRadiusZ = radiusZ * (math.random() * 0.5 + 0.3)
+		local lobeDist = 0.35 + math.random() * 0.3
+		local lobeRX = radiusX * (0.3 + math.random() * 0.4)
+		local lobeRZ = radiusZ * (0.3 + math.random() * 0.4)
 
 		local lobe = Instance.new("Part")
-		lobe.Name = "IslandLobe"
-		lobe.Size = Vector3.new(lobeRadiusX * 2, topHeight * 0.9, lobeRadiusZ * 2)
+		lobe.Name = "BeachLobe"
+		lobe.Size = Vector3.new(lobeRX * 2, beachHeight * 0.9, lobeRZ * 2)
 		lobe.Position = Vector3.new(
 			centerPos.X + math.cos(lobeAngle) * radiusX * lobeDist,
-			islandY + topHeight * 0.4,
+			islandY + beachHeight * 0.4,
 			centerPos.Z + math.sin(lobeAngle) * radiusZ * lobeDist
 		)
-		lobe.Color = baseColor
-		lobe.Material = baseMaterial
+		lobe.Color = SAND_COLOR
+		lobe.Material = Enum.Material.Sand
 		lobe.Anchored = true
 		lobe.CanCollide = true
 		lobe.Parent = model
 
 		local lobeMesh = Instance.new("SpecialMesh")
 		lobeMesh.MeshType = Enum.MeshType.Sphere
-		lobeMesh.Scale = Vector3.new(1, 0.3, 1)
+		lobeMesh.Scale = Vector3.new(1, 0.15, 1)
 		lobeMesh.Parent = lobe
 	end
 
-	-- Underwater base
-	local baseHeight = math.random(10, 20)
-	local base = Instance.new("Part")
-	base.Name = "IslandBase"
-	base.Size = Vector3.new(radiusX * 2.2, baseHeight, radiusZ * 2.2)
-	base.Position = Vector3.new(centerPos.X, islandY - baseHeight / 2 + 1, centerPos.Z)
+	-- ══════════════════════════════════════
+	-- LAYER 2: Elevated dirt/grass center (inner area, raised)
+	-- ══════════════════════════════════════
+	local centerRadius = radius * 0.6
+	local centerRX = radiusX * 0.6
+	local centerRZ = radiusZ * 0.6
+	local hillHeight = math.random(8, 14)
 
-	local darkerColor = islandType == "sand"
-		and Color3.fromRGB(180, 160, 110)
-		or Color3.fromRGB(80, 55, 30)
-	base.Color = darkerColor
-	base.Material = baseMaterial
-	base.Anchored = true
-	base.CanCollide = true
-	base.Parent = model
+	local hillBase = Instance.new("Part")
+	hillBase.Name = "HillBase"
+	hillBase.Size = Vector3.new(centerRX * 2, hillHeight, centerRZ * 2)
+	hillBase.Position = Vector3.new(centerPos.X, islandY + hillHeight / 2, centerPos.Z)
+	hillBase.Color = DIRT_COLOR
+	hillBase.Material = Enum.Material.Ground
+	hillBase.Anchored = true
+	hillBase.CanCollide = true
+	hillBase.Parent = model
 
-	local baseMesh = Instance.new("SpecialMesh")
-	baseMesh.MeshType = Enum.MeshType.Sphere
-	baseMesh.Scale = Vector3.new(1, 0.5, 1)
-	baseMesh.Parent = base
+	local hillMesh = Instance.new("SpecialMesh")
+	hillMesh.MeshType = Enum.MeshType.Sphere
+	hillMesh.Scale = Vector3.new(1, 0.5, 1)
+	hillMesh.Parent = hillBase
 
-	-- Surface Y for placing objects
-	local surfaceY = islandY + topHeight * 0.3
+	-- Green grass cap on the hill
+	local grassCap = Instance.new("Part")
+	grassCap.Name = "GrassCap"
+	grassCap.Size = Vector3.new(centerRX * 1.9, hillHeight * 0.3, centerRZ * 1.9)
+	grassCap.Position = Vector3.new(centerPos.X, islandY + hillHeight * 0.75, centerPos.Z)
+	grassCap.Color = GRASS_TOP
+	grassCap.Material = Enum.Material.Grass
+	grassCap.Anchored = true
+	grassCap.CanCollide = true
+	grassCap.Parent = model
 
-	-- Add terrain bumps for uneven surface
-	createTerrainBumps(model, centerPos, radiusX, radiusZ, surfaceY, baseColor, baseMaterial)
+	local grassCapMesh = Instance.new("SpecialMesh")
+	grassCapMesh.MeshType = Enum.MeshType.Sphere
+	grassCapMesh.Scale = Vector3.new(1, 0.3, 1)
+	grassCapMesh.Parent = grassCap
 
-	-- Add rocks
-	createRocks(model, centerPos, radiusX, radiusZ, surfaceY)
+	-- Hill lobes for uneven shape
+	for _ = 1, math.random(3, 5) do
+		local lobeAngle = math.random() * math.pi * 2
+		local lobeDist = 0.2 + math.random() * 0.4
+		local lobeRX = centerRX * (0.3 + math.random() * 0.4)
+		local lobeRZ = centerRZ * (0.3 + math.random() * 0.4)
+		local lobeH = hillHeight * (0.5 + math.random() * 0.4)
 
-	-- Add trees
-	local numTrees = math.random(TREES_PER_ISLAND_MIN, TREES_PER_ISLAND_MAX)
+		local hillLobe = Instance.new("Part")
+		hillLobe.Name = "HillLobe"
+		hillLobe.Size = Vector3.new(lobeRX * 2, lobeH, lobeRZ * 2)
+		hillLobe.Position = Vector3.new(
+			centerPos.X + math.cos(lobeAngle) * centerRX * lobeDist,
+			islandY + lobeH / 2,
+			centerPos.Z + math.sin(lobeAngle) * centerRZ * lobeDist
+		)
+		hillLobe.Color = DIRT_COLOR
+		hillLobe.Material = Enum.Material.Ground
+		hillLobe.Anchored = true
+		hillLobe.CanCollide = true
+		hillLobe.Parent = model
+
+		local hlMesh = Instance.new("SpecialMesh")
+		hlMesh.MeshType = Enum.MeshType.Sphere
+		hlMesh.Scale = Vector3.new(1, 0.45, 1)
+		hlMesh.Parent = hillLobe
+
+		-- Grass on top of each lobe
+		local lobeCap = Instance.new("Part")
+		lobeCap.Name = "LobeGrass"
+		lobeCap.Size = Vector3.new(lobeRX * 1.8, lobeH * 0.2, lobeRZ * 1.8)
+		lobeCap.Position = Vector3.new(
+			hillLobe.Position.X,
+			islandY + lobeH * 0.75,
+			hillLobe.Position.Z
+		)
+		lobeCap.Color = GRASS_TOP
+		lobeCap.Material = Enum.Material.Grass
+		lobeCap.Anchored = true
+		lobeCap.CanCollide = false
+		lobeCap.Parent = model
+
+		local lcMesh = Instance.new("SpecialMesh")
+		lcMesh.MeshType = Enum.MeshType.Sphere
+		lcMesh.Scale = Vector3.new(1, 0.2, 1)
+		lcMesh.Parent = lobeCap
+	end
+
+	-- ══════════════════════════════════════
+	-- LAYER 3: Rocky peak (small elevated rocky area)
+	-- ══════════════════════════════════════
+	local peakOffsetX = (math.random() - 0.5) * centerRX * 0.4
+	local peakOffsetZ = (math.random() - 0.5) * centerRZ * 0.4
+	local peakHeight = hillHeight * (0.6 + math.random() * 0.4)
+	local peakRX = centerRX * (0.2 + math.random() * 0.2)
+	local peakRZ = centerRZ * (0.2 + math.random() * 0.2)
+
+	local peak = Instance.new("Part")
+	peak.Name = "RockyPeak"
+	peak.Size = Vector3.new(peakRX * 2, peakHeight, peakRZ * 2)
+	peak.Position = Vector3.new(
+		centerPos.X + peakOffsetX,
+		islandY + hillHeight * 0.5 + peakHeight * 0.3,
+		centerPos.Z + peakOffsetZ
+	)
+	peak.Color = ROCK_COLOR
+	peak.Material = Enum.Material.Slate
+	peak.Anchored = true
+	peak.CanCollide = true
+	peak.Parent = model
+
+	local peakMesh = Instance.new("SpecialMesh")
+	peakMesh.MeshType = Enum.MeshType.Sphere
+	peakMesh.Scale = Vector3.new(1, 0.6, 1)
+	peakMesh.Parent = peak
+
+	-- Extra rock formations
+	for _ = 1, math.random(3, 6) do
+		local rx, rz = randomPointInCircle(centerPos, centerRadius * 0.7)
+		local rockSize = math.random(3, 8)
+		local rock = Instance.new("Part")
+		rock.Name = "Rock"
+		rock.Size = Vector3.new(rockSize, rockSize * (0.5 + math.random() * 0.5), rockSize * 0.8)
+		rock.Position = Vector3.new(rx, islandY + hillHeight * 0.4 + rockSize * 0.2, rz)
+		rock.Color = math.random() > 0.5 and ROCK_COLOR or ROCK_DARK
+		rock.Material = Enum.Material.Slate
+		rock.Anchored = true
+		rock.CanCollide = true
+		rock.CFrame = rock.CFrame * CFrame.Angles(
+			math.rad(math.random(-20, 20)),
+			math.rad(math.random(0, 360)),
+			math.rad(math.random(-20, 20))
+		)
+		rock.Parent = model
+	end
+
+	-- ══════════════════════════════════════
+	-- LAYER 4: Underwater base
+	-- ══════════════════════════════════════
+	local underwaterHeight = math.random(15, 25)
+	local underwaterBase = Instance.new("Part")
+	underwaterBase.Name = "UnderwaterBase"
+	underwaterBase.Size = Vector3.new(radiusX * 2, underwaterHeight, radiusZ * 2)
+	underwaterBase.Position = Vector3.new(centerPos.X, islandY - underwaterHeight / 2 + 1, centerPos.Z)
+	underwaterBase.Color = SAND_DARK
+	underwaterBase.Material = Enum.Material.Sand
+	underwaterBase.Anchored = true
+	underwaterBase.CanCollide = true
+	underwaterBase.Parent = model
+
+	local uwMesh = Instance.new("SpecialMesh")
+	uwMesh.MeshType = Enum.MeshType.Sphere
+	uwMesh.Scale = Vector3.new(1, 0.5, 1)
+	uwMesh.Parent = underwaterBase
+
+	-- ══════════════════════════════════════
+	-- DECORATIONS: Trees (only on dirt/grass area, NOT beach)
+	-- ══════════════════════════════════════
+	local hillSurfaceY = islandY + hillHeight * 0.5
+	local numTrees = math.random(5, 12)
 	for _ = 1, numTrees do
-		local tx, tz = randomPointOnIsland(centerPos, radiusX * 0.7, radiusZ * 0.7)
-		createTree(model, Vector3.new(tx, surfaceY, tz))
+		local tx, tz = randomPointInCircle(centerPos, centerRadius * 0.85)
+		createTree(model, Vector3.new(tx, hillSurfaceY, tz))
 	end
 
-	-- Add grass
-	local numGrass = math.random(GRASS_PER_ISLAND_MIN, GRASS_PER_ISLAND_MAX)
-	for _ = 1, numGrass do
-		local gx, gz = randomPointOnIsland(centerPos, radiusX * 0.85, radiusZ * 0.85)
-		createGrass(model, Vector3.new(gx, surfaceY, gz))
+	-- Grass tufts on the green area
+	for _ = 1, math.random(10, 25) do
+		local gx, gz = randomPointInCircle(centerPos, centerRadius * 0.9)
+		createGrass(model, Vector3.new(gx, hillSurfaceY, gz))
 	end
 
-	-- Green top layer for dirt islands
-	if islandType == "dirt" then
-		local grassLayer = Instance.new("Part")
-		grassLayer.Name = "GrassLayer"
-		grassLayer.Size = Vector3.new(radiusX * 1.8, topHeight * 0.5, radiusZ * 1.8)
-		grassLayer.Position = Vector3.new(centerPos.X, islandY + topHeight * 0.35, centerPos.Z)
-		grassLayer.Color = Color3.fromRGB(60, 130, 45)
-		grassLayer.Material = Enum.Material.Grass
-		grassLayer.Anchored = true
-		grassLayer.CanCollide = false
-		grassLayer.Parent = model
-
-		local grassMesh = Instance.new("SpecialMesh")
-		grassMesh.MeshType = Enum.MeshType.Sphere
-		grassMesh.Scale = Vector3.new(1, 0.15, 1)
-		grassMesh.Parent = grassLayer
-	end
-
-	-- Place Destroyed House
-	placeDestroyedHouse(model, centerPos, surfaceY)
+	-- Place Destroyed House on the hill surface
+	placeDestroyedHouse(model, centerPos, hillSurfaceY)
 
 	model.Parent = workspace
-	model.PrimaryPart = top
+	model.PrimaryPart = beach
 
-	-- Spawn 1 pirate on the island
-	local pirate = spawnIslandPirate(model, centerPos, surfaceY)
+	-- Spawn pirate on the hill
+	local pirate = spawnIslandPirate(model, centerPos, hillSurfaceY)
 
 	return {
 		model = model,
 		center = centerPos,
-		radius = math.max(radiusX, radiusZ),
+		radius = radius,
 		pirate = pirate,
 	}
 end
@@ -400,7 +443,6 @@ local function getRaft()
 	return nil
 end
 
--- ─── Check if position is too close to existing islands ───
 local function isTooCloseToIsland(pos, minDist)
 	for _, island in islands do
 		if island.model and island.model.Parent then
@@ -425,7 +467,6 @@ while true do
 	local raftPos = raft.PrimaryPart.Position
 	local waterY = raftPos.Y
 
-	-- Remove far-away islands (and their pirates)
 	for i = #islands, 1, -1 do
 		local island = islands[i]
 		if not island.model or not island.model.Parent then
@@ -447,7 +488,6 @@ while true do
 
 	updateGlobalIslandPositions()
 
-	-- Spawn new islands if under limit
 	if #islands < MAX_ISLANDS then
 		local angle = math.random() * math.pi * 2
 		local dist = math.random(SPAWN_DISTANCE_MIN, SPAWN_DISTANCE_MAX)
