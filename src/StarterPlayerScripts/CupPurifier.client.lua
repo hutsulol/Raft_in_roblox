@@ -192,37 +192,30 @@ local function isPlacementBlocked(placeCF, ghostSize)
 	local raft = workspace:FindFirstChild("Raft")
 	if not raft then return true end
 
-	-- Use OverlapParams to find parts in the ghost's bounding box
 	local overlapParams = OverlapParams.new()
 	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
-	-- Exclude the ghost, the player, and raft floor tiles
-	local excludeList = {ghost, player.Character}
-	overlapParams.FilterDescendantsInstances = excludeList
+	overlapParams.FilterDescendantsInstances = {ghost, player.Character}
 
-	-- Shrink the check box slightly to avoid false positives at edges
-	local checkSize = ghostSize * 0.8
+	-- Shrink the check box to avoid false positives at edges
+	local checkSize = ghostSize * 0.7
 
 	local parts = workspace:GetPartBoundsInBox(placeCF, checkSize, overlapParams)
 
+	-- Known placed object names to check against
+	local placedObjectNames = {
+		WorkBench = true, Purifier = true, Garden = true,
+		Bed = true, Destitalor = true, bush = true,
+	}
+
 	for _, part in parts do
-		-- Skip raft floor parts (they have GridX/GridZ attributes or are PrimaryPart)
 		if part:IsDescendantOf(raft) then
-			local parentModel = part.Parent
-			-- Allow placement on bare raft floor tiles
-			if part:GetAttribute("GridX") or part:GetAttribute("GridZ") then
-				continue
-			end
-			-- Skip the raft's PrimaryPart itself
-			if part == raft.PrimaryPart then
-				continue
-			end
-			-- Check if part belongs to a placed object (workbench, purifier, garden, bed, etc.)
-			if parentModel and parentModel ~= raft and parentModel:IsA("Model") then
-				return true
-			end
-			-- Standalone parts that aren't floor tiles
-			if part.Name ~= "Floor" and not part:GetAttribute("GridX") then
-				return true
+			-- Walk up to find parent model
+			local current = part
+			while current and current ~= raft do
+				if current:IsA("Model") and placedObjectNames[current.Name] then
+					return true
+				end
+				current = current.Parent
 			end
 		end
 	end

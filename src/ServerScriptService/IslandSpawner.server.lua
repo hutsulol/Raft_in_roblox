@@ -5,10 +5,10 @@ local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
 -- ─── Config ───
-local SPAWN_INTERVAL = 10       -- check every 10 seconds
-local SPAWN_DISTANCE_MIN = 400  -- min distance from raft to spawn
-local SPAWN_DISTANCE_MAX = 800  -- max distance from raft
-local DESPAWN_DISTANCE = 1200   -- remove islands too far away
+local SPAWN_INTERVAL = 8        -- check every 8 seconds
+local SPAWN_DISTANCE_MIN = 100  -- min distance from raft to spawn
+local SPAWN_DISTANCE_MAX = 300  -- max distance from raft
+local DESPAWN_DISTANCE = 600    -- remove islands too far away
 local MAX_ISLANDS = 8           -- max islands at a time
 local ISLAND_Y_OFFSET = -2      -- slightly below raft level (partially submerged look)
 
