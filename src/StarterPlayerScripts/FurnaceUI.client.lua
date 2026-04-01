@@ -47,7 +47,7 @@ local dragSource = nil -- "inventory", "ore", "fuel", "output"
 
 -- UI refs
 local oreSlot, fuelSlot, outputSlot, arrowFill, statusLabel, fuelCountLabel
-local smeltBtn, invGrid
+local invGrid
 
 -- ─── Colors ───
 local SLOT_BG = Color3.fromRGB(60, 60, 65)
@@ -259,37 +259,9 @@ local function updateSlots()
 		end
 	end
 
-	-- Smelt button
-	if smeltBtn then
-		if smelting then
-			smeltBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-			smeltBtn.Text = "Smelting..."
-		elseif outputReady then
-			smeltBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-			smeltBtn.Text = "Done"
-		elseif oreType and fuelCount > 0 then
-			smeltBtn.BackgroundColor3 = Color3.fromRGB(200, 120, 30)
-			smeltBtn.Text = "Smelt"
-		else
-			smeltBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100)
-			smeltBtn.Text = "Smelt"
-		end
-	end
-
-	-- Status
+	-- Status (only show during smelting, handled in RenderStepped)
 	if statusLabel and not smelting then
-		if outputReady then
-			statusLabel.Text = ""
-		elseif oreType and fuelCount > 0 then
-			statusLabel.Text = "Ready - press Smelt"
-			statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
-		elseif not oreType and fuelCount == 0 then
-			statusLabel.Text = ""
-		elseif not oreType then
-			statusLabel.Text = ""
-		else
-			statusLabel.Text = ""
-		end
+		statusLabel.Text = ""
 	end
 
 	rebuildInventory()
@@ -388,11 +360,11 @@ local function buildUI()
 	-- Ore slot
 	oreSlot = createSlot(content, UDim2.new(0, 0, 0, 0), UDim2.new(0, 80, 0, 70))
 	oreSlot.MouseButton1Down:Connect(function()
-		if not oreType or smelting then return end
+		if not oreType then return end
 		local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
 			or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 		if shiftHeld then
-			furnaceEvent:FireServer("removeOre")
+			furnaceEvent:FireServer("removeOre") -- cancels smelting if active
 		else
 			startDrag(oreType, 1, "ore")
 		end
@@ -444,19 +416,6 @@ local function buildUI()
 	arrowLbl.Size = UDim2.new(1, 0, 1, 0); arrowLbl.BackgroundTransparency = 1; arrowLbl.Text = ">>>"
 	arrowLbl.TextColor3 = Color3.fromRGB(220, 220, 220); arrowLbl.TextScaled = true
 	arrowLbl.Font = Enum.Font.GothamBold; arrowLbl.ZIndex = 2; arrowLbl.Parent = arrowBg
-
-	-- Smelt button
-	smeltBtn = Instance.new("TextButton")
-	smeltBtn.Size = UDim2.new(0, 110, 0, 32); smeltBtn.Position = UDim2.new(0, 105, 0, 74)
-	smeltBtn.BackgroundColor3 = Color3.fromRGB(100, 100, 100); smeltBtn.Text = "Smelt"
-	smeltBtn.TextColor3 = Color3.new(1, 1, 1); smeltBtn.TextScaled = true; smeltBtn.Font = Enum.Font.GothamBold
-	smeltBtn.BorderSizePixel = 0; smeltBtn.Parent = content
-	Instance.new("UICorner", smeltBtn).CornerRadius = UDim.new(0, 8)
-	smeltBtn.MouseButton1Click:Connect(function()
-		if smelting or outputReady then return end
-		if not oreType or fuelCount <= 0 then return end
-		furnaceEvent:FireServer("startSmelt")
-	end)
 
 	-- Output slot
 	outputSlot = createSlot(content, UDim2.new(0, 240, 0, 15), UDim2.new(0, 110, 0, 70))
@@ -662,8 +621,8 @@ UserInputService.InputEnded:Connect(function(input)
 
 		if not onFurnaceSlot then
 			-- Return items to inventory
-			if dragSource == "ore" and oreType and not smelting then
-				furnaceEvent:FireServer("removeOre")
+			if dragSource == "ore" and oreType then
+				furnaceEvent:FireServer("removeOre") -- cancels smelting if active
 			elseif dragSource == "fuel" and fuelCount > 0 and not smelting then
 				furnaceEvent:FireServer("removeFuel") -- removes all
 			elseif dragSource == "output" and outputReady then
@@ -683,8 +642,8 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
 		or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 
-	-- Ore slot (always 1 item, so right-click or shift+right-click both remove it)
-	if oreSlot and isMouseOver(oreSlot) and oreType and not smelting then
+	-- Ore slot (always 1 item, removes ore and cancels smelting if active)
+	if oreSlot and isMouseOver(oreSlot) and oreType then
 		furnaceEvent:FireServer("removeOre")
 		return
 	end

@@ -196,6 +196,88 @@ end)
 -- Fuel burns 1 wood every FUEL_BURN_TIME seconds.
 -- Smelt can start with any amount of fuel.
 -- If fuel runs out before smelt completes → process fails, ore lost.
+-- ─── Auto-start smelting when ore + fuel are ready ───
+local function tryAutoSmelt(furnace, state, player)
+	if state.smelting then return end
+	if not state.oreType or state.fuelCount <= 0 then return end
+	if (state.outputAmount or 0) >= MAX_SLOT then return end
+
+	local recipe = SMELT_RECIPES[state.oreType]
+	if not recipe then return end
+
+	state.smelting = true
+	state.startTime = tick()
+	state.smeltPlayer = player
+
+	local totalTime = recipe.time
+	furnaceEvent:FireClient(player, "smeltStart", totalTime, state.fuelCount)
+
+	-- Fuel burn loop: burn 1 wood every FUEL_BURN_TIME
+	task.spawn(function()
+		local elapsed = 0
+
+		while state.smelting and furnaceStates[furnace] do
+			task.wait(FUEL_BURN_TIME)
+			elapsed = elapsed + FUEL_BURN_TIME
+
+			if not state.smelting or not furnaceStates[furnace] then break end
+
+			state.fuelCount = state.fuelCount - 1
+
+			-- Notify nearby players of fuel burn
+			for _, p in Players:GetPlayers() do
+				local c = p.Character
+				if c and c:FindFirstChild("HumanoidRootPart") then
+					local fpart = furnace.PrimaryPart or furnace:FindFirstChildWhichIsA("BasePart", true)
+					if fpart and (c.HumanoidRootPart.Position - fpart.Position).Magnitude < FURNACE_RANGE then
+						furnaceEvent:FireClient(p, "fuelBurn", state.fuelCount)
+					end
+				end
+			end
+
+			-- Check if smelt complete
+			if elapsed >= totalTime then
+				state.smelting = false
+				state.outputReady = true
+				state.outputType = recipe.output
+				state.outputAmount = (state.outputAmount or 0) + recipe.outputAmount
+				if state.outputAmount > MAX_SLOT then state.outputAmount = MAX_SLOT end
+				state.oreType = nil
+				state.smeltPlayer = nil
+
+				for _, p in Players:GetPlayers() do
+					local c = p.Character
+					if c and c:FindFirstChild("HumanoidRootPart") then
+						local fpart = furnace.PrimaryPart or furnace:FindFirstChildWhichIsA("BasePart", true)
+						if fpart and (c.HumanoidRootPart.Position - fpart.Position).Magnitude < FURNACE_RANGE then
+							furnaceEvent:FireClient(p, "smeltDone", state)
+						end
+					end
+				end
+				return
+			end
+
+			-- Fuel ran out before done
+			if state.fuelCount <= 0 then
+				state.smelting = false
+				state.oreType = nil -- ore is consumed/lost
+				state.smeltPlayer = nil
+
+				for _, p in Players:GetPlayers() do
+					local c = p.Character
+					if c and c:FindFirstChild("HumanoidRootPart") then
+						local fpart = furnace.PrimaryPart or furnace:FindFirstChildWhichIsA("BasePart", true)
+						if fpart and (c.HumanoidRootPart.Position - fpart.Position).Magnitude < FURNACE_RANGE then
+							furnaceEvent:FireClient(p, "smeltFailed", state)
+						end
+					end
+				end
+				return
+			end
+		end
+	end)
+end
+
 -- ═══════════════════════════════════════════
 furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 	local furnace = findNearestFurnace(player)
@@ -208,7 +290,7 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		-- data = item name string (any inventory item)
 		local itemName = data
 		if typeof(itemName) ~= "string" then return end
-		if state.smelting or state.outputReady then return end
+		if state.smelting then return end
 		if state.oreType then return end
 
 		if (inv[itemName] or 0) < 1 then return end
@@ -219,9 +301,17 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		if _G.SendInventory then _G.SendInventory(player) end
 		furnaceEvent:FireClient(player, "stateUpdate", state)
 
+		-- Auto-start smelting if fuel is also ready
+		tryAutoSmelt(furnace, state, player)
+
 	elseif action == "removeOre" then
-		if state.smelting or state.outputReady then return end
 		if not state.oreType then return end
+
+		-- Cancel smelting if in progress (ore returned, smelt aborted)
+		if state.smelting then
+			state.smelting = false
+			state.smeltPlayer = nil
+		end
 
 		inv[state.oreType] = (inv[state.oreType] or 0) + 1
 		state.oreType = nil
@@ -233,7 +323,6 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		-- data = item name, data2 = count (bulk load)
 		local itemName = data
 		if typeof(itemName) ~= "string" then return end
-		if state.outputReady then return end
 
 		-- Only wood is fuel
 		if itemName ~= "Log" then return end
@@ -250,6 +339,9 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		if _G.SendInventory then _G.SendInventory(player) end
 		furnaceEvent:FireClient(player, "stateUpdate", state)
 
+		-- Auto-start smelting if ore is also ready
+		tryAutoSmelt(furnace, state, player)
+
 	elseif action == "removeFuel" then
 		if state.smelting or state.outputReady then return end
 		if state.fuelCount <= 0 then return end
@@ -261,97 +353,6 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 
 		if _G.SendInventory then _G.SendInventory(player) end
 		furnaceEvent:FireClient(player, "stateUpdate", state)
-
-	elseif action == "startSmelt" then
-		if state.smelting then return end
-		if not state.oreType then return end
-		if state.fuelCount <= 0 then return end
-
-		-- Block if output slot is full
-		if (state.outputAmount or 0) >= MAX_SLOT then
-			furnaceEvent:FireClient(player, "smeltError", "Output slot is full")
-			return
-		end
-
-		-- Check if ore has a valid recipe
-		local recipe = SMELT_RECIPES[state.oreType]
-		if not recipe then
-			-- Invalid ore - can't smelt, but don't return it
-			furnaceEvent:FireClient(player, "smeltError", "This item cannot be smelted")
-			return
-		end
-
-		state.smelting = true
-		state.startTime = tick()
-		state.smeltPlayer = player -- track who started
-
-		local totalTime = recipe.time
-		furnaceEvent:FireClient(player, "smeltStart", totalTime, state.fuelCount)
-
-		-- Fuel burn loop: burn 1 wood every FUEL_BURN_TIME
-		task.spawn(function()
-			local elapsed = 0
-
-			while state.smelting and furnaceStates[furnace] do
-				task.wait(FUEL_BURN_TIME)
-				elapsed = elapsed + FUEL_BURN_TIME
-
-				if not state.smelting or not furnaceStates[furnace] then break end
-
-				state.fuelCount = state.fuelCount - 1
-
-				-- Notify nearby players of fuel burn
-				for _, p in Players:GetPlayers() do
-					local c = p.Character
-					if c and c:FindFirstChild("HumanoidRootPart") then
-						local fpart = furnace.PrimaryPart or furnace:FindFirstChildWhichIsA("BasePart", true)
-						if fpart and (c.HumanoidRootPart.Position - fpart.Position).Magnitude < FURNACE_RANGE then
-							furnaceEvent:FireClient(p, "fuelBurn", state.fuelCount)
-						end
-					end
-				end
-
-				-- Check if smelt complete
-				if elapsed >= totalTime then
-					state.smelting = false
-					state.outputReady = true
-					state.outputType = recipe.output
-					state.outputAmount = (state.outputAmount or 0) + recipe.outputAmount
-					if state.outputAmount > MAX_SLOT then state.outputAmount = MAX_SLOT end
-					state.oreType = nil
-					state.smeltPlayer = nil
-
-					for _, p in Players:GetPlayers() do
-						local c = p.Character
-						if c and c:FindFirstChild("HumanoidRootPart") then
-							local fpart = furnace.PrimaryPart or furnace:FindFirstChildWhichIsA("BasePart", true)
-							if fpart and (c.HumanoidRootPart.Position - fpart.Position).Magnitude < FURNACE_RANGE then
-								furnaceEvent:FireClient(p, "smeltDone", state)
-							end
-						end
-					end
-					return
-				end
-
-				-- Fuel ran out before done
-				if state.fuelCount <= 0 then
-					state.smelting = false
-					state.oreType = nil -- ore is consumed/lost
-					state.smeltPlayer = nil
-
-					for _, p in Players:GetPlayers() do
-						local c = p.Character
-						if c and c:FindFirstChild("HumanoidRootPart") then
-							local fpart = furnace.PrimaryPart or furnace:FindFirstChildWhichIsA("BasePart", true)
-							if fpart and (c.HumanoidRootPart.Position - fpart.Position).Magnitude < FURNACE_RANGE then
-								furnaceEvent:FireClient(p, "smeltFailed", state)
-							end
-						end
-					end
-					return
-				end
-			end
-		end)
 
 	elseif action == "collectOutput" then
 		if not state.outputReady or (state.outputAmount or 0) <= 0 then return end
