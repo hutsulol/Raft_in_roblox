@@ -79,9 +79,6 @@ local function watchRockHealth(part)
 		if not health then return end
 		local maxH = part:GetAttribute("MineMaxHealth") or ROCK_MAX_HITS
 		if health > 0 then
-			-- Wait a frame so PickAxeSystem's bad shrink+shake finishes first,
-			-- then override with correct linear shrink from original size
-			task.wait()
 			shrinkPart(part, health / maxH, ROCK_MIN_SCALE)
 		end
 	end)

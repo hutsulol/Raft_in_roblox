@@ -279,20 +279,16 @@ local function updateSlots()
 	-- Status
 	if statusLabel and not smelting then
 		if outputReady then
-			statusLabel.Text = "Done! RMB: take 1 | Shift+RMB: take all"
-			statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
+			statusLabel.Text = ""
 		elseif oreType and fuelCount > 0 then
 			statusLabel.Text = "Ready - press Smelt"
 			statusLabel.TextColor3 = Color3.fromRGB(200, 200, 200)
 		elseif not oreType and fuelCount == 0 then
-			statusLabel.Text = "Drag items from inventory into slots"
-			statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+			statusLabel.Text = ""
 		elseif not oreType then
-			statusLabel.Text = "Drag ore into the ore slot"
-			statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+			statusLabel.Text = ""
 		else
-			statusLabel.Text = "Drag wood into the fuel slot"
-			statusLabel.TextColor3 = Color3.fromRGB(150, 150, 150)
+			statusLabel.Text = ""
 		end
 	end
 
@@ -609,8 +605,8 @@ RunService.RenderStepped:Connect(function()
 		arrowFill.Size = UDim2.new(progress, 0, 1, 0)
 		if statusLabel then
 			local remaining = math.max(0, math.ceil(smeltDuration - elapsed))
-			statusLabel.Text = "Smelting... " .. remaining .. "s | Fuel: " .. fuelCount
-			statusLabel.TextColor3 = fuelCount <= 1 and Color3.fromRGB(255, 100, 100) or Color3.fromRGB(255, 200, 80)
+			statusLabel.Text = "Smelting... " .. remaining .. "s"
+			statusLabel.TextColor3 = Color3.fromRGB(255, 200, 80)
 		end
 	end
 

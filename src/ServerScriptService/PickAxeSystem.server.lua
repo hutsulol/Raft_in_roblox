@@ -132,18 +132,7 @@ mineRockEvent.OnServerEvent:Connect(function(player, rockPart)
 	health = health - 1
 	rockPart:SetAttribute("MineHealth", health)
 
-	-- Visual feedback: shrink slightly
-	if health > 0 then
-		local scale = health / MINE_HITS_REQUIRED
-		rockPart.Size = rockPart.Size * (0.9 + 0.1 * scale) / (0.9 + 0.1 * (scale + 1 / MINE_HITS_REQUIRED))
-		-- Small shake effect
-		local origCF = rockPart.CFrame
-		rockPart.CFrame = origCF * CFrame.new(
-			(math.random() - 0.5) * 0.3,
-			(math.random() - 0.5) * 0.3,
-			(math.random() - 0.5) * 0.3
-		)
-	end
+	-- Shrinking is handled by MiningShrink.server.lua via MineHealth attribute
 
 	-- Rock destroyed
 	if health <= 0 then
