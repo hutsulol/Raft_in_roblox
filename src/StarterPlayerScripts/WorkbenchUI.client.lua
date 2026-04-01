@@ -10,7 +10,20 @@ local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local openWorkbenchEvent = ReplicatedStorage:WaitForChild("OpenWorkbench")
 
 local inventory = {Log = 0}
-local recipes = {}
+local recipes = {
+	{
+		name = "Wood_Knife",
+		displayName = "Wood Knife",
+		icon = "rbxassetid://110032041583533",
+		costs = {Log = 2},
+	},
+	{
+		name = "Bed",
+		displayName = "Bed",
+		icon = "rbxassetid://110032041583533",
+		costs = {Log = 2},
+	},
+}
 local selectedRecipe = nil
 local isOpen = false
 local screenGui = nil
