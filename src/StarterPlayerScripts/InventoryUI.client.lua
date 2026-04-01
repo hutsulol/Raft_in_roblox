@@ -1282,6 +1282,22 @@ end)
 inventoryCraftEvent.OnClientEvent:Connect(function(action, data, inv)
 	if action == "recipes" then
 		recipes = data
+		-- Inject Pick-Axe recipe if not present (server file may not sync)
+		local hasPickAxe = false
+		for _, r in recipes do
+			if r.name == "Pick-Axe" then hasPickAxe = true break end
+		end
+		if not hasPickAxe then
+			table.insert(recipes, {
+				name = "Pick-Axe",
+				displayName = "Pick-Axe",
+				icon = "rbxassetid://110032041583533",
+				costs = {Log = 2},
+				craftType = "tool",
+				category = "Tools",
+				description = "A pickaxe for mining rocks on islands to collect stone.",
+			})
+		end
 		if inv then inventory = inv end
 		if isOpen then
 			closeUI()
