@@ -196,7 +196,7 @@ end)
 -- Smelt can start with any amount of fuel.
 -- If fuel runs out before smelt completes → process fails, ore lost.
 -- ═══════════════════════════════════════════
-furnaceEvent.OnServerEvent:Connect(function(player, action, data)
+furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 	local furnace = findNearestFurnace(player)
 	if not furnace or not furnaceStates[furnace] then return end
 
@@ -229,17 +229,20 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data)
 		furnaceEvent:FireClient(player, "stateUpdate", state)
 
 	elseif action == "loadFuel" then
-		-- data = item name (only Log accepted as fuel)
+		-- data = item name, data2 = count (bulk load)
 		local itemName = data
 		if typeof(itemName) ~= "string" then return end
-		if state.smelting or state.outputReady then return end
+		if state.outputReady then return end
 
 		-- Only wood is fuel
 		if itemName ~= "Log" then return end
 		if (inv.Log or 0) < 1 then return end
 
-		inv.Log = inv.Log - 1
-		state.fuelCount = state.fuelCount + 1
+		local count = (typeof(data2) == "number") and math.floor(data2) or 1
+		count = math.clamp(count, 1, inv.Log)
+
+		inv.Log = inv.Log - count
+		state.fuelCount = state.fuelCount + count
 
 		if _G.SendInventory then _G.SendInventory(player) end
 		furnaceEvent:FireClient(player, "stateUpdate", state)

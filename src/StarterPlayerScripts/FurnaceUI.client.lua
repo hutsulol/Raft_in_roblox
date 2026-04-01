@@ -65,10 +65,13 @@ local function closeUI()
 end
 
 -- ─── Drag helpers ───
-local function startDrag(itemName)
+local dragCount = 0
+
+local function startDrag(itemName, count)
 	if dragging then return end
 	dragging = true
 	dragItem = itemName
+	dragCount = count or 1
 
 	dragIcon = Instance.new("ImageLabel")
 	dragIcon.Size = UDim2.new(0, 44, 0, 44)
@@ -158,20 +161,10 @@ local function rebuildInventory()
 		countLbl.Font = Enum.Font.GothamBold
 		countLbl.Parent = btn
 
-		local nameLbl = Instance.new("TextLabel")
-		nameLbl.Size = UDim2.new(1, -4, 0, 10)
-		nameLbl.Position = UDim2.new(0, 2, 0, 42)
-		nameLbl.BackgroundTransparency = 1
-		nameLbl.Text = stack.name:gsub("_", " ")
-		nameLbl.TextColor3 = Color3.fromRGB(160, 160, 160)
-		nameLbl.TextScaled = true
-		nameLbl.Font = Enum.Font.Gotham
-		nameLbl.Parent = btn
-
-		-- Start drag on mousedown
+		-- Start drag on mousedown (allowed during smelting for adding fuel)
 		btn.MouseButton1Down:Connect(function()
-			if smelting or outputReady then return end
-			startDrag(stack.name)
+			if outputReady then return end
+			startDrag(stack.name, stack.count)
 		end)
 	end
 end
@@ -608,13 +601,13 @@ UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 	if not dragging or not dragItem then return end
 
-	if isOpen and not smelting and not outputReady then
-		-- Drop on ore slot
-		if oreSlot and isMouseOver(oreSlot) and not oreType then
+	if isOpen and not outputReady then
+		-- Drop on ore slot (not during smelting)
+		if oreSlot and isMouseOver(oreSlot) and not oreType and not smelting then
 			furnaceEvent:FireServer("loadOre", dragItem)
-		-- Drop on fuel slot
+		-- Drop on fuel slot (allowed during smelting to add more fuel)
 		elseif fuelSlot and isMouseOver(fuelSlot) then
-			furnaceEvent:FireServer("loadFuel", dragItem)
+			furnaceEvent:FireServer("loadFuel", dragItem, dragCount)
 		end
 	end
 
