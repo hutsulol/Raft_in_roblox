@@ -1,7 +1,7 @@
 --[[
 	DayNightCycle.server.lua
 	Controls the day/night cycle and replicates the current day number to clients.
-	Day = 1 minute, Night = 2 minutes.
+	Day = 5 minutes, Night = 2 minutes.
 	ClockTime: Day = 6→18, Night = 18→6
 ]]
 
@@ -9,8 +9,8 @@ local Lighting = game:GetService("Lighting")
 local Players = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-local DAY_DURATION = 60   -- seconds (real time)
-local NIGHT_DURATION = 120 -- seconds (real time)
+local DAY_DURATION = 300  -- seconds (5 minutes)
+local NIGHT_DURATION = 120 -- seconds (2 minutes)
 local FULL_CYCLE = DAY_DURATION + NIGHT_DURATION
 local SLEEP_SPEED_MULT = 20 -- night passes 20x faster when sleeping
 
