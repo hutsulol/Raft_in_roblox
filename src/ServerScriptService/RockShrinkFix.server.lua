@@ -1,14 +1,12 @@
--- RockShrinkGrounded.server.lua
--- Overrides rock mining to 10 hits with progressive shrinking
--- Keeps the rock grounded (bottom stays on the ground)
+-- RockShrinkFix.server.lua
+-- 10 hits to mine, shrinks from 100% to 50%, stays grounded
 
 local TOTAL_HITS = 10
-local MIN_SCALE = 0.1
+local MIN_SCALE = 0.5
 
 local ISLAND_NAMES = { Island_1 = true, Island_2 = true }
 
--- Store original data per rock
-local rockData = {} -- [part] = { origSize, bottomY }
+local rockData = {}
 
 local function setupRock(rockPart)
 	if not rockPart:IsA("BasePart") then return end
@@ -17,7 +15,6 @@ local function setupRock(rockPart)
 	task.wait(0.2)
 	if not rockPart:GetAttribute("Mineable") then return end
 
-	-- Store original size and the Y position of the bottom of the rock
 	local origSize = rockPart.Size
 	local bottomY = rockPart.Position.Y - origSize.Y / 2
 
@@ -26,10 +23,8 @@ local function setupRock(rockPart)
 		bottomY = bottomY,
 	}
 
-	-- Override health to 10
 	rockPart:SetAttribute("MineHealth", TOTAL_HITS)
 
-	-- Watch for health changes and scale + reposition
 	rockPart:GetAttributeChangedSignal("MineHealth"):Connect(function()
 		local health = rockPart:GetAttribute("MineHealth")
 		if not health or health <= 0 then
@@ -40,14 +35,12 @@ local function setupRock(rockPart)
 		local data = rockData[rockPart]
 		if not data then return end
 
-		-- Scale from 1.0 (full health) to MIN_SCALE (1 hit left)
 		local fraction = (health - 1) / (TOTAL_HITS - 1)
 		local scale = MIN_SCALE + fraction * (1 - MIN_SCALE)
 
 		local newSize = data.origSize * scale
 		rockPart.Size = newSize
 
-		-- Keep the bottom of the rock at the same Y position
 		local newY = data.bottomY + newSize.Y / 2
 		rockPart.Position = Vector3.new(rockPart.Position.X, newY, rockPart.Position.Z)
 	end)
