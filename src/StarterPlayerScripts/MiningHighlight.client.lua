@@ -21,6 +21,28 @@ local RESOURCE_ICONS = {
 	Iron_Ore = "rbxassetid://73676755288746",
 }
 
+-- ─── Mining feedback UI ───
+local feedbackGui = Instance.new("ScreenGui")
+feedbackGui.Name = "OreMiningFeedback"
+feedbackGui.DisplayOrder = 52
+feedbackGui.IgnoreGuiInset = true
+feedbackGui.Parent = playerGui
+
+local feedbackLabel = Instance.new("TextLabel")
+feedbackLabel.Name = "OreFeedback"
+feedbackLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+feedbackLabel.Position = UDim2.new(0.5, 0, 0.4, 0)
+feedbackLabel.Size = UDim2.new(0, 250, 0, 36)
+feedbackLabel.BackgroundTransparency = 1
+feedbackLabel.Text = ""
+feedbackLabel.TextColor3 = Color3.fromRGB(255, 220, 100)
+feedbackLabel.TextSize = 22
+feedbackLabel.Font = Enum.Font.GothamBold
+feedbackLabel.TextStrokeTransparency = 0.5
+feedbackLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+feedbackLabel.Visible = false
+feedbackLabel.Parent = feedbackGui
+
 -- ─── State ───
 local currentHighlight = nil
 local highlightedPart = nil
@@ -242,9 +264,31 @@ mineOreEvent.OnClientEvent:Connect(function(action, value, oreType)
 			showMinedPopup(lastMinedPosition, oType, value)
 			lastMinedPosition = nil
 		end
+		-- Show "+1 Iron Ore" text feedback
+		feedbackLabel.Text = "+" .. value .. " Iron Ore"
+		feedbackLabel.Visible = true
+		feedbackLabel.TextTransparency = 0
+		task.spawn(function()
+			task.wait(1)
+			for i = 0, 10 do
+				feedbackLabel.TextTransparency = i / 10
+				feedbackLabel.TextStrokeTransparency = 0.5 + (i / 10) * 0.5
+				task.wait(0.05)
+			end
+			feedbackLabel.Visible = false
+			feedbackLabel.TextTransparency = 0
+			feedbackLabel.TextStrokeTransparency = 0.5
+		end)
 	elseif action == "hit" then
-		-- Could show "Mining... (X hits left)" but PickAxeClient already has that UI
-		-- We'll keep it simple for now
+		feedbackLabel.Text = "Mining... (" .. value .. " hits left)"
+		feedbackLabel.Visible = true
+		feedbackLabel.TextTransparency = 0
+		task.spawn(function()
+			task.wait(0.8)
+			if feedbackLabel.Text:find("Mining") then
+				feedbackLabel.Visible = false
+			end
+		end)
 	end
 end)
 

@@ -61,14 +61,13 @@ feedbackLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 feedbackLabel.Visible = false
 feedbackLabel.Parent = hintGui
 
--- ─── Highlight box for rocks ───
+-- ─── Highlight box for rocks (yellow outline only) ───
 local function createHighlight()
 	if highlightBox then highlightBox:Destroy() end
-	highlightBox = Instance.new("SelectionBox")
-	highlightBox.Color3 = Color3.fromRGB(255, 200, 50)
-	highlightBox.LineThickness = 0.03
-	highlightBox.SurfaceTransparency = 0.8
-	highlightBox.SurfaceColor3 = Color3.fromRGB(255, 200, 50)
+	highlightBox = Instance.new("Highlight")
+	highlightBox.FillTransparency = 1
+	highlightBox.OutlineColor = Color3.fromRGB(255, 200, 50)
+	highlightBox.OutlineTransparency = 0
 	highlightBox.Parent = playerGui
 end
 
@@ -84,11 +83,14 @@ local function findMineableRock(instance)
 	if not instance then return nil end
 	-- Check the part itself
 	if instance:IsA("BasePart") and instance:GetAttribute("Mineable") then
+		-- Skip Iron_Ore (handled by MiningHighlight)
+		if instance:GetAttribute("MineableOre") then return nil end
 		return instance
 	end
 	-- Check parent parts (in case mesh or decoration was hit)
 	local parent = instance.Parent
 	if parent and parent:IsA("BasePart") and parent:GetAttribute("Mineable") then
+		if parent:GetAttribute("MineableOre") then return nil end
 		return parent
 	end
 	return nil

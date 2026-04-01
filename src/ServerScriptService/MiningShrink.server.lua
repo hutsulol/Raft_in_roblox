@@ -10,7 +10,7 @@ local ROCK_MAX_HITS = 10
 local ROCK_MIN_SCALE = 0.5
 
 local IRON_HITS = 20
-local IRON_MIN_SCALE = 0.1
+local IRON_MIN_SCALE = 0.9
 local IRON_REWARD = 1
 local MINE_RANGE = 15
 
@@ -115,6 +115,19 @@ end)
 -- Uses MineableOre attribute (NOT Mineable) to avoid PickAxeSystem conflict
 -- ═══════════════════════════════════════════
 
+local function protectIronOre(part)
+	-- Remove Mineable if PickAxeSystem tagged it by material
+	if part:GetAttribute("Mineable") then
+		part:SetAttribute("Mineable", nil)
+	end
+	-- Watch for PickAxeSystem re-tagging by material
+	part:GetAttributeChangedSignal("Mineable"):Connect(function()
+		if part:GetAttribute("Mineable") and part:GetAttribute("MineableOre") then
+			part:SetAttribute("Mineable", nil)
+		end
+	end)
+end
+
 local function tagIronOreInModel(model)
 	for _, part in model:GetDescendants() do
 		if part:IsA("BasePart") and part.Name == "Iron_Ore" then
@@ -123,6 +136,7 @@ local function tagIronOreInModel(model)
 			part:SetAttribute("MineHealth", IRON_HITS)
 			part:SetAttribute("MineMaxHealth", IRON_HITS)
 			storeOriginal(part)
+			protectIronOre(part)
 		end
 	end
 end
