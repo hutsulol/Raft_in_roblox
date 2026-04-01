@@ -12,6 +12,7 @@ local RunService = game:GetService("RunService")
 local DAY_DURATION = 60   -- seconds (real time)
 local NIGHT_DURATION = 120 -- seconds (real time)
 local FULL_CYCLE = DAY_DURATION + NIGHT_DURATION
+local SLEEP_SPEED_MULT = 20 -- night passes 20x faster when sleeping
 
 -- Day ClockTime range: 6 (sunrise) → 18 (sunset)
 -- Night ClockTime range: 18 (sunset) → 6 (sunrise, next day)
@@ -23,6 +24,12 @@ local dayCount = Instance.new("IntValue")
 dayCount.Name = "DayCount"
 dayCount.Value = 1
 dayCount.Parent = game:GetService("ReplicatedStorage")
+
+-- Track sleeping players count
+local sleepingCount = Instance.new("IntValue")
+sleepingCount.Name = "SleepingPlayers"
+sleepingCount.Value = 0
+sleepingCount.Parent = game:GetService("ReplicatedStorage")
 
 -- Lighting presets
 local function applyDayLighting(t)
@@ -59,6 +66,11 @@ end
 local cycleTime = 0
 
 RunService.Heartbeat:Connect(function(dt)
+	-- Speed up night 20x when any player is sleeping
+	local isNight = cycleTime >= DAY_DURATION
+	if isNight and sleepingCount.Value > 0 then
+		cycleTime = cycleTime + dt * (SLEEP_SPEED_MULT - 1) -- -1 because dt itself is already added
+	end
 	cycleTime = cycleTime + dt
 
 	-- Check for day rollover
