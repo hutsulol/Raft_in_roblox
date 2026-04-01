@@ -240,8 +240,6 @@ while true do
 		spawnResource("plastic_canister", "Plastic", 3, boat)
 	end
 
-	-- Wooden Barrel: every 6th cycle (rare)
-	if spawnCycle % 6 == 0 then
-		spawnResource("WoodenBarrel", "Barrel", 0, boat)
-	end
+	-- Wooden Barrel: every cycle (same as logs)
+	spawnResource("WoodenBarrel", "Barrel", 0, boat)
 end
