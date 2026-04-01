@@ -1,56 +1,64 @@
--- RockShrink.server.lua
+-- RockShrinkGrounded.server.lua
 -- Overrides rock mining to 10 hits with progressive shrinking
--- Stores original size and scales down linearly each hit
+-- Keeps the rock grounded (bottom stays on the ground)
 
 local TOTAL_HITS = 10
-local MIN_SCALE = 0.1 -- 10% of original size at last hit
+local MIN_SCALE = 0.1
 
 local ISLAND_NAMES = { Island_1 = true, Island_2 = true }
 
--- Store original sizes
-local originalSizes = {}
+-- Store original data per rock
+local rockData = {} -- [part] = { origSize, bottomY }
 
 local function setupRock(rockPart)
 	if not rockPart:IsA("BasePart") then return end
-	if originalSizes[rockPart] then return end -- already set up
+	if rockData[rockPart] then return end
 
-	-- Wait for PickAxeSystem to tag it first
 	task.wait(0.2)
 	if not rockPart:GetAttribute("Mineable") then return end
 
-	-- Store original size
-	originalSizes[rockPart] = rockPart.Size
+	-- Store original size and the Y position of the bottom of the rock
+	local origSize = rockPart.Size
+	local bottomY = rockPart.Position.Y - origSize.Y / 2
+
+	rockData[rockPart] = {
+		origSize = origSize,
+		bottomY = bottomY,
+	}
 
 	-- Override health to 10
 	rockPart:SetAttribute("MineHealth", TOTAL_HITS)
 
-	-- Watch for health changes and scale accordingly
+	-- Watch for health changes and scale + reposition
 	rockPart:GetAttributeChangedSignal("MineHealth"):Connect(function()
 		local health = rockPart:GetAttribute("MineHealth")
 		if not health or health <= 0 then
-			originalSizes[rockPart] = nil
+			rockData[rockPart] = nil
 			return
 		end
 
-		local origSize = originalSizes[rockPart]
-		if not origSize then return end
+		local data = rockData[rockPart]
+		if not data then return end
 
-		-- Scale from 1.0 (full health) down to MIN_SCALE (1 health)
-		-- health goes from TOTAL_HITS down to 1
-		local fraction = (health - 1) / (TOTAL_HITS - 1) -- 1.0 at full, 0.0 at 1 hit left
+		-- Scale from 1.0 (full health) to MIN_SCALE (1 hit left)
+		local fraction = (health - 1) / (TOTAL_HITS - 1)
 		local scale = MIN_SCALE + fraction * (1 - MIN_SCALE)
 
-		rockPart.Size = origSize * scale
+		local newSize = data.origSize * scale
+		rockPart.Size = newSize
+
+		-- Keep the bottom of the rock at the same Y position
+		local newY = data.bottomY + newSize.Y / 2
+		rockPart.Position = Vector3.new(rockPart.Position.X, newY, rockPart.Position.Z)
 	end)
 
-	-- Clean up when destroyed
 	rockPart.Destroying:Connect(function()
-		originalSizes[rockPart] = nil
+		rockData[rockPart] = nil
 	end)
 end
 
 local function setupIsland(island)
-	task.wait(0.4) -- after PickAxeSystem tags at 0.1s
+	task.wait(0.4)
 	for _, child in island:GetDescendants() do
 		if child.Name == "Rock" and child:IsA("BasePart") then
 			setupRock(child)
@@ -58,14 +66,12 @@ local function setupIsland(island)
 	end
 end
 
--- Watch for new islands
 workspace.ChildAdded:Connect(function(child)
 	if child:IsA("Model") and ISLAND_NAMES[child.Name] then
 		task.spawn(setupIsland, child)
 	end
 end)
 
--- Setup existing islands
 for _, child in workspace:GetChildren() do
 	if child:IsA("Model") and ISLAND_NAMES[child.Name] then
 		task.spawn(setupIsland, child)
