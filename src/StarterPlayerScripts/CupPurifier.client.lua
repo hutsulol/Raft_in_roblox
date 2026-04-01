@@ -187,6 +187,49 @@ local function gardenHasBush(garden)
 	return false
 end
 
+-- ─── Check if placement spot is blocked by existing objects ───
+local function isPlacementBlocked(placeCF, ghostSize)
+	local raft = workspace:FindFirstChild("Raft")
+	if not raft then return true end
+
+	-- Use OverlapParams to find parts in the ghost's bounding box
+	local overlapParams = OverlapParams.new()
+	overlapParams.FilterType = Enum.RaycastFilterType.Exclude
+	-- Exclude the ghost, the player, and raft floor tiles
+	local excludeList = {ghost, player.Character}
+	overlapParams.FilterDescendantsInstances = excludeList
+
+	-- Shrink the check box slightly to avoid false positives at edges
+	local checkSize = ghostSize * 0.8
+
+	local parts = workspace:GetPartBoundsInBox(placeCF, checkSize, overlapParams)
+
+	for _, part in parts do
+		-- Skip raft floor parts (they have GridX/GridZ attributes or are PrimaryPart)
+		if part:IsDescendantOf(raft) then
+			local parentModel = part.Parent
+			-- Allow placement on bare raft floor tiles
+			if part:GetAttribute("GridX") or part:GetAttribute("GridZ") then
+				continue
+			end
+			-- Skip the raft's PrimaryPart itself
+			if part == raft.PrimaryPart then
+				continue
+			end
+			-- Check if part belongs to a placed object (workbench, purifier, garden, bed, etc.)
+			if parentModel and parentModel ~= raft and parentModel:IsA("Model") then
+				return true
+			end
+			-- Standalone parts that aren't floor tiles
+			if part.Name ~= "Floor" and not part:GetAttribute("GridX") then
+				return true
+			end
+		end
+	end
+
+	return false
+end
+
 -- ─── Update ghost position each frame ───
 local function updateGhost()
 	if not ghost then return end
@@ -248,7 +291,13 @@ local function updateGhost()
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
 			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
-			setGhostColor(true)
+
+			-- Check for overlap with existing objects
+			if isPlacementBlocked(placeCF, ghostSize) then
+				setGhostColor(false)
+			else
+				setGhostColor(true)
+			end
 		else
 			-- Cursor is not on the raft — show red ghost at cursor position
 			local hitPos = result.Position
