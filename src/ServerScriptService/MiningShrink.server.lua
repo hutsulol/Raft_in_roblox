@@ -10,7 +10,7 @@ local ROCK_MAX_HITS = 10
 local ROCK_MIN_SCALE = 0.5
 
 local IRON_HITS = 20
-local IRON_MIN_SCALE = 0.9
+local IRON_MIN_SCALE = 0.75
 local IRON_REWARD = 1
 local MINE_RANGE = 15
 
@@ -21,37 +21,44 @@ local mineOreEvent = Instance.new("RemoteEvent")
 mineOreEvent.Name = "MineOre"
 mineOreEvent.Parent = rs
 
--- ─── Store original sizes ───
+-- ─── Store originals ───
 local originalSizes = {}
 local originalBottomY = {}
+local originalRotation = {}
+local originalX = {}
+local originalZ = {}
 
 local function storeOriginal(part)
 	if not originalSizes[part] then
 		originalSizes[part] = part.Size
 		originalBottomY[part] = part.Position.Y - part.Size.Y / 2
+		originalRotation[part] = part.CFrame - part.CFrame.Position
+		originalX[part] = part.Position.X
+		originalZ[part] = part.Position.Z
 	end
 end
 
 local function shrinkPart(part, fraction, minScale)
 	local origSize = originalSizes[part]
 	local bottomY = originalBottomY[part]
-	if not origSize or not bottomY then return end
+	local rot = originalRotation[part]
+	local ox = originalX[part]
+	local oz = originalZ[part]
+	if not origSize or not bottomY or not rot then return end
 
 	local scale = minScale + (1 - minScale) * fraction
 	local newSize = origSize * scale
 	part.Size = newSize
-	-- Keep grounded: bottom stays at original Y
-	local rot = part.CFrame - part.CFrame.Position
-	part.CFrame = CFrame.new(
-		part.Position.X,
-		bottomY + newSize.Y / 2,
-		part.Position.Z
-	) * rot
+	-- Keep grounded at original position, using stored rotation
+	part.CFrame = CFrame.new(ox, bottomY + newSize.Y / 2, oz) * rot
 end
 
 local function cleanupPart(part)
 	originalSizes[part] = nil
 	originalBottomY[part] = nil
+	originalRotation[part] = nil
+	originalX[part] = nil
+	originalZ[part] = nil
 end
 
 -- ═══════════════════════════════════════════
@@ -72,6 +79,9 @@ local function watchRockHealth(part)
 		if not health then return end
 		local maxH = part:GetAttribute("MineMaxHealth") or ROCK_MAX_HITS
 		if health > 0 then
+			-- Wait a frame so PickAxeSystem's bad shrink+shake finishes first,
+			-- then override with correct linear shrink from original size
+			task.wait()
 			shrinkPart(part, health / maxH, ROCK_MIN_SCALE)
 		end
 	end)
