@@ -3,7 +3,6 @@ local Players = game:GetService("Players")
 local rs = game:GetService("ReplicatedStorage")
 
 local CLICKS_TO_COLLECT = 5
-local BARREL_CLICKS = 12
 local LIFETIME = 120
 local AREA_SIZE = 25
 local MAX_PER_AREA = 25
@@ -105,45 +104,17 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 	clickCounts[resource][player] = clickCounts[resource][player] + 1
 	local clicks = clickCounts[resource][player]
 
-	local resType = resource:GetAttribute("ResourceType") or "Log"
-	local requiredClicks = resType == "Barrel" and BARREL_CLICKS or CLICKS_TO_COLLECT
+	collectNotify:FireClient(player, "progress", resource, clicks, CLICKS_TO_COLLECT)
 
-	collectNotify:FireClient(player, "progress", resource, clicks, requiredClicks)
-
-	if clicks >= requiredClicks then
+	if clicks >= CLICKS_TO_COLLECT then
 		clickCounts[resource] = nil
 		local inv = _G.GetInventory(player)
 
-		if resType == "Barrel" then
-			-- Barrel gives random loot: wood 0-5, stone 0-2, plastic 0-3
-			local woodAmount = math.random(0, 5)
-			local stoneAmount = math.random(0, 2)
-			local plasticAmount = math.random(0, 3)
+		local resType = resource:GetAttribute("ResourceType") or "Log"
+		local resAmount = resource:GetAttribute("ResourceAmount") or 1
 
-			if woodAmount > 0 then
-				inv.Log = (inv.Log or 0) + woodAmount
-			end
-			if stoneAmount > 0 then
-				inv.Stone = (inv.Stone or 0) + stoneAmount
-			end
-			if plasticAmount > 0 then
-				inv.Plastic = (inv.Plastic or 0) + plasticAmount
-			end
-
-			-- Build loot string for notification
-			local lootParts = {}
-			if woodAmount > 0 then table.insert(lootParts, woodAmount .. " Wood") end
-			if stoneAmount > 0 then table.insert(lootParts, stoneAmount .. " Stone") end
-			if plasticAmount > 0 then table.insert(lootParts, plasticAmount .. " Plastic") end
-			local lootStr = #lootParts > 0 and table.concat(lootParts, ", ") or "Nothing"
-
-			collectNotify:FireClient(player, "collected", resource, "Barrel", lootStr)
-		else
-			local resAmount = resource:GetAttribute("ResourceAmount") or 1
-			inv[resType] = (inv[resType] or 0) + resAmount
-			collectNotify:FireClient(player, "collected", resource, resType, resAmount)
-		end
-
+		inv[resType] = (inv[resType] or 0) + resAmount
+		collectNotify:FireClient(player, "collected", resource, resType, resAmount)
 		_G.SendInventory(player)
 		resource:Destroy()
 	end
@@ -240,6 +211,4 @@ while true do
 		spawnResource("plastic_canister", "Plastic", 3, boat)
 	end
 
-	-- Wooden Barrel: every cycle (same as logs)
-	spawnResource("WoodenBarrel", "Barrel", 0, boat)
 end
