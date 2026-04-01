@@ -15,13 +15,15 @@ local inventoryCraftEvent = ReplicatedStorage:WaitForChild("InventoryCraft")
 
 local LOG_ICON = "rbxassetid://110032041583533"
 local PLASTIC_ICON = "rbxassetid://88529166446482"
+local STONE_ICON = "rbxassetid://134781813180973"
 
 local RESOURCE_ICONS = {
 	Log = LOG_ICON,
 	Plastic = PLASTIC_ICON,
+	Stone = STONE_ICON,
 }
 
-local inventory = {Log = 0, Plastic = 0}
+local inventory = {Log = 0, Plastic = 0, Stone = 0}
 local recipes = {}
 local selectedRecipe = nil
 local selectedCategory = "Tools"
