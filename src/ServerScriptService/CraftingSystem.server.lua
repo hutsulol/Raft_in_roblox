@@ -17,6 +17,13 @@ local recipes = {
 		costs = {Log = 2},
 		model = "Wood_Knife",
 	},
+	{
+		name = "Bed",
+		displayName = "Bed",
+		icon = "rbxassetid://110032041583533",
+		costs = {Log = 2},
+		craftType = "placeable",
+	},
 }
 
 local function findWorkBench()
@@ -80,11 +87,27 @@ craftEvent.OnServerEvent:Connect(function(player, action, data)
 		inv[item] = inv[item] - amount
 	end
 
-	local template = rs:FindFirstChild(recipe.model)
-	if template then
-		local tool = template:Clone()
-		local backpack = player:FindFirstChild("Backpack")
-		if backpack then
+	local backpack = player:FindFirstChild("Backpack")
+	if not backpack then return end
+
+	if recipe.craftType == "placeable" then
+		-- Create a placeholder tool (full model is cloned on placement)
+		local tool = Instance.new("Tool")
+		tool.Name = recipe.name
+		tool.CanBeDropped = false
+		if recipe.icon then
+			tool.TextureId = recipe.icon
+		end
+		local handle = Instance.new("Part")
+		handle.Name = "Handle"
+		handle.Size = Vector3.new(1, 1, 1)
+		handle.Transparency = 1
+		handle.Parent = tool
+		tool.Parent = backpack
+	else
+		local template = rs:FindFirstChild(recipe.model)
+		if template then
+			local tool = template:Clone()
 			tool.Parent = backpack
 		end
 	end

@@ -81,15 +81,6 @@ local recipes = {
 		category = "Technology",
 		description = "A grape bush that grows berries every 20 seconds. Must be planted on a garden bed.",
 	},
-	{
-		name = "Bed",
-		displayName = "Bed",
-		icon = "rbxassetid://110032041583533",
-		costs = {Log = 2},
-		craftType = "placeable",
-		category = "Technology",
-		description = "Sleep through the night. Can only be used at nighttime.",
-	},
 }
 
 inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
