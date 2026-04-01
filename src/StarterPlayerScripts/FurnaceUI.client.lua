@@ -41,8 +41,9 @@ local smeltDuration = 20
 
 -- Drag state
 local dragging = false
-local dragItem = nil -- {name, count}
+local dragItem = nil -- item name string
 local dragIcon = nil -- floating ImageLabel
+local dragSource = nil -- "inventory", "ore", "fuel", "output"
 
 -- UI refs
 local oreSlot, fuelSlot, outputSlot, arrowFill, statusLabel, fuelCountLabel
@@ -62,17 +63,19 @@ local function closeUI()
 	isOpen = false
 	dragging = false
 	dragItem = nil
+	dragSource = nil
 	if dragIcon then dragIcon:Destroy(); dragIcon = nil end
 end
 
 -- ─── Drag helpers ───
 local dragCount = 0
 
-local function startDrag(itemName, count)
+local function startDrag(itemName, count, source)
 	if dragging then return end
 	dragging = true
 	dragItem = itemName
 	dragCount = count or 1
+	dragSource = source or "inventory"
 
 	dragIcon = Instance.new("ImageLabel")
 	dragIcon.Size = UDim2.new(0, 44, 0, 44)
@@ -89,6 +92,7 @@ end
 local function cancelDrag()
 	dragging = false
 	dragItem = nil
+	dragSource = nil
 	if dragIcon then dragIcon:Destroy(); dragIcon = nil end
 end
 
@@ -250,7 +254,7 @@ local function updateSlots()
 	-- Status
 	if statusLabel and not smelting then
 		if outputReady then
-			statusLabel.Text = "Done! Shift+Right-click output to collect"
+			statusLabel.Text = "Done! RMB: take 1 | Shift+RMB: take all"
 			statusLabel.TextColor3 = Color3.fromRGB(100, 255, 100)
 		elseif oreType and fuelCount > 0 then
 			statusLabel.Text = "Ready - press Smelt"
@@ -362,6 +366,10 @@ local function buildUI()
 
 	-- Ore slot
 	oreSlot = createSlot(content, UDim2.new(0, 0, 0, 0), UDim2.new(0, 80, 0, 70))
+	oreSlot.MouseButton1Down:Connect(function()
+		if not oreType or smelting then return end
+		startDrag(oreType, 1, "ore")
+	end)
 
 	local oreTitle = Instance.new("TextLabel")
 	oreTitle.Size = UDim2.new(0, 80, 0, 12); oreTitle.Position = UDim2.new(0, 0, 0, 72)
@@ -370,6 +378,10 @@ local function buildUI()
 
 	-- Fuel slot
 	fuelSlot = createSlot(content, UDim2.new(0, 0, 0, 92), UDim2.new(0, 80, 0, 70))
+	fuelSlot.MouseButton1Down:Connect(function()
+		if fuelCount <= 0 or smelting then return end
+		startDrag("Log", fuelCount, "fuel")
+	end)
 
 	local fuelTitle = Instance.new("TextLabel")
 	fuelTitle.Size = UDim2.new(0, 80, 0, 12); fuelTitle.Position = UDim2.new(0, 0, 0, 164)
@@ -413,8 +425,12 @@ local function buildUI()
 		furnaceEvent:FireServer("startSmelt")
 	end)
 
-	-- Output slot (Shift+Right-click to collect)
+	-- Output slot
 	outputSlot = createSlot(content, UDim2.new(0, 240, 0, 15), UDim2.new(0, 110, 0, 70))
+	outputSlot.MouseButton1Down:Connect(function()
+		if not outputReady or outputAmount <= 0 then return end
+		startDrag(outputType or "Iron_Ingot", outputAmount, "output")
+	end)
 
 	local outTitle = Instance.new("TextLabel")
 	outTitle.Size = UDim2.new(0, 110, 0, 12); outTitle.Position = UDim2.new(0, 240, 0, 87)
@@ -588,38 +604,69 @@ end)
 UserInputService.InputEnded:Connect(function(input)
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 	if not dragging or not dragItem then return end
+	if not isOpen then cancelDrag(); return end
 
-	if isOpen and not outputReady then
-		-- Drop on ore slot (not during smelting)
+	if dragSource == "inventory" then
+		-- Dropping FROM inventory INTO furnace slots
+		-- Drop on ore slot (not during smelting, slot must be empty)
 		if oreSlot and isMouseOver(oreSlot) and not oreType and not smelting then
 			furnaceEvent:FireServer("loadOre", dragItem)
 		-- Drop on fuel slot (allowed during smelting to add more fuel)
 		elseif fuelSlot and isMouseOver(fuelSlot) then
 			furnaceEvent:FireServer("loadFuel", dragItem, dragCount)
 		end
+	else
+		-- Dropping FROM furnace slot — if not dropped back onto a furnace slot, return to inventory
+		local onFurnaceSlot = (oreSlot and isMouseOver(oreSlot))
+			or (fuelSlot and isMouseOver(fuelSlot))
+			or (outputSlot and isMouseOver(outputSlot))
+
+		if not onFurnaceSlot then
+			-- Return items to inventory
+			if dragSource == "ore" and oreType and not smelting then
+				furnaceEvent:FireServer("removeOre")
+			elseif dragSource == "fuel" and fuelCount > 0 and not smelting then
+				furnaceEvent:FireServer("removeFuel") -- removes all
+			elseif dragSource == "output" and outputReady then
+				furnaceEvent:FireServer("collectOutput") -- collects all
+			end
+		end
 	end
 
 	cancelDrag()
 end)
 
--- ─── Shift + Right-click: return all items from a slot ───
+-- ─── Right-click: take 1 item | Shift+Right-click: take all items ───
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
 	if not isOpen then return end
-	if not UserInputService:IsKeyDown(Enum.KeyCode.LeftShift) and not UserInputService:IsKeyDown(Enum.KeyCode.RightShift) then return end
 
-	-- Ore slot: return ore to inventory
+	local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+		or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+
+	-- Ore slot (always 1 item, so right-click or shift+right-click both remove it)
 	if oreSlot and isMouseOver(oreSlot) and oreType and not smelting then
 		furnaceEvent:FireServer("removeOre")
+		return
 	end
 
-	-- Fuel slot: return all fuel to inventory
+	-- Fuel slot
 	if fuelSlot and isMouseOver(fuelSlot) and fuelCount > 0 and not smelting then
-		furnaceEvent:FireServer("removeFuel")
+		if shiftHeld then
+			furnaceEvent:FireServer("removeFuel") -- all (no count = all)
+		else
+			furnaceEvent:FireServer("removeFuel", 1) -- just 1
+		end
+		return
 	end
 
-	-- Output slot: collect all output
-	if outputSlot and isMouseOver(outputSlot) and outputReady then
-		furnaceEvent:FireServer("collectOutput")
+	-- Output slot
+	if outputSlot and isMouseOver(outputSlot) and outputReady and outputAmount > 0 then
+		if shiftHeld then
+			furnaceEvent:FireServer("collectOutput") -- all
+		else
+			furnaceEvent:FireServer("collectOutput", 1) -- just 1
+		end
+		return
 	end
 end)

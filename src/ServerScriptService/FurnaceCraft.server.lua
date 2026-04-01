@@ -254,9 +254,10 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		if state.smelting or state.outputReady then return end
 		if state.fuelCount <= 0 then return end
 
-		local removeCount = state.fuelCount
+		-- data = count to remove (nil or 0 = all)
+		local removeCount = (typeof(data) == "number" and data >= 1) and math.min(math.floor(data), state.fuelCount) or state.fuelCount
 		inv.Log = (inv.Log or 0) + removeCount
-		state.fuelCount = 0
+		state.fuelCount = state.fuelCount - removeCount
 
 		if _G.SendInventory then _G.SendInventory(player) end
 		furnaceEvent:FireClient(player, "stateUpdate", state)
@@ -353,15 +354,19 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		end)
 
 	elseif action == "collectOutput" then
-		if not state.outputReady then return end
+		if not state.outputReady or (state.outputAmount or 0) <= 0 then return end
 
 		local outType = state.outputType or "Iron_Ingot"
-		local outAmount = state.outputAmount or 1
-		inv[outType] = (inv[outType] or 0) + outAmount
+		-- data = count to collect (nil or 0 = all)
+		local collectCount = (typeof(data) == "number" and data >= 1) and math.min(math.floor(data), state.outputAmount) or state.outputAmount
+		inv[outType] = (inv[outType] or 0) + collectCount
+		state.outputAmount = state.outputAmount - collectCount
 
-		state.outputReady = false
-		state.outputType = nil
-		state.outputAmount = 0
+		if state.outputAmount <= 0 then
+			state.outputReady = false
+			state.outputType = nil
+			state.outputAmount = 0
+		end
 
 		if _G.SendInventory then _G.SendInventory(player) end
 		furnaceEvent:FireClient(player, "stateUpdate", state)
