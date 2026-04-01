@@ -1,0 +1,200 @@
+-- MiningShrink.server.lua
+-- 1) Proper grounded shrinking for Rock (tagged by PickAxeSystem)
+-- 2) Full Iron_Ore mining system: tagging, health, shrinking, rewards
+
+local rs = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+
+-- ─── Config ───
+local ROCK_MAX_HITS = 10
+local ROCK_MIN_SCALE = 0.5
+
+local IRON_HITS = 20
+local IRON_MIN_SCALE = 0.1
+local IRON_REWARD = 1
+local MINE_RANGE = 15
+
+-- ─── RemoteEvents ───
+local mineRockEvent = rs:WaitForChild("MineRock") -- used by PickAxeSystem for rocks
+
+local mineOreEvent = Instance.new("RemoteEvent")
+mineOreEvent.Name = "MineOre"
+mineOreEvent.Parent = rs
+
+-- ─── Store original sizes ───
+local originalSizes = {}
+local originalBottomY = {}
+
+local function storeOriginal(part)
+	if not originalSizes[part] then
+		originalSizes[part] = part.Size
+		originalBottomY[part] = part.Position.Y - part.Size.Y / 2
+	end
+end
+
+local function shrinkPart(part, fraction, minScale)
+	local origSize = originalSizes[part]
+	local bottomY = originalBottomY[part]
+	if not origSize or not bottomY then return end
+
+	local scale = minScale + (1 - minScale) * fraction
+	local newSize = origSize * scale
+	part.Size = newSize
+	-- Keep grounded: bottom stays at original Y
+	local rot = part.CFrame - part.CFrame.Position
+	part.CFrame = CFrame.new(
+		part.Position.X,
+		bottomY + newSize.Y / 2,
+		part.Position.Z
+	) * rot
+end
+
+local function cleanupPart(part)
+	originalSizes[part] = nil
+	originalBottomY[part] = nil
+end
+
+-- ═══════════════════════════════════════════
+-- PART 1: Rock shrinking (PickAxeSystem handles health/reward/destroy)
+-- We watch MineHealth attribute changes to shrink properly
+-- ═══════════════════════════════════════════
+
+local function watchRockHealth(part)
+	storeOriginal(part)
+	-- Set max health attribute for reference
+	if not part:GetAttribute("MineMaxHealth") then
+		part:SetAttribute("MineMaxHealth", ROCK_MAX_HITS)
+	end
+	part:SetAttribute("OreType", "Rock")
+
+	part:GetAttributeChangedSignal("MineHealth"):Connect(function()
+		local health = part:GetAttribute("MineHealth")
+		if not health then return end
+		local maxH = part:GetAttribute("MineMaxHealth") or ROCK_MAX_HITS
+		if health > 0 then
+			shrinkPart(part, health / maxH, ROCK_MIN_SCALE)
+		end
+	end)
+end
+
+-- Watch for rocks tagged by PickAxeSystem (Mineable attribute appears)
+local function checkAndWatchRock(part)
+	if not part:IsA("BasePart") then return end
+	if part:GetAttribute("Mineable") and not part:GetAttribute("OreType") then
+		watchRockHealth(part)
+	end
+end
+
+-- Scan existing
+for _, desc in workspace:GetDescendants() do
+	checkAndWatchRock(desc)
+end
+
+-- Watch new parts and attribute changes
+workspace.DescendantAdded:Connect(function(desc)
+	if desc:IsA("BasePart") then
+		-- Wait a moment for PickAxeSystem to tag it
+		task.wait(0.2)
+		checkAndWatchRock(desc)
+	end
+end)
+
+-- Also watch attribute additions on existing parts
+workspace.DescendantAdded:Connect(function(desc)
+	if desc:IsA("BasePart") then
+		desc:GetAttributeChangedSignal("Mineable"):Connect(function()
+			if desc:GetAttribute("Mineable") and not desc:GetAttribute("OreType") then
+				watchRockHealth(desc)
+			end
+		end)
+	end
+end)
+
+-- ═══════════════════════════════════════════
+-- PART 2: Iron_Ore - full system
+-- Uses MineableOre attribute (NOT Mineable) to avoid PickAxeSystem conflict
+-- ═══════════════════════════════════════════
+
+local function tagIronOreInModel(model)
+	for _, part in model:GetDescendants() do
+		if part:IsA("BasePart") and part.Name == "Iron_Ore" then
+			part:SetAttribute("MineableOre", true)
+			part:SetAttribute("OreType", "Iron_Ore")
+			part:SetAttribute("MineHealth", IRON_HITS)
+			part:SetAttribute("MineMaxHealth", IRON_HITS)
+			storeOriginal(part)
+		end
+	end
+end
+
+-- Watch for islands
+workspace.ChildAdded:Connect(function(child)
+	if child:IsA("Model") and (child.Name == "Island_1" or child.Name == "Island_2") then
+		task.wait(0.1)
+		tagIronOreInModel(child)
+	end
+end)
+
+for _, child in workspace:GetChildren() do
+	if child:IsA("Model") and (child.Name == "Island_1" or child.Name == "Island_2") then
+		tagIronOreInModel(child)
+	end
+end
+
+-- Handle Iron_Ore mining via MineOre event
+mineOreEvent.OnServerEvent:Connect(function(player, orePart)
+	if not orePart or not orePart:IsA("BasePart") then return end
+	if not orePart:GetAttribute("MineableOre") then return end
+
+	-- Check player has Pick-Axe equipped
+	local char = player.Character
+	if not char then return end
+	local tool = char:FindFirstChildWhichIsA("Tool")
+	if not tool or tool.Name ~= "Pick-Axe" then return end
+
+	-- Check distance
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return end
+	if (hrp.Position - orePart.Position).Magnitude > MINE_RANGE then return end
+
+	-- Decrease health
+	local health = orePart:GetAttribute("MineHealth") or IRON_HITS
+	health = health - 1
+	orePart:SetAttribute("MineHealth", health)
+
+	-- Shrink
+	if health > 0 then
+		shrinkPart(orePart, health / IRON_HITS, IRON_MIN_SCALE)
+		mineOreEvent:FireClient(player, "hit", health)
+	else
+		-- Destroyed: give Iron_Ore reward
+		local inv = _G.GetInventory and _G.GetInventory(player) or {}
+		inv.Iron_Ore = (inv.Iron_Ore or 0) + IRON_REWARD
+
+		if _G.SendInventory then
+			_G.SendInventory(player)
+		end
+
+		mineOreEvent:FireClient(player, "destroyed", IRON_REWARD, "Iron_Ore")
+
+		cleanupPart(orePart)
+		orePart:Destroy()
+	end
+end)
+
+-- Clean up tracking on destroy
+workspace.DescendantRemoving:Connect(function(desc)
+	cleanupPart(desc)
+end)
+
+-- ─── Ensure Iron_Ore exists in player inventories ───
+local function ensureIronOre(player)
+	task.wait(2)
+	local inv = _G.GetInventory and _G.GetInventory(player)
+	if inv and inv.Iron_Ore == nil then
+		inv.Iron_Ore = 0
+	end
+end
+
+Players.PlayerAdded:Connect(function(p) task.spawn(ensureIronOre, p) end)
+for _, p in Players:GetPlayers() do task.spawn(ensureIronOre, p) end
