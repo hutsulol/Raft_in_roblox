@@ -18,6 +18,7 @@ local placingPurifier = false
 local placingBush = false
 local placingWorkbench = false
 local placingGarden = false
+local placingBed = false
 local lastGhostValid = false
 local lastGhostCF = nil
 local lastGhostRaftOffset = nil -- CFrame offset relative to raft
@@ -291,30 +292,42 @@ local function onToolEquipped(tool)
 		placingBush = false
 		placingWorkbench = false
 		placingGarden = false
+		placingBed = false
 		createGhost("Destitalor")
 	elseif tool.Name == "bush" or tool.Name == "Bush" then
 		placingBush = true
 		placingPurifier = false
 		placingWorkbench = false
 		placingGarden = false
+		placingBed = false
 		createGhost("bush")
 	elseif tool.Name == "WorkBench" then
 		placingWorkbench = true
 		placingPurifier = false
 		placingBush = false
 		placingGarden = false
+		placingBed = false
 		createGhost("WorkBench")
 	elseif tool.Name == "Garden" then
 		placingGarden = true
 		placingPurifier = false
 		placingBush = false
 		placingWorkbench = false
+		placingBed = false
 		createGhost("Garden")
+	elseif tool.Name == "Bed" then
+		placingBed = true
+		placingPurifier = false
+		placingBush = false
+		placingWorkbench = false
+		placingGarden = false
+		createGhost("Bed")
 	else
 		placingPurifier = false
 		placingBush = false
 		placingWorkbench = false
 		placingGarden = false
+		placingBed = false
 		destroyGhost()
 	end
 
@@ -333,6 +346,7 @@ local function onToolUnequipped()
 	placingBush = false
 	placingWorkbench = false
 	placingGarden = false
+	placingBed = false
 	destroyGhost()
 	updateHint()
 end
@@ -366,7 +380,7 @@ player.CharacterAdded:Connect(setupCharacter)
 
 -- ─── Update ghost every frame ───
 RunService.RenderStepped:Connect(function()
-	if (placingPurifier or placingBush or placingWorkbench or placingGarden) and ghost then
+	if (placingPurifier or placingBush or placingWorkbench or placingGarden or placingBed) and ghost then
 		updateGhost()
 	end
 end)
@@ -408,6 +422,15 @@ mouse.Button1Down:Connect(function()
 		gardenActionEvent:FireServer("placeGarden", lastGhostRaftOffset)
 		destroyGhost()
 		placingGarden = false
+		return
+	end
+
+	-- Bed placement
+	if placingBed and ghost then
+		if not lastGhostValid or not lastGhostRaftOffset then return end
+		cupActionEvent:FireServer("placeBed", lastGhostRaftOffset)
+		destroyGhost()
+		placingBed = false
 		return
 	end
 

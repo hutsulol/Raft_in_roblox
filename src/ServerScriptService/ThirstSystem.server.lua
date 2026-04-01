@@ -449,5 +449,64 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		-- Remove tool from player
 		tool:Destroy()
+
+	elseif action == "placeBed" then
+		if not tool or tool.Name ~= "Bed" then return end
+
+		local raft = workspace:FindFirstChild("Raft")
+		if not raft or not raft.PrimaryPart then return end
+
+		if typeof(target) ~= "CFrame" then return end
+
+		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
+
+		local template = rs:FindFirstChild("Bed")
+		if not template then return end
+
+		local bed = template:Clone()
+		bed.Name = "Bed"
+
+		-- Remove existing scripts from the clone
+		for _, desc in bed:GetDescendants() do
+			if desc:IsA("Script") or desc:IsA("LocalScript") then
+				desc:Destroy()
+			end
+		end
+
+		-- Reset WorldPivot to bounding box center with no rotation
+		if bed:IsA("Model") then
+			local bbCF = bed:GetBoundingBox()
+			bed.WorldPivot = CFrame.new(bbCF.Position)
+		end
+
+		bed:PivotTo(worldCF)
+		bed.Parent = raft
+
+		-- Find the primary/main part to attach the BedScript to
+		local bedPart = bed.PrimaryPart or bed:FindFirstChildWhichIsA("BasePart", true)
+
+		-- Weld to raft
+		for _, part in bed:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.Anchored = false
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = part
+				weld.Part1 = raft.PrimaryPart
+				weld.Parent = part
+			end
+		end
+
+		-- Inject the BedScript into the bed's main part
+		if bedPart then
+			local bedScriptTemplate = rs:FindFirstChild("BedScript")
+			if bedScriptTemplate then
+				local scriptClone = bedScriptTemplate:Clone()
+				scriptClone.Parent = bedPart
+				scriptClone.Disabled = false
+			end
+		end
+
+		-- Remove tool from player
+		tool:Destroy()
 	end
 end)
