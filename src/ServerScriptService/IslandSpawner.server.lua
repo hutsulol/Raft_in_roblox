@@ -70,10 +70,15 @@ local function spawnIsland(spawnPos)
 		end
 	end
 
-	-- Position the island at spawn location with random rotation
-	local rotation = math.rad(math.random(0, 360))
-	island:PivotTo(CFrame.new(spawnPos) * CFrame.Angles(0, rotation, 0))
+	-- Get bounding box to raise island above water
 	island.Parent = workspace
+	local _, bbSize = island:GetBoundingBox()
+	local heightOffset = bbSize.Y / 2
+
+	-- Position the island so it sits above water level with random rotation
+	local rotation = math.rad(math.random(0, 360))
+	local raisedPos = spawnPos + Vector3.new(0, heightOffset, 0)
+	island:PivotTo(CFrame.new(raisedPos) * CFrame.Angles(0, rotation, 0))
 
 	local radius = getIslandRadius(island)
 
