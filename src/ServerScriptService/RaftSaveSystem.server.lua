@@ -129,6 +129,31 @@ local function collectInventoryData(player)
 	return data
 end
 
+-- ─── Collect tools from Backpack + Character ───
+local function collectToolData(player)
+	local tools = {}
+	local backpack = player:FindFirstChild("Backpack")
+	local char = player.Character
+
+	if backpack then
+		for _, item in backpack:GetChildren() do
+			if item:IsA("Tool") then
+				table.insert(tools, item.Name)
+			end
+		end
+	end
+	if char then
+		for _, item in char:GetChildren() do
+			if item:IsA("Tool") then
+				table.insert(tools, item.Name)
+			end
+		end
+	end
+
+	print("[RaftSave] Collected " .. #tools .. " tools: " .. table.concat(tools, ", "))
+	return tools
+end
+
 -- ─── Save player data ───
 local function savePlayerData(player)
 	if not raftStore then
@@ -138,16 +163,18 @@ local function savePlayerData(player)
 
 	local raftData = collectRaftData(player)
 	local invData = collectInventoryData(player)
+	local toolData = collectToolData(player)
 
-	print("[RaftSave] Collecting data for " .. player.Name .. " - raft: " .. tostring(raftData ~= nil) .. ", inv keys: " .. tostring(invData and #invData or 0))
+	print("[RaftSave] Collecting data for " .. player.Name .. " - raft: " .. tostring(raftData ~= nil) .. ", tools: " .. #toolData)
 
-	if not raftData and (not invData or next(invData) == nil) then
+	if not raftData and (not invData or next(invData) == nil) and #toolData == 0 then
 		print("[RaftSave] No data to save for " .. player.Name)
 		return
 	end
 
 	local saveData = {
 		inventory = invData,
+		tools = toolData,
 		raft = raftData,
 		savedAt = os.time(),
 	}
@@ -375,15 +402,6 @@ local function rebuildRaft(player, saveData)
 		end
 	end
 
-	-- Teleport player character onto the raft
-	local char = player.Character
-	if char then
-		local hrp = char:FindFirstChild("HumanoidRootPart")
-		if hrp then
-			hrp.CFrame = raft.PrimaryPart.CFrame + Vector3.new(0, 5, 0)
-		end
-	end
-
 	print("[RaftSave] Rebuilt raft for " .. player.Name)
 end
 
@@ -407,19 +425,94 @@ local function restoreInventory(player, saveData)
 	print("[RaftSave] Restored inventory for " .. player.Name)
 end
 
+-- ─── Restore tools ───
+local function restoreTools(player, saveData)
+	if not saveData or not saveData.tools then return end
+
+	local backpack = player:FindFirstChild("Backpack")
+	if not backpack then return end
+
+	-- Tools cloned from ReplicatedStorage templates
+	local cloneableTools = {
+		["Pick-Axe"] = true, ["Hammer"] = true, ["Axe"] = true,
+		["Hook"] = true, ["Machete"] = true, ["Wooden_Spear"] = true,
+		["Cup"] = true, ["Destitalor"] = true, ["Wood_Knife"] = true,
+	}
+
+	-- Placeholder tools (placement items) — create a simple Tool with transparent Handle
+	local placeholderTools = {
+		["WorkBench"] = true, ["Garden"] = true, ["Furnace"] = true,
+		["Bed"] = true, ["bush"] = true,
+	}
+
+	for _, toolName in saveData.tools do
+		if cloneableTools[toolName] then
+			local template = ReplicatedStorage:FindFirstChild(toolName)
+			if template then
+				local clone = template:Clone()
+				clone.Parent = backpack
+				print("[RaftSave] Restored tool: " .. toolName)
+			else
+				warn("[RaftSave] Tool template not found: " .. toolName)
+			end
+		elseif placeholderTools[toolName] then
+			-- Recreate placeholder placement tool
+			local tool = Instance.new("Tool")
+			tool.Name = toolName
+			tool.CanBeDropped = false
+			tool.RequiresHandle = true
+			local handle = Instance.new("Part")
+			handle.Name = "Handle"
+			handle.Size = Vector3.new(1, 1, 1)
+			handle.Transparency = 1
+			handle.CanCollide = false
+			handle.Parent = tool
+			tool.Parent = backpack
+			print("[RaftSave] Restored placeholder tool: " .. toolName)
+		else
+			-- Unknown tool — try to clone from ReplicatedStorage anyway
+			local template = ReplicatedStorage:FindFirstChild(toolName)
+			if template then
+				local clone = template:Clone()
+				clone.Parent = backpack
+				print("[RaftSave] Restored unknown tool: " .. toolName)
+			else
+				warn("[RaftSave] Could not restore tool: " .. toolName)
+			end
+		end
+	end
+
+	print("[RaftSave] Restored " .. #saveData.tools .. " tools for " .. player.Name)
+end
+
 -- ─── On player join: check teleport data for load flag ───
 Players.PlayerAdded:Connect(function(player)
-	-- Wait for character and systems to initialize
-	task.wait(3)
-
 	local joinData = player:GetJoinData()
 	local teleportData = joinData and joinData.TeleportData
 
 	if teleportData and teleportData.loadSave then
+		print("[RaftSave] Player " .. player.Name .. " loading save...")
+
+		-- Load save data immediately (before character spawns)
 		local saveData = loadPlayerData(player)
 		if saveData then
-			restoreInventory(player, saveData)
+			-- Rebuild raft at saved position BEFORE character spawns
 			rebuildRaft(player, saveData)
+
+			-- Wait for character to spawn, then move to raft and restore inventory/tools
+			local char = player.Character or player.CharacterAdded:Wait()
+			local hrp = char:WaitForChild("HumanoidRootPart", 10)
+
+			local raft = workspace:FindFirstChild("Raft")
+			if hrp and raft and raft.PrimaryPart then
+				hrp.CFrame = raft.PrimaryPart.CFrame + Vector3.new(0, 5, 0)
+				print("[RaftSave] Moved " .. player.Name .. " to saved raft")
+			end
+
+			-- Wait a moment for _G.GetInventory to be ready
+			task.wait(1)
+			restoreInventory(player, saveData)
+			restoreTools(player, saveData)
 		end
 	end
 end)
