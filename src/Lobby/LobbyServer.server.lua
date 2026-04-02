@@ -10,7 +10,10 @@ local DataStoreService = game:GetService("DataStoreService")
 
 local OCEAN_PLACE_ID = 128626393517258
 
-local raftStore = DataStoreService:GetDataStore("RaftSaveData_v1")
+local raftStore = nil
+pcall(function()
+	raftStore = DataStoreService:GetDataStore("RaftSaveData_v1")
+end)
 
 -- Track which players chose to load their save
 local playerLoadSave = {} -- [player] = true/false
@@ -277,6 +280,7 @@ end
 
 -- ─── Check if player has a saved raft ───
 local function checkPlayerSave(player)
+	if not raftStore then return false end
 	local key = "player_" .. player.UserId
 	local success, data = pcall(function()
 		return raftStore:GetAsync(key)

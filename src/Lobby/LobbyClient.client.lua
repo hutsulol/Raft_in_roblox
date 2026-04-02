@@ -514,6 +514,16 @@ lobbyEvent.OnClientEvent:Connect(function(action, pad, data)
 			if not saveChecked then
 				pendingPad = pad
 				lobbyEvent:FireServer("checkSave")
+				-- Fallback: if no response in 3 seconds, skip save check
+				task.delay(3, function()
+					if not saveChecked and pendingPad then
+						saveChecked = true
+						hasSaveData = false
+						local p = pendingPad
+						pendingPad = nil
+						showCreateUI(p)
+					end
+				end)
 			elseif hasSaveData then
 				showContinueUI(pad)
 			else
