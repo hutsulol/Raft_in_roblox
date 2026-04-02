@@ -75,9 +75,10 @@ local function createBillboard(pad)
 
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "LobbyBillboard"
-	bb.Size = UDim2.new(0, 300, 0, 120)
-	bb.StudsOffset = Vector3.new(0, 8, 0)
+	bb.Size = UDim2.new(0, 120, 0, 50)
+	bb.StudsOffset = Vector3.new(0, 5, 0)
 	bb.AlwaysOnTop = true
+	bb.MaxDistance = 80
 	bb.Parent = pad
 
 	local statusLabel = Instance.new("TextLabel")
@@ -85,7 +86,7 @@ local function createBillboard(pad)
 	statusLabel.Size = UDim2.new(1, 0, 0.5, 0)
 	statusLabel.Position = UDim2.new(0, 0, 0, 0)
 	statusLabel.BackgroundTransparency = 1
-	statusLabel.Text = "Waiting for players..."
+	statusLabel.Text = "Waiting..."
 	statusLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 	statusLabel.TextStrokeTransparency = 0.3
 	statusLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
@@ -119,13 +120,13 @@ local function updateBillboard(pad)
 	if not statusLabel or not countLabel then return end
 
 	if not lobby.active then
-		statusLabel.Text = "Waiting for players..."
+		statusLabel.Text = "Waiting..."
 		countLabel.Text = "0/" .. MAX_GROUP_SIZE
 	elseif lobby.countdown > 0 then
-		statusLabel.Text = "Starting in " .. lobby.countdown
+		statusLabel.Text = "Start: " .. lobby.countdown .. "s"
 		countLabel.Text = #lobby.players .. "/" .. lobby.maxPlayers
 	else
-		statusLabel.Text = "Waiting for players..."
+		statusLabel.Text = "Waiting..."
 		countLabel.Text = #lobby.players .. "/" .. lobby.maxPlayers
 	end
 end
