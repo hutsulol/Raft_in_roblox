@@ -16,8 +16,7 @@ local currentPad = nil
 local inLobby = false
 local screenGui = nil
 local selectedMaxPlayers = 5
-local hasSaveData = nil -- nil = unknown, true/false after check
-local saveChecked = false
+local continueGui = nil -- separate GUI for the continue prompt
 
 -- ─── Colors ───
 local BG_COLOR = Color3.fromRGB(50, 50, 55)
@@ -383,44 +382,51 @@ local function showJoinUI(pad, state)
 	end)
 end
 
--- ─── Continue Save Prompt ───
-local function showContinueUI(pad)
-	closeUI()
-	currentPad = pad
+-- ─── Continue Save Prompt (shown automatically on join) ───
+local function closeContinueUI()
+	if continueGui then
+		continueGui:Destroy()
+		continueGui = nil
+	end
+end
 
-	screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "LobbyContinueGui"
-	screenGui.ResetOnSpawn = false
-	screenGui.DisplayOrder = 70
-	screenGui.Parent = playerGui
+local function showContinuePrompt()
+	closeContinueUI()
+
+	continueGui = Instance.new("ScreenGui")
+	continueGui.Name = "ContinuePromptGui"
+	continueGui.ResetOnSpawn = false
+	continueGui.DisplayOrder = 80
+	continueGui.Parent = playerGui
 
 	local main = Instance.new("Frame")
 	main.Name = "Main"
-	main.Size = UDim2.new(0, 460, 0, 260)
-	main.Position = UDim2.new(0.5, -230, 0.5, -130)
-	main.BackgroundColor3 = BG_COLOR
+	main.Size = UDim2.new(0, 520, 0, 320)
+	main.Position = UDim2.new(0.5, -260, 0.5, -160)
+	main.BackgroundColor3 = Color3.fromRGB(60, 60, 65)
 	main.BorderSizePixel = 0
-	main.Parent = screenGui
-	Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+	main.Parent = continueGui
+	Instance.new("UICorner", main).CornerRadius = UDim.new(0, 14)
 
 	-- Header
 	local header = Instance.new("Frame")
-	header.Size = UDim2.new(1, 0, 0, 55)
+	header.Size = UDim2.new(1, 0, 0, 65)
 	header.BackgroundColor3 = HEADER_COLOR
 	header.BorderSizePixel = 0
 	header.Parent = main
-	Instance.new("UICorner", header).CornerRadius = UDim.new(0, 12)
+	Instance.new("UICorner", header).CornerRadius = UDim.new(0, 14)
 	local fix = Instance.new("Frame")
-	fix.Size = UDim2.new(1, 0, 0, 12)
-	fix.Position = UDim2.new(0, 0, 1, -12)
+	fix.Size = UDim2.new(1, 0, 0, 14)
+	fix.Position = UDim2.new(0, 0, 1, -14)
 	fix.BackgroundColor3 = HEADER_COLOR
 	fix.BorderSizePixel = 0
 	fix.Parent = header
 
 	local titleLbl = Instance.new("TextLabel")
-	titleLbl.Size = UDim2.new(1, 0, 1, 0)
+	titleLbl.Size = UDim2.new(1, -20, 1, 0)
+	titleLbl.Position = UDim2.new(0, 10, 0, 0)
 	titleLbl.BackgroundTransparency = 1
-	titleLbl.Text = "Saved Raft Found"
+	titleLbl.Text = "Continue?"
 	titleLbl.TextColor3 = TEXT_COLOR
 	titleLbl.TextScaled = true
 	titleLbl.Font = Enum.Font.GothamBold
@@ -428,78 +434,61 @@ local function showContinueUI(pad)
 
 	-- Message
 	local msgLbl = Instance.new("TextLabel")
-	msgLbl.Size = UDim2.new(1, -30, 0, 60)
-	msgLbl.Position = UDim2.new(0, 15, 0, 65)
+	msgLbl.Size = UDim2.new(1, -40, 0, 100)
+	msgLbl.Position = UDim2.new(0, 20, 0, 80)
 	msgLbl.BackgroundTransparency = 1
-	msgLbl.Text = "Your previous raft was saved.\nDo you want to continue where you left off?"
-	msgLbl.TextColor3 = Color3.fromRGB(200, 200, 200)
+	msgLbl.Text = "Your previous server was disconnected, but your raft was saved. Do you want to continue where you left off?"
+	msgLbl.TextColor3 = Color3.fromRGB(220, 220, 220)
 	msgLbl.TextScaled = true
 	msgLbl.Font = Enum.Font.Gotham
 	msgLbl.TextWrapped = true
 	msgLbl.Parent = main
 
-	-- Continue button
-	local continueBtn = Instance.new("TextButton")
-	continueBtn.Size = UDim2.new(0, 180, 0, 50)
-	continueBtn.Position = UDim2.new(0.5, -190, 0, 145)
-	continueBtn.BackgroundColor3 = CREATE_COLOR
-	continueBtn.Text = "Continue"
-	continueBtn.TextColor3 = TEXT_COLOR
-	continueBtn.TextScaled = true
-	continueBtn.Font = Enum.Font.GothamBold
-	continueBtn.BorderSizePixel = 0
-	continueBtn.Parent = main
-	Instance.new("UICorner", continueBtn).CornerRadius = UDim.new(0, 10)
+	-- No button (red, left)
+	local noBtn = Instance.new("TextButton")
+	noBtn.Size = UDim2.new(0, 190, 0, 65)
+	noBtn.Position = UDim2.new(0.5, -200, 0, 210)
+	noBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+	noBtn.Text = "No"
+	noBtn.TextColor3 = TEXT_COLOR
+	noBtn.TextScaled = true
+	noBtn.Font = Enum.Font.GothamBold
+	noBtn.BorderSizePixel = 0
+	noBtn.Parent = main
+	Instance.new("UICorner", noBtn).CornerRadius = UDim.new(0, 10)
 
-	continueBtn.MouseButton1Click:Connect(function()
-		lobbyEvent:FireServer("chooseContinue", true)
-		showCreateUI(pad)
+	noBtn.MouseButton1Click:Connect(function()
+		lobbyEvent:FireServer("declineSave")
+		closeContinueUI()
 	end)
 
-	-- New Game button
-	local newBtn = Instance.new("TextButton")
-	newBtn.Size = UDim2.new(0, 180, 0, 50)
-	newBtn.Position = UDim2.new(0.5, 10, 0, 145)
-	newBtn.BackgroundColor3 = SLOT_COLOR
-	newBtn.Text = "New Game"
-	newBtn.TextColor3 = TEXT_COLOR
-	newBtn.TextScaled = true
-	newBtn.Font = Enum.Font.GothamBold
-	newBtn.BorderSizePixel = 0
-	newBtn.Parent = main
-	Instance.new("UICorner", newBtn).CornerRadius = UDim.new(0, 10)
+	-- Yes button (green, right)
+	local yesBtn = Instance.new("TextButton")
+	yesBtn.Size = UDim2.new(0, 190, 0, 65)
+	yesBtn.Position = UDim2.new(0.5, 10, 0, 210)
+	yesBtn.BackgroundColor3 = Color3.fromRGB(80, 200, 80)
+	yesBtn.Text = "Yes"
+	yesBtn.TextColor3 = TEXT_COLOR
+	yesBtn.TextScaled = true
+	yesBtn.Font = Enum.Font.GothamBold
+	yesBtn.BorderSizePixel = 0
+	yesBtn.Parent = main
+	Instance.new("UICorner", yesBtn).CornerRadius = UDim.new(0, 10)
 
-	newBtn.MouseButton1Click:Connect(function()
-		lobbyEvent:FireServer("chooseContinue", false)
-		showCreateUI(pad)
-	end)
-
-	-- Close button
-	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.new(0, 36, 0, 36)
-	closeBtn.Position = UDim2.new(1, -44, 0, 8)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
-	closeBtn.Text = "X"
-	closeBtn.TextColor3 = TEXT_COLOR
-	closeBtn.TextScaled = true
-	closeBtn.Font = Enum.Font.GothamBold
-	closeBtn.BorderSizePixel = 0
-	closeBtn.ZIndex = 5
-	closeBtn.Parent = main
-	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
-
-	closeBtn.MouseButton1Click:Connect(function()
-		closeUI()
-		currentPad = nil
+	yesBtn.MouseButton1Click:Connect(function()
+		yesBtn.Text = "Teleporting..."
+		noBtn.Visible = false
+		lobbyEvent:FireServer("continueSave")
 	end)
 end
 
--- Pending pad waiting for save check result
-local pendingPad = nil
-
 -- ─── Events ───
 lobbyEvent.OnClientEvent:Connect(function(action, pad, data)
-	if action == "touchedPad" then
+	if action == "saveFound" then
+		-- Server detected a saved raft on join — show continue prompt
+		showContinuePrompt()
+
+	elseif action == "touchedPad" then
 		-- Touched a pad, request its state
 		lobbyEvent:FireServer("requestPadState", pad)
 
@@ -507,42 +496,9 @@ lobbyEvent.OnClientEvent:Connect(function(action, pad, data)
 		-- Got pad state back
 		local state = data
 		if state.active then
-			-- Lobby exists — show join UI
 			showJoinUI(pad, state)
 		else
-			-- No lobby — check if player has a save first
-			if not saveChecked then
-				pendingPad = pad
-				lobbyEvent:FireServer("checkSave")
-				-- Fallback: if no response in 3 seconds, skip save check
-				task.delay(3, function()
-					if not saveChecked and pendingPad then
-						saveChecked = true
-						hasSaveData = false
-						local p = pendingPad
-						pendingPad = nil
-						showCreateUI(p)
-					end
-				end)
-			elseif hasSaveData then
-				showContinueUI(pad)
-			else
-				showCreateUI(pad)
-			end
-		end
-
-	elseif action == "saveStatus" then
-		-- Response from save check
-		hasSaveData = pad -- pad arg is actually the boolean
-		saveChecked = true
-		if pendingPad then
-			local p = pendingPad
-			pendingPad = nil
-			if hasSaveData then
-				showContinueUI(p)
-			else
-				showCreateUI(p)
-			end
+			showCreateUI(pad)
 		end
 
 	elseif action == "joinedLobby" then
@@ -565,5 +521,6 @@ lobbyEvent.OnClientEvent:Connect(function(action, pad, data)
 		-- pad is actually the error string here
 		inLobby = false
 		closeUI()
+		closeContinueUI()
 	end
 end)

@@ -291,16 +291,53 @@ local function checkPlayerSave(player)
 	return false
 end
 
+-- ─── Auto-check save on join and show prompt ───
+Players.PlayerAdded:Connect(function(player)
+	task.spawn(function()
+		-- Wait a moment for client to load
+		task.wait(2)
+		if not player.Parent then return end -- left already
+		local hasSave = checkPlayerSave(player)
+		if hasSave then
+			lobbyEvent:FireClient(player, "saveFound")
+		end
+	end)
+end)
+
+-- Also check for players already in game (in case script loads late)
+for _, player in Players:GetPlayers() do
+	task.spawn(function()
+		task.wait(2)
+		if not player.Parent then return end
+		local hasSave = checkPlayerSave(player)
+		if hasSave then
+			lobbyEvent:FireClient(player, "saveFound")
+		end
+	end)
+end
+
 -- ─── Events ───
 lobbyEvent.OnServerEvent:Connect(function(player, action, data, data2)
-	if action == "checkSave" then
-		local hasSave = checkPlayerSave(player)
-		lobbyEvent:FireClient(player, "saveStatus", hasSave)
+	if action == "continueSave" then
+		-- Player chose "Yes" — teleport them solo to their saved raft
+		playerLoadSave[player] = true
+		task.spawn(function()
+			local success, err = pcall(function()
+				local teleportOptions = Instance.new("TeleportOptions")
+				teleportOptions.ShouldReserveServer = true
+				teleportOptions:SetTeleportData({loadSave = true})
+				TeleportService:TeleportAsync(OCEAN_PLACE_ID, {player}, teleportOptions)
+			end)
+			if not success then
+				warn("Continue teleport failed: " .. tostring(err))
+				lobbyEvent:FireClient(player, "teleportFailed", tostring(err))
+			end
+		end)
 		return
 
-	elseif action == "chooseContinue" then
-		-- data = true (load save) or false (fresh start)
-		playerLoadSave[player] = data == true
+	elseif action == "declineSave" then
+		-- Player chose "No" — just dismiss, they can use pads normally
+		playerLoadSave[player] = false
 		return
 
 	elseif action == "requestPadState" then
