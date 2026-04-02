@@ -240,11 +240,9 @@ local function startCountdown(pad)
 			end
 
 			local success, err = pcall(function()
-				if #playersToTeleport == 1 then
-					TeleportService:Teleport(OCEAN_PLACE_ID, playersToTeleport[1])
-				else
-					TeleportService:TeleportPartyAsync(OCEAN_PLACE_ID, playersToTeleport)
-				end
+				local teleportOptions = Instance.new("TeleportOptions")
+				teleportOptions.ShouldReserveServer = true
+				TeleportService:TeleportAsync(OCEAN_PLACE_ID, playersToTeleport, teleportOptions)
 			end)
 
 			if not success then
