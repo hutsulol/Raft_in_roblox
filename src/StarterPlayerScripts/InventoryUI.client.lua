@@ -530,6 +530,66 @@ local function endDrag(mousePos)
 	renderAllSlots()
 end
 
+-- ─── Quick-transfer: Shift+click moves item between hotbar and grid ───
+local function quickTransfer(slotIndex)
+	local data = slotData[slotIndex]
+	if not data then return end
+
+	local isHotbar = slotIndex >= 1 and slotIndex <= HOTBAR_SLOTS
+	local targetStart, targetEnd
+
+	if isHotbar then
+		-- From hotbar → inventory grid
+		if not isOpen then return end -- grid must be open
+		targetStart = HOTBAR_SLOTS + 1
+		targetEnd = TOTAL_SLOTS
+	else
+		-- From inventory grid → hotbar
+		targetStart = 1
+		targetEnd = HOTBAR_SLOTS
+	end
+
+	-- For resources, try to stack first with same item in target area
+	if data.type == "resource" then
+		local remaining = data.count
+		-- Stack into existing slots of same type
+		for i = targetStart, targetEnd do
+			if remaining <= 0 then break end
+			if slotData[i] and slotData[i].type == "resource" and slotData[i].name == data.name then
+				local space = MAX_STACK - slotData[i].count
+				if space > 0 then
+					local toMove = math.min(remaining, space)
+					slotData[i].count = slotData[i].count + toMove
+					remaining = remaining - toMove
+				end
+			end
+		end
+		-- Put rest into empty slots
+		while remaining > 0 do
+			local empty = findEmptySlot(targetStart, targetEnd)
+			if not empty then break end
+			local amount = math.min(remaining, MAX_STACK)
+			slotData[empty] = {type = data.type, name = data.name, count = amount, icon = data.icon}
+			remaining = remaining - amount
+		end
+		-- Update source
+		if remaining <= 0 then
+			slotData[slotIndex] = nil
+		else
+			slotData[slotIndex].count = remaining
+		end
+	else
+		-- Tools: just swap to first empty slot in target area
+		local empty = findEmptySlot(targetStart, targetEnd)
+		if empty then
+			slotData[empty] = data
+			slotData[slotIndex] = nil
+		end
+	end
+
+	renderAllSlots()
+end
+
 -- ─── Equip ───
 
 local function equipToolByName(toolName)
@@ -941,6 +1001,13 @@ local function buildHotbar()
 		local slotIndex = i
 
 		slot.MouseButton1Down:Connect(function()
+			local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+			if shiftHeld then
+				quickTransfer(slotIndex)
+				dragState.didDrag = true
+				return
+			end
 			dragState.didDrag = false
 			local mousePos = UserInputService:GetMouseLocation()
 			local data = slotData[slotIndex]
@@ -950,6 +1017,13 @@ local function buildHotbar()
 		end)
 
 		slot.MouseButton2Down:Connect(function()
+			local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+			if shiftHeld then
+				quickTransfer(slotIndex)
+				dragState.didDrag = true
+				return
+			end
 			dragState.didDrag = false
 			local mousePos = UserInputService:GetMouseLocation()
 			local data = slotData[slotIndex]
@@ -1096,6 +1170,13 @@ local function buildUI()
 		local globalIdx = HOTBAR_SLOTS + i
 
 		slot.MouseButton1Down:Connect(function()
+			local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+			if shiftHeld then
+				quickTransfer(globalIdx)
+				dragState.didDrag = true
+				return
+			end
 			dragState.didDrag = false
 			local mousePos = UserInputService:GetMouseLocation()
 			local data = slotData[globalIdx]
@@ -1105,6 +1186,13 @@ local function buildUI()
 		end)
 
 		slot.MouseButton2Down:Connect(function()
+			local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+			if shiftHeld then
+				quickTransfer(globalIdx)
+				dragState.didDrag = true
+				return
+			end
 			dragState.didDrag = false
 			local mousePos = UserInputService:GetMouseLocation()
 			local data = slotData[globalIdx]
