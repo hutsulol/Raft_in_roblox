@@ -11,9 +11,14 @@ local DataStoreService = game:GetService("DataStoreService")
 local OCEAN_PLACE_ID = 128626393517258
 
 local raftStore = nil
-pcall(function()
+local storeOk, storeErr = pcall(function()
 	raftStore = DataStoreService:GetDataStore("RaftSaveData_v1")
 end)
+if storeOk then
+	print("[Lobby] DataStore connected OK")
+else
+	warn("[Lobby] DataStore failed: " .. tostring(storeErr))
+end
 
 -- Track which players chose to load their save
 local playerLoadSave = {} -- [player] = true/false
@@ -280,40 +285,51 @@ end
 
 -- ─── Check if player has a saved raft ───
 local function checkPlayerSave(player)
-	if not raftStore then return false end
+	if not raftStore then
+		warn("[Lobby] No DataStore, skipping save check for " .. player.Name)
+		return false
+	end
 	local key = "player_" .. player.UserId
+	print("[Lobby] Checking save for " .. player.Name .. " (key: " .. key .. ")")
 	local success, data = pcall(function()
 		return raftStore:GetAsync(key)
 	end)
 	if success and data and data.raft then
+		print("[Lobby] FOUND save for " .. player.Name .. " (saved at " .. tostring(data.savedAt) .. ")")
 		return true
+	elseif not success then
+		warn("[Lobby] DataStore read error: " .. tostring(data))
+	else
+		print("[Lobby] No save found for " .. player.Name)
 	end
 	return false
 end
 
 -- ─── Auto-check save on join and show prompt ───
-Players.PlayerAdded:Connect(function(player)
+local function checkAndNotifyPlayer(player)
 	task.spawn(function()
-		-- Wait a moment for client to load
-		task.wait(2)
+		-- Wait for client to load
+		task.wait(3)
 		if not player.Parent then return end -- left already
+		print("[Lobby] Checking save for player: " .. player.Name)
 		local hasSave = checkPlayerSave(player)
+		print("[Lobby] Save check result for " .. player.Name .. ": " .. tostring(hasSave))
 		if hasSave then
+			print("[Lobby] Sending saveFound to " .. player.Name)
 			lobbyEvent:FireClient(player, "saveFound")
 		end
 	end)
+end
+
+Players.PlayerAdded:Connect(function(player)
+	print("[Lobby] PlayerAdded: " .. player.Name)
+	checkAndNotifyPlayer(player)
 end)
 
 -- Also check for players already in game (in case script loads late)
 for _, player in Players:GetPlayers() do
-	task.spawn(function()
-		task.wait(2)
-		if not player.Parent then return end
-		local hasSave = checkPlayerSave(player)
-		if hasSave then
-			lobbyEvent:FireClient(player, "saveFound")
-		end
-	end)
+	print("[Lobby] Existing player found: " .. player.Name)
+	checkAndNotifyPlayer(player)
 end
 
 -- ─── Events ───

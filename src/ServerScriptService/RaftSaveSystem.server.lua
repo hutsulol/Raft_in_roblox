@@ -7,7 +7,15 @@ local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TeleportService = game:GetService("TeleportService")
 
-local raftStore = DataStoreService:GetDataStore("RaftSaveData_v1")
+local raftStore = nil
+local storeOk, storeErr = pcall(function()
+	raftStore = DataStoreService:GetDataStore("RaftSaveData_v1")
+end)
+if not storeOk then
+	warn("[RaftSave] Failed to get DataStore: " .. tostring(storeErr))
+else
+	print("[RaftSave] DataStore connected OK")
+end
 
 local AUTOSAVE_INTERVAL = 120 -- seconds
 
@@ -24,7 +32,15 @@ end
 -- ─── Collect raft data ───
 local function collectRaftData(player)
 	local raft = workspace:FindFirstChild("Raft")
-	if not raft or not raft.PrimaryPart then return nil end
+	if not raft then
+		warn("[RaftSave] No Raft model in workspace")
+		return nil
+	end
+	if not raft.PrimaryPart then
+		warn("[RaftSave] Raft has no PrimaryPart")
+		return nil
+	end
+	print("[RaftSave] Found Raft with " .. #raft:GetChildren() .. " children")
 
 	local raftCF = raft.PrimaryPart.CFrame
 	local data = {
@@ -94,6 +110,7 @@ local function collectRaftData(player)
 		end
 	end
 
+	print("[RaftSave] Collected: " .. #data.floors .. " floors, " .. #data.walls .. " walls, " .. #data.objects .. " objects")
 	return data
 end
 
@@ -113,10 +130,20 @@ end
 
 -- ─── Save player data ───
 local function savePlayerData(player)
+	if not raftStore then
+		warn("[RaftSave] No DataStore, cannot save for " .. player.Name)
+		return
+	end
+
 	local raftData = collectRaftData(player)
 	local invData = collectInventoryData(player)
 
-	if not raftData and not invData then return end
+	print("[RaftSave] Collecting data for " .. player.Name .. " - raft: " .. tostring(raftData ~= nil) .. ", inv keys: " .. tostring(invData and #invData or 0))
+
+	if not raftData and (not invData or next(invData) == nil) then
+		print("[RaftSave] No data to save for " .. player.Name)
+		return
+	end
 
 	local saveData = {
 		inventory = invData,
@@ -138,13 +165,22 @@ end
 
 -- ─── Load player data ───
 local function loadPlayerData(player)
+	if not raftStore then
+		warn("[RaftSave] No DataStore, cannot load for " .. player.Name)
+		return nil
+	end
 	local key = "player_" .. player.UserId
 	local success, data = pcall(function()
 		return raftStore:GetAsync(key)
 	end)
 
 	if success and data then
+		print("[RaftSave] Loaded save data for " .. player.Name .. " (saved at " .. tostring(data.savedAt) .. ")")
 		return data
+	elseif not success then
+		warn("[RaftSave] DataStore read failed for " .. player.Name .. ": " .. tostring(data))
+	else
+		print("[RaftSave] No save data found for " .. player.Name)
 	end
 	return nil
 end
