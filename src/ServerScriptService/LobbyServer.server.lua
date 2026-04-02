@@ -7,7 +7,7 @@ local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
-local OCEAN_PLACE_ID = 110406724367282
+local OCEAN_PLACE_ID = 128626393517258
 local MAX_GROUP_SIZE = 5
 local COUNTDOWN_TIME = 15
 local PAD_RANGE = 20 -- how far a player can be from pad before auto-removed
