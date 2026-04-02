@@ -6,8 +6,14 @@
 local Players = game:GetService("Players")
 local TeleportService = game:GetService("TeleportService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local DataStoreService = game:GetService("DataStoreService")
 
 local OCEAN_PLACE_ID = 128626393517258
+
+local raftStore = DataStoreService:GetDataStore("RaftSaveData_v1")
+
+-- Track which players chose to load their save
+local playerLoadSave = {} -- [player] = true/false
 local MAX_GROUP_SIZE = 5
 local COUNTDOWN_TIME = 15
 local PAD_RANGE = 20 -- how far a player can be from pad before auto-removed
@@ -242,6 +248,17 @@ local function startCountdown(pad)
 			local success, err = pcall(function()
 				local teleportOptions = Instance.new("TeleportOptions")
 				teleportOptions.ShouldReserveServer = true
+
+				-- Check if any player wants to load their save
+				local anyLoadSave = false
+				for _, p in playersToTeleport do
+					if playerLoadSave[p] then
+						anyLoadSave = true
+						break
+					end
+				end
+				teleportOptions:SetTeleportData({loadSave = anyLoadSave})
+
 				TeleportService:TeleportAsync(OCEAN_PLACE_ID, playersToTeleport, teleportOptions)
 			end)
 
@@ -258,9 +275,31 @@ local function startCountdown(pad)
 	end)
 end
 
+-- ─── Check if player has a saved raft ───
+local function checkPlayerSave(player)
+	local key = "player_" .. player.UserId
+	local success, data = pcall(function()
+		return raftStore:GetAsync(key)
+	end)
+	if success and data and data.raft then
+		return true
+	end
+	return false
+end
+
 -- ─── Events ───
 lobbyEvent.OnServerEvent:Connect(function(player, action, data, data2)
-	if action == "requestPadState" then
+	if action == "checkSave" then
+		local hasSave = checkPlayerSave(player)
+		lobbyEvent:FireClient(player, "saveStatus", hasSave)
+		return
+
+	elseif action == "chooseContinue" then
+		-- data = true (load save) or false (fresh start)
+		playerLoadSave[player] = data == true
+		return
+
+	elseif action == "requestPadState" then
 		-- Player stepped on a pad, send current state
 		local pad = data
 		if not pad or not lobbies[pad] then return end
@@ -361,6 +400,7 @@ end
 
 -- ─── Cleanup on player leaving ───
 Players.PlayerRemoving:Connect(function(player)
+	playerLoadSave[player] = nil
 	local pad = findPadForPlayer(player)
 	if pad then
 		removePlayerFromLobby(player, pad)
