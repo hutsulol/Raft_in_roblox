@@ -44,6 +44,7 @@ local function collectRaftData(player)
 
 	local raftCF = raft.PrimaryPart.CFrame
 	local data = {
+		raftPosition = serializeCFrame(raftCF),
 		floors = {},
 		walls = {},
 		objects = {},
@@ -194,6 +195,14 @@ local function rebuildRaft(player, saveData)
 
 	local rs = ReplicatedStorage
 	local raftData = saveData.raft
+
+	-- Restore raft world position
+	if raftData.raftPosition then
+		local savedCF = deserializeCFrame(raftData.raftPosition)
+		raft:PivotTo(savedCF)
+		print("[RaftSave] Restored raft position to " .. tostring(savedCF.Position))
+	end
+
 	local raftCF = raft.PrimaryPart.CFrame
 
 	-- Templates
@@ -363,6 +372,15 @@ local function rebuildRaft(player, saveData)
 					weld.Parent = clone
 				end
 			end
+		end
+	end
+
+	-- Teleport player character onto the raft
+	local char = player.Character
+	if char then
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			hrp.CFrame = raft.PrimaryPart.CFrame + Vector3.new(0, 5, 0)
 		end
 	end
 

@@ -6,6 +6,10 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
+-- Only run in the lobby place, NOT in the ocean sub-place
+local OCEAN_PLACE_ID = 128626393517258
+if game.PlaceId == OCEAN_PLACE_ID then return end
+
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 

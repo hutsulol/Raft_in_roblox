@@ -10,6 +10,9 @@ local DataStoreService = game:GetService("DataStoreService")
 
 local OCEAN_PLACE_ID = 128626393517258
 
+-- Only run in the lobby place, NOT in the ocean sub-place
+if game.PlaceId == OCEAN_PLACE_ID then return end
+
 local raftStore = nil
 local storeOk, storeErr = pcall(function()
 	raftStore = DataStoreService:GetDataStore("RaftSaveData_v1")
