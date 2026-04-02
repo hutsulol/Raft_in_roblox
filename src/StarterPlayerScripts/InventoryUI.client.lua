@@ -928,10 +928,36 @@ local function updateCraftPanel()
 	end
 end
 
+-- ─── Slot layout sync to server ───
+local slotLayoutEvent = ReplicatedStorage:FindFirstChild("SlotLayoutSync")
+
+local function syncSlotLayoutToServer()
+	if not slotLayoutEvent then
+		slotLayoutEvent = ReplicatedStorage:FindFirstChild("SlotLayoutSync")
+	end
+	if not slotLayoutEvent then return end
+
+	-- Build a serializable copy of slotData (no userdata)
+	local layout = {}
+	for i = 1, TOTAL_SLOTS do
+		if slotData[i] then
+			layout[tostring(i)] = {
+				type = slotData[i].type,
+				name = slotData[i].name,
+				count = slotData[i].count,
+				icon = slotData[i].icon,
+				toolName = slotData[i].toolName,
+			}
+		end
+	end
+	slotLayoutEvent:FireServer(layout)
+end
+
 local function updateUI()
 	rebuildSlotData()
 	renderAllSlots()
 	updateCraftPanel()
+	syncSlotLayoutToServer()
 end
 
 -- ─── Close ───
@@ -1456,3 +1482,35 @@ if player.Character then
 		if child:IsA("Tool") then task.wait(0.1) updateUI() end
 	end)
 end
+
+-- ─── Listen for saved slot layout restore from server ───
+task.spawn(function()
+	if not slotLayoutEvent then
+		slotLayoutEvent = ReplicatedStorage:WaitForChild("SlotLayoutSync", 10)
+	end
+	if slotLayoutEvent then
+		slotLayoutEvent.OnClientEvent:Connect(function(action, savedLayout)
+			if action == "restore" and typeof(savedLayout) == "table" then
+				-- Apply saved slot positions
+				for i = 1, TOTAL_SLOTS do
+					slotData[i] = nil
+				end
+				for slotStr, itemData in savedLayout do
+					local slotNum = tonumber(slotStr)
+					if slotNum and slotNum >= 1 and slotNum <= TOTAL_SLOTS and typeof(itemData) == "table" then
+						slotData[slotNum] = {
+							type = itemData.type,
+							name = itemData.name,
+							count = itemData.count,
+							icon = itemData.icon,
+							toolName = itemData.toolName,
+						}
+					end
+				end
+				slotsInitialized = true
+				renderAllSlots()
+				print("[InventoryUI] Restored saved slot layout")
+			end
+		end)
+	end
+end)

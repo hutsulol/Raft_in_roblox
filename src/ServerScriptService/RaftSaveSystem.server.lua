@@ -19,6 +19,19 @@ end
 
 local AUTOSAVE_INTERVAL = 120 -- seconds
 
+-- ─── Slot layout sync: client sends slot positions to server ───
+local slotLayoutEvent = Instance.new("RemoteEvent")
+slotLayoutEvent.Name = "SlotLayoutSync"
+slotLayoutEvent.Parent = ReplicatedStorage
+
+local cachedSlotLayouts = {} -- [player] = slotData table
+
+slotLayoutEvent.OnServerEvent:Connect(function(player, slotLayout)
+	if typeof(slotLayout) == "table" then
+		cachedSlotLayouts[player] = slotLayout
+	end
+end)
+
 -- ─── CFrame serialization ───
 local function serializeCFrame(cf)
 	return {cf:GetComponents()} -- 12 numbers
@@ -175,6 +188,7 @@ local function savePlayerData(player)
 	local saveData = {
 		inventory = invData,
 		tools = toolData,
+		slotLayout = cachedSlotLayouts[player] or {},
 		raft = raftData,
 		savedAt = os.time(),
 	}
@@ -513,6 +527,13 @@ Players.PlayerAdded:Connect(function(player)
 			task.wait(1)
 			restoreInventory(player, saveData)
 			restoreTools(player, saveData)
+
+			-- Send saved slot layout to client so it restores exact slot positions
+			if saveData.slotLayout and next(saveData.slotLayout) then
+				task.wait(0.5) -- wait for client InventoryUI to initialize
+				slotLayoutEvent:FireClient(player, "restore", saveData.slotLayout)
+				print("[RaftSave] Sent slot layout to " .. player.Name)
+			end
 		end
 	end
 end)
@@ -520,6 +541,7 @@ end)
 -- ─── Save on player leaving ───
 Players.PlayerRemoving:Connect(function(player)
 	savePlayerData(player)
+	cachedSlotLayouts[player] = nil
 end)
 
 -- ─── Autosave ───
