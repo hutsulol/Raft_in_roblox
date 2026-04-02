@@ -24,6 +24,7 @@ local lastGhostCF = nil
 local lastGhostRaftOffset = nil -- CFrame offset relative to raft
 local ghostTemplateRotation = CFrame.new() -- template model rotation (identity for most)
 local lastTargetGarden = nil -- garden bed reference for bush placement
+local rotationAngle = 0 -- radians, incremented by R key
 
 -- ─── Hint UI ───
 local playerGui = player:WaitForChild("PlayerGui")
@@ -59,27 +60,33 @@ local function updateHint()
 
 	-- Bush placement hint
 	if placingBush then
-		hintLabel.Text = "Click on garden bed to plant bush"
+		hintLabel.Text = "Click on garden bed to plant bush | [R] Rotate"
 		hintLabel.Visible = true
 		return
 	end
 
 	-- Garden placement hint
 	if placingGarden then
-		hintLabel.Text = "Click on raft to place garden bed"
+		hintLabel.Text = "Click on raft to place garden bed | [R] Rotate"
 		hintLabel.Visible = true
 		return
 	end
 
 	-- Placement hints
 	if placingPurifier then
-		hintLabel.Text = "Click on raft to place purifier"
+		hintLabel.Text = "Click on raft to place purifier | [R] Rotate"
 		hintLabel.Visible = true
 		return
 	end
 
 	if placingWorkbench then
-		hintLabel.Text = "Click on raft to place workbench"
+		hintLabel.Text = "Click on raft to place workbench | [R] Rotate"
+		hintLabel.Visible = true
+		return
+	end
+
+	if placingBed then
+		hintLabel.Text = "Click on raft to place bed | [R] Rotate"
 		hintLabel.Visible = true
 		return
 	end
@@ -256,7 +263,7 @@ local function updateGhost()
 			local topY = gardenCF.Position.Y + gardenSize.Y / 2 + ghostSize.Y / 2
 			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
 
-			local placeCF = CFrame.new(gardenCF.Position.X, topY, gardenCF.Position.Z) * CFrame.Angles(0, raftYaw, 0) * ghostTemplateRotation
+			local placeCF = CFrame.new(gardenCF.Position.X, topY, gardenCF.Position.Z) * CFrame.Angles(0, raftYaw + rotationAngle, 0) * ghostTemplateRotation
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
 			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
@@ -268,7 +275,7 @@ local function updateGhost()
 			local hitPos = result.Position
 			local ghostSize = ghost:GetExtentsSize()
 			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
-			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw, 0) * ghostTemplateRotation)
+			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw + rotationAngle, 0) * ghostTemplateRotation)
 			setGhostColor(false)
 		end
 	else
@@ -280,7 +287,7 @@ local function updateGhost()
 			local ghostSize = ghost:GetExtentsSize()
 			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
 
-			local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw, 0) * ghostTemplateRotation
+			local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw + rotationAngle, 0) * ghostTemplateRotation
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
 			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
@@ -296,7 +303,7 @@ local function updateGhost()
 			local hitPos = result.Position
 			local ghostSize = ghost:GetExtentsSize()
 			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
-			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw, 0))
+			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw + rotationAngle, 0))
 			setGhostColor(false)
 		end
 	end
@@ -328,6 +335,7 @@ end
 -- ─── Tool Equip/Unequip Detection ───
 local function onToolEquipped(tool)
 	currentTool = tool
+	rotationAngle = 0
 
 	if tool.Name == "Destitalor" then
 		placingPurifier = true
@@ -424,6 +432,14 @@ player.CharacterAdded:Connect(setupCharacter)
 RunService.RenderStepped:Connect(function()
 	if (placingPurifier or placingBush or placingWorkbench or placingGarden or placingBed) and ghost then
 		updateGhost()
+	end
+end)
+
+-- ─── R key to rotate placement ───
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.R and (placingPurifier or placingWorkbench or placingGarden or placingBed or placingBush) then
+		rotationAngle = rotationAngle + math.rad(90)
 	end
 end)
 

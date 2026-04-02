@@ -4,6 +4,7 @@
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -18,6 +19,7 @@ local ghost = nil
 local lastGhostValid = false
 local lastGhostRaftOffset = nil
 local currentTool = nil
+local rotationAngle = 0 -- radians, incremented by R key
 
 -- ─── Ghost ───
 local function createGhost()
@@ -126,10 +128,10 @@ local function updateGhost()
 		return
 	end
 
-	-- Position ghost on top of hit surface
+	-- Position ghost on top of hit surface with rotation
 	local hitPos = result.Position
 	local _, ghostSize = ghost:GetBoundingBox()
-	local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z)
+	local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, rotationAngle, 0)
 
 	ghost:PivotTo(placeCF)
 
@@ -147,6 +149,7 @@ local function onToolEquipped(tool)
 	currentTool = tool
 	if tool.Name == "Furnace" then
 		placingFurnace = true
+		rotationAngle = 0
 		createGhost()
 	end
 end
@@ -192,6 +195,14 @@ player.CharacterAdded:Connect(setupCharacter)
 RunService.RenderStepped:Connect(function()
 	if placingFurnace and ghost then
 		updateGhost()
+	end
+end)
+
+-- ─── R key to rotate ───
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.R and placingFurnace then
+		rotationAngle = rotationAngle + math.rad(90)
 	end
 end)
 
