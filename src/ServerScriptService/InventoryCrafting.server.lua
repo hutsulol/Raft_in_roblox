@@ -29,7 +29,7 @@ local recipes = {
 	{
 		name = "Hammer",
 		displayName = "Hammer",
-		icon = "rbxassetid://110032041583533",
+		icon = "rbxassetid://96978301002259",
 		costs = {Log = 1},
 		craftType = "tool",
 		category = "Tools",
