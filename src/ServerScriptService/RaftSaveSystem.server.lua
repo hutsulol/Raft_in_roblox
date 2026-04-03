@@ -254,7 +254,7 @@ local function rebuildRaft(player, saveData)
 	local GRID_SIZE = 6
 	if floorTemplate then
 		if floorTemplate:IsA("Model") then
-			local _, size = floorTemplate:GetBoundingBox()
+			local size = floorTemplate:GetExtentsSize()
 			GRID_SIZE = math.max(size.X, size.Z)
 		elseif floorTemplate:IsA("BasePart") then
 			GRID_SIZE = math.max(floorTemplate.Size.X, floorTemplate.Size.Z)

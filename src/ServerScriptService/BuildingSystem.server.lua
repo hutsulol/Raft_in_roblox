@@ -10,12 +10,13 @@ end
 local raftPartTemplate = rs:WaitForChild("Raft_part")
 local wallTemplate = rs:FindFirstChild("Wood_wall")
 
--- Measure grid size from the actual template
+-- Measure grid size from the actual template bounding box
 local GRID_SIZE
-if raftPartTemplate:IsA("Model") and raftPartTemplate.PrimaryPart then
-	GRID_SIZE = raftPartTemplate.PrimaryPart.Size.X
+if raftPartTemplate:IsA("Model") then
+	local size = raftPartTemplate:GetExtentsSize()
+	GRID_SIZE = math.max(size.X, size.Z)
 elseif raftPartTemplate:IsA("BasePart") then
-	GRID_SIZE = raftPartTemplate.Size.X
+	GRID_SIZE = math.max(raftPartTemplate.Size.X, raftPartTemplate.Size.Z)
 else
 	GRID_SIZE = 6
 end

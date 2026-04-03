@@ -1,5 +1,5 @@
-local SPEED = 75
-local FORCE_PER_MASS = 100 -- force scales with total raft mass
+local SPEED = 25
+local FORCE_PER_MASS = 33 -- force scales with total raft mass
 
 local boat = workspace:WaitForChild("Raft")
 while not boat.PrimaryPart do
