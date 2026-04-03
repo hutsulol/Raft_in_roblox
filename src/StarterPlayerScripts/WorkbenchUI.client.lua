@@ -20,7 +20,7 @@ local recipes = {
 	{
 		name = "Bed",
 		displayName = "Bed",
-		icon = "rbxassetid://110032041583533",
+		icon = "rbxassetid://85069521486600",
 		costs = {Log = 2},
 	},
 	{
