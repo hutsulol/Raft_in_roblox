@@ -123,9 +123,17 @@ end)
 local function spawnResource(templateName, resourceType, resourceAmount, boat)
 	local root = boat.PrimaryPart
 	local waterY = root.Position.Y
-	-- LookVector = along the logs = forward direction
-	local rawForward = root.CFrame.LookVector
-	local forward = Vector3.new(rawForward.X, 0, rawForward.Z).Unit
+	-- Use raft's actual movement direction so resources always spawn ahead
+	local velocity = root.AssemblyLinearVelocity
+	local flatVel = Vector3.new(velocity.X, 0, velocity.Z)
+	local forward
+	if flatVel.Magnitude > 0.5 then
+		forward = flatVel.Unit
+	else
+		-- Fallback when raft hasn't started moving yet
+		local rawForward = root.CFrame.LookVector
+		forward = Vector3.new(rawForward.X, 0, rawForward.Z).Unit
+	end
 	local spawnPos = Vector3.new(
 		root.Position.X + forward.X * math.random(300, 450) + math.random(-75, 75),
 		waterY,
