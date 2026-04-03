@@ -266,7 +266,7 @@ local function rebuildRaft(player, saveData)
 		for _, floor in raftData.floors do
 			if not (floor.gx == 0 and floor.gz == 0) then
 				local localOffset = Vector3.new(floor.gx * GRID_SIZE, 0, floor.gz * GRID_SIZE)
-				local worldCF = raftCF * CFrame.new(localOffset) * CFrame.Angles(0, math.rad(90), 0)
+				local worldCF = raftCF * CFrame.new(localOffset)
 
 				local clone = floorTemplate:Clone()
 				if clone:IsA("Model") then

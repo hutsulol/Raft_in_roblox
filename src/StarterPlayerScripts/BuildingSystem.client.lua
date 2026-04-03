@@ -504,7 +504,7 @@ local function startBuildMode()
 			local gx, gz, worldCF = getFloorGridFromMouse()
 			if not gx then hidePreview(); return end
 
-			movePreview(worldCF * CFrame.Angles(0, math.rad(90), 0))
+			movePreview(worldCF)
 
 			local offsets = getFloorOffsets()
 			local canAfford = (inventory[selectedItem.costType] or 0) >= selectedItem.cost

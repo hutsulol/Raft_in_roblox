@@ -31,13 +31,14 @@ game:GetService("RunService").Heartbeat:Connect(function()
 		return
 	end
 
-	local lookVector = primaryPart.CFrame.LookVector
+	-- Use RightVector as forward since new raft model is rotated 90 degrees
+	local forwardVector = primaryPart.CFrame.RightVector
 	local currentVelocity = primaryPart.AssemblyLinearVelocity
 	local flatVelocity = Vector3.new(currentVelocity.X, 0, currentVelocity.Z)
 	local flatSpeed = flatVelocity.Magnitude
 
 	local forceFactor = math.clamp(1 - (flatSpeed / SPEED), 0, 1)
-	local forceDirection = Vector3.new(lookVector.X, 0, lookVector.Z).Unit
+	local forceDirection = Vector3.new(forwardVector.X, 0, forwardVector.Z).Unit
 
 	local totalMass = primaryPart.AssemblyMass
 	vectorForce.Force = forceDirection * FORCE_PER_MASS * totalMass * forceFactor

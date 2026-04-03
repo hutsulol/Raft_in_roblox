@@ -123,10 +123,12 @@ end)
 local function spawnResource(templateName, resourceType, resourceAmount, boat)
 	local root = boat.PrimaryPart
 	local waterY = root.Position.Y
+	-- Use RightVector as forward since new raft model is rotated 90 degrees
+	local forward = root.CFrame.RightVector
 	local spawnPos = Vector3.new(
-		root.Position.X + root.CFrame.LookVector.X * math.random(300, 450) + math.random(-75, 75),
+		root.Position.X + forward.X * math.random(300, 450) + math.random(-75, 75),
 		waterY,
-		root.Position.Z + root.CFrame.LookVector.Z * math.random(300, 450) + math.random(-75, 75)
+		root.Position.Z + forward.Z * math.random(300, 450) + math.random(-75, 75)
 	)
 
 	-- Don't spawn resources on islands
