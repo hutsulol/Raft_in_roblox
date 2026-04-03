@@ -47,7 +47,7 @@ local recipes = {
 	{
 		name = "Cup",
 		displayName = "Cup",
-		icon = "rbxassetid://110032041583533",
+		icon = "rbxassetid://90221080738714",
 		costs = {Plastic = 2},
 		craftType = "tool",
 		initAttributes = {CupState = "empty"},
@@ -57,7 +57,7 @@ local recipes = {
 	{
 		name = "Destitalor",
 		displayName = "Water Purifier",
-		icon = "rbxassetid://110032041583533",
+		icon = "rbxassetid://90221080738714",
 		costs = {Plastic = 4},
 		craftType = "tool",
 		category = "Technology",
@@ -75,7 +75,7 @@ local recipes = {
 	{
 		name = "bush",
 		displayName = "Grape Bush",
-		icon = "rbxassetid://97055584624105",
+		icon = "rbxassetid://100755665041729",
 		costs = {Log = 1},
 		craftType = "placeable",
 		category = "Technology",

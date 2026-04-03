@@ -14,7 +14,7 @@ local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local inventoryCraftEvent = ReplicatedStorage:WaitForChild("InventoryCraft")
 
 local LOG_ICON = "rbxassetid://110032041583533"
-local PLASTIC_ICON = "rbxassetid://88529166446482"
+local PLASTIC_ICON = "rbxassetid://132919988751848"
 local STONE_ICON = "rbxassetid://134781813180973"
 local IRON_ORE_ICON = "rbxassetid://73676755288746"
 local IRON_INGOT_ICON = "rbxassetid://72890243946368"
@@ -1411,7 +1411,7 @@ inventoryCraftEvent.OnClientEvent:Connect(function(action, data, inv)
 			table.insert(recipes, {
 				name = "Pick-Axe",
 				displayName = "Pick-Axe",
-				icon = "rbxassetid://110032041583533",
+				icon = "rbxassetid://89809613033816",
 				costs = {Log = 2},
 				craftType = "tool",
 				category = "Tools",

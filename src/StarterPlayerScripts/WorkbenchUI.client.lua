@@ -26,7 +26,7 @@ local recipes = {
 	{
 		name = "Furnace",
 		displayName = "Furnace",
-		icon = "rbxassetid://110032041583533",
+		icon = "rbxassetid://117760352651529",
 		costs = {Stone = 10, Log = 5},
 	},
 }

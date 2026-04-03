@@ -17,7 +17,7 @@ local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 -- ─── Icons ───
 local RESOURCE_ICONS = {
 	Log = "rbxassetid://110032041583533",
-	Plastic = "rbxassetid://88529166446482",
+	Plastic = "rbxassetid://132919988751848",
 	Stone = "rbxassetid://134781813180973",
 	Iron_Ore = "rbxassetid://73676755288746",
 	Iron_Ingot = "rbxassetid://72890243946368",
