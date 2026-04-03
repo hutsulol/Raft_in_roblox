@@ -27,6 +27,23 @@ local RESOURCE_ICONS = {
 	Iron_Ingot = IRON_INGOT_ICON,
 }
 
+local TOOL_ICONS = {
+	["Hammer"] = "rbxassetid://96978301002259",
+	["Pick-Axe"] = "rbxassetid://89809613033816",
+	["Cup"] = "rbxassetid://90221080738714",
+	["Destitalor"] = "rbxassetid://90221080738714",
+	["Furnace"] = "rbxassetid://117760352651529",
+	["bush"] = "rbxassetid://100755665041729",
+	["Wooden_Spear"] = "rbxassetid://110032041583533",
+	["Machete"] = "rbxassetid://110032041583533",
+	["Wood_Knife"] = "rbxassetid://110032041583533",
+	["WorkBench"] = "rbxassetid://104306543647624",
+	["Bed"] = "rbxassetid://110032041583533",
+	["Garden"] = "rbxassetid://110032041583533",
+	["Hook"] = "rbxassetid://110032041583533",
+	["Axe"] = "rbxassetid://110032041583533",
+}
+
 local inventory = {Log = 0, Plastic = 0, Stone = 0, Iron_Ore = 0, Iron_Ingot = 0}
 local recipes = {}
 local selectedRecipe = nil
@@ -220,7 +237,7 @@ local function rebuildSlotData()
 					slot = slot + 1
 				end
 				if slot > HOTBAR_SLOTS then break end
-				local toolIcon = (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+				local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
 				slotData[slot] = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon, count = toolCounts[tool.Name]}
 				slot = slot + 1
 			end
@@ -259,7 +276,7 @@ local function rebuildSlotData()
 			-- Update count for stackable tools
 			slotData[existing].count = toolCounts[tool.Name]
 		else
-			local toolIcon = (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+			local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
 			local entry = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon, count = toolCounts[tool.Name]}
 			local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, TOTAL_SLOTS)
 			if empty then slotData[empty] = entry end
