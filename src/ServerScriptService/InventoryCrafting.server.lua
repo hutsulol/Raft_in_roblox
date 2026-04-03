@@ -47,7 +47,7 @@ local recipes = {
 	{
 		name = "Cup",
 		displayName = "Cup",
-		icon = "rbxassetid://90221080738714",
+		icon = "rbxassetid://99673504095026",
 		costs = {Plastic = 2},
 		craftType = "tool",
 		initAttributes = {CupState = "empty"},
