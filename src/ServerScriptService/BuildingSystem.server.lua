@@ -170,7 +170,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		if not isFloorAdjacent(offsets, gx, gz) then return end
 
 		local localOffset = Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE)
-		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset)
+		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * CFrame.Angles(0, math.rad(90), 0)
 
 		if (char.HumanoidRootPart.Position - worldCF.Position).Magnitude > 80 then return end
 
