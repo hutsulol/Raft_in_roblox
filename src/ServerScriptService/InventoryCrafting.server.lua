@@ -159,6 +159,10 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 					tool:SetAttribute(attr, val)
 				end
 			end
+			-- Set tool icon
+			if recipe.icon and tool.TextureId == "" then
+				tool.TextureId = recipe.icon
+			end
 			local backpack = player:FindFirstChild("Backpack")
 			if backpack then
 				tool.Parent = backpack

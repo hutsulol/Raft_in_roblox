@@ -42,6 +42,8 @@ local TOOL_ICONS = {
 	["Garden"] = "rbxassetid://110032041583533",
 	["Hook"] = "rbxassetid://110032041583533",
 	["Axe"] = "rbxassetid://110032041583533",
+	["[GRAPES]"] = "rbxassetid://137478230275649",
+	["Grapes"] = "rbxassetid://137478230275649",
 }
 
 local inventory = {Log = 0, Plastic = 0, Stone = 0, Iron_Ore = 0, Iron_Ingot = 0}
