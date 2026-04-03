@@ -118,7 +118,26 @@ while true do
 
 	-- Spawn new island if under max
 	if #islands < MAX_ISLANDS then
-		local angle = math.random() * math.pi * 2
+		-- Determine raft's forward direction from velocity (or LookVector fallback)
+		local velocity = raft.PrimaryPart.AssemblyLinearVelocity
+		local flatVel = Vector3.new(velocity.X, 0, velocity.Z)
+		local forwardAngle
+		if flatVel.Magnitude > 0.5 then
+			forwardAngle = math.atan2(flatVel.Z, flatVel.X)
+		else
+			local look = raft.PrimaryPart.CFrame.LookVector
+			forwardAngle = math.atan2(look.Z, look.X)
+		end
+
+		-- Only spawn to left or right (45°-135° offset from forward, either side)
+		local side = math.random(1, 2)
+		local offsetAngle
+		if side == 1 then
+			offsetAngle = math.rad(math.random(45, 135))
+		else
+			offsetAngle = math.rad(math.random(-135, -45))
+		end
+		local angle = forwardAngle + offsetAngle
 		local dist = math.random(SPAWN_DISTANCE_MIN, SPAWN_DISTANCE_MAX)
 
 		local spawnPos = Vector3.new(
