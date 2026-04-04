@@ -174,11 +174,19 @@ local function savePlayerData(player)
 		return
 	end
 
-	local raftData = collectRaftData(player)
+	-- Only the raft owner gets raft data saved (prevents duplication exploit)
+	local isOwner = (not raftOwnerUserId) or (raftOwnerUserId == player.UserId)
+	local raftData = nil
+	if isOwner then
+		raftData = collectRaftData(player)
+	else
+		print("[RaftSave] Skipping raft save for " .. player.Name .. " (not owner)")
+	end
+
 	local invData = collectInventoryData(player)
 	local toolData = collectToolData(player)
 
-	print("[RaftSave] Collecting data for " .. player.Name .. " - raft: " .. tostring(raftData ~= nil) .. ", tools: " .. #toolData)
+	print("[RaftSave] Collecting data for " .. player.Name .. " - raft: " .. tostring(raftData ~= nil) .. " (owner=" .. tostring(isOwner) .. "), tools: " .. #toolData)
 
 	if not raftData and (not invData or next(invData) == nil) and #toolData == 0 then
 		print("[RaftSave] No data to save for " .. player.Name)
@@ -189,7 +197,7 @@ local function savePlayerData(player)
 		inventory = invData,
 		tools = toolData,
 		slotLayout = cachedSlotLayouts[player] or {},
-		raft = raftData,
+		raft = raftData, -- nil for non-owners, preventing raft duplication
 		savedAt = os.time(),
 	}
 
@@ -507,6 +515,9 @@ end
 -- Track whether the raft has already been rebuilt from a save (for group loads)
 local raftRebuiltFromSave = false
 
+-- Track who owns this raft (only the owner gets raft data saved)
+local raftOwnerUserId = nil
+
 -- ─── Load save data by UserId key ───
 local function loadPlayerDataByUserId(userId)
 	if not raftStore then
@@ -531,6 +542,12 @@ end
 Players.PlayerAdded:Connect(function(player)
 	local joinData = player:GetJoinData()
 	local teleportData = joinData and joinData.TeleportData
+
+	-- Track who owns the raft (first player to set it wins)
+	if teleportData and teleportData.raftOwnerId and not raftOwnerUserId then
+		raftOwnerUserId = teleportData.raftOwnerId
+		print("[RaftSave] Raft owner set to UserId: " .. tostring(raftOwnerUserId))
+	end
 
 	if teleportData and teleportData.loadSave then
 		-- Determine whose save to load

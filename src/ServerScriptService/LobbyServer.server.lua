@@ -275,6 +275,9 @@ local function startCountdown(pad)
 
 				local teleportData = {}
 
+				-- Always pass the lobby owner so only they get raft saves
+				teleportData.raftOwnerId = lobby.owner.UserId
+
 				if savePads[pad] and lobby.owner then
 					-- Save pad: load the lobby owner's saved raft for everyone
 					teleportData.loadSave = true
@@ -366,7 +369,7 @@ lobbyEvent.OnServerEvent:Connect(function(player, action, data, data2)
 			local success, err = pcall(function()
 				local teleportOptions = Instance.new("TeleportOptions")
 				teleportOptions.ShouldReserveServer = true
-				teleportOptions:SetTeleportData({loadSave = true})
+				teleportOptions:SetTeleportData({loadSave = true, raftOwnerId = player.UserId})
 				TeleportService:TeleportAsync(OCEAN_PLACE_ID, {player}, teleportOptions)
 			end)
 			if not success then
