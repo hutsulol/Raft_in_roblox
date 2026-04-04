@@ -44,7 +44,7 @@ local alignOrientation = Instance.new("AlignOrientation")
 alignOrientation.Attachment0 = attachment
 alignOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
 alignOrientation.RigidityEnabled = false
-alignOrientation.MaxTorque = 10000
+alignOrientation.MaxTorque = 1e6 -- will be updated each frame based on mass
 alignOrientation.Responsiveness = 10
 alignOrientation.Parent = primaryPart
 
@@ -118,6 +118,8 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
 
 	vectorForce.Force = baseForce + paddleForce
 
+	-- Scale torque with raft mass so it always rotates, even with many tiles
+	alignOrientation.MaxTorque = totalMass * 1000
 	-- Lock yaw to current heading, allow pitch/roll to follow water
 	alignOrientation.CFrame = CFrame.Angles(0, lockedYaw, 0)
 
