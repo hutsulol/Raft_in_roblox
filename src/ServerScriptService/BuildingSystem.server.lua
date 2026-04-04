@@ -169,8 +169,13 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		if isFloorOccupied(offsets, gx, gz) then return end
 		if not isFloorAdjacent(offsets, gx, gz) then return end
 
+		-- Use flat CFrame (yaw-only) so pieces are placed on the horizontal plane
+		local primaryCF = raft.PrimaryPart.CFrame
+		local _, yaw, _ = primaryCF:ToEulerAnglesYXZ()
+		local flatCF = CFrame.new(primaryCF.Position) * CFrame.Angles(0, yaw, 0)
+
 		local localOffset = Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE)
-		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset)
+		local worldCF = flatCF * CFrame.new(localOffset)
 
 		if (char.HumanoidRootPart.Position - worldCF.Position).Magnitude > 80 then return end
 

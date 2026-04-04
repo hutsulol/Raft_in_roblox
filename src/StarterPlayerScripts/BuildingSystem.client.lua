@@ -128,14 +128,23 @@ local function isFloorAdjacent(offsets, gx, gz)
 	return false
 end
 
-local function raycastToRaftPlane()
+-- Compute a yaw-only CFrame so the building grid is always on the horizontal plane
+-- (the PrimaryPart may be a log whose UpVector points sideways)
+local function getFlatCFrame()
 	local raft = getRaft()
 	if not raft or not raft.PrimaryPart then return nil end
+	local cf = raft.PrimaryPart.CFrame
+	local _, yaw, _ = cf:ToEulerAnglesYXZ()
+	return CFrame.new(cf.Position) * CFrame.Angles(0, yaw, 0)
+end
 
-	local primaryCF = raft.PrimaryPart.CFrame
+local function raycastToRaftPlane()
+	local flatCF = getFlatCFrame()
+	if not flatCF then return nil end
+
 	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
-	local planeNormal = primaryCF.UpVector
-	local planePoint = primaryCF.Position
+	local planeNormal = Vector3.new(0, 1, 0) -- world up, always horizontal
+	local planePoint = flatCF.Position
 
 	local denom = ray.Direction:Dot(planeNormal)
 	if math.abs(denom) < 0.001 then return nil end
@@ -144,7 +153,7 @@ local function raycastToRaftPlane()
 	if t < 0 then return nil end
 
 	local hitWorld = ray.Origin + ray.Direction * t
-	local localHit = primaryCF:PointToObjectSpace(hitWorld)
+	local localHit = flatCF:PointToObjectSpace(hitWorld)
 	return localHit
 end
 
@@ -152,13 +161,12 @@ local function getFloorGridFromMouse()
 	local localHit = raycastToRaftPlane()
 	if not localHit then return nil, nil, nil end
 
-	local raft = getRaft()
-	local primaryCF = raft.PrimaryPart.CFrame
+	local flatCF = getFlatCFrame()
 
 	local gx = math.round(localHit.X / GRID_SIZE)
 	local gz = math.round(localHit.Z / GRID_SIZE)
 	local localOffset = Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE)
-	local worldCF = primaryCF * CFrame.new(localOffset)
+	local worldCF = flatCF * CFrame.new(localOffset)
 
 	return gx, gz, worldCF
 end
@@ -167,8 +175,7 @@ local function getWallFromMouse()
 	local localHit = raycastToRaftPlane()
 	if not localHit then return nil, nil, nil, nil end
 
-	local raft = getRaft()
-	local primaryCF = raft.PrimaryPart.CFrame
+	local flatCF = getFlatCFrame()
 
 	local gx = math.round(localHit.X / GRID_SIZE)
 	local gz = math.round(localHit.Z / GRID_SIZE)
@@ -190,8 +197,6 @@ local function getWallFromMouse()
 	end
 
 	local wallY = FLOOR_HEIGHT / 2
-	local _, yaw, _ = primaryCF:ToEulerAnglesYXZ()
-	local flatCF = CFrame.new(primaryCF.Position) * CFrame.Angles(0, yaw, 0)
 
 	local localPos, localRot
 	if side == 0 then

@@ -256,7 +256,10 @@ local function rebuildRaft(player, saveData)
 		print("[RaftSave] Restored raft position to " .. tostring(savedCF.Position))
 	end
 
-	local raftCF = raft.PrimaryPart.CFrame
+	-- Use flat CFrame (yaw-only) so rebuilt pieces are on the horizontal plane
+	local rawCF = raft.PrimaryPart.CFrame
+	local _, raftYaw, _ = rawCF:ToEulerAnglesYXZ()
+	local raftCF = CFrame.new(rawCF.Position) * CFrame.Angles(0, raftYaw, 0)
 
 	-- Templates
 	local floorTemplate = rs:FindFirstChild("Raft_part")
