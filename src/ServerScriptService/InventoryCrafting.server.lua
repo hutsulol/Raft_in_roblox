@@ -81,6 +81,15 @@ local recipes = {
 		category = "Technology",
 		description = "A grape bush that grows berries every 20 seconds. Must be planted on a garden bed.",
 	},
+	{
+		name = "Paddle",
+		displayName = "Paddle",
+		icon = "rbxassetid://110032041583533",
+		costs = {Log = 1, Plastic = 3},
+		craftType = "tool",
+		category = "Tools",
+		description = "A paddle to steer and boost your raft. Click where you want to go.",
+	},
 }
 
 inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
