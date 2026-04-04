@@ -101,8 +101,8 @@ local function wallCFrame(raft, gx, gz, side)
 	local flatCF = CFrame.new(primaryCF.Position) * CFrame.Angles(0, yaw, 0)
 
 	local half = GRID_SIZE / 2
-	-- Wall center Y: sit on top of the floor surface
-	local wallY = FLOOR_HEIGHT / 2 + WALL_HEIGHT / 2
+	-- Wall center at PrimaryPart height (raft surface level)
+	local wallY = 0
 
 	local localPos, localRot
 	if side == 0 then -- front (+Z)

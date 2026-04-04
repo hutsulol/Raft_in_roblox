@@ -208,8 +208,8 @@ local function getWallFromMouse()
 		if dz > 0 then side = 0 else side = 1 end
 	end
 
-	-- Wall center Y: sit on top of the floor surface
-	local wallY = FLOOR_HEIGHT / 2 + WALL_HEIGHT / 2
+	-- Wall center at PrimaryPart height (raft surface level)
+	local wallY = 0
 
 	local localPos, localRot
 	if side == 0 then

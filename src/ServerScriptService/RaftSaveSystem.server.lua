@@ -351,8 +351,8 @@ local function rebuildRaft(player, saveData)
 			local _, currentYaw, _ = raftCF:ToEulerAnglesYXZ()
 			local flatOrientation = CFrame.Angles(0, currentYaw, 0)
 
-			-- Wall center Y: floor surface + half wall height
-			local wallY = FLOOR_HEIGHT / 2 + WALL_HEIGHT / 2
+			-- Wall center at PrimaryPart height (raft surface level)
+			local wallY = 0
 			local wCF
 			if wall.side == 0 then
 				wCF = center * CFrame.new(0, wallY, -half)
