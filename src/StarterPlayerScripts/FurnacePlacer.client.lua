@@ -131,8 +131,7 @@ local function updateGhost()
 	-- Position ghost on top of hit surface with rotation
 	local hitPos = result.Position
 	local _, ghostSize = ghost:GetBoundingBox()
-	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
-	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0)
 
 	ghost:PivotTo(placeCF)

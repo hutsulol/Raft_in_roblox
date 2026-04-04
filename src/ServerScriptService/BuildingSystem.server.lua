@@ -104,7 +104,7 @@ end
 local function wallCFrame(raft, gx, gz, side)
 	local primaryCF = raft.PrimaryPart.CFrame
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
-	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 
 	local half = GRID_SIZE / 2
@@ -130,9 +130,9 @@ local function wallCFrame(raft, gx, gz, side)
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
 	-- Get world position through primaryCF
 	local wallWorldPos = (primaryCF * CFrame.new(localOffset)).Position
-	-- Lift wall so it sits on top of the floor surface
+	-- Lift wall so its bottom is at raft surface level
 	local scaledWallHeight = WALL_HEIGHT * WALL_SCALE
-	wallWorldPos = wallWorldPos + Vector3.new(0, FLOOR_HEIGHT / 2 + scaledWallHeight / 2, 0)
+	wallWorldPos = wallWorldPos + Vector3.new(0, scaledWallHeight / 2, 0)
 	-- Wall CFrame: at that position, always vertical, facing the right direction
 	return CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 end
@@ -187,7 +187,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		-- local offset. This ensures the weld stores a constant relative CFrame
 		-- regardless of current wave tilt.
 		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
-		local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 		local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
 		local localOffset = restCF:VectorToObjectSpace(worldOffset)

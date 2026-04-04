@@ -23,6 +23,7 @@ local lockedYaw = initialYaw
 -- Must include the log's inherent pitch/roll so floor placement works correctly
 local restY = primaryPart.Position.Y
 primaryPart:SetAttribute("RestCFrame", primaryPart.CFrame)
+primaryPart:SetAttribute("RestYaw", lockedYaw)
 
 -- RemoteEvent for paddle input
 local paddleEvent = Instance.new("RemoteEvent")
@@ -124,4 +125,6 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
 	-- Preserve the log's inherent pitch/roll, only update yaw + position
 	local pos = primaryPart.Position
 	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos.X, restY, pos.Z) * CFrame.Angles(initialPitch, lockedYaw, initialRoll))
+	-- Store yaw as a plain number — avoids Euler decomposition issues with rotated log
+	primaryPart:SetAttribute("RestYaw", lockedYaw)
 end)

@@ -141,8 +141,8 @@ local function raycastToRaftPlane()
 	local cf = raft.PrimaryPart.CFrame
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or cf
 
-	-- Use restCF yaw so local space matches the grid computation in getFloorGridFromMouse
-	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+	-- Use RestYaw directly (avoids Euler decomposition issues with rotated log)
+	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	-- Use current XZ (raft moves forward) but stable Y from restCF (avoids wave-bob jitter)
 	local stableY = restCF.Position.Y
 	local planePoint = Vector3.new(cf.Position.X, stableY, cf.Position.Z)
@@ -170,7 +170,7 @@ local function getFloorGridFromMouse()
 	local primaryCF = raft.PrimaryPart.CFrame
 	-- Use rest CFrame (stored at startup) for stable grid offset computation
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
-	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(
 		math.round(localHit.X / GRID_SIZE) * GRID_SIZE, 0,
@@ -192,7 +192,7 @@ local function getWallFromMouse()
 	local raft = getRaft()
 	local primaryCF = raft.PrimaryPart.CFrame
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
-	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 
 	local gx = math.round(localHit.X / GRID_SIZE)
@@ -235,9 +235,9 @@ local function getWallFromMouse()
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
 	-- Get world position through primaryCF
 	local wallWorldPos = (primaryCF * CFrame.new(localOffset)).Position
-	-- Lift wall so it sits on top of the floor surface
+	-- Lift wall so its bottom is at raft surface level
 	local scaledWallHeight = WALL_HEIGHT * WALL_SCALE
-	wallWorldPos = wallWorldPos + Vector3.new(0, FLOOR_HEIGHT / 2 + scaledWallHeight / 2, 0)
+	wallWorldPos = wallWorldPos + Vector3.new(0, scaledWallHeight / 2, 0)
 	-- Wall CFrame: at that position, always vertical, facing the right direction
 	local worldCF = CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 

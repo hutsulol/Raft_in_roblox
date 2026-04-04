@@ -331,8 +331,7 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		-- Position bush planted in garden bed (center at garden top surface)
 		local gardenCF, gardenSize = target:GetBoundingBox()
 		local topY = gardenCF.Position.Y + gardenSize.Y / 2
-		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
-		local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 
 		-- Apply template rotation for bush (same as client ghost)
 		local bushBBCF = bush:GetBoundingBox()

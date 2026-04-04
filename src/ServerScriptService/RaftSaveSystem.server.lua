@@ -257,13 +257,17 @@ local function rebuildRaft(player, saveData)
 	end
 
 	local raftCF = raft.PrimaryPart.CFrame
-	-- Store RestCFrame for BuildingSystem (in case BoatForwardMovement hasn't set it yet)
+	-- Store RestCFrame and RestYaw for BuildingSystem (in case BoatForwardMovement hasn't set them yet)
 	if not raft.PrimaryPart:GetAttribute("RestCFrame") then
 		raft.PrimaryPart:SetAttribute("RestCFrame", raftCF)
 	end
+	if not raft.PrimaryPart:GetAttribute("RestYaw") then
+		local _, iy, _ = raftCF:ToEulerAnglesYXZ()
+		raft.PrimaryPart:SetAttribute("RestYaw", iy)
+	end
 	-- Use RestCFrame for stable grid offsets (same approach as BuildingSystem)
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raftCF
-	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 
 	-- Templates
@@ -367,9 +371,9 @@ local function rebuildRaft(player, saveData)
 			local edgeWorldOffset = restFlat:VectorToWorldSpace(edgeGridPos)
 			local edgeLocalOffset = restCF:VectorToObjectSpace(edgeWorldOffset)
 			local wallWorldPos = (raftCF * CFrame.new(edgeLocalOffset)).Position
-			-- Lift wall so it sits on top of the floor surface
+			-- Lift wall so its bottom is at raft surface level
 			local scaledWallHeight = WALL_HEIGHT * WALL_SCALE
-			wallWorldPos = wallWorldPos + Vector3.new(0, FLOOR_HEIGHT / 2 + scaledWallHeight / 2, 0)
+			wallWorldPos = wallWorldPos + Vector3.new(0, scaledWallHeight / 2, 0)
 			-- Wall: vertical, facing the right direction
 			local wCF = CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 
