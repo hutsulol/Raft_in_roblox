@@ -270,14 +270,17 @@ local function rebuildRaft(player, saveData)
 	local floorTemplate = rs:FindFirstChild("Raft_part")
 	local wallTemplate = rs:FindFirstChild("Wall") or rs:FindFirstChild("wall")
 
-	-- Determine grid size from template
+	-- Determine grid size and floor height from template
 	local GRID_SIZE = 6
+	local FLOOR_HEIGHT = 0
 	if floorTemplate then
 		if floorTemplate:IsA("Model") then
 			local size = floorTemplate:GetExtentsSize()
 			GRID_SIZE = math.max(size.X, size.Z)
+			FLOOR_HEIGHT = size.Y
 		elseif floorTemplate:IsA("BasePart") then
 			GRID_SIZE = math.max(floorTemplate.Size.X, floorTemplate.Size.Z)
+			FLOOR_HEIGHT = floorTemplate.Size.Y
 		end
 	end
 
@@ -348,15 +351,17 @@ local function rebuildRaft(player, saveData)
 			local _, currentYaw, _ = raftCF:ToEulerAnglesYXZ()
 			local flatOrientation = CFrame.Angles(0, currentYaw, 0)
 
+			-- Wall center Y: floor surface + half wall height
+			local wallY = FLOOR_HEIGHT / 2 + WALL_HEIGHT / 2
 			local wCF
 			if wall.side == 0 then
-				wCF = center * CFrame.new(0, WALL_HEIGHT / 2, -half)
+				wCF = center * CFrame.new(0, wallY, -half)
 			elseif wall.side == 1 then
-				wCF = center * CFrame.new(0, WALL_HEIGHT / 2, half)
+				wCF = center * CFrame.new(0, wallY, half)
 			elseif wall.side == 2 then
-				wCF = center * CFrame.new(-half, WALL_HEIGHT / 2, 0) * CFrame.Angles(0, math.rad(90), 0)
+				wCF = center * CFrame.new(-half, wallY, 0) * CFrame.Angles(0, math.rad(90), 0)
 			elseif wall.side == 3 then
-				wCF = center * CFrame.new(half, WALL_HEIGHT / 2, 0) * CFrame.Angles(0, math.rad(90), 0)
+				wCF = center * CFrame.new(half, wallY, 0) * CFrame.Angles(0, math.rad(90), 0)
 			end
 
 			if wCF then

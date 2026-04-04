@@ -97,13 +97,13 @@ end
 -- side: 0=front(+Z), 1=back(-Z), 2=left(-X), 3=right(+X)
 local function wallCFrame(raft, gx, gz, side)
 	local primaryCF = raft.PrimaryPart.CFrame
-	local half = GRID_SIZE / 2
-	-- Wall bottom sits on top of the floor surface
-	local wallY = FLOOR_HEIGHT / 2
+	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
+	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 
-	-- Use raft's flat (yaw-only) orientation so walls stay vertical
-	local _, yaw, _ = primaryCF:ToEulerAnglesYXZ()
-	local flatCF = CFrame.new(primaryCF.Position) * CFrame.Angles(0, yaw, 0)
+	local half = GRID_SIZE / 2
+	-- Wall center Y: sit on top of the floor surface
+	local wallY = FLOOR_HEIGHT / 2 + WALL_HEIGHT / 2
 
 	local localPos, localRot
 	if side == 0 then -- front (+Z)
@@ -120,7 +120,10 @@ local function wallCFrame(raft, gx, gz, side)
 		localRot = CFrame.Angles(0, math.rad(90), 0)
 	end
 
-	return flatCF * CFrame.new(localPos) * localRot
+	-- Use RestCFrame approach for stable positioning (matches floor placement)
+	local worldOffset = restFlat:VectorToWorldSpace(localPos)
+	local localOffset = restCF:VectorToObjectSpace(worldOffset)
+	return primaryCF * CFrame.new(localOffset) * localRot
 end
 
 local function weldToRaft(obj, raft)
