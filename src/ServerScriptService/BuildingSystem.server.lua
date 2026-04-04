@@ -52,7 +52,7 @@ end
 raftPartTemplate:SetAttribute("PanelHeight", PANEL_HEIGHT)
 
 -- Beam/wall X-axis correction (pivot offset in template)
-local BEAM_X_OFFSET = -1
+local BEAM_X_OFFSET = 1
 
 local RAFT_COST = 2
 local BEAM_COST = 1

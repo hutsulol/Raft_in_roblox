@@ -408,7 +408,7 @@ local function rebuildRaft(player, saveData)
 	if beamTemplate and raftData.beams then
 		for _, beam in raftData.beams do
 			local insetX, insetZ = computeBeamInset(beam.cx, beam.cz)
-			local studX = beam.cx * GRID_SIZE + insetX - 1
+			local studX = beam.cx * GRID_SIZE + insetX + 1
 			local studZ = beam.cz * GRID_SIZE + insetZ
 			local worldPos = localToWorldPos(studX, studZ)
 			worldPos = worldPos + Vector3.new(0, BEAM_HEIGHT / 2, 0)
@@ -430,7 +430,7 @@ local function rebuildRaft(player, saveData)
 		for _, wp in raftData.wallPanels do
 			local inset1X, inset1Z = computeBeamInset(wp.cx1, wp.cz1)
 			local inset2X, inset2Z = computeBeamInset(wp.cx2, wp.cz2)
-			local midStudX = ((wp.cx1 * GRID_SIZE + inset1X) + (wp.cx2 * GRID_SIZE + inset2X)) / 2 - 1
+			local midStudX = ((wp.cx1 * GRID_SIZE + inset1X) + (wp.cx2 * GRID_SIZE + inset2X)) / 2 + 1
 			local midStudZ = ((wp.cz1 * GRID_SIZE + inset1Z) + (wp.cz2 * GRID_SIZE + inset2Z)) / 2
 			local worldPos = localToWorldPos(midStudX, midStudZ)
 			worldPos = worldPos + Vector3.new(0, PANEL_HEIGHT / 2, 0)

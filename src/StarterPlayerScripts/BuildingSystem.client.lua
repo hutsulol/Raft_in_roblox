@@ -56,7 +56,7 @@ local LOG_ICON = "rbxassetid://110032041583533"
 local FLOOR_ICON = "rbxassetid://93002853045949"
 
 -- Beam/wall X-axis correction (pivot offset in template)
-local BEAM_X_OFFSET = -1
+local BEAM_X_OFFSET = 1
 
 -- Building items organized by category
 local categories = {
