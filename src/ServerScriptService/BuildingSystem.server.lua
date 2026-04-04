@@ -169,14 +169,12 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		if isFloorOccupied(offsets, gx, gz) then return end
 		if not isFloorAdjacent(offsets, gx, gz) then return end
 
-		-- Use flat CFrame for grid position (horizontal plane), PrimaryPart rotation for orientation
+		-- Compute horizontal offset using yaw-only, apply to raft's actual CFrame
 		local primaryCF = raft.PrimaryPart.CFrame
 		local _, yaw, _ = primaryCF:ToEulerAnglesYXZ()
 		local flatCF = CFrame.new(primaryCF.Position) * CFrame.Angles(0, yaw, 0)
-
-		local localOffset = Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE)
-		local gridPos = (flatCF * CFrame.new(localOffset)).Position
-		local worldCF = CFrame.new(gridPos) * primaryCF.Rotation
+		local worldOffset = flatCF:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
+		local worldCF = primaryCF + worldOffset
 
 		if (char.HumanoidRootPart.Position - worldCF.Position).Magnitude > 80 then return end
 

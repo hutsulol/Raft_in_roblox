@@ -257,10 +257,9 @@ local function rebuildRaft(player, saveData)
 	end
 
 	local raftCF = raft.PrimaryPart.CFrame
-	-- Flat CFrame for grid positions, raw rotation for piece orientation
+	-- Flat CFrame for computing horizontal grid offsets
 	local _, raftYaw, _ = raftCF:ToEulerAnglesYXZ()
 	local flatCF = CFrame.new(raftCF.Position) * CFrame.Angles(0, raftYaw, 0)
-	local raftRotation = raftCF.Rotation
 
 	-- Templates
 	local floorTemplate = rs:FindFirstChild("Raft_part")
@@ -281,9 +280,8 @@ local function rebuildRaft(player, saveData)
 	if floorTemplate and raftData.floors then
 		for _, floor in raftData.floors do
 			if not (floor.gx == 0 and floor.gz == 0) then
-				local localOffset = Vector3.new(floor.gx * GRID_SIZE, 0, floor.gz * GRID_SIZE)
-				local gridPos = (flatCF * CFrame.new(localOffset)).Position
-				local worldCF = CFrame.new(gridPos) * raftRotation
+				local worldOffset = flatCF:VectorToWorldSpace(Vector3.new(floor.gx * GRID_SIZE, 0, floor.gz * GRID_SIZE))
+				local worldCF = raftCF + worldOffset
 
 				local clone = floorTemplate:Clone()
 				if clone:IsA("Model") then
