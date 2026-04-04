@@ -256,10 +256,11 @@ local function rebuildRaft(player, saveData)
 		print("[RaftSave] Restored raft position to " .. tostring(savedCF.Position))
 	end
 
-	-- Use flat CFrame (yaw-only) so rebuilt pieces are on the horizontal plane
-	local rawCF = raft.PrimaryPart.CFrame
-	local _, raftYaw, _ = rawCF:ToEulerAnglesYXZ()
-	local raftCF = CFrame.new(rawCF.Position) * CFrame.Angles(0, raftYaw, 0)
+	local raftCF = raft.PrimaryPart.CFrame
+	-- Flat CFrame for grid positions, raw rotation for piece orientation
+	local _, raftYaw, _ = raftCF:ToEulerAnglesYXZ()
+	local flatCF = CFrame.new(raftCF.Position) * CFrame.Angles(0, raftYaw, 0)
+	local raftRotation = raftCF.Rotation
 
 	-- Templates
 	local floorTemplate = rs:FindFirstChild("Raft_part")
@@ -281,7 +282,8 @@ local function rebuildRaft(player, saveData)
 		for _, floor in raftData.floors do
 			if not (floor.gx == 0 and floor.gz == 0) then
 				local localOffset = Vector3.new(floor.gx * GRID_SIZE, 0, floor.gz * GRID_SIZE)
-				local worldCF = raftCF * CFrame.new(localOffset)
+				local gridPos = (flatCF * CFrame.new(localOffset)).Position
+				local worldCF = CFrame.new(gridPos) * raftRotation
 
 				local clone = floorTemplate:Clone()
 				if clone:IsA("Model") then
@@ -316,10 +318,6 @@ local function rebuildRaft(player, saveData)
 
 	-- Place walls
 	if wallTemplate and raftData.walls then
-		-- Compute wall CFrame using same logic as BuildingSystem
-		local _, yaw, _ = raftCF:ToEulerAnglesYXZ()
-		local flatCF = CFrame.new(raftCF.Position) * CFrame.Angles(0, yaw, 0)
-
 		local WALL_HEIGHT = 6
 		if wallTemplate:IsA("Model") then
 			local _, ws = wallTemplate:GetBoundingBox()
@@ -330,7 +328,7 @@ local function rebuildRaft(player, saveData)
 
 		for _, wall in raftData.walls do
 			local half = GRID_SIZE / 2
-			local center = raftCF * CFrame.new(Vector3.new(wall.gx * GRID_SIZE, 0, wall.gz * GRID_SIZE))
+			local center = flatCF * CFrame.new(Vector3.new(wall.gx * GRID_SIZE, 0, wall.gz * GRID_SIZE))
 			local wCF
 
 			if wall.side == 0 then

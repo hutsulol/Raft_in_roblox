@@ -161,12 +161,15 @@ local function getFloorGridFromMouse()
 	local localHit = raycastToRaftPlane()
 	if not localHit then return nil, nil, nil end
 
+	local raft = getRaft()
 	local flatCF = getFlatCFrame()
 
 	local gx = math.round(localHit.X / GRID_SIZE)
 	local gz = math.round(localHit.Z / GRID_SIZE)
 	local localOffset = Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE)
-	local worldCF = flatCF * CFrame.new(localOffset)
+	-- Position from flat grid, rotation from PrimaryPart (so logs lie flat)
+	local gridPos = (flatCF * CFrame.new(localOffset)).Position
+	local worldCF = CFrame.new(gridPos) * raft.PrimaryPart.CFrame.Rotation
 
 	return gx, gz, worldCF
 end
