@@ -395,11 +395,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		if typeof(target) ~= "CFrame" then return end
 
-		-- Strip pitch/roll from target so objects are level
-		local tp2 = target.Position
-		local _, ty2, _ = target:ToEulerAnglesYXZ()
-		local cleanTarget2 = CFrame.new(tp2) * CFrame.Angles(0, ty2, 0)
-		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(cleanTarget2)
+		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
 
 		local template = rs:FindFirstChild("WorkBench")
 		if not template then return end

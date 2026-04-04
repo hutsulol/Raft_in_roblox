@@ -171,11 +171,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	if not raft or not raft.PrimaryPart then return end
 	if typeof(target) ~= "CFrame" then return end
 
-	-- Strip pitch/roll from target so bed is level (wave tilt in ToObjectSpace)
-	local tp = target.Position
-	local _, ty, _ = target:ToEulerAnglesYXZ()
-	local cleanTarget = CFrame.new(tp) * CFrame.Angles(0, ty, 0)
-	local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(cleanTarget)
+	local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
 
 	local template = rs:FindFirstChild("Bed")
 	if not template then return end
