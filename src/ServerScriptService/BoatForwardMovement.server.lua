@@ -44,8 +44,8 @@ local alignOrientation = Instance.new("AlignOrientation")
 alignOrientation.Attachment0 = attachment
 alignOrientation.Mode = Enum.OrientationAlignmentMode.OneAttachment
 alignOrientation.RigidityEnabled = false
-alignOrientation.MaxTorque = 1e6 -- will be updated each frame based on mass
-alignOrientation.Responsiveness = 10
+alignOrientation.MaxTorque = 500000
+alignOrientation.Responsiveness = 5
 alignOrientation.Parent = primaryPart
 
 -- Compute forward direction once (LookVector = along the logs)
@@ -119,9 +119,9 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
 	vectorForce.Force = baseForce + paddleForce
 
 	-- Scale torque with raft mass so it always rotates, even with many tiles
-	alignOrientation.MaxTorque = totalMass * 1000
-	-- Lock yaw to current heading, allow pitch/roll to follow water
-	alignOrientation.CFrame = CFrame.Angles(0, lockedYaw, 0)
+	alignOrientation.MaxTorque = totalMass * 500
+	-- Preserve log's natural pitch/roll, only control yaw (use YXZ Euler order to match decomposition)
+	alignOrientation.CFrame = CFrame.fromEulerAnglesYXZ(initialPitch, lockedYaw, initialRoll)
 
 	-- Update RestCFrame so building systems use the current yaw (not startup yaw)
 	-- Preserve the log's inherent pitch/roll, only update yaw + position
