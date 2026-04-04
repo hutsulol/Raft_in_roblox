@@ -14,8 +14,14 @@ end
 
 local primaryPart = boat.PrimaryPart
 
--- Store the rest CFrame before waves affect the raft (used by BuildingSystem)
-primaryPart:SetAttribute("RestCFrame", primaryPart.CFrame)
+-- Lock the raft heading at startup so it travels in a straight line
+local _, initialYaw, _ = primaryPart.CFrame:ToEulerAnglesYXZ()
+local lockedYaw = initialYaw
+
+-- Store the rest CFrame (used by BuildingSystem for stable placement)
+-- Updated every frame with the current locked yaw + stable Y (no wave bob)
+local restY = primaryPart.Position.Y
+primaryPart:SetAttribute("RestCFrame", CFrame.new(primaryPart.Position) * CFrame.Angles(0, lockedYaw, 0))
 
 -- RemoteEvent for paddle input
 local paddleEvent = Instance.new("RemoteEvent")
@@ -39,10 +45,6 @@ alignOrientation.RigidityEnabled = false
 alignOrientation.MaxTorque = 10000
 alignOrientation.Responsiveness = 10
 alignOrientation.Parent = primaryPart
-
--- Lock the raft heading at startup so it travels in a straight line
-local _, initialYaw, _ = primaryPart.CFrame:ToEulerAnglesYXZ()
-local lockedYaw = initialYaw
 
 -- Compute forward direction once (LookVector = along the logs)
 local forwardVector = primaryPart.CFrame.LookVector
@@ -116,4 +118,9 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
 
 	-- Lock yaw to current heading, allow pitch/roll to follow water
 	alignOrientation.CFrame = CFrame.Angles(0, lockedYaw, 0)
+
+	-- Update RestCFrame so building systems use the current yaw (not startup yaw)
+	-- Keep stable Y to avoid wave-bob jitter in placement preview
+	local pos = primaryPart.Position
+	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos.X, restY, pos.Z) * CFrame.Angles(0, lockedYaw, 0))
 end)
