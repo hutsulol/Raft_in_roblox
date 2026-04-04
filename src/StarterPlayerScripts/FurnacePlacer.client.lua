@@ -131,13 +131,14 @@ local function updateGhost()
 	-- Position ghost on top of hit surface with rotation
 	local hitPos = result.Position
 	local _, ghostSize = ghost:GetBoundingBox()
-	local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, rotationAngle, 0)
+	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
+	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+	local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0)
 
 	ghost:PivotTo(placeCF)
 
-	-- Calculate raft-local offset for server
-	local raftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
-	lastGhostRaftOffset = raftOffset
+	-- Calculate offset relative to RestCFrame for wave-independent weld
+	lastGhostRaftOffset = restCF:ToObjectSpace(placeCF)
 
 	-- Check if blocked
 	local blocked = isPlacementBlocked(placeCF, ghostSize)

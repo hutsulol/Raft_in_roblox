@@ -261,12 +261,13 @@ local function updateGhost()
 			local gardenCF, gardenSize = garden:GetBoundingBox()
 			local ghostSize = ghost:GetExtentsSize()
 			local topY = gardenCF.Position.Y + gardenSize.Y / 2 + ghostSize.Y / 2
-			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
+			local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
+			local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
 
-			local placeCF = CFrame.new(gardenCF.Position.X, topY, gardenCF.Position.Z) * CFrame.Angles(0, raftYaw + rotationAngle, 0) * ghostTemplateRotation
+			local placeCF = CFrame.new(gardenCF.Position.X, topY, gardenCF.Position.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0) * ghostTemplateRotation
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
-			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
+			lastGhostRaftOffset = restCF:ToObjectSpace(placeCF)
 			lastTargetGarden = garden
 			setGhostColor(true)
 		else
@@ -274,8 +275,9 @@ local function updateGhost()
 			lastTargetGarden = nil
 			local hitPos = result.Position
 			local ghostSize = ghost:GetExtentsSize()
-			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
-			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw + rotationAngle, 0) * ghostTemplateRotation)
+			local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
+			local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0) * ghostTemplateRotation)
 			setGhostColor(false)
 		end
 	else
@@ -285,12 +287,13 @@ local function updateGhost()
 		if hitOnRaft then
 			local hitPos = result.Position
 			local ghostSize = ghost:GetExtentsSize()
-			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
+			local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
+			local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
 
-			local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw + rotationAngle, 0) * ghostTemplateRotation
+			local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0) * ghostTemplateRotation
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
-			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
+			lastGhostRaftOffset = restCF:ToObjectSpace(placeCF)
 
 			-- Check for overlap with existing objects
 			if isPlacementBlocked(placeCF, ghostSize) then
@@ -302,8 +305,9 @@ local function updateGhost()
 			-- Cursor is not on the raft — show red ghost at cursor position
 			local hitPos = result.Position
 			local ghostSize = ghost:GetExtentsSize()
-			local _, raftYaw, _ = raft.PrimaryPart.CFrame:ToEulerAnglesYXZ()
-			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, raftYaw + rotationAngle, 0))
+			local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
+			local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0))
 			setGhostColor(false)
 		end
 	end
