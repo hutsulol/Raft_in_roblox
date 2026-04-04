@@ -15,13 +15,14 @@ end
 local primaryPart = boat.PrimaryPart
 
 -- Lock the raft heading at startup so it travels in a straight line
-local _, initialYaw, _ = primaryPart.CFrame:ToEulerAnglesYXZ()
+-- Preserve initial pitch/roll (from the sideways-log PrimaryPart orientation)
+local initialPitch, initialYaw, initialRoll = primaryPart.CFrame:ToEulerAnglesYXZ()
 local lockedYaw = initialYaw
 
 -- Store the rest CFrame (used by BuildingSystem for stable placement)
--- Updated every frame with the current locked yaw + stable Y (no wave bob)
+-- Must include the log's inherent pitch/roll so floor placement works correctly
 local restY = primaryPart.Position.Y
-primaryPart:SetAttribute("RestCFrame", CFrame.new(primaryPart.Position) * CFrame.Angles(0, lockedYaw, 0))
+primaryPart:SetAttribute("RestCFrame", primaryPart.CFrame)
 
 -- RemoteEvent for paddle input
 local paddleEvent = Instance.new("RemoteEvent")
@@ -120,7 +121,7 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
 	alignOrientation.CFrame = CFrame.Angles(0, lockedYaw, 0)
 
 	-- Update RestCFrame so building systems use the current yaw (not startup yaw)
-	-- Keep stable Y to avoid wave-bob jitter in placement preview
+	-- Preserve the log's inherent pitch/roll, only update yaw + position
 	local pos = primaryPart.Position
-	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos.X, restY, pos.Z) * CFrame.Angles(0, lockedYaw, 0))
+	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos.X, restY, pos.Z) * CFrame.Angles(initialPitch, lockedYaw, initialRoll))
 end)
