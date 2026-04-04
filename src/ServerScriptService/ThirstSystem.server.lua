@@ -348,11 +348,8 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		-- Get placement offset relative to raft (CFrame sent from client)
 		if typeof(target) ~= "CFrame" then return end
 
-		-- Strip pitch/roll from target so objects are level (wave tilt in ToObjectSpace)
-		local tp = target.Position
-		local _, ty, _ = target:ToEulerAnglesYXZ()
-		local cleanTarget = CFrame.new(tp) * CFrame.Angles(0, ty, 0)
-		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(cleanTarget)
+		-- Convert raft-relative offset to world space
+		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
 
 		local template = rs:FindFirstChild("Destitalor")
 		if not template then return end

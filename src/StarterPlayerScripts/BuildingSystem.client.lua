@@ -524,11 +524,16 @@ local function startBuildMode()
 			local gx, gz, worldCF = getFloorGridFromMouse()
 			if not gx then hidePreview(); return end
 
+			local offsets = getFloorOffsets()
+			local occupied = isFloorOccupied(offsets, gx, gz)
+
+			-- Hide preview entirely when hovering over an existing raft part
+			if occupied then hidePreview(); return end
+
 			movePreview(worldCF)
 
-			local offsets = getFloorOffsets()
 			local canAfford = (inventory[selectedItem.costType] or 0) >= selectedItem.cost
-			local valid = not isFloorOccupied(offsets, gx, gz) and isFloorAdjacent(offsets, gx, gz) and canAfford
+			local valid = isFloorAdjacent(offsets, gx, gz) and canAfford
 			setPreviewAppearance(valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID)
 
 		elseif selectedItem.buildType == "wall" then

@@ -17,13 +17,6 @@ local recipes = {
 		costs = {Log = 2},
 		model = "Wood_Knife",
 	},
-	{
-		name = "Bed",
-		displayName = "Bed",
-		icon = "rbxassetid://85069521486600",
-		costs = {Log = 2},
-		craftType = "placeable",
-	},
 }
 
 local function findWorkBench()
