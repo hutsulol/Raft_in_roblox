@@ -128,23 +128,22 @@ local function isFloorAdjacent(offsets, gx, gz)
 	return false
 end
 
--- Compute a yaw-only CFrame so the building grid is always on the horizontal plane
--- (the PrimaryPart may be a log whose UpVector points sideways)
-local function getFlatCFrame()
+local function raycastToRaftPlane()
 	local raft = getRaft()
 	if not raft or not raft.PrimaryPart then return nil end
-	local cf = raft.PrimaryPart.CFrame
-	local _, yaw, _ = cf:ToEulerAnglesYXZ()
-	return CFrame.new(cf.Position) * CFrame.Angles(0, yaw, 0)
-end
 
-local function raycastToRaftPlane()
-	local flatCF = getFlatCFrame()
-	if not flatCF then return nil end
+	local cf = raft.PrimaryPart.CFrame
+	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or cf
+
+	-- Use restCF yaw so local space matches the grid computation in getFloorGridFromMouse
+	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+	-- Use current XZ (raft moves forward) but stable Y from restCF (avoids wave-bob jitter)
+	local stableY = restCF.Position.Y
+	local planePoint = Vector3.new(cf.Position.X, stableY, cf.Position.Z)
+	local flatCF = CFrame.new(planePoint) * CFrame.Angles(0, restYaw, 0)
 
 	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
 	local planeNormal = Vector3.new(0, 1, 0) -- world up, always horizontal
-	local planePoint = flatCF.Position
 
 	local denom = ray.Direction:Dot(planeNormal)
 	if math.abs(denom) < 0.001 then return nil end
@@ -184,7 +183,11 @@ local function getWallFromMouse()
 	local localHit = raycastToRaftPlane()
 	if not localHit then return nil, nil, nil, nil end
 
-	local flatCF = getFlatCFrame()
+	local raft = getRaft()
+	local primaryCF = raft.PrimaryPart.CFrame
+	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
+	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 
 	local gx = math.round(localHit.X / GRID_SIZE)
 	local gz = math.round(localHit.Z / GRID_SIZE)
@@ -222,7 +225,10 @@ local function getWallFromMouse()
 		localRot = CFrame.Angles(0, math.rad(90), 0)
 	end
 
-	local worldCF = flatCF * CFrame.new(localPos) * localRot
+	-- Use RestCFrame approach for stable wall preview positioning
+	local worldOffset = restFlat:VectorToWorldSpace(localPos)
+	local localOffset = restCF:VectorToObjectSpace(worldOffset)
+	local worldCF = primaryCF * CFrame.new(localOffset) * localRot
 	return gx, gz, side, worldCF
 end
 
