@@ -162,15 +162,20 @@ local function getFloorGridFromMouse()
 	if not localHit then return nil, nil, nil end
 
 	local raft = getRaft()
-	local flatCF = getFlatCFrame()
 	local primaryCF = raft.PrimaryPart.CFrame
+	-- Use rest CFrame (stored at startup) for stable grid offset computation
+	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
+	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
+	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(
+		math.round(localHit.X / GRID_SIZE) * GRID_SIZE, 0,
+		math.round(localHit.Z / GRID_SIZE) * GRID_SIZE
+	))
+	local localOffset = restCF:VectorToObjectSpace(worldOffset)
 
 	local gx = math.round(localHit.X / GRID_SIZE)
 	local gz = math.round(localHit.Z / GRID_SIZE)
-	-- Compute horizontal offset using yaw-only rotation, then apply to raft's
-	-- actual CFrame so pieces perfectly match the raft's current tilt/rotation
-	local worldOffset = flatCF:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
-	local worldCF = primaryCF + worldOffset
+	local worldCF = primaryCF * CFrame.new(localOffset)
 
 	return gx, gz, worldCF
 end

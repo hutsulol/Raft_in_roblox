@@ -8,6 +8,9 @@ end
 
 local primaryPart = boat.PrimaryPart
 
+-- Store the rest CFrame before waves affect the raft (used by BuildingSystem)
+primaryPart:SetAttribute("RestCFrame", primaryPart.CFrame)
+
 local attachment = Instance.new("Attachment")
 attachment.Parent = primaryPart
 

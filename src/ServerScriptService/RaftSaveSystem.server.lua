@@ -257,9 +257,14 @@ local function rebuildRaft(player, saveData)
 	end
 
 	local raftCF = raft.PrimaryPart.CFrame
-	-- Flat CFrame for computing horizontal grid offsets
-	local _, raftYaw, _ = raftCF:ToEulerAnglesYXZ()
-	local flatCF = CFrame.new(raftCF.Position) * CFrame.Angles(0, raftYaw, 0)
+	-- Store RestCFrame for BuildingSystem (in case BoatForwardMovement hasn't set it yet)
+	if not raft.PrimaryPart:GetAttribute("RestCFrame") then
+		raft.PrimaryPart:SetAttribute("RestCFrame", raftCF)
+	end
+	-- Use RestCFrame for stable grid offsets (same approach as BuildingSystem)
+	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raftCF
+	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 
 	-- Templates
 	local floorTemplate = rs:FindFirstChild("Raft_part")
@@ -280,8 +285,10 @@ local function rebuildRaft(player, saveData)
 	if floorTemplate and raftData.floors then
 		for _, floor in raftData.floors do
 			if not (floor.gx == 0 and floor.gz == 0) then
-				local worldOffset = flatCF:VectorToWorldSpace(Vector3.new(floor.gx * GRID_SIZE, 0, floor.gz * GRID_SIZE))
-				local worldCF = raftCF + worldOffset
+				-- Use RestCFrame approach for stable local offset
+				local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(floor.gx * GRID_SIZE, 0, floor.gz * GRID_SIZE))
+				local localOffset = restCF:VectorToObjectSpace(worldOffset)
+				local worldCF = raftCF * CFrame.new(localOffset)
 
 				local clone = floorTemplate:Clone()
 				if clone:IsA("Model") then
@@ -294,7 +301,7 @@ local function rebuildRaft(player, saveData)
 				clone:SetAttribute("BuildType", "raft")
 				clone.Parent = raft
 
-				-- Weld to raft
+				-- Weld to raft (create welds FIRST while anchored, then unanchor)
 				if clone:IsA("Model") then
 					for _, part in clone:GetDescendants() do
 						if part:IsA("BasePart") then
@@ -304,11 +311,17 @@ local function rebuildRaft(player, saveData)
 							weld.Parent = part
 						end
 					end
+					for _, part in clone:GetDescendants() do
+						if part:IsA("BasePart") then
+							part.Anchored = false
+						end
+					end
 				else
 					local weld = Instance.new("WeldConstraint")
 					weld.Part0 = raft.PrimaryPart
 					weld.Part1 = clone
 					weld.Parent = clone
+					clone.Anchored = false
 				end
 			end
 		end
@@ -326,9 +339,16 @@ local function rebuildRaft(player, saveData)
 
 		for _, wall in raftData.walls do
 			local half = GRID_SIZE / 2
-			local center = flatCF * CFrame.new(Vector3.new(wall.gx * GRID_SIZE, 0, wall.gz * GRID_SIZE))
-			local wCF
+			-- Use restFlat for stable wall positioning
+			local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(wall.gx * GRID_SIZE, 0, wall.gz * GRID_SIZE))
+			local localOffset = restCF:VectorToObjectSpace(worldOffset)
+			local center = raftCF * CFrame.new(localOffset)
 
+			-- Extract yaw-only rotation for wall orientation
+			local _, currentYaw, _ = raftCF:ToEulerAnglesYXZ()
+			local flatOrientation = CFrame.Angles(0, currentYaw, 0)
+
+			local wCF
 			if wall.side == 0 then
 				wCF = center * CFrame.new(0, WALL_HEIGHT / 2, -half)
 			elseif wall.side == 1 then
@@ -354,6 +374,7 @@ local function rebuildRaft(player, saveData)
 				end
 				clone.Parent = raft
 
+				-- Weld (create welds FIRST, then unanchor)
 				if clone:IsA("Model") then
 					for _, part in clone:GetDescendants() do
 						if part:IsA("BasePart") then
@@ -363,11 +384,17 @@ local function rebuildRaft(player, saveData)
 							weld.Parent = part
 						end
 					end
+					for _, part in clone:GetDescendants() do
+						if part:IsA("BasePart") then
+							part.Anchored = false
+						end
+					end
 				else
 					local weld = Instance.new("WeldConstraint")
 					weld.Part0 = raft.PrimaryPart
 					weld.Part1 = clone
 					weld.Parent = clone
+					clone.Anchored = false
 				end
 			end
 		end

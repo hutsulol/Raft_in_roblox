@@ -169,12 +169,15 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		if isFloorOccupied(offsets, gx, gz) then return end
 		if not isFloorAdjacent(offsets, gx, gz) then return end
 
-		-- Compute horizontal offset using yaw-only, apply to raft's actual CFrame
-		local primaryCF = raft.PrimaryPart.CFrame
-		local _, yaw, _ = primaryCF:ToEulerAnglesYXZ()
-		local flatCF = CFrame.new(primaryCF.Position) * CFrame.Angles(0, yaw, 0)
-		local worldOffset = flatCF:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
-		local worldCF = primaryCF + worldOffset
+		-- Use the raft's rest CFrame (from startup, before waves) to compute a stable
+		-- local offset. This ensures the weld stores a constant relative CFrame
+		-- regardless of current wave tilt.
+		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
+		local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+		local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
+		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
+		local localOffset = restCF:VectorToObjectSpace(worldOffset)
+		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset)
 
 		if (char.HumanoidRootPart.Position - worldCF.Position).Magnitude > 80 then return end
 
