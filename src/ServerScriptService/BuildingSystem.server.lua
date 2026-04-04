@@ -32,16 +32,22 @@ elseif raftPartTemplate:IsA("BasePart") then
 	FLOOR_HEIGHT = raftPartTemplate.Size.Y
 end
 
--- Measure wall height for vertical offset
+-- Measure wall dimensions
 local WALL_HEIGHT = 0
+local WALL_WIDTH = 0
 if wallTemplate then
 	if wallTemplate:IsA("Model") then
 		local size = wallTemplate:GetExtentsSize()
 		WALL_HEIGHT = size.Y
+		WALL_WIDTH = math.max(size.X, size.Z)
 	elseif wallTemplate:IsA("BasePart") then
 		WALL_HEIGHT = wallTemplate.Size.Y
+		WALL_WIDTH = math.max(wallTemplate.Size.X, wallTemplate.Size.Z)
 	end
 end
+
+-- Scale factor so wall width matches raft grid size
+local WALL_SCALE = (WALL_WIDTH > 0) and (GRID_SIZE / WALL_WIDTH) or 1
 
 local RAFT_COST = 2
 local WALL_COST = 3
@@ -124,6 +130,9 @@ local function wallCFrame(raft, gx, gz, side)
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
 	-- Get world position through primaryCF
 	local wallWorldPos = (primaryCF * CFrame.new(localOffset)).Position
+	-- Lift wall so it sits on top of the floor surface
+	local scaledWallHeight = WALL_HEIGHT * WALL_SCALE
+	wallWorldPos = wallWorldPos + Vector3.new(0, FLOOR_HEIGHT / 2 + scaledWallHeight / 2, 0)
 	-- Wall CFrame: at that position, always vertical, facing the right direction
 	return CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 end
@@ -231,6 +240,15 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		newWall:SetAttribute("BuildType", "wall")
 		newWall:SetAttribute("GridX", gx)
 		newWall:SetAttribute("GridZ", gz)
+
+		-- Scale wall to match raft grid size
+		if WALL_SCALE ~= 1 then
+			if newWall:IsA("Model") then
+				newWall:ScaleTo(newWall:GetScale() * WALL_SCALE)
+			elseif newWall:IsA("BasePart") then
+				newWall.Size = newWall.Size * WALL_SCALE
+			end
+		end
 
 		if newWall:IsA("Model") then
 			newWall:PivotTo(wCF)

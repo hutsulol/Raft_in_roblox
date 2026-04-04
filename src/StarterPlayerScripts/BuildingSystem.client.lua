@@ -34,14 +34,20 @@ elseif raftPartTemplate:IsA("BasePart") then
 end
 
 local WALL_HEIGHT = 0
+local WALL_WIDTH = 0
 if wallTemplate then
 	if wallTemplate:IsA("Model") then
 		local size = wallTemplate:GetExtentsSize()
 		WALL_HEIGHT = size.Y
+		WALL_WIDTH = math.max(size.X, size.Z)
 	elseif wallTemplate:IsA("BasePart") then
 		WALL_HEIGHT = wallTemplate.Size.Y
+		WALL_WIDTH = math.max(wallTemplate.Size.X, wallTemplate.Size.Z)
 	end
 end
+
+-- Scale factor so wall width matches raft grid size
+local WALL_SCALE = (WALL_WIDTH > 0) and (GRID_SIZE / WALL_WIDTH) or 1
 
 local PREVIEW_COLOR_VALID = Color3.fromRGB(80, 200, 80)
 local PREVIEW_COLOR_INVALID = Color3.fromRGB(200, 80, 80)
@@ -229,6 +235,9 @@ local function getWallFromMouse()
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
 	-- Get world position through primaryCF
 	local wallWorldPos = (primaryCF * CFrame.new(localOffset)).Position
+	-- Lift wall so it sits on top of the floor surface
+	local scaledWallHeight = WALL_HEIGHT * WALL_SCALE
+	wallWorldPos = wallWorldPos + Vector3.new(0, FLOOR_HEIGHT / 2 + scaledWallHeight / 2, 0)
 	-- Wall CFrame: at that position, always vertical, facing the right direction
 	local worldCF = CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 
@@ -285,6 +294,16 @@ local function createPreview()
 	local template = getTemplateForItem(selectedItem)
 	previewPart = template:Clone()
 	previewPart.Name = "BuildPreview"
+
+	-- Scale wall preview to match raft grid size
+	if selectedItem and selectedItem.buildType == "wall" and WALL_SCALE ~= 1 then
+		if previewPart:IsA("Model") then
+			previewPart:ScaleTo(previewPart:GetScale() * WALL_SCALE)
+		elseif previewPart:IsA("BasePart") then
+			previewPart.Size = previewPart.Size * WALL_SCALE
+		end
+	end
+
 	setPreviewAppearance(PREVIEW_COLOR_VALID)
 	previewPart.Parent = workspace
 end

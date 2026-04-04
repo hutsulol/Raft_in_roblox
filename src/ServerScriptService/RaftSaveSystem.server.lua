@@ -268,7 +268,7 @@ local function rebuildRaft(player, saveData)
 
 	-- Templates
 	local floorTemplate = rs:FindFirstChild("Raft_part")
-	local wallTemplate = rs:FindFirstChild("Wall") or rs:FindFirstChild("wall")
+	local wallTemplate = rs:FindFirstChild("Wood_wall")
 
 	-- Determine grid size and floor height from template
 	local GRID_SIZE = 6
@@ -333,12 +333,16 @@ local function rebuildRaft(player, saveData)
 	-- Place walls
 	if wallTemplate and raftData.walls then
 		local WALL_HEIGHT = 6
+		local WALL_WIDTH = 0
 		if wallTemplate:IsA("Model") then
-			local _, ws = wallTemplate:GetBoundingBox()
-			WALL_HEIGHT = ws.Y
+			local size = wallTemplate:GetExtentsSize()
+			WALL_HEIGHT = size.Y
+			WALL_WIDTH = math.max(size.X, size.Z)
 		elseif wallTemplate:IsA("BasePart") then
 			WALL_HEIGHT = wallTemplate.Size.Y
+			WALL_WIDTH = math.max(wallTemplate.Size.X, wallTemplate.Size.Z)
 		end
+		local WALL_SCALE = (WALL_WIDTH > 0) and (GRID_SIZE / WALL_WIDTH) or 1
 
 		for _, wall in raftData.walls do
 			local half = GRID_SIZE / 2
@@ -363,6 +367,9 @@ local function rebuildRaft(player, saveData)
 			local edgeWorldOffset = restFlat:VectorToWorldSpace(edgeGridPos)
 			local edgeLocalOffset = restCF:VectorToObjectSpace(edgeWorldOffset)
 			local wallWorldPos = (raftCF * CFrame.new(edgeLocalOffset)).Position
+			-- Lift wall so it sits on top of the floor surface
+			local scaledWallHeight = WALL_HEIGHT * WALL_SCALE
+			wallWorldPos = wallWorldPos + Vector3.new(0, FLOOR_HEIGHT / 2 + scaledWallHeight / 2, 0)
 			-- Wall: vertical, facing the right direction
 			local wCF = CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 
@@ -373,6 +380,15 @@ local function rebuildRaft(player, saveData)
 				clone:SetAttribute("BuildType", "wall")
 				clone:SetAttribute("GridX", wall.gx)
 				clone:SetAttribute("GridZ", wall.gz)
+
+				-- Scale wall to match raft grid size
+				if WALL_SCALE ~= 1 then
+					if clone:IsA("Model") then
+						clone:ScaleTo(clone:GetScale() * WALL_SCALE)
+					elseif clone:IsA("BasePart") then
+						clone.Size = clone.Size * WALL_SCALE
+					end
+				end
 
 				if clone:IsA("Model") then
 					clone:PivotTo(wCF)
