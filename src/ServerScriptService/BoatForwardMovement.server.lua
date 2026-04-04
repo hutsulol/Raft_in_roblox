@@ -126,7 +126,7 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
 	-- Update RestCFrame so building systems use the current yaw (not startup yaw)
 	-- Preserve the log's inherent pitch/roll, only update yaw + position
 	local pos = primaryPart.Position
-	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos.X, restY, pos.Z) * CFrame.Angles(initialPitch, lockedYaw, initialRoll))
+	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos.X, restY, pos.Z) * CFrame.fromEulerAnglesYXZ(initialPitch, lockedYaw, initialRoll))
 	-- Store yaw as a plain number — avoids Euler decomposition issues with rotated log
 	primaryPart:SetAttribute("RestYaw", lockedYaw)
 end)
