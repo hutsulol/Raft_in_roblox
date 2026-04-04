@@ -4,24 +4,14 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local UserInputService = game:GetService("UserInputService")
-local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
 local camera = workspace.CurrentCamera
 
-local paddleEvent = ReplicatedStorage:WaitForChild("PaddleAction")
-
 local COOLDOWN = 1.0 -- seconds between paddle strokes
 local lastPaddleTime = 0
 local currentTool = nil
-local isPaddling = false
-
--- Paddle animation: briefly tilt the paddle on use
-local function playPaddleEffect()
-	-- Visual feedback handled by server/animation; this is just input
-end
 
 local function onActivated()
 	if not currentTool or currentTool.Name ~= "Paddle" then return end
@@ -32,6 +22,10 @@ local function onActivated()
 
 	local raft = workspace:FindFirstChild("Raft")
 	if not raft or not raft.PrimaryPart then return end
+
+	-- Get the RemoteEvent (don't block script with WaitForChild)
+	local paddleEvent = ReplicatedStorage:FindFirstChild("PaddleAction")
+	if not paddleEvent then return end
 
 	-- Raycast from mouse to find where the player is pointing
 	local unitRay = camera:ScreenPointToRay(mouse.X, mouse.Y)

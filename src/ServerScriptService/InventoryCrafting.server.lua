@@ -134,6 +134,13 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 
 			if cloned:IsA("Tool") then
 				tool = cloned
+				-- Ensure the tool has a Handle (required for Activated to fire)
+				if not tool:FindFirstChild("Handle") then
+					local firstPart = tool:FindFirstChildWhichIsA("BasePart", true)
+					if firstPart then
+						firstPart.Name = "Handle"
+					end
+				end
 			else
 				-- Wrap Model/BasePart in a Tool so it appears in Backpack
 				tool = Instance.new("Tool")
