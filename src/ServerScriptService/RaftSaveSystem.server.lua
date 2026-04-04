@@ -342,27 +342,29 @@ local function rebuildRaft(player, saveData)
 
 		for _, wall in raftData.walls do
 			local half = GRID_SIZE / 2
-			-- Use restFlat for stable wall positioning
-			local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(wall.gx * GRID_SIZE, 0, wall.gz * GRID_SIZE))
-			local localOffset = restCF:VectorToObjectSpace(worldOffset)
-			local center = raftCF * CFrame.new(localOffset)
 
-			-- Extract yaw-only rotation for wall orientation
-			local _, currentYaw, _ = raftCF:ToEulerAnglesYXZ()
-			local flatOrientation = CFrame.Angles(0, currentYaw, 0)
-
-			-- Wall center at PrimaryPart height (raft surface level)
-			local wallY = 0
-			local wCF
+			-- Compute edge position in grid space (Y=0)
+			local edgeGridPos, sideAngle
 			if wall.side == 0 then
-				wCF = center * CFrame.new(0, wallY, -half)
+				edgeGridPos = Vector3.new(wall.gx * GRID_SIZE, 0, wall.gz * GRID_SIZE + half)
+				sideAngle = math.rad(180)
 			elseif wall.side == 1 then
-				wCF = center * CFrame.new(0, wallY, half)
+				edgeGridPos = Vector3.new(wall.gx * GRID_SIZE, 0, wall.gz * GRID_SIZE - half)
+				sideAngle = 0
 			elseif wall.side == 2 then
-				wCF = center * CFrame.new(-half, wallY, 0) * CFrame.Angles(0, math.rad(90), 0)
+				edgeGridPos = Vector3.new(wall.gx * GRID_SIZE - half, 0, wall.gz * GRID_SIZE)
+				sideAngle = math.rad(-90)
 			elseif wall.side == 3 then
-				wCF = center * CFrame.new(half, wallY, 0) * CFrame.Angles(0, math.rad(90), 0)
+				edgeGridPos = Vector3.new(wall.gx * GRID_SIZE + half, 0, wall.gz * GRID_SIZE)
+				sideAngle = math.rad(90)
 			end
+
+			-- Convert to local offset and get world position (same as floors)
+			local edgeWorldOffset = restFlat:VectorToWorldSpace(edgeGridPos)
+			local edgeLocalOffset = restCF:VectorToObjectSpace(edgeWorldOffset)
+			local wallWorldPos = (raftCF * CFrame.new(edgeLocalOffset)).Position
+			-- Wall: vertical, facing the right direction
+			local wCF = CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 
 			if wCF then
 				local clone = wallTemplate:Clone()

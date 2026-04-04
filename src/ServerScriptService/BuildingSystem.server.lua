@@ -97,29 +97,35 @@ end
 -- side: 0=front(+Z), 1=back(-Z), 2=left(-X), 3=right(+X)
 local function wallCFrame(raft, gx, gz, side)
 	local primaryCF = raft.PrimaryPart.CFrame
-	local _, yaw, _ = primaryCF:ToEulerAnglesYXZ()
-	local flatCF = CFrame.new(primaryCF.Position) * CFrame.Angles(0, yaw, 0)
+	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
+	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
+	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 
 	local half = GRID_SIZE / 2
-	-- Wall center at PrimaryPart height (raft surface level)
-	local wallY = 0
 
-	local localPos, localRot
-	if side == 0 then -- front (+Z)
-		localPos = Vector3.new(gx * GRID_SIZE, wallY, gz * GRID_SIZE + half)
-		localRot = CFrame.Angles(0, math.rad(180), 0)
-	elseif side == 1 then -- back (-Z)
-		localPos = Vector3.new(gx * GRID_SIZE, wallY, gz * GRID_SIZE - half)
-		localRot = CFrame.Angles(0, 0, 0)
-	elseif side == 2 then -- left (-X)
-		localPos = Vector3.new(gx * GRID_SIZE - half, wallY, gz * GRID_SIZE)
-		localRot = CFrame.Angles(0, math.rad(-90), 0)
-	elseif side == 3 then -- right (+X)
-		localPos = Vector3.new(gx * GRID_SIZE + half, wallY, gz * GRID_SIZE)
-		localRot = CFrame.Angles(0, math.rad(90), 0)
+	-- Compute edge position in grid space (Y=0 so RestCFrame approach works)
+	local edgeGridPos, sideAngle
+	if side == 0 then
+		edgeGridPos = Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE + half)
+		sideAngle = math.rad(180)
+	elseif side == 1 then
+		edgeGridPos = Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE - half)
+		sideAngle = 0
+	elseif side == 2 then
+		edgeGridPos = Vector3.new(gx * GRID_SIZE - half, 0, gz * GRID_SIZE)
+		sideAngle = math.rad(-90)
+	elseif side == 3 then
+		edgeGridPos = Vector3.new(gx * GRID_SIZE + half, 0, gz * GRID_SIZE)
+		sideAngle = math.rad(90)
 	end
 
-	return flatCF * CFrame.new(localPos) * localRot
+	-- Convert to PrimaryPart local offset (same as floor placement, Y=0)
+	local worldOffset = restFlat:VectorToWorldSpace(edgeGridPos)
+	local localOffset = restCF:VectorToObjectSpace(worldOffset)
+	-- Get world position through primaryCF
+	local wallWorldPos = (primaryCF * CFrame.new(localOffset)).Position
+	-- Wall CFrame: at that position, always vertical, facing the right direction
+	return CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 end
 
 local function weldToRaft(obj, raft)
