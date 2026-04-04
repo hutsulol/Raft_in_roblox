@@ -375,7 +375,7 @@ local function rebuildRaft(player, saveData)
 			local scaledWallHeight = WALL_HEIGHT * WALL_SCALE
 			wallWorldPos = wallWorldPos + Vector3.new(0, scaledWallHeight / 2, 0)
 			-- Wall: vertical, facing the right direction
-			local wCF = CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
+			local wCF = CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0) * CFrame.new(-0.5, 0, 0)
 
 			if wCF then
 				local clone = wallTemplate:Clone()

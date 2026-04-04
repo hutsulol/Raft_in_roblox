@@ -134,7 +134,8 @@ local function wallCFrame(raft, gx, gz, side)
 	local scaledWallHeight = WALL_HEIGHT * WALL_SCALE
 	wallWorldPos = wallWorldPos + Vector3.new(0, scaledWallHeight / 2, 0)
 	-- Wall CFrame: at that position, always vertical, facing the right direction
-	return CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
+	-- Shift -0.5 in wall's local X to correct for pivot offset
+	return CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0) * CFrame.new(-0.5, 0, 0)
 end
 
 local function weldToRaft(obj, raft)

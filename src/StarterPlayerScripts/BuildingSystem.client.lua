@@ -239,7 +239,8 @@ local function getWallFromMouse()
 	local scaledWallHeight = WALL_HEIGHT * WALL_SCALE
 	wallWorldPos = wallWorldPos + Vector3.new(0, scaledWallHeight / 2, 0)
 	-- Wall CFrame: at that position, always vertical, facing the right direction
-	local worldCF = CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
+	-- Shift -0.5 in wall's local X to correct for pivot offset
+	local worldCF = CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0) * CFrame.new(-0.5, 0, 0)
 
 	return gx, gz, side, worldCF
 end
