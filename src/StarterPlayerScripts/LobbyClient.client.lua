@@ -40,10 +40,14 @@ local function closeUI()
 end
 
 -- ─── Create Group Selection UI ───
-local function showCreateUI(pad)
+local function showCreateUI(pad, isSavePad)
 	closeUI()
 	currentPad = pad
 	selectedMaxPlayers = 5
+
+	local headerTitle = isSavePad and "Return to Saved Game" or "Create Group"
+	local subtitleText = "Number of group members"
+	local headerColor = isSavePad and Color3.fromRGB(180, 120, 40) or HEADER_COLOR
 
 	screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "LobbyCreateGui"
@@ -63,7 +67,7 @@ local function showCreateUI(pad)
 	-- Header
 	local header = Instance.new("Frame")
 	header.Size = UDim2.new(1, 0, 0, 60)
-	header.BackgroundColor3 = HEADER_COLOR
+	header.BackgroundColor3 = headerColor
 	header.BorderSizePixel = 0
 	header.Parent = main
 	Instance.new("UICorner", header).CornerRadius = UDim.new(0, 12)
@@ -71,14 +75,14 @@ local function showCreateUI(pad)
 	local fix = Instance.new("Frame")
 	fix.Size = UDim2.new(1, 0, 0, 12)
 	fix.Position = UDim2.new(0, 0, 1, -12)
-	fix.BackgroundColor3 = HEADER_COLOR
+	fix.BackgroundColor3 = headerColor
 	fix.BorderSizePixel = 0
 	fix.Parent = header
 
 	local titleLbl = Instance.new("TextLabel")
 	titleLbl.Size = UDim2.new(1, 0, 1, 0)
 	titleLbl.BackgroundTransparency = 1
-	titleLbl.Text = "Create Group"
+	titleLbl.Text = headerTitle
 	titleLbl.TextColor3 = TEXT_COLOR
 	titleLbl.TextScaled = true
 	titleLbl.Font = Enum.Font.GothamBold
@@ -89,7 +93,7 @@ local function showCreateUI(pad)
 	subtitle.Size = UDim2.new(1, -20, 0, 30)
 	subtitle.Position = UDim2.new(0, 10, 0, 70)
 	subtitle.BackgroundTransparency = 1
-	subtitle.Text = "Number of group members"
+	subtitle.Text = subtitleText
 	subtitle.TextColor3 = Color3.fromRGB(200, 200, 200)
 	subtitle.TextScaled = true
 	subtitle.Font = Enum.Font.GothamBold
@@ -496,13 +500,57 @@ lobbyEvent.OnClientEvent:Connect(function(action, pad, data)
 		-- Touched a pad, request its state
 		lobbyEvent:FireServer("requestPadState", pad)
 
+	elseif action == "noSaveData" then
+		-- Player tried to create on save pad but has no save
+		closeUI()
+		local noSaveGui = Instance.new("ScreenGui")
+		noSaveGui.Name = "NoSaveGui"
+		noSaveGui.ResetOnSpawn = false
+		noSaveGui.DisplayOrder = 75
+		noSaveGui.Parent = playerGui
+
+		local main = Instance.new("Frame")
+		main.Size = UDim2.new(0, 400, 0, 180)
+		main.Position = UDim2.new(0.5, -200, 0.5, -90)
+		main.BackgroundColor3 = BG_COLOR
+		main.BorderSizePixel = 0
+		main.Parent = noSaveGui
+		Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
+
+		local msgLbl = Instance.new("TextLabel")
+		msgLbl.Size = UDim2.new(1, -30, 0, 60)
+		msgLbl.Position = UDim2.new(0, 15, 0, 20)
+		msgLbl.BackgroundTransparency = 1
+		msgLbl.Text = "You don't have a saved game yet.\nPlay a round first to create a save!"
+		msgLbl.TextColor3 = Color3.fromRGB(255, 200, 100)
+		msgLbl.TextScaled = true
+		msgLbl.TextWrapped = true
+		msgLbl.Font = Enum.Font.GothamBold
+		msgLbl.Parent = main
+
+		local okBtn = Instance.new("TextButton")
+		okBtn.Size = UDim2.new(0, 140, 0, 50)
+		okBtn.Position = UDim2.new(0.5, -70, 0, 100)
+		okBtn.BackgroundColor3 = HEADER_COLOR
+		okBtn.Text = "OK"
+		okBtn.TextColor3 = TEXT_COLOR
+		okBtn.TextScaled = true
+		okBtn.Font = Enum.Font.GothamBold
+		okBtn.BorderSizePixel = 0
+		okBtn.Parent = main
+		Instance.new("UICorner", okBtn).CornerRadius = UDim.new(0, 10)
+
+		okBtn.MouseButton1Click:Connect(function()
+			noSaveGui:Destroy()
+		end)
+
 	elseif action == "padState" then
 		-- Got pad state back
 		local state = data
 		if state.active then
 			showJoinUI(pad, state)
 		else
-			showCreateUI(pad)
+			showCreateUI(pad, state.isSavePad)
 		end
 
 	elseif action == "joinedLobby" then

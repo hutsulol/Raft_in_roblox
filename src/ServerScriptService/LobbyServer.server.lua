@@ -48,6 +48,17 @@ end
 
 local lobbyPads = findLobbyPads()
 
+-- ReturnToPastGame pad (save-load lobby)
+local savePads = {} -- [pad] = true for pads that load a saved game
+local returnPad = workspace:FindFirstChild("ReturnToPastGame", true)
+if returnPad then
+	table.insert(lobbyPads, returnPad)
+	savePads[returnPad] = true
+	print("[Lobby] Found ReturnToPastGame pad")
+else
+	print("[Lobby] ReturnToPastGame pad not found in workspace")
+end
+
 -- ─── Lobby State ───
 -- Each pad can hold one lobby
 local lobbies = {} -- [pad] = {owner, maxPlayers, players = {player}, countdown, countdownThread, active}
@@ -191,6 +202,7 @@ local function broadcastLobbyState(pad)
 		countdown = lobby.countdown,
 		ownerName = lobby.owner and lobby.owner.Name or nil,
 		teleporting = lobby.teleporting,
+		isSavePad = savePads[pad] or false,
 	}
 
 	-- Send to all players in the lobby
@@ -261,16 +273,25 @@ local function startCountdown(pad)
 				local teleportOptions = Instance.new("TeleportOptions")
 				teleportOptions.ShouldReserveServer = true
 
-				-- Check if any player wants to load their save
-				local anyLoadSave = false
-				for _, p in playersToTeleport do
-					if playerLoadSave[p] then
-						anyLoadSave = true
-						break
-					end
-				end
-				teleportOptions:SetTeleportData({loadSave = anyLoadSave})
+				local teleportData = {}
 
+				if savePads[pad] and lobby.owner then
+					-- Save pad: load the lobby owner's saved raft for everyone
+					teleportData.loadSave = true
+					teleportData.saveOwnerId = lobby.owner.UserId
+				else
+					-- Normal pad: check if any player wants to load their save
+					local anyLoadSave = false
+					for _, p in playersToTeleport do
+						if playerLoadSave[p] then
+							anyLoadSave = true
+							break
+						end
+					end
+					teleportData.loadSave = anyLoadSave
+				end
+
+				teleportOptions:SetTeleportData(teleportData)
 				TeleportService:TeleportAsync(OCEAN_PLACE_ID, playersToTeleport, teleportOptions)
 			end)
 
@@ -379,6 +400,7 @@ lobbyEvent.OnServerEvent:Connect(function(player, action, data, data2)
 			countdown = lobby.countdown,
 			ownerName = lobby.owner and lobby.owner.Name or nil,
 			teleporting = lobby.teleporting,
+			isSavePad = savePads[pad] or false,
 		}
 		lobbyEvent:FireClient(player, "padState", pad, state)
 
@@ -391,6 +413,15 @@ lobbyEvent.OnServerEvent:Connect(function(player, action, data, data2)
 
 		local lobby = lobbies[pad]
 		if lobby.active then return end -- already created
+
+		-- If this is a save pad, verify player has save data
+		if savePads[pad] then
+			local hasSave = checkPlayerSave(player)
+			if not hasSave then
+				lobbyEvent:FireClient(player, "noSaveData")
+				return
+			end
+		end
 
 		if typeof(maxPlayers) ~= "number" then return end
 		maxPlayers = math.clamp(math.floor(maxPlayers), 1, MAX_GROUP_SIZE)

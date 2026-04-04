@@ -394,23 +394,28 @@ local function rebuildRaft(player, saveData)
 
 				clone.Parent = raft
 
-				-- Weld all parts
+				-- Weld all parts (create welds FIRST while anchored, then unanchor)
 				if clone:IsA("Model") then
 					for _, part in clone:GetDescendants() do
 						if part:IsA("BasePart") then
-							part.Anchored = false
 							local weld = Instance.new("WeldConstraint")
 							weld.Part0 = raft.PrimaryPart
 							weld.Part1 = part
 							weld.Parent = part
 						end
 					end
+					-- Unanchor AFTER all welds are in place
+					for _, part in clone:GetDescendants() do
+						if part:IsA("BasePart") then
+							part.Anchored = false
+						end
+					end
 				else
-					clone.Anchored = false
 					local weld = Instance.new("WeldConstraint")
 					weld.Part0 = raft.PrimaryPart
 					weld.Part1 = clone
 					weld.Parent = clone
+					clone.Anchored = false
 				end
 			end
 		end
@@ -499,38 +504,74 @@ local function restoreTools(player, saveData)
 	print("[RaftSave] Restored " .. #saveData.tools .. " tools for " .. player.Name)
 end
 
+-- Track whether the raft has already been rebuilt from a save (for group loads)
+local raftRebuiltFromSave = false
+
+-- ─── Load save data by UserId key ───
+local function loadPlayerDataByUserId(userId)
+	if not raftStore then
+		warn("[RaftSave] No DataStore, cannot load for userId " .. tostring(userId))
+		return nil
+	end
+	local key = "player_" .. userId
+	local success, data = pcall(function()
+		return raftStore:GetAsync(key)
+	end)
+
+	if success and data then
+		print("[RaftSave] Loaded save data for userId " .. tostring(userId))
+		return data
+	elseif not success then
+		warn("[RaftSave] DataStore read failed for userId " .. tostring(userId) .. ": " .. tostring(data))
+	end
+	return nil
+end
+
 -- ─── On player join: check teleport data for load flag ───
 Players.PlayerAdded:Connect(function(player)
 	local joinData = player:GetJoinData()
 	local teleportData = joinData and joinData.TeleportData
 
 	if teleportData and teleportData.loadSave then
-		print("[RaftSave] Player " .. player.Name .. " loading save...")
+		-- Determine whose save to load
+		local saveOwnerId = teleportData.saveOwnerId
+		local isOwner = (not saveOwnerId) or (saveOwnerId == player.UserId)
 
-		-- Load save data immediately (before character spawns)
-		local saveData = loadPlayerData(player)
-		if saveData then
-			-- Rebuild raft at saved position BEFORE character spawns
+		print("[RaftSave] Player " .. player.Name .. " loading save (owner: " .. tostring(saveOwnerId or player.UserId) .. ", isOwner: " .. tostring(isOwner) .. ")")
+
+		-- Load save data (owner's save for group, or own save for solo)
+		local saveData
+		if saveOwnerId and saveOwnerId ~= player.UserId then
+			saveData = loadPlayerDataByUserId(saveOwnerId)
+		else
+			saveData = loadPlayerData(player)
+		end
+
+		-- Rebuild raft only once (the first player to join triggers it)
+		if saveData and not raftRebuiltFromSave then
+			raftRebuiltFromSave = true
 			rebuildRaft(player, saveData)
+		end
 
-			-- Wait for character to spawn, then move to raft and restore inventory/tools
-			local char = player.Character or player.CharacterAdded:Wait()
-			local hrp = char:WaitForChild("HumanoidRootPart", 10)
+		-- Wait for character to spawn, then move to raft
+		local char = player.Character or player.CharacterAdded:Wait()
+		local hrp = char:WaitForChild("HumanoidRootPart", 10)
 
-			local raft = workspace:FindFirstChild("Raft")
-			if hrp and raft and raft.PrimaryPart then
-				hrp.CFrame = raft.PrimaryPart.CFrame + Vector3.new(0, 5, 0)
-				print("[RaftSave] Moved " .. player.Name .. " to saved raft")
-			end
+		local raft = workspace:FindFirstChild("Raft")
+		if hrp and raft and raft.PrimaryPart then
+			hrp.CFrame = raft.PrimaryPart.CFrame + Vector3.new(0, 5, 0)
+			print("[RaftSave] Moved " .. player.Name .. " to saved raft")
+		end
 
-			-- Wait a moment for _G.GetInventory to be ready
+		-- Restore inventory and tools only for the save owner (or solo player)
+		if saveData and isOwner then
 			task.wait(1)
 			restoreInventory(player, saveData)
 			restoreTools(player, saveData)
 
-			-- Send saved slot layout to client so it restores exact slot positions
+			-- Send saved slot layout to client
 			if saveData.slotLayout and next(saveData.slotLayout) then
-				task.wait(0.5) -- wait for client InventoryUI to initialize
+				task.wait(0.5)
 				slotLayoutEvent:FireClient(player, "restore", saveData.slotLayout)
 				print("[RaftSave] Sent slot layout to " .. player.Name)
 			end
