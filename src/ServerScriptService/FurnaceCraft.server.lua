@@ -149,7 +149,11 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	if not raft or not raft.PrimaryPart then return end
 	if typeof(target) ~= "CFrame" then return end
 
-	local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
+	-- Strip pitch/roll from target so furnace is level (wave tilt in ToObjectSpace)
+	local tp = target.Position
+	local _, ty, _ = target:ToEulerAnglesYXZ()
+	local cleanTarget = CFrame.new(tp) * CFrame.Angles(0, ty, 0)
+	local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(cleanTarget)
 
 	local template = rs:FindFirstChild("Furnace")
 	if not template then return end

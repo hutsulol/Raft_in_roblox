@@ -260,7 +260,7 @@ local function updateGhost()
 			-- Snap to top center of garden bed
 			local gardenCF, gardenSize = garden:GetBoundingBox()
 			local ghostSize = ghost:GetExtentsSize()
-			local topY = gardenCF.Position.Y + gardenSize.Y / 2 + ghostSize.Y / 2
+			local topY = gardenCF.Position.Y + gardenSize.Y / 2
 			local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
 			local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
 
