@@ -55,6 +55,9 @@ local PREVIEW_COLOR_INVALID = Color3.fromRGB(200, 80, 80)
 local LOG_ICON = "rbxassetid://110032041583533"
 local FLOOR_ICON = "rbxassetid://93002853045949"
 
+-- Beam/wall X-axis correction (pivot offset in template)
+local BEAM_X_OFFSET = -1
+
 -- Building items organized by category
 local categories = {
 	{
@@ -262,7 +265,7 @@ local function getBeamCornerFromMouse()
 
 	local offsets = getFloorOffsets()
 	local insetX, insetZ = computeBeamInset(offsets, cx, cz)
-	local studX = cx * GRID_SIZE + insetX
+	local studX = cx * GRID_SIZE + insetX + BEAM_X_OFFSET
 	local studZ = cz * GRID_SIZE + insetZ
 
 	local worldPos, restYaw = localToWorld(studX, studZ)
@@ -311,7 +314,7 @@ local function getWallPanelFromMouse()
 	local offsets = getFloorOffsets()
 	local inset1X, inset1Z = computeBeamInset(offsets, cx1, cz1)
 	local inset2X, inset2Z = computeBeamInset(offsets, cx2, cz2)
-	local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2
+	local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2 + BEAM_X_OFFSET
 	local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
 
 	local worldPos, restYaw = localToWorld(midStudX, midStudZ)

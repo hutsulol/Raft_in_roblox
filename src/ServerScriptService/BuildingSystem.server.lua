@@ -51,6 +51,9 @@ if wallPanelTemplate then
 end
 raftPartTemplate:SetAttribute("PanelHeight", PANEL_HEIGHT)
 
+-- Beam/wall X-axis correction (pivot offset in template)
+local BEAM_X_OFFSET = -1
+
 local RAFT_COST = 2
 local BEAM_COST = 1
 local WALL_PANEL_COST = 3
@@ -248,7 +251,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		if getBeamKeys(raft)[bk] then return end
 
 		local insetX, insetZ = computeBeamInset(offsets, cx, cz)
-		local studX = cx * GRID_SIZE + insetX
+		local studX = cx * GRID_SIZE + insetX + BEAM_X_OFFSET
 		local studZ = cz * GRID_SIZE + insetZ
 		local worldPos, restYaw = localToWorld(raft, studX, studZ)
 		worldPos = worldPos + Vector3.new(0, BEAM_HEIGHT / 2, 0)
@@ -296,7 +299,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local offsets = getFloorOffsets(raft)
 		local inset1X, inset1Z = computeBeamInset(offsets, cx1, cz1)
 		local inset2X, inset2Z = computeBeamInset(offsets, cx2, cz2)
-		local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2
+		local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2 + BEAM_X_OFFSET
 		local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
 		local worldPos, restYaw = localToWorld(raft, midStudX, midStudZ)
 		worldPos = worldPos + Vector3.new(0, PANEL_HEIGHT / 2, 0)
