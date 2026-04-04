@@ -187,7 +187,7 @@ local function getWallFromMouse()
 	local primaryCF = raft.PrimaryPart.CFrame
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
 	local _, restYaw, _ = restCF:ToEulerAnglesYXZ()
-	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
+	local flatCF = CFrame.new(primaryCF.Position) * CFrame.Angles(0, restYaw, 0)
 
 	local gx = math.round(localHit.X / GRID_SIZE)
 	local gz = math.round(localHit.Z / GRID_SIZE)
@@ -226,10 +226,7 @@ local function getWallFromMouse()
 		localRot = CFrame.Angles(0, math.rad(90), 0)
 	end
 
-	-- Use RestCFrame approach for stable wall preview positioning
-	local worldOffset = restFlat:VectorToWorldSpace(localPos)
-	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	local worldCF = primaryCF * CFrame.new(localOffset) * localRot
+	local worldCF = flatCF * CFrame.new(localPos) * localRot
 	return gx, gz, side, worldCF
 end
 
