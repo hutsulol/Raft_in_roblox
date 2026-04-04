@@ -1,6 +1,6 @@
 local SPEED = 25
 local FORCE_PER_MASS = 33 -- force scales with total raft mass
-local PADDLE_BOOST = 60 -- extra force from a paddle stroke
+local PADDLE_BOOST = 20 -- extra force from a paddle stroke
 local PADDLE_DECAY = 2.0 -- seconds for paddle boost to decay
 local PADDLE_TURN_SPEED = 1.5 -- radians/sec for yaw steering
 
