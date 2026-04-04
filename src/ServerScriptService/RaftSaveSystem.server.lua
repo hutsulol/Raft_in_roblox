@@ -60,6 +60,8 @@ local function collectRaftData(player)
 		raftPosition = serializeCFrame(raftCF),
 		floors = {},
 		walls = {},
+		beams = {},
+		wallPanels = {},
 		objects = {},
 	}
 
@@ -73,12 +75,27 @@ local function collectRaftData(player)
 				table.insert(data.floors, {gx = gx, gz = gz})
 			end
 
+		elseif buildType == "beam" then
+			local cx = child:GetAttribute("CornerX")
+			local cz = child:GetAttribute("CornerZ")
+			if cx and cz then
+				table.insert(data.beams, {cx = cx, cz = cz})
+			end
+
+		elseif buildType == "wall_panel" then
+			local cx1 = child:GetAttribute("BeamCX1")
+			local cz1 = child:GetAttribute("BeamCZ1")
+			local cx2 = child:GetAttribute("BeamCX2")
+			local cz2 = child:GetAttribute("BeamCZ2")
+			if cx1 and cz1 and cx2 and cz2 then
+				table.insert(data.wallPanels, {cx1 = cx1, cz1 = cz1, cx2 = cx2, cz2 = cz2})
+			end
+
 		elseif buildType == "wall" then
 			local gx = child:GetAttribute("GridX")
 			local gz = child:GetAttribute("GridZ")
 			local wk = child:GetAttribute("WallKey")
 			if gx and gz and wk then
-				-- Parse side from WallKey "gx_gz_side"
 				local side = tonumber(wk:match("_(%d+)$"))
 				if side then
 					table.insert(data.walls, {gx = gx, gz = gz, side = side})
@@ -124,7 +141,7 @@ local function collectRaftData(player)
 		end
 	end
 
-	print("[RaftSave] Collected: " .. #data.floors .. " floors, " .. #data.walls .. " walls, " .. #data.objects .. " objects")
+	print("[RaftSave] Collected: " .. #data.floors .. " floors, " .. #data.beams .. " beams, " .. #data.wallPanels .. " wallPanels, " .. #data.walls .. " walls(legacy), " .. #data.objects .. " objects")
 	return data
 end
 
@@ -273,6 +290,8 @@ local function rebuildRaft(player, saveData)
 	-- Templates
 	local floorTemplate = rs:FindFirstChild("Raft_part")
 	local wallTemplate = rs:FindFirstChild("Wood_wall")
+	local beamTemplate = rs:FindFirstChild("beam")
+	local wallPanelTemplate = rs:FindFirstChild("wall_model_wood")
 
 	-- Determine grid size and floor height from template
 	local GRID_SIZE = 6
@@ -288,142 +307,150 @@ local function rebuildRaft(player, saveData)
 		end
 	end
 
+	-- Beam measurements
+	local BEAM_HEIGHT = 0
+	local BEAM_INSET = 0
+	if beamTemplate then
+		if beamTemplate:IsA("Model") then
+			local size = beamTemplate:GetExtentsSize()
+			BEAM_HEIGHT = size.Y
+			BEAM_INSET = math.max(size.X, size.Z) / 2
+		elseif beamTemplate:IsA("BasePart") then
+			BEAM_HEIGHT = beamTemplate.Size.Y
+			BEAM_INSET = math.max(beamTemplate.Size.X, beamTemplate.Size.Z) / 2
+		end
+	end
+
+	-- Wall panel measurements
+	local PANEL_HEIGHT = 0
+	if wallPanelTemplate then
+		if wallPanelTemplate:IsA("Model") then
+			PANEL_HEIGHT = wallPanelTemplate:GetExtentsSize().Y
+		elseif wallPanelTemplate:IsA("BasePart") then
+			PANEL_HEIGHT = wallPanelTemplate.Size.Y
+		end
+	end
+
+	-- Floor offsets for beam inset calculation
+	local function isFloorOccupied(gx, gz)
+		if gx == 0 and gz == 0 then return true end
+		if raftData.floors then
+			for _, f in raftData.floors do
+				if f.gx == gx and f.gz == gz then return true end
+			end
+		end
+		return false
+	end
+
+	local function computeBeamInset(cx, cz)
+		local insetX, insetZ = 0, 0
+		local hasPlusX = isFloorOccupied(cx + 0.5, cz - 0.5) or isFloorOccupied(cx + 0.5, cz + 0.5)
+		local hasMinusX = isFloorOccupied(cx - 0.5, cz - 0.5) or isFloorOccupied(cx - 0.5, cz + 0.5)
+		if hasMinusX and not hasPlusX then insetX = -BEAM_INSET
+		elseif hasPlusX and not hasMinusX then insetX = BEAM_INSET end
+
+		local hasPlusZ = isFloorOccupied(cx - 0.5, cz + 0.5) or isFloorOccupied(cx + 0.5, cz + 0.5)
+		local hasMinusZ = isFloorOccupied(cx - 0.5, cz - 0.5) or isFloorOccupied(cx + 0.5, cz - 0.5)
+		if hasMinusZ and not hasPlusZ then insetZ = -BEAM_INSET
+		elseif hasPlusZ and not hasMinusZ then insetZ = BEAM_INSET end
+
+		return insetX, insetZ
+	end
+
+	local function localToWorldPos(studX, studZ)
+		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
+		local localOffset = restCF:VectorToObjectSpace(worldOffset)
+		return (raftCF * CFrame.new(localOffset)).Position
+	end
+
+	local function weldAndUnanchor(clone)
+		if clone:IsA("Model") then
+			for _, part in clone:GetDescendants() do
+				if part:IsA("BasePart") then
+					local weld = Instance.new("WeldConstraint")
+					weld.Part0 = raft.PrimaryPart
+					weld.Part1 = part
+					weld.Parent = part
+				end
+			end
+			for _, part in clone:GetDescendants() do
+				if part:IsA("BasePart") then part.Anchored = false end
+			end
+		else
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = raft.PrimaryPart
+			weld.Part1 = clone
+			weld.Parent = clone
+			clone.Anchored = false
+		end
+	end
+
 	-- Place floors (skip origin 0,0 which already exists)
 	if floorTemplate and raftData.floors then
 		for _, floor in raftData.floors do
 			if not (floor.gx == 0 and floor.gz == 0) then
-				-- Use RestCFrame approach for stable local offset
 				local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(floor.gx * GRID_SIZE, 0, floor.gz * GRID_SIZE))
 				local localOffset = restCF:VectorToObjectSpace(worldOffset)
 				local worldCF = raftCF * CFrame.new(localOffset)
 
 				local clone = floorTemplate:Clone()
-				if clone:IsA("Model") then
-					clone:PivotTo(worldCF)
-				else
-					clone.CFrame = worldCF
-				end
+				if clone:IsA("Model") then clone:PivotTo(worldCF) else clone.CFrame = worldCF end
 				clone:SetAttribute("GridX", floor.gx)
 				clone:SetAttribute("GridZ", floor.gz)
 				clone:SetAttribute("BuildType", "raft")
 				clone.Parent = raft
-
-				-- Weld to raft (create welds FIRST while anchored, then unanchor)
-				if clone:IsA("Model") then
-					for _, part in clone:GetDescendants() do
-						if part:IsA("BasePart") then
-							local weld = Instance.new("WeldConstraint")
-							weld.Part0 = raft.PrimaryPart
-							weld.Part1 = part
-							weld.Parent = part
-						end
-					end
-					for _, part in clone:GetDescendants() do
-						if part:IsA("BasePart") then
-							part.Anchored = false
-						end
-					end
-				else
-					local weld = Instance.new("WeldConstraint")
-					weld.Part0 = raft.PrimaryPart
-					weld.Part1 = clone
-					weld.Parent = clone
-					clone.Anchored = false
-				end
+				weldAndUnanchor(clone)
 			end
 		end
 	end
 
-	-- Place walls
-	if wallTemplate and raftData.walls then
-		local WALL_HEIGHT = 6
-		local WALL_WIDTH = 0
-		if wallTemplate:IsA("Model") then
-			local size = wallTemplate:GetExtentsSize()
-			WALL_HEIGHT = size.Y
-			WALL_WIDTH = math.max(size.X, size.Z)
-		elseif wallTemplate:IsA("BasePart") then
-			WALL_HEIGHT = wallTemplate.Size.Y
-			WALL_WIDTH = math.max(wallTemplate.Size.X, wallTemplate.Size.Z)
+	-- Place beams
+	if beamTemplate and raftData.beams then
+		for _, beam in raftData.beams do
+			local insetX, insetZ = computeBeamInset(beam.cx, beam.cz)
+			local studX = beam.cx * GRID_SIZE + insetX
+			local studZ = beam.cz * GRID_SIZE + insetZ
+			local worldPos = localToWorldPos(studX, studZ)
+			worldPos = worldPos + Vector3.new(0, BEAM_HEIGHT / 2, 0)
+
+			local bCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw, 0)
+			local clone = beamTemplate:Clone()
+			clone:SetAttribute("BuildType", "beam")
+			clone:SetAttribute("BeamKey", string.format("%.1f_%.1f", beam.cx, beam.cz))
+			clone:SetAttribute("CornerX", beam.cx)
+			clone:SetAttribute("CornerZ", beam.cz)
+			if clone:IsA("Model") then clone:PivotTo(bCF) else clone.CFrame = bCF end
+			clone.Parent = raft
+			weldAndUnanchor(clone)
 		end
-		local WALL_SCALE = (WALL_WIDTH > 0) and (GRID_SIZE / WALL_WIDTH) or 1
+	end
 
-		for _, wall in raftData.walls do
-			local half = GRID_SIZE / 2
+	-- Place wall panels
+	if wallPanelTemplate and raftData.wallPanels then
+		for _, wp in raftData.wallPanels do
+			local inset1X, inset1Z = computeBeamInset(wp.cx1, wp.cz1)
+			local inset2X, inset2Z = computeBeamInset(wp.cx2, wp.cz2)
+			local midStudX = ((wp.cx1 * GRID_SIZE + inset1X) + (wp.cx2 * GRID_SIZE + inset2X)) / 2
+			local midStudZ = ((wp.cz1 * GRID_SIZE + inset1Z) + (wp.cz2 * GRID_SIZE + inset2Z)) / 2
+			local worldPos = localToWorldPos(midStudX, midStudZ)
+			worldPos = worldPos + Vector3.new(0, PANEL_HEIGHT / 2, 0)
 
-			-- Compute edge position in grid space (Y=0)
-			local edgeGridPos, sideAngle
-			if wall.side == 0 then
-				edgeGridPos = Vector3.new(wall.gx * GRID_SIZE, 0, wall.gz * GRID_SIZE + half)
-				sideAngle = math.rad(180)
-			elseif wall.side == 1 then
-				edgeGridPos = Vector3.new(wall.gx * GRID_SIZE, 0, wall.gz * GRID_SIZE - half)
-				sideAngle = 0
-			elseif wall.side == 2 then
-				edgeGridPos = Vector3.new(wall.gx * GRID_SIZE - half, 0, wall.gz * GRID_SIZE)
-				sideAngle = math.rad(-90)
-			elseif wall.side == 3 then
-				edgeGridPos = Vector3.new(wall.gx * GRID_SIZE + half, 0, wall.gz * GRID_SIZE)
-				sideAngle = math.rad(90)
-			end
+			local sideAngle = (wp.cx1 ~= wp.cx2) and math.rad(90) or 0
+			local wCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 
-			-- Convert to local offset and get world position (same as floors)
-			local edgeWorldOffset = restFlat:VectorToWorldSpace(edgeGridPos)
-			local edgeLocalOffset = restCF:VectorToObjectSpace(edgeWorldOffset)
-			local wallWorldPos = (raftCF * CFrame.new(edgeLocalOffset)).Position
-			-- Lift wall so its bottom is at raft surface level
-			local scaledWallHeight = WALL_HEIGHT * WALL_SCALE
-			wallWorldPos = wallWorldPos + Vector3.new(0, scaledWallHeight / 2, 0)
-			-- Wall: vertical, facing the right direction
-			local wCF = CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0) * CFrame.new(-0.5, 0, 0)
-
-			if wCF then
-				local clone = wallTemplate:Clone()
-				local wallKey = wall.gx .. "_" .. wall.gz .. "_" .. wall.side
-				clone:SetAttribute("WallKey", wallKey)
-				clone:SetAttribute("BuildType", "wall")
-				clone:SetAttribute("GridX", wall.gx)
-				clone:SetAttribute("GridZ", wall.gz)
-
-				-- Scale wall to match raft grid size
-				if WALL_SCALE ~= 1 then
-					if clone:IsA("Model") then
-						clone:ScaleTo(clone:GetScale() * WALL_SCALE)
-					elseif clone:IsA("BasePart") then
-						clone.Size = clone.Size * WALL_SCALE
-					end
-				end
-
-				if clone:IsA("Model") then
-					clone:PivotTo(wCF)
-				else
-					clone.CFrame = wCF
-				end
-				clone.Parent = raft
-
-				-- Weld (create welds FIRST, then unanchor)
-				if clone:IsA("Model") then
-					for _, part in clone:GetDescendants() do
-						if part:IsA("BasePart") then
-							local weld = Instance.new("WeldConstraint")
-							weld.Part0 = raft.PrimaryPart
-							weld.Part1 = part
-							weld.Parent = part
-						end
-					end
-					for _, part in clone:GetDescendants() do
-						if part:IsA("BasePart") then
-							part.Anchored = false
-						end
-					end
-				else
-					local weld = Instance.new("WeldConstraint")
-					weld.Part0 = raft.PrimaryPart
-					weld.Part1 = clone
-					weld.Parent = clone
-					clone.Anchored = false
-				end
-			end
+			local clone = wallPanelTemplate:Clone()
+			local wpk = string.format("wp_%.1f_%.1f_%.1f_%.1f",
+				math.min(wp.cx1, wp.cx2), math.min(wp.cz1, wp.cz2),
+				math.max(wp.cx1, wp.cx2), math.max(wp.cz1, wp.cz2))
+			clone:SetAttribute("BuildType", "wall_panel")
+			clone:SetAttribute("WallPanelKey", wpk)
+			clone:SetAttribute("BeamCX1", wp.cx1)
+			clone:SetAttribute("BeamCZ1", wp.cz1)
+			clone:SetAttribute("BeamCX2", wp.cx2)
+			clone:SetAttribute("BeamCZ2", wp.cz2)
+			if clone:IsA("Model") then clone:PivotTo(wCF) else clone.CFrame = wCF end
+			clone.Parent = raft
+			weldAndUnanchor(clone)
 		end
 	end
 
@@ -458,30 +485,7 @@ local function rebuildRaft(player, saveData)
 				end
 
 				clone.Parent = raft
-
-				-- Weld all parts (create welds FIRST while anchored, then unanchor)
-				if clone:IsA("Model") then
-					for _, part in clone:GetDescendants() do
-						if part:IsA("BasePart") then
-							local weld = Instance.new("WeldConstraint")
-							weld.Part0 = raft.PrimaryPart
-							weld.Part1 = part
-							weld.Parent = part
-						end
-					end
-					-- Unanchor AFTER all welds are in place
-					for _, part in clone:GetDescendants() do
-						if part:IsA("BasePart") then
-							part.Anchored = false
-						end
-					end
-				else
-					local weld = Instance.new("WeldConstraint")
-					weld.Part0 = raft.PrimaryPart
-					weld.Part1 = clone
-					weld.Parent = clone
-					clone.Anchored = false
-				end
+				weldAndUnanchor(clone)
 			end
 		end
 	end

@@ -8,7 +8,8 @@ if not placeBlockEvent then
 end
 
 local raftPartTemplate = rs:WaitForChild("Raft_part")
-local wallTemplate = rs:FindFirstChild("Wood_wall")
+local beamTemplate = rs:FindFirstChild("beam")
+local wallPanelTemplate = rs:FindFirstChild("wall_model_wood")
 
 -- Measure grid size from the actual template bounding box
 local GRID_SIZE
@@ -20,37 +21,39 @@ elseif raftPartTemplate:IsA("BasePart") then
 else
 	GRID_SIZE = 6
 end
-
 raftPartTemplate:SetAttribute("GridSize", GRID_SIZE)
 
--- Measure raft floor thickness
-local FLOOR_HEIGHT = 0
-if raftPartTemplate:IsA("Model") then
-	local size = raftPartTemplate:GetExtentsSize()
-	FLOOR_HEIGHT = size.Y
-elseif raftPartTemplate:IsA("BasePart") then
-	FLOOR_HEIGHT = raftPartTemplate.Size.Y
-end
-
--- Measure wall dimensions
-local WALL_HEIGHT = 0
-local WALL_WIDTH = 0
-if wallTemplate then
-	if wallTemplate:IsA("Model") then
-		local size = wallTemplate:GetExtentsSize()
-		WALL_HEIGHT = size.Y
-		WALL_WIDTH = math.max(size.X, size.Z)
-	elseif wallTemplate:IsA("BasePart") then
-		WALL_HEIGHT = wallTemplate.Size.Y
-		WALL_WIDTH = math.max(wallTemplate.Size.X, wallTemplate.Size.Z)
+-- Measure beam dimensions
+local BEAM_HEIGHT = 0
+local BEAM_FOOTPRINT = 0
+if beamTemplate then
+	if beamTemplate:IsA("Model") then
+		local size = beamTemplate:GetExtentsSize()
+		BEAM_HEIGHT = size.Y
+		BEAM_FOOTPRINT = math.max(size.X, size.Z)
+	elseif beamTemplate:IsA("BasePart") then
+		BEAM_HEIGHT = beamTemplate.Size.Y
+		BEAM_FOOTPRINT = math.max(beamTemplate.Size.X, beamTemplate.Size.Z)
 	end
 end
+local BEAM_INSET = BEAM_FOOTPRINT / 2
+raftPartTemplate:SetAttribute("BeamHeight", BEAM_HEIGHT)
+raftPartTemplate:SetAttribute("BeamInset", BEAM_INSET)
 
--- Scale factor so wall width matches raft grid size
-local WALL_SCALE = (WALL_WIDTH > 0) and (GRID_SIZE / WALL_WIDTH) or 1
+-- Measure wall panel height
+local PANEL_HEIGHT = 0
+if wallPanelTemplate then
+	if wallPanelTemplate:IsA("Model") then
+		PANEL_HEIGHT = wallPanelTemplate:GetExtentsSize().Y
+	elseif wallPanelTemplate:IsA("BasePart") then
+		PANEL_HEIGHT = wallPanelTemplate.Size.Y
+	end
+end
+raftPartTemplate:SetAttribute("PanelHeight", PANEL_HEIGHT)
 
 local RAFT_COST = 2
-local WALL_COST = 3
+local BEAM_COST = 1
+local WALL_PANEL_COST = 3
 
 local function getRaft()
 	return workspace:FindFirstChild("Raft")
@@ -59,34 +62,19 @@ end
 local function getFloorOffsets(raft)
 	local offsets = {}
 	table.insert(offsets, {x = 0, z = 0})
-
 	for _, child in raft:GetChildren() do
 		local gx = child:GetAttribute("GridX")
 		local gz = child:GetAttribute("GridZ")
-		if gx and gz and child:GetAttribute("BuildType") ~= "wall" then
+		if gx and gz and child:GetAttribute("BuildType") == "raft" then
 			table.insert(offsets, {x = gx, z = gz})
 		end
 	end
-
 	return offsets
-end
-
-local function getWallKeys(raft)
-	local keys = {}
-	for _, child in raft:GetChildren() do
-		local wk = child:GetAttribute("WallKey")
-		if wk then
-			keys[wk] = true
-		end
-	end
-	return keys
 end
 
 local function isFloorOccupied(offsets, gx, gz)
 	for _, o in offsets do
-		if o.x == gx and o.z == gz then
-			return true
-		end
+		if o.x == gx and o.z == gz then return true end
 	end
 	return false
 end
@@ -100,42 +88,78 @@ local function isFloorAdjacent(offsets, gx, gz)
 	return false
 end
 
--- side: 0=front(+Z), 1=back(-Z), 2=left(-X), 3=right(+X)
-local function wallCFrame(raft, gx, gz, side)
+-- Beam corner: at least one adjacent floor tile must exist
+local function cornerHasFloor(offsets, cx, cz)
+	return isFloorOccupied(offsets, cx - 0.5, cz - 0.5)
+		or isFloorOccupied(offsets, cx + 0.5, cz - 0.5)
+		or isFloorOccupied(offsets, cx - 0.5, cz + 0.5)
+		or isFloorOccupied(offsets, cx + 0.5, cz + 0.5)
+end
+
+-- Compute inset to keep beam within raft boundaries
+-- Shifts the beam toward the raft interior on edges where no tile exists beyond
+local function computeBeamInset(offsets, cx, cz)
+	local insetX, insetZ = 0, 0
+
+	local hasPlusX = isFloorOccupied(offsets, cx + 0.5, cz - 0.5) or isFloorOccupied(offsets, cx + 0.5, cz + 0.5)
+	local hasMinusX = isFloorOccupied(offsets, cx - 0.5, cz - 0.5) or isFloorOccupied(offsets, cx - 0.5, cz + 0.5)
+
+	if hasMinusX and not hasPlusX then
+		insetX = -BEAM_INSET
+	elseif hasPlusX and not hasMinusX then
+		insetX = BEAM_INSET
+	end
+
+	local hasPlusZ = isFloorOccupied(offsets, cx - 0.5, cz + 0.5) or isFloorOccupied(offsets, cx + 0.5, cz + 0.5)
+	local hasMinusZ = isFloorOccupied(offsets, cx - 0.5, cz - 0.5) or isFloorOccupied(offsets, cx + 0.5, cz - 0.5)
+
+	if hasMinusZ and not hasPlusZ then
+		insetZ = -BEAM_INSET
+	elseif hasPlusZ and not hasMinusZ then
+		insetZ = BEAM_INSET
+	end
+
+	return insetX, insetZ
+end
+
+local function makeBeamKey(cx, cz)
+	return string.format("%.1f_%.1f", cx, cz)
+end
+
+local function makeWallPanelKey(cx1, cz1, cx2, cz2)
+	if cx1 > cx2 or (cx1 == cx2 and cz1 > cz2) then
+		cx1, cz1, cx2, cz2 = cx2, cz2, cx1, cz1
+	end
+	return string.format("wp_%.1f_%.1f_%.1f_%.1f", cx1, cz1, cx2, cz2)
+end
+
+local function getBeamKeys(raft)
+	local keys = {}
+	for _, child in raft:GetChildren() do
+		local bk = child:GetAttribute("BeamKey")
+		if bk then keys[bk] = true end
+	end
+	return keys
+end
+
+local function getWallPanelKeys(raft)
+	local keys = {}
+	for _, child in raft:GetChildren() do
+		local wk = child:GetAttribute("WallPanelKey")
+		if wk then keys[wk] = true end
+	end
+	return keys
+end
+
+-- Convert local studs position to world position
+local function localToWorld(raft, studX, studZ)
 	local primaryCF = raft.PrimaryPart.CFrame
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
 	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
-
-	local half = GRID_SIZE / 2
-
-	-- Compute edge position in grid space (Y=0 so RestCFrame approach works)
-	local edgeGridPos, sideAngle
-	if side == 0 then
-		edgeGridPos = Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE + half)
-		sideAngle = math.rad(180)
-	elseif side == 1 then
-		edgeGridPos = Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE - half)
-		sideAngle = 0
-	elseif side == 2 then
-		edgeGridPos = Vector3.new(gx * GRID_SIZE - half, 0, gz * GRID_SIZE)
-		sideAngle = math.rad(-90)
-	elseif side == 3 then
-		edgeGridPos = Vector3.new(gx * GRID_SIZE + half, 0, gz * GRID_SIZE)
-		sideAngle = math.rad(90)
-	end
-
-	-- Convert to PrimaryPart local offset (same as floor placement, Y=0)
-	local worldOffset = restFlat:VectorToWorldSpace(edgeGridPos)
+	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	-- Get world position through primaryCF
-	local wallWorldPos = (primaryCF * CFrame.new(localOffset)).Position
-	-- Lift wall so its bottom is at raft surface level
-	local scaledWallHeight = WALL_HEIGHT * WALL_SCALE
-	wallWorldPos = wallWorldPos + Vector3.new(0, scaledWallHeight / 2, 0)
-	-- Wall CFrame: at that position, always vertical, facing the right direction
-	-- Shift -0.5 in wall's local X to correct for pivot offset
-	return CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0) * CFrame.new(-0.5, 0, 0)
+	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
 end
 
 local function weldToRaft(obj, raft)
@@ -184,9 +208,6 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		if isFloorOccupied(offsets, gx, gz) then return end
 		if not isFloorAdjacent(offsets, gx, gz) then return end
 
-		-- Use the raft's rest CFrame (from startup, before waves) to compute a stable
-		-- local offset. This ensures the weld stores a constant relative CFrame
-		-- regardless of current wave tilt.
 		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
 		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 		local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
@@ -211,50 +232,93 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		newPart.Parent = raft
 		weldToRaft(newPart, raft)
 
-	elseif buildType == "wall" then
-		if not wallTemplate then return end
-		local gridX, gridZ, side = ...
-		if type(gridX) ~= "number" or type(gridZ) ~= "number" or type(side) ~= "number" then return end
-		if (inv.Log or 0) < WALL_COST then return end
+	elseif buildType == "beam" then
+		if not beamTemplate then return end
+		local cx, cz = ...
+		if type(cx) ~= "number" or type(cz) ~= "number" then return end
+		if (inv.Log or 0) < BEAM_COST then return end
 
-		local gx = math.round(gridX)
-		local gz = math.round(gridZ)
-		side = math.round(side)
-		if side < 0 or side > 3 then return end
+		cx = math.floor(cx) + 0.5
+		cz = math.floor(cz) + 0.5
 
-		-- Must have a floor tile at this grid position
 		local offsets = getFloorOffsets(raft)
-		if not isFloorOccupied(offsets, gx, gz) then return end
+		if not cornerHasFloor(offsets, cx, cz) then return end
 
-		-- Check wall not already placed here
-		local wallKey = gx .. "_" .. gz .. "_" .. side
-		local existingWalls = getWallKeys(raft)
-		if existingWalls[wallKey] then return end
+		local bk = makeBeamKey(cx, cz)
+		if getBeamKeys(raft)[bk] then return end
 
-		local wCF = wallCFrame(raft, gx, gz, side)
-		if (char.HumanoidRootPart.Position - wCF.Position).Magnitude > 80 then return end
+		local insetX, insetZ = computeBeamInset(offsets, cx, cz)
+		local studX = cx * GRID_SIZE + insetX
+		local studZ = cz * GRID_SIZE + insetZ
+		local worldPos, restYaw = localToWorld(raft, studX, studZ)
+		worldPos = worldPos + Vector3.new(0, BEAM_HEIGHT / 2, 0)
 
-		inv.Log = inv.Log - WALL_COST
+		if (char.HumanoidRootPart.Position - worldPos).Magnitude > 80 then return end
 
-		local newWall = wallTemplate:Clone()
-		newWall:SetAttribute("WallKey", wallKey)
-		newWall:SetAttribute("BuildType", "wall")
-		newWall:SetAttribute("GridX", gx)
-		newWall:SetAttribute("GridZ", gz)
+		inv.Log = inv.Log - BEAM_COST
 
-		-- Scale wall to match raft grid size
-		if WALL_SCALE ~= 1 then
-			if newWall:IsA("Model") then
-				newWall:ScaleTo(newWall:GetScale() * WALL_SCALE)
-			elseif newWall:IsA("BasePart") then
-				newWall.Size = newWall.Size * WALL_SCALE
-			end
+		local newBeam = beamTemplate:Clone()
+		newBeam:SetAttribute("BuildType", "beam")
+		newBeam:SetAttribute("BeamKey", bk)
+		newBeam:SetAttribute("CornerX", cx)
+		newBeam:SetAttribute("CornerZ", cz)
+
+		local beamCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw, 0)
+		if newBeam:IsA("Model") then
+			newBeam:PivotTo(beamCF)
+		else
+			newBeam.CFrame = beamCF
 		end
+		newBeam.Parent = raft
+		weldToRaft(newBeam, raft)
 
+	elseif buildType == "wall_panel" then
+		if not wallPanelTemplate then return end
+		local cx1, cz1, cx2, cz2 = ...
+		if type(cx1) ~= "number" or type(cz1) ~= "number" or type(cx2) ~= "number" or type(cz2) ~= "number" then return end
+		if (inv.Log or 0) < WALL_PANEL_COST then return end
+
+		cx1 = math.floor(cx1) + 0.5
+		cz1 = math.floor(cz1) + 0.5
+		cx2 = math.floor(cx2) + 0.5
+		cz2 = math.floor(cz2) + 0.5
+
+		local dx = math.abs(cx1 - cx2)
+		local dz = math.abs(cz1 - cz2)
+		if not ((dx == 1 and dz == 0) or (dx == 0 and dz == 1)) then return end
+
+		local beamKeys = getBeamKeys(raft)
+		if not beamKeys[makeBeamKey(cx1, cz1)] or not beamKeys[makeBeamKey(cx2, cz2)] then return end
+
+		local wpk = makeWallPanelKey(cx1, cz1, cx2, cz2)
+		if getWallPanelKeys(raft)[wpk] then return end
+
+		local offsets = getFloorOffsets(raft)
+		local inset1X, inset1Z = computeBeamInset(offsets, cx1, cz1)
+		local inset2X, inset2Z = computeBeamInset(offsets, cx2, cz2)
+		local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2
+		local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
+		local worldPos, restYaw = localToWorld(raft, midStudX, midStudZ)
+		worldPos = worldPos + Vector3.new(0, PANEL_HEIGHT / 2, 0)
+
+		if (char.HumanoidRootPart.Position - worldPos).Magnitude > 80 then return end
+
+		inv.Log = inv.Log - WALL_PANEL_COST
+
+		local newWall = wallPanelTemplate:Clone()
+		newWall:SetAttribute("BuildType", "wall_panel")
+		newWall:SetAttribute("WallPanelKey", wpk)
+		newWall:SetAttribute("BeamCX1", cx1)
+		newWall:SetAttribute("BeamCZ1", cz1)
+		newWall:SetAttribute("BeamCX2", cx2)
+		newWall:SetAttribute("BeamCZ2", cz2)
+
+		local sideAngle = (cx1 ~= cx2) and math.rad(90) or 0
+		local wallCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 		if newWall:IsA("Model") then
-			newWall:PivotTo(wCF)
-		elseif newWall:IsA("BasePart") then
-			newWall.CFrame = wCF
+			newWall:PivotTo(wallCF)
+		else
+			newWall.CFrame = wallCF
 		end
 		newWall.Parent = raft
 		weldToRaft(newWall, raft)

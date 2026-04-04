@@ -11,7 +11,8 @@ local camera = workspace.CurrentCamera
 local placeBlockEvent = ReplicatedStorage:WaitForChild("PlaceBlock")
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local raftPartTemplate = ReplicatedStorage:WaitForChild("Raft_part")
-local wallTemplate = ReplicatedStorage:FindFirstChild("Wood_wall")
+local beamTemplate = ReplicatedStorage:FindFirstChild("beam")
+local wallPanelTemplate = ReplicatedStorage:FindFirstChild("wall_model_wood")
 
 local GRID_SIZE = raftPartTemplate:GetAttribute("GridSize")
 if not GRID_SIZE then
@@ -25,29 +26,28 @@ if not GRID_SIZE then
 	end
 end
 
-local FLOOR_HEIGHT = 0
-if raftPartTemplate:IsA("Model") then
-	local size = raftPartTemplate:GetExtentsSize()
-	FLOOR_HEIGHT = size.Y
-elseif raftPartTemplate:IsA("BasePart") then
-	FLOOR_HEIGHT = raftPartTemplate.Size.Y
-end
+local BEAM_HEIGHT = raftPartTemplate:GetAttribute("BeamHeight") or 0
+local BEAM_INSET = raftPartTemplate:GetAttribute("BeamInset") or 0
+local PANEL_HEIGHT = raftPartTemplate:GetAttribute("PanelHeight") or 0
 
-local WALL_HEIGHT = 0
-local WALL_WIDTH = 0
-if wallTemplate then
-	if wallTemplate:IsA("Model") then
-		local size = wallTemplate:GetExtentsSize()
-		WALL_HEIGHT = size.Y
-		WALL_WIDTH = math.max(size.X, size.Z)
-	elseif wallTemplate:IsA("BasePart") then
-		WALL_HEIGHT = wallTemplate.Size.Y
-		WALL_WIDTH = math.max(wallTemplate.Size.X, wallTemplate.Size.Z)
+-- Fallback measurements if attributes not set yet
+if BEAM_HEIGHT == 0 and beamTemplate then
+	if beamTemplate:IsA("Model") then
+		local size = beamTemplate:GetExtentsSize()
+		BEAM_HEIGHT = size.Y
+		BEAM_INSET = math.max(size.X, size.Z) / 2
+	elseif beamTemplate:IsA("BasePart") then
+		BEAM_HEIGHT = beamTemplate.Size.Y
+		BEAM_INSET = math.max(beamTemplate.Size.X, beamTemplate.Size.Z) / 2
 	end
 end
-
--- Scale factor so wall width matches raft grid size
-local WALL_SCALE = (WALL_WIDTH > 0) and (GRID_SIZE / WALL_WIDTH) or 1
+if PANEL_HEIGHT == 0 and wallPanelTemplate then
+	if wallPanelTemplate:IsA("Model") then
+		PANEL_HEIGHT = wallPanelTemplate:GetExtentsSize().Y
+	elseif wallPanelTemplate:IsA("BasePart") then
+		PANEL_HEIGHT = wallPanelTemplate.Size.Y
+	end
+end
 
 local PREVIEW_COLOR_VALID = Color3.fromRGB(80, 200, 80)
 local PREVIEW_COLOR_INVALID = Color3.fromRGB(200, 80, 80)
@@ -68,14 +68,15 @@ local categories = {
 		name = "Walls",
 		icon = LOG_ICON,
 		items = {
-			{id = "wall", name = "Wood Wall", icon = LOG_ICON, cost = 3, costType = "Log", buildType = "wall"},
+			{id = "beam", name = "Beam", icon = LOG_ICON, cost = 1, costType = "Log", buildType = "beam"},
+			{id = "wall_panel", name = "Wood Wall", icon = LOG_ICON, cost = 3, costType = "Log", buildType = "wall_panel"},
 		},
 	},
 }
 
 local isBuilding = false
 local selectedCategory = 1
-local selectedItem = nil -- reference to item table
+local selectedItem = nil
 local buildingUI = nil
 local previewPart = nil
 local inventory = { Log = 0 }
@@ -95,27 +96,14 @@ local function getFloorOffsets()
 
 	local offsets = {}
 	table.insert(offsets, {x = 0, z = 0})
-
 	for _, child in raft:GetChildren() do
 		local gx = child:GetAttribute("GridX")
 		local gz = child:GetAttribute("GridZ")
-		if gx and gz and child:GetAttribute("BuildType") ~= "wall" then
+		if gx and gz and child:GetAttribute("BuildType") == "raft" then
 			table.insert(offsets, {x = gx, z = gz})
 		end
 	end
-
 	return offsets
-end
-
-local function getWallKeys()
-	local raft = getRaft()
-	if not raft then return {} end
-	local keys = {}
-	for _, child in raft:GetChildren() do
-		local wk = child:GetAttribute("WallKey")
-		if wk then keys[wk] = true end
-	end
-	return keys
 end
 
 local function isFloorOccupied(offsets, gx, gz)
@@ -134,22 +122,85 @@ local function isFloorAdjacent(offsets, gx, gz)
 	return false
 end
 
+local function cornerHasFloor(offsets, cx, cz)
+	return isFloorOccupied(offsets, cx - 0.5, cz - 0.5)
+		or isFloorOccupied(offsets, cx + 0.5, cz - 0.5)
+		or isFloorOccupied(offsets, cx - 0.5, cz + 0.5)
+		or isFloorOccupied(offsets, cx + 0.5, cz + 0.5)
+end
+
+local function computeBeamInset(offsets, cx, cz)
+	local insetX, insetZ = 0, 0
+
+	local hasPlusX = isFloorOccupied(offsets, cx + 0.5, cz - 0.5) or isFloorOccupied(offsets, cx + 0.5, cz + 0.5)
+	local hasMinusX = isFloorOccupied(offsets, cx - 0.5, cz - 0.5) or isFloorOccupied(offsets, cx - 0.5, cz + 0.5)
+
+	if hasMinusX and not hasPlusX then
+		insetX = -BEAM_INSET
+	elseif hasPlusX and not hasMinusX then
+		insetX = BEAM_INSET
+	end
+
+	local hasPlusZ = isFloorOccupied(offsets, cx - 0.5, cz + 0.5) or isFloorOccupied(offsets, cx + 0.5, cz + 0.5)
+	local hasMinusZ = isFloorOccupied(offsets, cx - 0.5, cz - 0.5) or isFloorOccupied(offsets, cx + 0.5, cz - 0.5)
+
+	if hasMinusZ and not hasPlusZ then
+		insetZ = -BEAM_INSET
+	elseif hasPlusZ and not hasMinusZ then
+		insetZ = BEAM_INSET
+	end
+
+	return insetX, insetZ
+end
+
+local function makeBeamKey(cx, cz)
+	return string.format("%.1f_%.1f", cx, cz)
+end
+
+local function makeWallPanelKey(cx1, cz1, cx2, cz2)
+	if cx1 > cx2 or (cx1 == cx2 and cz1 > cz2) then
+		cx1, cz1, cx2, cz2 = cx2, cz2, cx1, cz1
+	end
+	return string.format("wp_%.1f_%.1f_%.1f_%.1f", cx1, cz1, cx2, cz2)
+end
+
+local function getBeamKeys()
+	local raft = getRaft()
+	if not raft then return {} end
+	local keys = {}
+	for _, child in raft:GetChildren() do
+		local bk = child:GetAttribute("BeamKey")
+		if bk then keys[bk] = true end
+	end
+	return keys
+end
+
+local function getWallPanelKeys()
+	local raft = getRaft()
+	if not raft then return {} end
+	local keys = {}
+	for _, child in raft:GetChildren() do
+		local wk = child:GetAttribute("WallPanelKey")
+		if wk then keys[wk] = true end
+	end
+	return keys
+end
+
+-- ===================== Coordinate conversion =====================
+
 local function raycastToRaftPlane()
 	local raft = getRaft()
 	if not raft or not raft.PrimaryPart then return nil end
 
 	local cf = raft.PrimaryPart.CFrame
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or cf
-
-	-- Use RestYaw directly (avoids Euler decomposition issues with rotated log)
 	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
-	-- Use current XZ (raft moves forward) but stable Y from restCF (avoids wave-bob jitter)
 	local stableY = restCF.Position.Y
 	local planePoint = Vector3.new(cf.Position.X, stableY, cf.Position.Z)
 	local flatCF = CFrame.new(planePoint) * CFrame.Angles(0, restYaw, 0)
 
 	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
-	local planeNormal = Vector3.new(0, 1, 0) -- world up, always horizontal
+	local planeNormal = Vector3.new(0, 1, 0)
 
 	local denom = ray.Direction:Dot(planeNormal)
 	if math.abs(denom) < 0.001 then return nil end
@@ -162,13 +213,26 @@ local function raycastToRaftPlane()
 	return localHit
 end
 
+local function localToWorld(studX, studZ)
+	local raft = getRaft()
+	if not raft or not raft.PrimaryPart then return Vector3.zero, 0 end
+	local primaryCF = raft.PrimaryPart.CFrame
+	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
+	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
+	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
+	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
+	local localOffset = restCF:VectorToObjectSpace(worldOffset)
+	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
+end
+
+-- ===================== Floor grid =====================
+
 local function getFloorGridFromMouse()
 	local localHit = raycastToRaftPlane()
 	if not localHit then return nil, nil, nil end
 
 	local raft = getRaft()
 	local primaryCF = raft.PrimaryPart.CFrame
-	-- Use rest CFrame (stored at startup) for stable grid offset computation
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
 	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
@@ -185,15 +249,34 @@ local function getFloorGridFromMouse()
 	return gx, gz, worldCF
 end
 
-local function getWallFromMouse()
-	local localHit = raycastToRaftPlane()
-	if not localHit then return nil, nil, nil, nil end
+-- ===================== Beam corner =====================
 
-	local raft = getRaft()
-	local primaryCF = raft.PrimaryPart.CFrame
-	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
-	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
-	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
+local function getBeamCornerFromMouse()
+	local localHit = raycastToRaftPlane()
+	if not localHit then return nil, nil, nil end
+
+	local gridX = localHit.X / GRID_SIZE
+	local gridZ = localHit.Z / GRID_SIZE
+	local cx = math.floor(gridX) + 0.5
+	local cz = math.floor(gridZ) + 0.5
+
+	local offsets = getFloorOffsets()
+	local insetX, insetZ = computeBeamInset(offsets, cx, cz)
+	local studX = cx * GRID_SIZE + insetX
+	local studZ = cz * GRID_SIZE + insetZ
+
+	local worldPos, restYaw = localToWorld(studX, studZ)
+	worldPos = worldPos + Vector3.new(0, BEAM_HEIGHT / 2, 0)
+	local worldCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw, 0)
+
+	return cx, cz, worldCF
+end
+
+-- ===================== Wall panel between beams =====================
+
+local function getWallPanelFromMouse()
+	local localHit = raycastToRaftPlane()
+	if not localHit then return nil end
 
 	local gx = math.round(localHit.X / GRID_SIZE)
 	local gz = math.round(localHit.Z / GRID_SIZE)
@@ -204,46 +287,43 @@ local function getWallFromMouse()
 	local dz = localHit.Z - cellCenterZ
 
 	local side
-	local half = GRID_SIZE / 2
-	local absDx = math.abs(dx)
-	local absDz = math.abs(dz)
-
-	if absDx > absDz then
-		if dx > 0 then side = 3 else side = 2 end
+	if math.abs(dx) > math.abs(dz) then
+		side = (dx > 0) and 3 or 2
 	else
-		if dz > 0 then side = 0 else side = 1 end
+		side = (dz > 0) and 0 or 1
 	end
 
-	-- Compute edge position in grid space (Y=0 so RestCFrame approach works)
-	local edgeGridPos, sideAngle
+	local cx1, cz1, cx2, cz2
 	if side == 0 then
-		edgeGridPos = Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE + half)
-		sideAngle = math.rad(180)
+		cx1, cz1 = gx - 0.5, gz + 0.5
+		cx2, cz2 = gx + 0.5, gz + 0.5
 	elseif side == 1 then
-		edgeGridPos = Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE - half)
-		sideAngle = 0
+		cx1, cz1 = gx - 0.5, gz - 0.5
+		cx2, cz2 = gx + 0.5, gz - 0.5
 	elseif side == 2 then
-		edgeGridPos = Vector3.new(gx * GRID_SIZE - half, 0, gz * GRID_SIZE)
-		sideAngle = math.rad(-90)
+		cx1, cz1 = gx - 0.5, gz - 0.5
+		cx2, cz2 = gx - 0.5, gz + 0.5
 	elseif side == 3 then
-		edgeGridPos = Vector3.new(gx * GRID_SIZE + half, 0, gz * GRID_SIZE)
-		sideAngle = math.rad(90)
+		cx1, cz1 = gx + 0.5, gz - 0.5
+		cx2, cz2 = gx + 0.5, gz + 0.5
 	end
 
-	-- Convert to PrimaryPart local offset (same as floor placement, Y=0)
-	local worldOffset = restFlat:VectorToWorldSpace(edgeGridPos)
-	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	-- Get world position through primaryCF
-	local wallWorldPos = (primaryCF * CFrame.new(localOffset)).Position
-	-- Lift wall so its bottom is at raft surface level
-	local scaledWallHeight = WALL_HEIGHT * WALL_SCALE
-	wallWorldPos = wallWorldPos + Vector3.new(0, scaledWallHeight / 2, 0)
-	-- Wall CFrame: at that position, always vertical, facing the right direction
-	-- Shift -0.5 in wall's local X to correct for pivot offset
-	local worldCF = CFrame.new(wallWorldPos) * CFrame.Angles(0, restYaw + sideAngle, 0) * CFrame.new(-0.5, 0, 0)
+	local offsets = getFloorOffsets()
+	local inset1X, inset1Z = computeBeamInset(offsets, cx1, cz1)
+	local inset2X, inset2Z = computeBeamInset(offsets, cx2, cz2)
+	local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2
+	local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
 
-	return gx, gz, side, worldCF
+	local worldPos, restYaw = localToWorld(midStudX, midStudZ)
+	worldPos = worldPos + Vector3.new(0, PANEL_HEIGHT / 2, 0)
+
+	local sideAngle = (side == 2 or side == 3) and math.rad(90) or 0
+	local worldCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
+
+	return cx1, cz1, cx2, cz2, side, worldCF
 end
+
+-- ===================== Preview helpers =====================
 
 local function setPreviewAppearance(color)
 	if not previewPart then return end
@@ -284,9 +364,8 @@ end
 
 local function getTemplateForItem(item)
 	if not item then return raftPartTemplate end
-	if item.buildType == "wall" then
-		return wallTemplate or raftPartTemplate
-	end
+	if item.buildType == "beam" then return beamTemplate or raftPartTemplate end
+	if item.buildType == "wall_panel" then return wallPanelTemplate or raftPartTemplate end
 	return raftPartTemplate
 end
 
@@ -295,16 +374,6 @@ local function createPreview()
 	local template = getTemplateForItem(selectedItem)
 	previewPart = template:Clone()
 	previewPart.Name = "BuildPreview"
-
-	-- Scale wall preview to match raft grid size
-	if selectedItem and selectedItem.buildType == "wall" and WALL_SCALE ~= 1 then
-		if previewPart:IsA("Model") then
-			previewPart:ScaleTo(previewPart:GetScale() * WALL_SCALE)
-		elseif previewPart:IsA("BasePart") then
-			previewPart.Size = previewPart.Size * WALL_SCALE
-		end
-	end
-
 	setPreviewAppearance(PREVIEW_COLOR_VALID)
 	previewPart.Parent = workspace
 end
@@ -352,7 +421,6 @@ local function buildUI()
 
 	local cat = categories[selectedCategory]
 
-	-- Category tabs (vertical, left side)
 	local catCount = #categories
 	local catPanelH = catCount * (CAT_SIZE + CAT_PAD) + CAT_PAD
 	local catPanel = Instance.new("Frame")
@@ -396,7 +464,6 @@ local function buildUI()
 			selStroke.Parent = catBtn
 		end
 
-		-- Category icon
 		local catIcon = Instance.new("ImageLabel")
 		catIcon.Size = UDim2.new(0.6, 0, 0.6, 0)
 		catIcon.Position = UDim2.new(0.2, 0, 0.05, 0)
@@ -404,7 +471,6 @@ local function buildUI()
 		catIcon.Image = catData.icon
 		catIcon.Parent = catBtn
 
-		-- Category name
 		local catLabel = Instance.new("TextLabel")
 		catLabel.Size = UDim2.new(1, 0, 0.35, 0)
 		catLabel.Position = UDim2.new(0, 0, 0.65, 0)
@@ -418,7 +484,6 @@ local function buildUI()
 		catBtn.MouseButton1Click:Connect(function()
 			if selectedCategory == i then return end
 			selectedCategory = i
-			-- Default to first item in category
 			selectedItem = categories[i].items[1]
 			destroyPreview()
 			buildUI()
@@ -426,11 +491,10 @@ local function buildUI()
 		end)
 	end
 
-	-- Items panel (horizontal, next to category tabs)
 	local items = cat.items
 	local itemCount = #items
 	local itemPanelW = itemCount * (ITEM_SIZE + ITEM_PAD) + ITEM_PAD
-	local itemPanelH = ITEM_SIZE + ITEM_PAD * 2 + 20 -- extra for name label
+	local itemPanelH = ITEM_SIZE + ITEM_PAD * 2 + 20
 
 	local itemPanel = Instance.new("Frame")
 	itemPanel.Name = "ItemPanel"
@@ -473,7 +537,6 @@ local function buildUI()
 			iSelStroke.Parent = itemBtn
 		end
 
-		-- Item icon
 		local itemIcon = Instance.new("ImageLabel")
 		itemIcon.Size = UDim2.new(0.7, 0, 0.7, 0)
 		itemIcon.Position = UDim2.new(0.15, 0, 0.02, 0)
@@ -481,7 +544,6 @@ local function buildUI()
 		itemIcon.Image = item.icon
 		itemIcon.Parent = itemBtn
 
-		-- Cost label
 		local costLbl = Instance.new("TextLabel")
 		costLbl.Size = UDim2.new(1, 0, 0.28, 0)
 		costLbl.Position = UDim2.new(0, 0, 0.72, 0)
@@ -500,7 +562,6 @@ local function buildUI()
 		end)
 	end
 
-	-- Item name label below items
 	if selectedItem then
 		local nameLbl = Instance.new("TextLabel")
 		nameLbl.Size = UDim2.new(1, -ITEM_PAD * 2, 0, 18)
@@ -514,7 +575,6 @@ local function buildUI()
 		nameLbl.Parent = itemPanel
 	end
 
-	-- Hint text
 	local hint = Instance.new("TextLabel")
 	hint.Size = UDim2.new(0, 250, 0, 18)
 	hint.Position = UDim2.new(0, 10, 0.5, catPanelH / 2 + 8)
@@ -533,7 +593,6 @@ local function startBuildMode()
 	if isBuilding then return end
 	isBuilding = true
 
-	-- Default selection
 	selectedCategory = 1
 	selectedItem = categories[1].items[1]
 
@@ -548,30 +607,38 @@ local function startBuildMode()
 			if not gx then hidePreview(); return end
 
 			local offsets = getFloorOffsets()
-			local occupied = isFloorOccupied(offsets, gx, gz)
-
-			-- Hide preview entirely when hovering over an existing raft part
-			if occupied then hidePreview(); return end
+			if isFloorOccupied(offsets, gx, gz) then hidePreview(); return end
 
 			movePreview(worldCF)
-
 			local canAfford = (inventory[selectedItem.costType] or 0) >= selectedItem.cost
 			local valid = isFloorAdjacent(offsets, gx, gz) and canAfford
 			setPreviewAppearance(valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID)
 
-		elseif selectedItem.buildType == "wall" then
-			local gx, gz, side, worldCF = getWallFromMouse()
-			if not gx then hidePreview(); return end
+		elseif selectedItem.buildType == "beam" then
+			local cx, cz, worldCF = getBeamCornerFromMouse()
+			if not cx then hidePreview(); return end
 
 			movePreview(worldCF)
-
 			local offsets = getFloorOffsets()
-			local hasFloor = isFloorOccupied(offsets, gx, gz)
-			local wallKey = gx .. "_" .. gz .. "_" .. side
-			local walls = getWallKeys()
-			local alreadyPlaced = walls[wallKey]
+			local hasFloor = cornerHasFloor(offsets, cx, cz)
+			local beamKey = makeBeamKey(cx, cz)
+			local alreadyPlaced = getBeamKeys()[beamKey]
 			local canAfford = (inventory[selectedItem.costType] or 0) >= selectedItem.cost
 			local valid = hasFloor and not alreadyPlaced and canAfford
+			setPreviewAppearance(valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID)
+
+		elseif selectedItem.buildType == "wall_panel" then
+			local cx1, cz1, cx2, cz2, side, worldCF = getWallPanelFromMouse()
+			if not cx1 then hidePreview(); return end
+
+			movePreview(worldCF)
+			local beams = getBeamKeys()
+			local hasBeam1 = beams[makeBeamKey(cx1, cz1)]
+			local hasBeam2 = beams[makeBeamKey(cx2, cz2)]
+			local wpk = makeWallPanelKey(cx1, cz1, cx2, cz2)
+			local alreadyPlaced = getWallPanelKeys()[wpk]
+			local canAfford = (inventory[selectedItem.costType] or 0) >= selectedItem.cost
+			local valid = hasBeam1 and hasBeam2 and not alreadyPlaced and canAfford
 			setPreviewAppearance(valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID)
 		end
 	end)
@@ -620,18 +687,27 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 		placeBlockEvent:FireServer("raft", gx, gz)
 
-	elseif selectedItem.buildType == "wall" then
-		local gx, gz, side, _ = getWallFromMouse()
-		if not gx then return end
+	elseif selectedItem.buildType == "beam" then
+		local cx, cz, _ = getBeamCornerFromMouse()
+		if not cx then return end
 
 		local offsets = getFloorOffsets()
-		if not isFloorOccupied(offsets, gx, gz) then return end
-		local wallKey = gx .. "_" .. gz .. "_" .. side
-		local walls = getWallKeys()
-		if walls[wallKey] then return end
+		if not cornerHasFloor(offsets, cx, cz) then return end
+		if getBeamKeys()[makeBeamKey(cx, cz)] then return end
 		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
 
-		placeBlockEvent:FireServer("wall", gx, gz, side)
+		placeBlockEvent:FireServer("beam", cx, cz)
+
+	elseif selectedItem.buildType == "wall_panel" then
+		local cx1, cz1, cx2, cz2, side, _ = getWallPanelFromMouse()
+		if not cx1 then return end
+
+		local beams = getBeamKeys()
+		if not beams[makeBeamKey(cx1, cz1)] or not beams[makeBeamKey(cx2, cz2)] then return end
+		if getWallPanelKeys()[makeWallPanelKey(cx1, cz1, cx2, cz2)] then return end
+		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
+
+		placeBlockEvent:FireServer("wall_panel", cx1, cz1, cx2, cz2)
 	end
 end)
 
