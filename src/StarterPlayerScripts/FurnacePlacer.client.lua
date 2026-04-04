@@ -137,8 +137,9 @@ local function updateGhost()
 
 	ghost:PivotTo(placeCF)
 
-	-- Calculate offset relative to RestCFrame for wave-independent weld
-	lastGhostRaftOffset = restCF:ToObjectSpace(placeCF)
+	-- Calculate offset relative to current raft CFrame (position is correct/small)
+	-- RestCFrame is only used for yaw above — the positional offset must use current CFrame
+	lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
 
 	-- Check if blocked
 	local blocked = isPlacementBlocked(placeCF, ghostSize)

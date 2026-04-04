@@ -267,7 +267,7 @@ local function updateGhost()
 			local placeCF = CFrame.new(gardenCF.Position.X, topY, gardenCF.Position.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0) * ghostTemplateRotation
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
-			lastGhostRaftOffset = restCF:ToObjectSpace(placeCF)
+			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
 			lastTargetGarden = garden
 			setGhostColor(true)
 		else
@@ -293,7 +293,7 @@ local function updateGhost()
 			local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0) * ghostTemplateRotation
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
-			lastGhostRaftOffset = restCF:ToObjectSpace(placeCF)
+			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
 
 			-- Check for overlap with existing objects
 			if isPlacementBlocked(placeCF, ghostSize) then
