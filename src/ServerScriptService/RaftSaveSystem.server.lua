@@ -175,12 +175,14 @@ local function savePlayerData(player)
 	end
 
 	-- Only the raft owner gets raft data saved (prevents duplication exploit)
-	local isOwner = (not raftOwnerUserId) or (raftOwnerUserId == player.UserId)
+	local isOwner = playerIsRaftOwner[player]
+	if isOwner == nil then isOwner = true end -- fallback for direct joins
+
 	local raftData = nil
 	if isOwner then
 		raftData = collectRaftData(player)
 	else
-		print("[RaftSave] Skipping raft save for " .. player.Name .. " (not owner)")
+		print("[RaftSave] Skipping raft save for " .. player.Name .. " (not owner, clearing old raft data)")
 	end
 
 	local invData = collectInventoryData(player)
@@ -188,7 +190,9 @@ local function savePlayerData(player)
 
 	print("[RaftSave] Collecting data for " .. player.Name .. " - raft: " .. tostring(raftData ~= nil) .. " (owner=" .. tostring(isOwner) .. "), tools: " .. #toolData)
 
-	if not raftData and (not invData or next(invData) == nil) and #toolData == 0 then
+	-- For owners: skip if there's truly nothing to save
+	-- For non-owners: ALWAYS save to overwrite any old raft data they might have
+	if isOwner and not raftData and (not invData or next(invData) == nil) and #toolData == 0 then
 		print("[RaftSave] No data to save for " .. player.Name)
 		return
 	end
@@ -197,7 +201,7 @@ local function savePlayerData(player)
 		inventory = invData,
 		tools = toolData,
 		slotLayout = cachedSlotLayouts[player] or {},
-		raft = raftData, -- nil for non-owners, preventing raft duplication
+		raft = raftData, -- nil for non-owners, clears any previously saved raft
 		savedAt = os.time(),
 	}
 
@@ -515,8 +519,8 @@ end
 -- Track whether the raft has already been rebuilt from a save (for group loads)
 local raftRebuiltFromSave = false
 
--- Track who owns this raft (only the owner gets raft data saved)
-local raftOwnerUserId = nil
+-- Per-player ownership tracking (only the owner gets raft data saved)
+local playerIsRaftOwner = {} -- [player] = true/false
 
 -- ─── Load save data by UserId key ───
 local function loadPlayerDataByUserId(userId)
@@ -543,10 +547,13 @@ Players.PlayerAdded:Connect(function(player)
 	local joinData = player:GetJoinData()
 	local teleportData = joinData and joinData.TeleportData
 
-	-- Track who owns the raft (first player to set it wins)
-	if teleportData and teleportData.raftOwnerId and not raftOwnerUserId then
-		raftOwnerUserId = teleportData.raftOwnerId
-		print("[RaftSave] Raft owner set to UserId: " .. tostring(raftOwnerUserId))
+	-- Determine if this player is the raft owner
+	if teleportData and teleportData.raftOwnerId then
+		playerIsRaftOwner[player] = (teleportData.raftOwnerId == player.UserId)
+		print("[RaftSave] Player " .. player.Name .. " isRaftOwner: " .. tostring(playerIsRaftOwner[player]) .. " (ownerId=" .. tostring(teleportData.raftOwnerId) .. ")")
+	else
+		-- No teleport data (direct join or testing) — treat as owner
+		playerIsRaftOwner[player] = true
 	end
 
 	if teleportData and teleportData.loadSave then
@@ -600,6 +607,7 @@ end)
 Players.PlayerRemoving:Connect(function(player)
 	savePlayerData(player)
 	cachedSlotLayouts[player] = nil
+	playerIsRaftOwner[player] = nil
 end)
 
 -- ─── Autosave ───
