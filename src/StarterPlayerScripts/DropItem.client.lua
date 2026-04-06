@@ -84,7 +84,7 @@ local function createPrompt(resource)
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Size = UDim2.new(5, 0, 1.2, 0)
-	billboard.StudsOffset = Vector3.new(0, 4, 0)
+	billboard.StudsOffset = Vector3.new(0, 1.5, 0)
 	billboard.AlwaysOnTop = true
 	billboard.Adornee = adornee
 	billboard.Parent = playerGui
