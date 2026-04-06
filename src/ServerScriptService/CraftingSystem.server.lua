@@ -17,6 +17,13 @@ local recipes = {
 		costs = {Log = 2},
 		model = "Wood_Knife",
 	},
+	{
+		name = "Sawmill",
+		displayName = "Sawmill",
+		icon = "rbxassetid://110032041583533",
+		costs = {Log = 1},
+		craftType = "placeable",
+	},
 }
 
 local function findWorkBench()

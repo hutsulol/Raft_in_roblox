@@ -19,12 +19,15 @@ local STONE_ICON = "rbxassetid://134781813180973"
 local IRON_ORE_ICON = "rbxassetid://73676755288746"
 local IRON_INGOT_ICON = "rbxassetid://72890243946368"
 
+local PLANK_ICON = "rbxassetid://110032041583533"
+
 local RESOURCE_ICONS = {
 	Log = LOG_ICON,
 	Plastic = PLASTIC_ICON,
 	Stone = STONE_ICON,
 	Iron_Ore = IRON_ORE_ICON,
 	Iron_Ingot = IRON_INGOT_ICON,
+	Plank = PLANK_ICON,
 }
 
 local TOOL_ICONS = {

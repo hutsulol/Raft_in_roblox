@@ -10,6 +10,7 @@ local camera = workspace.CurrentCamera
 local cupActionEvent = ReplicatedStorage:WaitForChild("CupAction")
 local bushActionEvent = ReplicatedStorage:WaitForChild("BushAction")
 local gardenActionEvent = ReplicatedStorage:WaitForChild("GardenAction")
+local sawmillActionEvent = ReplicatedStorage:WaitForChild("SawmillAction")
 
 -- ─── State ───
 local ghost = nil
@@ -19,6 +20,7 @@ local placingBush = false
 local placingWorkbench = false
 local placingGarden = false
 local placingBed = false
+local placingSawmill = false
 local lastGhostValid = false
 local lastGhostCF = nil
 local lastGhostRaftOffset = nil -- CFrame offset relative to raft
@@ -87,6 +89,12 @@ local function updateHint()
 
 	if placingBed then
 		hintLabel.Text = "Click on raft to place bed | [R] Rotate"
+		hintLabel.Visible = true
+		return
+	end
+
+	if placingSawmill then
+		hintLabel.Text = "Click on raft to place sawmill | [R] Rotate"
 		hintLabel.Visible = true
 		return
 	end
@@ -211,7 +219,7 @@ local function isPlacementBlocked(placeCF, ghostSize)
 	-- Known placed object names to check against
 	local placedObjectNames = {
 		WorkBench = true, Purifier = true, Garden = true,
-		Bed = true, Destitalor = true, bush = true,
+		Bed = true, Destitalor = true, bush = true, Sawmill = true,
 	}
 
 	for _, part in parts do
@@ -371,13 +379,23 @@ local function onToolEquipped(tool)
 		placingBush = false
 		placingWorkbench = false
 		placingGarden = false
+		placingSawmill = false
 		createGhost("Bed")
+	elseif tool.Name == "Sawmill" then
+		placingSawmill = true
+		placingPurifier = false
+		placingBush = false
+		placingWorkbench = false
+		placingGarden = false
+		placingBed = false
+		createGhost("Sawmill")
 	else
 		placingPurifier = false
 		placingBush = false
 		placingWorkbench = false
 		placingGarden = false
 		placingBed = false
+		placingSawmill = false
 		destroyGhost()
 	end
 
@@ -397,6 +415,7 @@ local function onToolUnequipped()
 	placingWorkbench = false
 	placingGarden = false
 	placingBed = false
+	placingSawmill = false
 	destroyGhost()
 	updateHint()
 end
@@ -430,7 +449,7 @@ player.CharacterAdded:Connect(setupCharacter)
 
 -- ─── Update ghost every frame ───
 RunService.RenderStepped:Connect(function()
-	if (placingPurifier or placingBush or placingWorkbench or placingGarden or placingBed) and ghost then
+	if (placingPurifier or placingBush or placingWorkbench or placingGarden or placingBed or placingSawmill) and ghost then
 		updateGhost()
 	end
 end)
@@ -438,7 +457,7 @@ end)
 -- ─── R key to rotate placement ───
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
-	if input.KeyCode == Enum.KeyCode.R and (placingPurifier or placingWorkbench or placingGarden or placingBed or placingBush) then
+	if input.KeyCode == Enum.KeyCode.R and (placingPurifier or placingWorkbench or placingGarden or placingBed or placingBush or placingSawmill) then
 		rotationAngle = rotationAngle + math.rad(90)
 	end
 end)
@@ -489,6 +508,15 @@ mouse.Button1Down:Connect(function()
 		cupActionEvent:FireServer("placeBed", lastGhostRaftOffset)
 		destroyGhost()
 		placingBed = false
+		return
+	end
+
+	-- Sawmill placement
+	if placingSawmill and ghost then
+		if not lastGhostValid or not lastGhostRaftOffset then return end
+		sawmillActionEvent:FireServer("placeSawmill", lastGhostRaftOffset)
+		destroyGhost()
+		placingSawmill = false
 		return
 	end
 

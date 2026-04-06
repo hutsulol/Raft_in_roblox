@@ -29,6 +29,12 @@ local recipes = {
 		icon = "rbxassetid://117760352651529",
 		costs = {Stone = 10, Log = 5},
 	},
+	{
+		name = "Sawmill",
+		displayName = "Sawmill",
+		icon = "rbxassetid://110032041583533",
+		costs = {Log = 1},
+	},
 }
 local selectedRecipe = nil
 local isOpen = false

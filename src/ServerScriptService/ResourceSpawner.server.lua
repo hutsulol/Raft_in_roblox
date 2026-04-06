@@ -40,6 +40,9 @@ _G.GetInventory = function(player)
 	if not _G_Inventories[player].Stone then
 		_G_Inventories[player].Stone = 0
 	end
+	if not _G_Inventories[player].Plank then
+		_G_Inventories[player].Plank = 0
+	end
 	return _G_Inventories[player]
 end
 

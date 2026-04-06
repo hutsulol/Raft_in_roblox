@@ -82,7 +82,7 @@ local function isPlacementBlocked(placeCF, ghostSize)
 
 	local placedObjectNames = {
 		WorkBench = true, Purifier = true, Garden = true,
-		Bed = true, Destitalor = true, bush = true, Furnace = true,
+		Bed = true, Destitalor = true, bush = true, Furnace = true, Sawmill = true,
 	}
 
 	for _, part in parts do

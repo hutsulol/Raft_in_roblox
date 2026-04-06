@@ -16,6 +16,7 @@ local RESOURCE_TEMPLATES = {
 	Stone = "stone",
 	Iron_Ore = "iron_model",
 	Iron_Ingot = "box_model",
+	Plank = "plank",
 }
 
 -- Known resource names (items stored as counts in inventory)
@@ -25,6 +26,7 @@ local RESOURCE_ITEMS = {
 	Stone = true,
 	Iron_Ore = true,
 	Iron_Ingot = true,
+	Plank = true,
 }
 
 -- Fallback template for any unmapped items (tools, etc.)
