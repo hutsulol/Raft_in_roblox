@@ -543,6 +543,16 @@ local function endDrag(mousePos)
 			slotData[targetSlot] = srcData
 			slotData[srcSlot] = dstData
 		end
+	elseif not targetSlot and srcSlot then
+		-- Dropped outside any slot: drop item into the world
+		local srcData = slotData[srcSlot]
+		if srcData and srcData.type == "resource" then
+			local dropEvent = ReplicatedStorage:FindFirstChild("DropItem")
+			if dropEvent then
+				local dropCount = isSplit and 1 or srcData.count
+				dropEvent:FireServer(srcData.name, dropCount)
+			end
+		end
 	end
 
 	cancelDrag()
