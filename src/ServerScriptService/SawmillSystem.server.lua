@@ -139,8 +139,10 @@ local function processLog(sawmill, droppedLog)
 		sawBladePos = sawBladePos + Vector3.new(0, 1.5, 0)
 		claimerPos = claimerPos + Vector3.new(0, 1.5, 0)
 
-		-- Belt direction: from placer toward claimer (flattened)
-		local beltDir = (claimerPos - placerPos)
+		-- Use the sawmill's own orientation for belt direction
+		-- The sawmill's RightVector points along the belt (placer → claimer)
+		local sawmillCF = sawmill:GetPivot()
+		local beltDir = sawmillCF.RightVector
 		beltDir = Vector3.new(beltDir.X, 0, beltDir.Z)
 		if beltDir.Magnitude < 0.01 then beltDir = Vector3.new(1, 0, 0) end
 		beltDir = beltDir.Unit
