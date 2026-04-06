@@ -1,6 +1,5 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
-local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 
 local rs = ReplicatedStorage
@@ -11,20 +10,17 @@ sawmillActionEvent.Parent = rs
 
 -- Constants
 local PROCESS_TIME = 5          -- seconds for log to travel to saw blade
-local SAW_TIME = 2              -- seconds for sawing animation
+local SAW_TIME = 2              -- seconds for sawing
 local OUTPUT_TIME = 3           -- seconds for planks to travel to claimer
-local HEXAGON_SPIN_SPEED = 2    -- rotations per second (in radians/frame)
-local SAW_SPIN_SPEED = 8        -- saw blade spins faster
-local PLANKS_PER_LOG = 2        -- how many planks per log
+local PLANKS_PER_LOG = 2        -- planks output per log
 
--- Track active sawmills and their state
-local sawmillStates = {} -- [sawmill] = {state, logModel, plankModel}
+-- Track active sawmills
+local sawmillStates = {}
 
 local function getRaft()
 	return workspace:FindFirstChild("Raft")
 end
 
--- Weld all parts of a model to raft primary part
 local function weldToRaft(obj, raft)
 	for _, part in obj:GetDescendants() do
 		if part:IsA("BasePart") then
@@ -61,6 +57,69 @@ local function getSawmillParts(sawmill)
 	return parts
 end
 
+-- Get world position of a part or model
+local function getPartPosition(part)
+	if part:IsA("Model") then
+		return part:GetPivot().Position
+	else
+		return part.CFrame.Position
+	end
+end
+
+local function getPartCFrame(part)
+	if part:IsA("Model") then
+		return part:GetPivot()
+	else
+		return part.CFrame
+	end
+end
+
+-- Smoothly move a model from point A to B over duration, welded to raft
+local function moveModelAlongBelt(model, startPos, endPos, duration, raft, sawmillYaw)
+	if not model or not model.Parent then return end
+	if not raft or not raft.PrimaryPart then return end
+
+	-- Orient the log/plank lying down along the belt direction
+	local direction = (endPos - startPos)
+	local flatDir = Vector3.new(direction.X, 0, direction.Z).Unit
+	local logCF = CFrame.new(startPos) * CFrame.lookAt(Vector3.zero, flatDir) * CFrame.Angles(0, 0, math.rad(90))
+
+	-- Set initial position with lying orientation
+	model:PivotTo(CFrame.new(startPos, startPos + flatDir) * CFrame.Angles(0, 0, math.rad(90)))
+
+	-- Anchor all parts for smooth movement (no physics jitter)
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = true
+			p.CanCollide = false
+		end
+	end
+
+	local elapsed = 0
+	local steps = math.ceil(duration * 30)
+	local startCF = model:GetPivot()
+	local endCF = CFrame.new(endPos, endPos + flatDir) * CFrame.Angles(0, 0, math.rad(90))
+
+	for i = 1, steps do
+		if not model or not model.Parent then return end
+		local t = i / steps
+		model:PivotTo(startCF:Lerp(endCF, t))
+		task.wait(1 / 30)
+	end
+
+	-- Final: weld to raft so it moves with the raft
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = false
+			p.CanCollide = false
+			local w = Instance.new("WeldConstraint")
+			w.Part0 = p
+			w.Part1 = raft.PrimaryPart
+			w.Parent = p
+		end
+	end
+end
+
 -- Place sawmill on raft
 sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 	if action == "placeSawmill" then
@@ -79,14 +138,12 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 		local sawmill = template:Clone()
 		sawmill.Name = "Sawmill"
 
-		-- Remove scripts from clone
 		for _, desc in sawmill:GetDescendants() do
 			if desc:IsA("Script") or desc:IsA("LocalScript") then
 				desc:Destroy()
 			end
 		end
 
-		-- Reset pivot to bounding box center
 		if sawmill:IsA("Model") then
 			local bbCF = sawmill:GetBoundingBox()
 			sawmill.WorldPivot = CFrame.new(bbCF.Position)
@@ -95,24 +152,19 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(data)
 		sawmill:PivotTo(worldCF)
 		sawmill.Parent = raft
-
-		-- Weld to raft
 		weldToRaft(sawmill, raft)
 
-		-- Mark as sawmill for interaction detection
 		sawmill:SetAttribute("IsSawmill", true)
-		sawmill:SetAttribute("SawmillState", "idle") -- idle, processing, ready
+		sawmill:SetAttribute("SawmillState", "idle")
 		sawmill:SetAttribute("PlanksReady", 0)
 		CollectionService:AddTag(sawmill, "Sawmill")
 
 		tool:Destroy()
 
 	elseif action == "loadLog" then
-		-- Player wants to load a log into the sawmill
 		local char = player.Character
 		if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
-		-- data = the sawmill model (sent as the Hexagon_placer part)
 		if not data or not data.Parent then return end
 
 		-- Find the sawmill model
@@ -127,186 +179,76 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 		end
 		if not sawmill then return end
 
-		-- Check state
-		local state = sawmill:GetAttribute("SawmillState")
-		if state ~= "idle" then return end
+		if sawmill:GetAttribute("SawmillState") ~= "idle" then return end
 
-		-- Check distance
+		-- Distance check
 		local hrp = char.HumanoidRootPart
-		local sawmillPos = sawmill:GetPivot().Position
-		if (hrp.Position - sawmillPos).Magnitude > 20 then return end
+		if (hrp.Position - sawmill:GetPivot().Position).Magnitude > 25 then return end
 
-		-- Check inventory
+		-- Inventory check
 		local inv = _G.GetInventory and _G.GetInventory(player)
 		if not inv then return end
 		if (inv.Log or 0) < 1 then return end
 
-		-- Deduct log
 		inv.Log = inv.Log - 1
 		if _G.SendInventory then _G.SendInventory(player) end
 
-		-- Start processing
 		sawmill:SetAttribute("SawmillState", "processing")
 
-		-- Get sawmill parts
 		local parts = getSawmillParts(sawmill)
-		if not parts.hexagonPlacer then return end
-
 		local raft = getRaft()
 		if not raft or not raft.PrimaryPart then return end
 
-		-- Clone log template and position at placer
-		local logTemplate = rs:FindFirstChild("Log")
-		if not logTemplate then return end
-
-		local logClone = logTemplate:Clone()
-		logClone.Name = "SawmillLog"
-
-		-- Position the log at the hexagon placer
-		local placerCF = parts.hexagonPlacer.CFrame
-		if parts.hexagonPlacer:IsA("Model") then
-			placerCF = parts.hexagonPlacer:GetPivot()
-		end
-
-		logClone:PivotTo(placerCF + Vector3.new(0, 1, 0))
-		logClone.Parent = sawmill
-
-		-- Weld log to raft initially
-		for _, p in logClone:GetDescendants() do
-			if p:IsA("BasePart") then
-				p.Anchored = false
-				p.CanCollide = false
-				local w = Instance.new("WeldConstraint")
-				w.Part0 = p
-				w.Part1 = raft.PrimaryPart
-				w.Parent = p
-			end
-		end
-
-		-- Store state
-		sawmillStates[sawmill] = {
-			logClone = logClone,
-			parts = parts,
-		}
-
-		-- Notify clients to start animation
+		-- Notify clients to start spinning
 		sawmillActionEvent:FireAllClients("startProcessing", sawmill)
 
-		-- Run the conveyor process
 		task.spawn(function()
-			-- Phase 1: Log moves from placer toward saw blade
-			if parts.sawBlade then
-				local sawBladeCF
-				if parts.sawBlade:IsA("Model") then
-					sawBladeCF = parts.sawBlade:GetPivot()
-				else
-					sawBladeCF = parts.sawBlade.CFrame
-				end
+			-- Get positions
+			local placerPos = parts.hexagonPlacer and getPartPosition(parts.hexagonPlacer) or sawmill:GetPivot().Position
+			local sawBladePos = parts.sawBlade and getPartPosition(parts.sawBlade) or sawmill:GetPivot().Position
+			local claimerPos = parts.hexagonClaimer and getPartPosition(parts.hexagonClaimer) or sawmill:GetPivot().Position
 
-				-- Move log to saw blade position
-				local startCF = logClone:GetPivot()
-				local endCF = CFrame.new(sawBladeCF.Position) * startCF.Rotation
+			-- Lift start position slightly above the belt
+			placerPos = placerPos + Vector3.new(0, 1.5, 0)
+			sawBladePos = sawBladePos + Vector3.new(0, 1.5, 0)
+			claimerPos = claimerPos + Vector3.new(0, 1.5, 0)
 
-				for t = 0, 1, 1 / (PROCESS_TIME * 30) do
-					if not logClone or not logClone.Parent then return end
-					local interpCF = startCF:Lerp(endCF, t)
-
-					-- Remove old welds and re-weld at new position
-					for _, p in logClone:GetDescendants() do
-						if p:IsA("WeldConstraint") then p:Destroy() end
-					end
-					logClone:PivotTo(interpCF)
-					for _, p in logClone:GetDescendants() do
-						if p:IsA("BasePart") then
-							p.Anchored = false
-							p.CanCollide = false
-							local w = Instance.new("WeldConstraint")
-							w.Part0 = p
-							w.Part1 = raft.PrimaryPart
-							w.Parent = p
-						end
-					end
-					task.wait(1 / 30)
-				end
-			end
-
-			-- Phase 2: Sawing - destroy log, create planks
-			task.wait(SAW_TIME)
-
-			if logClone and logClone.Parent then
-				logClone:Destroy()
-			end
-
-			-- Clone plank template
-			local plankTemplate = rs:FindFirstChild("plank")
-			if not plankTemplate then
-				-- Sawmill still finishes even without plank model
-				sawmill:SetAttribute("SawmillState", "ready")
-				sawmill:SetAttribute("PlanksReady", PLANKS_PER_LOG)
+			-- Phase 1: Spawn log and move it to saw blade
+			local logTemplate = rs:FindFirstChild("Log")
+			if not logTemplate then
+				sawmill:SetAttribute("SawmillState", "idle")
 				sawmillActionEvent:FireAllClients("stopProcessing", sawmill)
 				return
 			end
 
-			local plankClone = plankTemplate:Clone()
-			plankClone.Name = "SawmillPlank"
+			local logClone = logTemplate:Clone()
+			logClone.Name = "SawmillLog"
+			logClone:PivotTo(CFrame.new(placerPos))
+			logClone.Parent = sawmill
 
-			-- Position at saw blade
-			local sawPos
-			if parts.sawBlade then
-				if parts.sawBlade:IsA("Model") then
-					sawPos = parts.sawBlade:GetPivot().Position
-				else
-					sawPos = parts.sawBlade.CFrame.Position
-				end
-			else
-				sawPos = sawmill:GetPivot().Position
+			moveModelAlongBelt(logClone, placerPos, sawBladePos, PROCESS_TIME, raft)
+
+			-- Phase 2: Sawing - destroy log, wait
+			task.wait(SAW_TIME / 2)
+			if logClone and logClone.Parent then
+				logClone:Destroy()
 			end
+			task.wait(SAW_TIME / 2)
 
-			plankClone:PivotTo(CFrame.new(sawPos) * CFrame.Angles(0, sawmill:GetPivot().Rotation:ToEulerAnglesYXZ()))
-			plankClone.Parent = sawmill
+			-- Phase 3: Spawn planks and move to claimer
+			local plankTemplate = rs:FindFirstChild("plank")
+			if plankTemplate then
+				local plankClone = plankTemplate:Clone()
+				plankClone.Name = "SawmillPlank"
+				plankClone:PivotTo(CFrame.new(sawBladePos))
+				plankClone.Parent = sawmill
 
-			for _, p in plankClone:GetDescendants() do
-				if p:IsA("BasePart") then
-					p.Anchored = false
-					p.CanCollide = false
-					local w = Instance.new("WeldConstraint")
-					w.Part0 = p
-					w.Part1 = raft.PrimaryPart
-					w.Parent = p
-				end
-			end
+				moveModelAlongBelt(plankClone, sawBladePos, claimerPos, OUTPUT_TIME, raft)
 
-			-- Phase 3: Move planks to claimer
-			if parts.hexagonClaimer then
-				local claimerCF
-				if parts.hexagonClaimer:IsA("Model") then
-					claimerCF = parts.hexagonClaimer:GetPivot()
+				if sawmillStates[sawmill] then
+					sawmillStates[sawmill].plankClone = plankClone
 				else
-					claimerCF = parts.hexagonClaimer.CFrame
-				end
-
-				local startCF2 = plankClone:GetPivot()
-				local endCF2 = CFrame.new(claimerCF.Position) * startCF2.Rotation
-
-				for t = 0, 1, 1 / (OUTPUT_TIME * 30) do
-					if not plankClone or not plankClone.Parent then return end
-					local interpCF = startCF2:Lerp(endCF2, t)
-
-					for _, p in plankClone:GetDescendants() do
-						if p:IsA("WeldConstraint") then p:Destroy() end
-					end
-					plankClone:PivotTo(interpCF)
-					for _, p in plankClone:GetDescendants() do
-						if p:IsA("BasePart") then
-							p.Anchored = false
-							p.CanCollide = false
-							local w = Instance.new("WeldConstraint")
-							w.Part0 = p
-							w.Part1 = raft.PrimaryPart
-							w.Parent = p
-						end
-					end
-					task.wait(1 / 30)
+					sawmillStates[sawmill] = { plankClone = plankClone }
 				end
 			end
 
@@ -314,22 +256,15 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 			sawmill:SetAttribute("SawmillState", "ready")
 			sawmill:SetAttribute("PlanksReady", PLANKS_PER_LOG)
 
-			if sawmillStates[sawmill] then
-				sawmillStates[sawmill].plankClone = plankClone
-			end
-
-			-- Stop conveyor animation
 			sawmillActionEvent:FireAllClients("stopProcessing", sawmill)
 		end)
 
 	elseif action == "claimPlanks" then
-		-- Player picks up planks from the claimer
 		local char = player.Character
 		if not char or not char:FindFirstChild("HumanoidRootPart") then return end
 
 		if not data or not data.Parent then return end
 
-		-- Find the sawmill model
 		local sawmill = nil
 		local current = data
 		while current and current ~= workspace do
@@ -341,36 +276,30 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 		end
 		if not sawmill then return end
 
-		local state = sawmill:GetAttribute("SawmillState")
-		if state ~= "ready" then return end
+		if sawmill:GetAttribute("SawmillState") ~= "ready" then return end
 
 		local planksReady = sawmill:GetAttribute("PlanksReady") or 0
 		if planksReady <= 0 then return end
 
-		-- Check distance
 		local hrp = char.HumanoidRootPart
-		local sawmillPos = sawmill:GetPivot().Position
-		if (hrp.Position - sawmillPos).Magnitude > 20 then return end
+		if (hrp.Position - sawmill:GetPivot().Position).Magnitude > 25 then return end
 
-		-- Add planks to inventory
 		local inv = _G.GetInventory and _G.GetInventory(player)
 		if not inv then return end
 		inv.Plank = (inv.Plank or 0) + planksReady
 
 		-- Clean up plank model
 		if sawmillStates[sawmill] and sawmillStates[sawmill].plankClone then
-			sawmillStates[sawmill].plankClone:Destroy()
-			sawmillStates[sawmill].plankClone = nil
+			if sawmillStates[sawmill].plankClone.Parent then
+				sawmillStates[sawmill].plankClone:Destroy()
+			end
 		end
-
-		-- Also clean up any SawmillPlank children
 		for _, child in sawmill:GetChildren() do
 			if child.Name == "SawmillPlank" then
 				child:Destroy()
 			end
 		end
 
-		-- Reset state
 		sawmill:SetAttribute("SawmillState", "idle")
 		sawmill:SetAttribute("PlanksReady", 0)
 		sawmillStates[sawmill] = nil
