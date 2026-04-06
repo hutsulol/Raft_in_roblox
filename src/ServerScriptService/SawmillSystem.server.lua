@@ -1,7 +1,13 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
+local PhysicsService = game:GetService("PhysicsService")
 
 local rs = ReplicatedStorage
+
+-- Create a collision group for sawmill belt items that collides with nothing
+PhysicsService:RegisterCollisionGroup("SawmillBelt")
+PhysicsService:CollisionGroupSetCollidable("SawmillBelt", "Default", false)
+PhysicsService:CollisionGroupSetCollidable("SawmillBelt", "SawmillBelt", false)
 
 local sawmillActionEvent = Instance.new("RemoteEvent")
 sawmillActionEvent.Name = "SawmillAction"
@@ -68,16 +74,24 @@ local function ensurePrimaryPart(model)
 	end
 end
 
--- Pre-anchor and disable collisions on a clone BEFORE parenting
+-- Fully neutralize physics on a clone: anchor, no collision, no mass, separate collision group
 local function disablePhysics(model)
 	if model:IsA("BasePart") then
 		model.Anchored = true
 		model.CanCollide = false
+		model.CanTouch = false
+		model.CanQuery = false
+		model.Massless = true
+		model.CollisionGroup = "SawmillBelt"
 	end
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
 			p.Anchored = true
 			p.CanCollide = false
+			p.CanTouch = false
+			p.CanQuery = false
+			p.Massless = true
+			p.CollisionGroup = "SawmillBelt"
 		end
 	end
 end
@@ -110,8 +124,8 @@ local function slideModel(model, startPart, endPart, duration, sawmill)
 		if beltDir.Magnitude < 0.01 then beltDir = Vector3.new(1, 0, 0) end
 		beltDir = beltDir.Unit
 
-		-- Orient log sideways (90°): Z axis along belt, Y stays up
-		local orientCF = CFrame.lookAt(worldPos, worldPos + beltDir)
+		-- Orient log: face along belt, then roll 90° on Z so it lies sideways
+		local orientCF = CFrame.lookAt(worldPos, worldPos + beltDir) * CFrame.Angles(0, 0, math.rad(90))
 
 		model:PivotTo(orientCF)
 
@@ -178,9 +192,13 @@ local function processLog(sawmill, droppedLog)
 
 			slideModel(plankClone, parts.sawBlade, parts.hexagonClaimer, OUTPUT_TIME, sawmill)
 
-			-- Turn planks into a pickupable dropped item at the end
-			-- Keep parts ANCHORED so they don't collide with raft
+			-- Turn planks into a pickupable dropped item
 			if plankClone and plankClone.Parent then
+				-- Re-enable CanQuery so pickup raycast can detect it
+				if plankClone:IsA("BasePart") then plankClone.CanQuery = true end
+				for _, p in plankClone:GetDescendants() do
+					if p:IsA("BasePart") then p.CanQuery = true end
+				end
 				plankClone:SetAttribute("ResourceType", "Plank")
 				plankClone:SetAttribute("ResourceAmount", PLANKS_PER_LOG)
 				plankClone:SetAttribute("IsToolDrop", false)
