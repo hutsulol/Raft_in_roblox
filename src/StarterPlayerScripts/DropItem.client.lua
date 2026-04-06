@@ -188,9 +188,7 @@ end)
 
 -- Input handling
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
-
-	-- E key pickup
+	-- E key pickup - don't check 'processed' because our billboard GUI causes it to be true
 	if input.KeyCode == Enum.KeyCode.E then
 		if currentTarget and currentTarget.Parent then
 			local hitPart = currentTarget
@@ -206,6 +204,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 
 	-- Q key drop from hovered hotbar slot
+	if processed then return end
 	if input.KeyCode == Enum.KeyCode.Q then
 		local slotIndex = getHoveredHotbarSlot()
 		if not slotIndex then return end

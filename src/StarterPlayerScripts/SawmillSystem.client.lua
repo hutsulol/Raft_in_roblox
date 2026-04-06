@@ -227,9 +227,9 @@ end)
 
 -- ─── E key interaction ───
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
 	if input.KeyCode ~= Enum.KeyCode.E then return end
 
+	-- Don't check 'processed' here - our own billboard GUI causes it to be true
 	if not hoveredSawmill or not hoveredSide then return end
 	if not hoveredSawmill.Parent then return end
 
