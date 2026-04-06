@@ -53,6 +53,20 @@ local function ensurePrimaryPart(model)
 	end
 end
 
+-- Pre-anchor and disable collisions on a clone BEFORE parenting
+local function disablePhysics(model)
+	if model:IsA("BasePart") then
+		model.Anchored = true
+		model.CanCollide = false
+	end
+	for _, p in model:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = true
+			p.CanCollide = false
+		end
+	end
+end
+
 -- Animate a model sliding from A to B (anchored, in workspace)
 local function slideModel(model, startPos, endPos, duration)
 	if not model or not model.Parent then return end
@@ -65,17 +79,8 @@ local function slideModel(model, startPos, endPos, duration)
 	local startCF = CFrame.lookAt(startPos, startPos + flatDir) * CFrame.Angles(0, 0, math.rad(90))
 	local endCF = CFrame.lookAt(endPos, endPos + flatDir) * CFrame.Angles(0, 0, math.rad(90))
 
-	-- Anchor everything
-	if model:IsA("BasePart") then
-		model.Anchored = true
-		model.CanCollide = false
-	end
-	for _, p in model:GetDescendants() do
-		if p:IsA("BasePart") then
-			p.Anchored = true
-			p.CanCollide = false
-		end
-	end
+	-- Ensure anchored + no collision
+	disablePhysics(model)
 
 	model:PivotTo(startCF)
 
@@ -91,13 +96,12 @@ end
 local function processLog(sawmill, droppedLog)
 	if sawmill:GetAttribute("SawmillState") ~= "idle" then return end
 
-	-- Get the resource info before destroying
 	local resType = droppedLog:GetAttribute("ResourceType")
 	if resType ~= "Log" then return end
 
 	sawmill:SetAttribute("SawmillState", "processing")
 
-	-- Destroy the dropped log
+	-- Destroy the dropped log immediately
 	droppedLog:Destroy()
 
 	local parts = getSawmillParts(sawmill)
@@ -126,6 +130,7 @@ local function processLog(sawmill, droppedLog)
 		local logClone = logTemplate:Clone()
 		logClone.Name = "SawmillLog"
 		ensurePrimaryPart(logClone)
+		disablePhysics(logClone)  -- anchor + no collision BEFORE parenting
 		logClone.Parent = workspace
 
 		slideModel(logClone, placerPos, sawBladePos, SLIDE_TIME)
@@ -142,28 +147,18 @@ local function processLog(sawmill, droppedLog)
 			local plankClone = plankTemplate:Clone()
 			plankClone.Name = "SawmillPlank"
 			ensurePrimaryPart(plankClone)
+			disablePhysics(plankClone)  -- anchor + no collision BEFORE parenting
 			plankClone.Parent = workspace
 
 			slideModel(plankClone, sawBladePos, claimerPos, OUTPUT_TIME)
 
 			-- Turn planks into a pickupable dropped item at the end
+			-- Keep parts ANCHORED so they don't collide with raft
 			if plankClone and plankClone.Parent then
 				plankClone:SetAttribute("ResourceType", "Plank")
 				plankClone:SetAttribute("ResourceAmount", PLANKS_PER_LOG)
 				plankClone:SetAttribute("IsToolDrop", false)
 				CollectionService:AddTag(plankClone, "DroppedItem")
-
-				-- Unanchor so highlight/pickup works normally
-				if plankClone:IsA("BasePart") then
-					plankClone.Anchored = false
-					plankClone:SetNetworkOwner(nil)
-				end
-				for _, p in plankClone:GetDescendants() do
-					if p:IsA("BasePart") then
-						p.Anchored = false
-						p:SetNetworkOwner(nil)
-					end
-				end
 
 				-- Auto-despawn after 2 minutes
 				task.delay(120, function()
@@ -189,7 +184,6 @@ local function checkForLogsNearSawmills()
 
 		local placerPos = getPartPosition(parts.hexagonPlacer)
 
-		-- Look for dropped logs near the placer
 		for _, droppedItem in CollectionService:GetTagged("DroppedItem") do
 			if not droppedItem or not droppedItem.Parent then continue end
 			if droppedItem:GetAttribute("ResourceType") ~= "Log" then continue end
@@ -203,7 +197,7 @@ local function checkForLogsNearSawmills()
 
 			if (itemPos - placerPos).Magnitude <= DETECT_RADIUS then
 				processLog(sawmill, droppedItem)
-				break -- one log at a time
+				break
 			end
 		end
 	end
@@ -217,7 +211,7 @@ task.spawn(function()
 	end
 end)
 
--- ─── Place sawmill on raft (unchanged) ───
+-- ─── Place sawmill on raft ───
 sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 	if action == "placeSawmill" then
 		local char = player.Character
