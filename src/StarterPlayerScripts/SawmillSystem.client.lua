@@ -112,8 +112,8 @@ RunService.RenderStepped:Connect(function(dt)
 		local angle = spinAngles[sawmill]
 		local motors = getSpinMotors(sawmill)
 		for _, motor in motors do
-			-- Rotate around local X axis via Transform (physics-safe)
-			motor.Transform = CFrame.Angles(angle, 0, 0)
+			-- Rotate around local Z axis (along the belt direction)
+			motor.Transform = CFrame.Angles(0, 0, angle)
 		end
 	end
 

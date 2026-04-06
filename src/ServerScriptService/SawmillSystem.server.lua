@@ -91,8 +91,9 @@ local function slideModel(model, startPos, endPos, duration)
 	if flatDir.Magnitude < 0.01 then flatDir = Vector3.new(1, 0, 0) end
 	flatDir = flatDir.Unit
 
-	local startCF = CFrame.lookAt(startPos, startPos + flatDir) * CFrame.Angles(0, 0, math.rad(90))
-	local endCF = CFrame.lookAt(endPos, endPos + flatDir) * CFrame.Angles(0, 0, math.rad(90))
+	-- Lie the log/plank down along the belt direction (tip forward 90° around X)
+	local startCF = CFrame.lookAt(startPos, startPos + flatDir) * CFrame.Angles(math.rad(90), 0, 0)
+	local endCF = CFrame.lookAt(endPos, endPos + flatDir) * CFrame.Angles(math.rad(90), 0, 0)
 
 	-- Ensure anchored + no collision
 	disablePhysics(model)
