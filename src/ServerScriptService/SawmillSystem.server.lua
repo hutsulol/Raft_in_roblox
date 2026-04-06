@@ -83,16 +83,20 @@ local function disablePhysics(model)
 end
 
 -- Animate a model sliding from A to B (anchored, in workspace)
--- beltDir: the unit direction along the belt (placer → claimer)
-local function slideModel(model, startPos, endPos, duration, beltDir)
+local function slideModel(model, startPos, endPos, duration)
 	if not model or not model.Parent then return end
 
 	-- Ensure anchored + no collision
 	disablePhysics(model)
 
-	-- Orient the model so its long axis (Y) lies along the belt direction
-	-- Build a CFrame where Y axis = beltDir (log lies along belt)
-	local up = beltDir  -- Y axis becomes the belt direction
+	-- Compute the actual movement direction from start to end
+	local moveDir = (endPos - startPos)
+	moveDir = Vector3.new(moveDir.X, 0, moveDir.Z)
+	if moveDir.Magnitude < 0.01 then moveDir = Vector3.new(1, 0, 0) end
+	moveDir = moveDir.Unit
+
+	-- Orient the model so its long axis (Y) lies along the movement direction
+	local up = moveDir
 	local right = up:Cross(Vector3.new(0, 1, 0))
 	if right.Magnitude < 0.01 then
 		right = up:Cross(Vector3.new(0, 0, 1))
@@ -139,14 +143,6 @@ local function processLog(sawmill, droppedLog)
 		sawBladePos = sawBladePos + Vector3.new(0, 1.5, 0)
 		claimerPos = claimerPos + Vector3.new(0, 1.5, 0)
 
-		-- Use the sawmill's own orientation for belt direction
-		-- The sawmill's RightVector points along the belt (placer → claimer)
-		local sawmillCF = sawmill:GetPivot()
-		local beltDir = sawmillCF.RightVector
-		beltDir = Vector3.new(beltDir.X, 0, beltDir.Z)
-		if beltDir.Magnitude < 0.01 then beltDir = Vector3.new(1, 0, 0) end
-		beltDir = beltDir.Unit
-
 		-- Phase 1: Spawn log and slide to saw blade
 		local logTemplate = rs:FindFirstChild("Log")
 		if not logTemplate then
@@ -161,7 +157,7 @@ local function processLog(sawmill, droppedLog)
 		disablePhysics(logClone)  -- anchor + no collision BEFORE parenting
 		logClone.Parent = workspace
 
-		slideModel(logClone, placerPos, sawBladePos, SLIDE_TIME, beltDir)
+		slideModel(logClone, placerPos, sawBladePos, SLIDE_TIME)
 
 		-- Phase 2: Destroy log at saw, pause
 		if logClone and logClone.Parent then
@@ -178,7 +174,7 @@ local function processLog(sawmill, droppedLog)
 			disablePhysics(plankClone)  -- anchor + no collision BEFORE parenting
 			plankClone.Parent = workspace
 
-			slideModel(plankClone, sawBladePos, claimerPos, OUTPUT_TIME, beltDir)
+			slideModel(plankClone, sawBladePos, claimerPos, OUTPUT_TIME)
 
 			-- Turn planks into a pickupable dropped item at the end
 			-- Keep parts ANCHORED so they don't collide with raft
