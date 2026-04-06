@@ -550,7 +550,26 @@ local function endDrag(mousePos)
 			local dropEvent = ReplicatedStorage:FindFirstChild("DropItem")
 			if dropEvent then
 				local dropCount = isSplit and 1 or srcData.count
-				dropEvent:FireServer(srcData.name, dropCount)
+
+				-- Raycast from mouse to find drop position in the world
+				local cam = workspace.CurrentCamera
+				local mPos = UserInputService:GetMouseLocation()
+				local ray = cam:ViewportPointToRay(mPos.X, mPos.Y)
+				local rayParams = RaycastParams.new()
+				rayParams.FilterType = Enum.RaycastFilterType.Exclude
+				local char = player.Character
+				if char then rayParams.FilterDescendantsInstances = {char} end
+				local result = workspace:Raycast(ray.Origin, ray.Direction * 500, rayParams)
+				local dropPos = result and result.Position or nil
+
+				-- Deduct from this specific slot so server sync doesn't take from wrong slot
+				if dropCount >= srcData.count then
+					slotData[srcSlot] = nil
+				else
+					srcData.count = srcData.count - dropCount
+				end
+
+				dropEvent:FireServer(srcData.name, dropCount, dropPos)
 			end
 		end
 	end

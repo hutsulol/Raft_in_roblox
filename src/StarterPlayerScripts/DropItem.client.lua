@@ -8,8 +8,6 @@ local playerGui = player:WaitForChild("PlayerGui")
 local dropEvent = ReplicatedStorage:WaitForChild("DropItem")
 
 local HOTBAR_SLOTS = 8
-local SLOT_SIZE = 60
-local SLOT_PAD = 6
 
 -- Find which hotbar slot the mouse is hovering over
 local function getHoveredHotbarSlot()
@@ -35,6 +33,19 @@ local function getHoveredHotbarSlot()
 	return nil
 end
 
+-- Raycast from mouse to get world drop position
+local function getMouseWorldPosition()
+	local cam = workspace.CurrentCamera
+	local mPos = UserInputService:GetMouseLocation()
+	local ray = cam:ViewportPointToRay(mPos.X, mPos.Y)
+	local rayParams = RaycastParams.new()
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	local char = player.Character
+	if char then rayParams.FilterDescendantsInstances = {char} end
+	local result = workspace:Raycast(ray.Origin, ray.Direction * 500, rayParams)
+	return result and result.Position or nil
+end
+
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	if input.KeyCode ~= Enum.KeyCode.Q then return end
@@ -49,5 +60,13 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if not data then return end
 	if data.type ~= "resource" then return end
 
-	dropEvent:FireServer(data.name, 1)
+	-- Deduct from this specific slot
+	if data.count <= 1 then
+		slotData[slotIndex] = nil
+	else
+		data.count = data.count - 1
+	end
+
+	local dropPos = getMouseWorldPosition()
+	dropEvent:FireServer(data.name, 1, dropPos)
 end)

@@ -16,11 +16,13 @@ local RESOURCE_TEMPLATES = {
 
 local DROP_COOLDOWN = 0.3
 local DROPPED_LIFETIME = 120
+local MAX_DROP_DISTANCE = 80
 local lastDropTime = {}
 
-dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount)
+dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPosition)
 	if type(itemName) ~= "string" then return end
 	if type(dropCount) ~= "number" then return end
+	if typeof(dropPosition) ~= "Vector3" then dropPosition = nil end
 
 	dropCount = math.floor(math.clamp(dropCount, 1, 30))
 
@@ -48,9 +50,14 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount)
 	-- Deduct from inventory
 	inv[itemName] = inv[itemName] - dropCount
 
-	-- Spawn the 3D model in front of the player
-	local lookDir = hrp.CFrame.LookVector
-	local spawnPos = hrp.Position + lookDir * 4 + Vector3.new(0, -1, 0)
+	-- Determine spawn position: use client's mouse hit position if valid, fallback to in front of player
+	local spawnPos
+	if dropPosition and (dropPosition - hrp.Position).Magnitude < MAX_DROP_DISTANCE then
+		spawnPos = dropPosition + Vector3.new(0, 2, 0)
+	else
+		local lookDir = hrp.CFrame.LookVector
+		spawnPos = hrp.Position + lookDir * 4 + Vector3.new(0, -1, 0)
+	end
 
 	local clone = template:Clone()
 
