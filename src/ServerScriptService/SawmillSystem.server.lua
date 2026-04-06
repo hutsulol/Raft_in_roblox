@@ -82,9 +82,10 @@ local function disablePhysics(model)
 	end
 end
 
--- Animate a model sliding from A to B (anchored, in workspace)
--- Uses raft-local offsets so the model follows the raft as it moves
-local function slideModel(model, raft, startOffset, endOffset, duration, beltDirLocal)
+-- Animate a model sliding between two sawmill parts (reads positions live each frame)
+-- startPart/endPart: the actual BaseParts to interpolate between
+-- sawmill: used to get the belt orientation
+local function slideModel(model, startPart, endPart, duration, sawmill)
 	if not model or not model.Parent then return end
 
 	-- Ensure anchored + no collision
@@ -93,27 +94,24 @@ local function slideModel(model, raft, startOffset, endOffset, duration, beltDir
 	local steps = math.max(1, math.ceil(duration * 30))
 	for i = 0, steps do
 		if not model or not model.Parent then return end
-		if not raft or not raft.PrimaryPart then return end
+		if not startPart or not startPart.Parent then return end
+		if not endPart or not endPart.Parent then return end
 
 		local t = i / steps
-		local localPos = startOffset:Lerp(endOffset, t)
 
-		-- Convert local offset to world position
-		local worldPos = raft.PrimaryPart.CFrame:PointToWorldSpace(localPos)
+		-- Read current world positions each frame (follows raft movement)
+		local startPos = getPartPosition(startPart) + Vector3.new(0, 1.5, 0)
+		local endPos = getPartPosition(endPart) + Vector3.new(0, 1.5, 0)
+		local worldPos = startPos:Lerp(endPos, t)
 
-		-- Get belt direction in world space for orientation
-		local worldBeltDir = raft.PrimaryPart.CFrame:VectorToWorldSpace(beltDirLocal)
-		worldBeltDir = Vector3.new(worldBeltDir.X, 0, worldBeltDir.Z)
-		if worldBeltDir.Magnitude < 0.01 then worldBeltDir = Vector3.new(1, 0, 0) end
-		worldBeltDir = worldBeltDir.Unit
+		-- Get belt direction from sawmill's current orientation
+		local beltDir = sawmill:GetPivot().RightVector
+		beltDir = Vector3.new(beltDir.X, 0, beltDir.Z)
+		if beltDir.Magnitude < 0.01 then beltDir = Vector3.new(1, 0, 0) end
+		beltDir = beltDir.Unit
 
-		-- Orient log: Y axis along belt direction
-		local up = worldBeltDir
-		local right = up:Cross(Vector3.new(0, 1, 0))
-		if right.Magnitude < 0.01 then right = up:Cross(Vector3.new(0, 0, 1)) end
-		right = right.Unit
-		local forward = right:Cross(up).Unit
-		local orientCF = CFrame.fromMatrix(worldPos, right, up, -forward)
+		-- Orient log sideways (90°): Z axis along belt, Y stays up
+		local orientCF = CFrame.lookAt(worldPos, worldPos + beltDir)
 
 		model:PivotTo(orientCF)
 
@@ -141,32 +139,11 @@ local function processLog(sawmill, droppedLog)
 	sawmillActionEvent:FireAllClients("startProcessing", sawmill)
 
 	task.spawn(function()
-		local raft = getRaft()
-		if not raft or not raft.PrimaryPart then
+		if not parts.hexagonPlacer or not parts.sawBlade or not parts.hexagonClaimer then
 			sawmill:SetAttribute("SawmillState", "idle")
 			sawmillActionEvent:FireAllClients("stopProcessing", sawmill)
 			return
 		end
-
-		-- Convert world positions to raft-local offsets (so they follow the raft)
-		local raftCF = raft.PrimaryPart.CFrame
-		local placerWorld = parts.hexagonPlacer and getPartPosition(parts.hexagonPlacer) or sawmill:GetPivot().Position
-		local sawBladeWorld = parts.sawBlade and getPartPosition(parts.sawBlade) or sawmill:GetPivot().Position
-		local claimerWorld = parts.hexagonClaimer and getPartPosition(parts.hexagonClaimer) or sawmill:GetPivot().Position
-
-		-- Raise above belt surface (in world, then convert to local)
-		placerWorld = placerWorld + Vector3.new(0, 1.5, 0)
-		sawBladeWorld = sawBladeWorld + Vector3.new(0, 1.5, 0)
-		claimerWorld = claimerWorld + Vector3.new(0, 1.5, 0)
-
-		local placerLocal = raftCF:PointToObjectSpace(placerWorld)
-		local sawBladeLocal = raftCF:PointToObjectSpace(sawBladeWorld)
-		local claimerLocal = raftCF:PointToObjectSpace(claimerWorld)
-
-		-- Belt direction in raft-local space
-		local sawmillCF = sawmill:GetPivot()
-		local beltDirWorld = sawmillCF.RightVector
-		local beltDirLocal = raftCF:VectorToObjectSpace(beltDirWorld)
 
 		-- Phase 1: Spawn log and slide to saw blade
 		local logTemplate = rs:FindFirstChild("Log")
@@ -182,7 +159,7 @@ local function processLog(sawmill, droppedLog)
 		disablePhysics(logClone)
 		logClone.Parent = workspace
 
-		slideModel(logClone, raft, placerLocal, sawBladeLocal, SLIDE_TIME, beltDirLocal)
+		slideModel(logClone, parts.hexagonPlacer, parts.sawBlade, SLIDE_TIME, sawmill)
 
 		-- Phase 2: Destroy log at saw, pause
 		if logClone and logClone.Parent then
@@ -199,7 +176,7 @@ local function processLog(sawmill, droppedLog)
 			disablePhysics(plankClone)
 			plankClone.Parent = workspace
 
-			slideModel(plankClone, raft, sawBladeLocal, claimerLocal, OUTPUT_TIME, beltDirLocal)
+			slideModel(plankClone, parts.sawBlade, parts.hexagonClaimer, OUTPUT_TIME, sawmill)
 
 			-- Turn planks into a pickupable dropped item at the end
 			-- Keep parts ANCHORED so they don't collide with raft
