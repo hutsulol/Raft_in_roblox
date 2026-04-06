@@ -458,7 +458,11 @@ end)
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode == Enum.KeyCode.R and (placingPurifier or placingWorkbench or placingGarden or placingBed or placingBush or placingSawmill) then
-		rotationAngle = rotationAngle + math.rad(90)
+		if placingSawmill then
+			rotationAngle = rotationAngle + math.rad(180)
+		else
+			rotationAngle = rotationAngle + math.rad(90)
+		end
 	end
 end)
 
