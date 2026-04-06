@@ -167,15 +167,19 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 
 		if not data or not data.Parent then return end
 
-		-- Find the sawmill model
+		-- data can be the sawmill itself or a descendant
 		local sawmill = nil
-		local current = data
-		while current and current ~= workspace do
-			if current:GetAttribute("IsSawmill") then
-				sawmill = current
-				break
+		if data:GetAttribute("IsSawmill") then
+			sawmill = data
+		else
+			local current = data
+			while current and current ~= workspace do
+				if current:GetAttribute("IsSawmill") then
+					sawmill = current
+					break
+				end
+				current = current.Parent
 			end
-			current = current.Parent
 		end
 		if not sawmill then return end
 
@@ -266,13 +270,17 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 		if not data or not data.Parent then return end
 
 		local sawmill = nil
-		local current = data
-		while current and current ~= workspace do
-			if current:GetAttribute("IsSawmill") then
-				sawmill = current
-				break
+		if data:GetAttribute("IsSawmill") then
+			sawmill = data
+		else
+			local current = data
+			while current and current ~= workspace do
+				if current:GetAttribute("IsSawmill") then
+					sawmill = current
+					break
+				end
+				current = current.Parent
 			end
-			current = current.Parent
 		end
 		if not sawmill then return end
 
