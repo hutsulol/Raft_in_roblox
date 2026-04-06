@@ -91,29 +91,45 @@ local function processLog(sawmill, droppedLog)
 				if first then plankClone.PrimaryPart = first end
 			end
 
-			-- Anchor, no collision, no touch — just a visual pickup target
+			-- No collision, no touch, massless — pickup target welded to raft
 			if plankClone:IsA("BasePart") then
-				plankClone.Anchored = true
+				plankClone.Anchored = false
 				plankClone.CanCollide = false
 				plankClone.CanTouch = false
+				plankClone.Massless = true
 			end
 			for _, p in plankClone:GetDescendants() do
 				if p:IsA("BasePart") then
-					p.Anchored = true
+					p.Anchored = false
 					p.CanCollide = false
 					p.CanTouch = false
+					p.Massless = true
 				end
 			end
 
-			-- Orient plank along the belt direction
+			-- Place upright at claimer position
 			local claimerPos = getPartPosition(parts.hexagonClaimer) + Vector3.new(0, 1.5, 0)
-			local placerPos = getPartPosition(parts.hexagonPlacer)
-			local beltDir = (claimerPos - placerPos)
-			beltDir = Vector3.new(beltDir.X, 0, beltDir.Z)
-			if beltDir.Magnitude < 0.01 then beltDir = Vector3.new(1, 0, 0) end
-			beltDir = beltDir.Unit
-			plankClone:PivotTo(CFrame.lookAt(claimerPos, claimerPos + beltDir))
+			plankClone:PivotTo(CFrame.new(claimerPos))
 			plankClone.Parent = workspace
+
+			-- Weld to raft so it stays in place as raft moves
+			local raft = getRaft()
+			if raft and raft.PrimaryPart then
+				for _, p in plankClone:GetDescendants() do
+					if p:IsA("BasePart") then
+						local w = Instance.new("WeldConstraint")
+						w.Part0 = p
+						w.Part1 = raft.PrimaryPart
+						w.Parent = p
+					end
+				end
+				if plankClone:IsA("BasePart") then
+					local w = Instance.new("WeldConstraint")
+					w.Part0 = plankClone
+					w.Part1 = raft.PrimaryPart
+					w.Parent = plankClone
+				end
+			end
 
 			plankClone:SetAttribute("ResourceType", "Plank")
 			plankClone:SetAttribute("ResourceAmount", PLANKS_PER_LOG)
