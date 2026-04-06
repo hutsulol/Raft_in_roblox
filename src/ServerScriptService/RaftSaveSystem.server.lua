@@ -435,7 +435,7 @@ local function rebuildRaft(player, saveData)
 			local worldPos = localToWorldPos(midStudX, midStudZ)
 			worldPos = worldPos + Vector3.new(0, PANEL_HEIGHT / 2, 0)
 
-			local sideAngle = (wp.cx1 ~= wp.cx2) and math.rad(90) or 0
+			local sideAngle = (wp.cx1 == wp.cx2) and math.rad(90) or 0
 			local wCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 
 			local clone = wallPanelTemplate:Clone()

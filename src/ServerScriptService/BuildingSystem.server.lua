@@ -316,7 +316,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		newWall:SetAttribute("BeamCX2", cx2)
 		newWall:SetAttribute("BeamCZ2", cz2)
 
-		local sideAngle = (cx1 ~= cx2) and math.rad(90) or 0
+		local sideAngle = (cx1 == cx2) and math.rad(90) or 0
 		local wallCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 		if newWall:IsA("Model") then
 			newWall:PivotTo(wallCF)
