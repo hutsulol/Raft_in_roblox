@@ -83,6 +83,7 @@ local COLS = 5
 -- ─── Unified Slot Data ───
 -- Slots 1..8 = hotbar, slots 9..28 = inventory grid
 local slotData = {}
+_G.InventorySlotData = slotData
 local slotsInitialized = false
 
 -- ─── Drag ───
