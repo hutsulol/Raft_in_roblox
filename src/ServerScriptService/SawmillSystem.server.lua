@@ -96,10 +96,10 @@ local function prepareForBelt(model)
 	end
 end
 
--- Animate a model sliding along the belt using a Weld (jitter-free, moves with raft)
+-- Animate a model sliding along the belt using a Motor6D weld (jitter-free)
 -- startPart/endPart: sawmill parts to interpolate between
--- sawmill: used for belt orientation
-local function slideModel(model, startPart, endPart, duration, sawmill)
+-- beltDirLocal: pre-computed belt direction in raft-local space
+local function slideModel(model, startPart, endPart, duration, beltDirLocal)
 	if not model or not model.Parent then return end
 
 	local raft = getRaft()
@@ -110,10 +110,6 @@ local function slideModel(model, startPart, endPart, duration, sawmill)
 	-- Get positions in raft-local space (computed once, stable)
 	local startLocal = raftCF:PointToObjectSpace(getPartPosition(startPart) + Vector3.new(0, 1.5, 0))
 	local endLocal = raftCF:PointToObjectSpace(getPartPosition(endPart) + Vector3.new(0, 1.5, 0))
-
-	-- Get belt direction in raft-local space for orientation
-	local beltDirWorld = sawmill:GetPivot().RightVector
-	local beltDirLocal = raftCF:VectorToObjectSpace(beltDirWorld)
 
 	-- Prepare model: unanchored, no collision, massless
 	prepareForBelt(model)
@@ -134,7 +130,7 @@ local function slideModel(model, startPart, endPart, duration, sawmill)
 		end
 	end
 
-	-- Create a Motor6D from raft to primary part (allows smooth C0 animation)
+	-- Create a Motor6D from raft to primary part
 	local motor = Instance.new("Motor6D")
 	motor.Name = "BeltMotor"
 	motor.Part0 = raftPart
@@ -153,7 +149,6 @@ local function slideModel(model, startPart, endPart, duration, sawmill)
 		local t = i / steps
 		local localPos = startLocal:Lerp(endLocal, t)
 
-		-- Update weld offset (smooth, no jitter — moves with raft physically)
 		motor.C0 = CFrame.new(localPos) * orientLocal
 
 		if i < steps then
@@ -161,7 +156,14 @@ local function slideModel(model, startPart, endPart, duration, sawmill)
 		end
 	end
 
-	-- Clean up motor before destroying model
+	-- Anchor all parts BEFORE destroying motor so nothing flies off
+	if model and model.Parent then
+		if model:IsA("BasePart") then model.Anchored = true end
+		for _, p in model:GetDescendants() do
+			if p:IsA("BasePart") then p.Anchored = true end
+		end
+	end
+
 	if motor and motor.Parent then
 		motor:Destroy()
 	end
@@ -191,6 +193,21 @@ local function processLog(sawmill, droppedLog)
 			return
 		end
 
+		-- Compute belt direction from actual placer→claimer positions (raft-local)
+		local raft = getRaft()
+		if not raft or not raft.PrimaryPart then
+			sawmill:SetAttribute("SawmillState", "idle")
+			sawmillActionEvent:FireAllClients("stopProcessing", sawmill)
+			return
+		end
+		local raftCF = raft.PrimaryPart.CFrame
+		local placerLocal = raftCF:PointToObjectSpace(getPartPosition(parts.hexagonPlacer))
+		local claimerLocal = raftCF:PointToObjectSpace(getPartPosition(parts.hexagonClaimer))
+		local beltDirLocal = (claimerLocal - placerLocal)
+		beltDirLocal = Vector3.new(beltDirLocal.X, 0, beltDirLocal.Z)
+		if beltDirLocal.Magnitude < 0.01 then beltDirLocal = Vector3.new(1, 0, 0) end
+		beltDirLocal = beltDirLocal.Unit
+
 		-- Phase 1: Spawn log and slide to saw blade
 		local logTemplate = rs:FindFirstChild("Log")
 		if not logTemplate then
@@ -204,7 +221,7 @@ local function processLog(sawmill, droppedLog)
 		ensurePrimaryPart(logClone)
 		logClone.Parent = workspace
 
-		slideModel(logClone, parts.hexagonPlacer, parts.sawBlade, SLIDE_TIME, sawmill)
+		slideModel(logClone, parts.hexagonPlacer, parts.sawBlade, SLIDE_TIME, beltDirLocal)
 
 		-- Phase 2: Destroy log at saw, pause
 		if logClone and logClone.Parent then
@@ -220,7 +237,7 @@ local function processLog(sawmill, droppedLog)
 			ensurePrimaryPart(plankClone)
 			plankClone.Parent = workspace
 
-			slideModel(plankClone, parts.sawBlade, parts.hexagonClaimer, OUTPUT_TIME, sawmill)
+			slideModel(plankClone, parts.sawBlade, parts.hexagonClaimer, OUTPUT_TIME, beltDirLocal)
 
 			-- Turn planks into a pickupable dropped item
 			if plankClone and plankClone.Parent then
