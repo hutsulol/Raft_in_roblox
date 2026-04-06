@@ -113,10 +113,11 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 	clone:PivotTo(CFrame.new(spawnPos))
 	clone.Parent = workspace
 
-	-- Unanchor and set up physics
+	-- Unanchor and set up physics (Massless so they don't affect raft speed)
 	for _, part in clone:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
+			part.Massless = true
 			part:SetNetworkOwner(nil)
 		end
 	end

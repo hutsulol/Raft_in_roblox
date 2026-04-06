@@ -91,20 +91,28 @@ local function processLog(sawmill, droppedLog)
 				if first then plankClone.PrimaryPart = first end
 			end
 
-			-- Anchor, no collision — just a pickup target
+			-- Anchor, no collision, no touch — just a visual pickup target
 			if plankClone:IsA("BasePart") then
 				plankClone.Anchored = true
 				plankClone.CanCollide = false
+				plankClone.CanTouch = false
 			end
 			for _, p in plankClone:GetDescendants() do
 				if p:IsA("BasePart") then
 					p.Anchored = true
 					p.CanCollide = false
+					p.CanTouch = false
 				end
 			end
 
+			-- Orient plank along the belt direction
 			local claimerPos = getPartPosition(parts.hexagonClaimer) + Vector3.new(0, 1.5, 0)
-			plankClone:PivotTo(CFrame.new(claimerPos))
+			local placerPos = getPartPosition(parts.hexagonPlacer)
+			local beltDir = (claimerPos - placerPos)
+			beltDir = Vector3.new(beltDir.X, 0, beltDir.Z)
+			if beltDir.Magnitude < 0.01 then beltDir = Vector3.new(1, 0, 0) end
+			beltDir = beltDir.Unit
+			plankClone:PivotTo(CFrame.lookAt(claimerPos, claimerPos + beltDir))
 			plankClone.Parent = workspace
 
 			plankClone:SetAttribute("ResourceType", "Plank")
