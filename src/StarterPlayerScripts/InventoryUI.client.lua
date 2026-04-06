@@ -1410,7 +1410,9 @@ local numberKeys = {
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode == Enum.KeyCode.E then
-		toggleInventory()
+		if not _G.SuppressInventoryToggle then
+			toggleInventory()
+		end
 	end
 	local slotNum = numberKeys[input.KeyCode]
 	if slotNum then
