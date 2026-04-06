@@ -112,8 +112,8 @@ RunService.RenderStepped:Connect(function(dt)
 		local angle = spinAngles[sawmill]
 		local motors = getSpinMotors(sawmill)
 		for _, motor in motors do
-			-- Rotate forward (around the roller's axle axis)
-			motor.Transform = CFrame.Angles(angle, 0, 0)
+			-- Rotate forward around Y axis (roller axle)
+			motor.Transform = CFrame.Angles(0, angle, 0)
 		end
 	end
 
