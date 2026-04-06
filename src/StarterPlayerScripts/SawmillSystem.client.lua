@@ -9,15 +9,21 @@ local mouse = player:GetMouse()
 
 local sawmillActionEvent = ReplicatedStorage:WaitForChild("SawmillAction")
 
--- Track which sawmills are currently spinning
-local spinningSawmills = {}
-
--- Track cumulative rotation angle per sawmill
-local spinAngles = {}
+-- Constants (must match server)
+local SLIDE_TIME = 5
+local SAW_TIME = 1.5
+local OUTPUT_TIME = 3
 
 local HEXAGON_SPIN_SPEED = math.rad(360)
 
--- Billboard for "Drop a log here" hint
+-- Track spinning sawmills
+local spinningSawmills = {}
+local spinAngles = {}
+
+-- Track active belt animations (client-side visual only)
+local activeAnimations = {}
+
+-- Billboard state
 local activeBillboard = nil
 local billboardSawmill = nil
 
@@ -32,7 +38,6 @@ local function findSawmillFromPart(part)
 	return nil
 end
 
--- Find all Motor6D joints named "SpinMotor" inside the sawmill
 local function getSpinMotors(sawmill)
 	local motors = {}
 	for _, desc in sawmill:GetDescendants() do
@@ -41,6 +46,21 @@ local function getSpinMotors(sawmill)
 		end
 	end
 	return motors
+end
+
+local function getSawmillParts(sawmill)
+	local parts = { hexagonPlacer = nil, hexagonClaimer = nil, sawBlade = nil }
+	for _, child in sawmill:GetDescendants() do
+		if child.Name == "Hexagon_placer" then parts.hexagonPlacer = child end
+		if child.Name == "Hexagon_claimer" then parts.hexagonClaimer = child end
+		if child.Name == "SawBlade" then parts.sawBlade = child end
+	end
+	return parts
+end
+
+local function getPartPosition(part)
+	if part:IsA("Model") then return part:GetPivot().Position end
+	return part.CFrame.Position
 end
 
 local function clearBillboard()
@@ -97,9 +117,62 @@ local function showBillboard(part, text, subText, sawmill)
 	billboardSawmill = sawmill
 end
 
+-- ─── Create a local-only visual clone (no physics, no replication) ───
+local function createVisualClone(templateName)
+	local template = ReplicatedStorage:FindFirstChild(templateName)
+	if not template then return nil end
+
+	local clone = template:Clone()
+	if clone:IsA("Model") and not clone.PrimaryPart then
+		local first = clone:FindFirstChildWhichIsA("BasePart")
+		if first then clone.PrimaryPart = first end
+	end
+
+	-- Make completely non-physical
+	if clone:IsA("BasePart") then
+		clone.Anchored = true
+		clone.CanCollide = false
+		clone.CanTouch = false
+		clone.CanQuery = false
+	end
+	for _, p in clone:GetDescendants() do
+		if p:IsA("BasePart") then
+			p.Anchored = true
+			p.CanCollide = false
+			p.CanTouch = false
+			p.CanQuery = false
+		end
+	end
+
+	clone.Parent = workspace
+	return clone
+end
+
+-- ─── Start belt animation for a sawmill (client-side visuals only) ───
+local function startBeltAnimation(sawmill)
+	local parts = getSawmillParts(sawmill)
+	if not parts.hexagonPlacer or not parts.sawBlade or not parts.hexagonClaimer then return end
+
+	local startTime = tick()
+
+	-- Create log visual
+	local logClone = createVisualClone("Log")
+
+	local anim = {
+		sawmill = sawmill,
+		parts = parts,
+		startTime = startTime,
+		logClone = logClone,
+		plankClone = nil,
+		phase = "log", -- "log", "sawing", "plank", "done"
+	}
+
+	activeAnimations[sawmill] = anim
+end
+
 -- ─── Update each frame ───
 RunService.RenderStepped:Connect(function(dt)
-	-- Spin motors for active sawmills (safe: doesn't fight physics)
+	-- Spin motors for active sawmills
 	for sawmill, _ in spinningSawmills do
 		if not sawmill or not sawmill.Parent then
 			spinningSawmills[sawmill] = nil
@@ -112,8 +185,89 @@ RunService.RenderStepped:Connect(function(dt)
 		local angle = spinAngles[sawmill]
 		local motors = getSpinMotors(sawmill)
 		for _, motor in motors do
-			-- Rotate forward around Y axis (roller axle)
 			motor.Transform = CFrame.Angles(0, angle, 0)
+		end
+	end
+
+	-- Update belt animations
+	for sawmill, anim in activeAnimations do
+		if not sawmill or not sawmill.Parent then
+			-- Clean up
+			if anim.logClone and anim.logClone.Parent then anim.logClone:Destroy() end
+			if anim.plankClone and anim.plankClone.Parent then anim.plankClone:Destroy() end
+			activeAnimations[sawmill] = nil
+			continue
+		end
+
+		local elapsed = tick() - anim.startTime
+		local parts = anim.parts
+
+		-- Validate parts still exist
+		if not parts.hexagonPlacer or not parts.hexagonPlacer.Parent then
+			activeAnimations[sawmill] = nil
+			continue
+		end
+
+		-- Read current world positions of sawmill parts (they move with raft)
+		local placerPos = getPartPosition(parts.hexagonPlacer) + Vector3.new(0, 1.5, 0)
+		local sawBladePos = getPartPosition(parts.sawBlade) + Vector3.new(0, 1.5, 0)
+		local claimerPos = getPartPosition(parts.hexagonClaimer) + Vector3.new(0, 1.5, 0)
+
+		-- Belt direction for orientation
+		local beltDir = (claimerPos - placerPos)
+		beltDir = Vector3.new(beltDir.X, 0, beltDir.Z)
+		if beltDir.Magnitude < 0.01 then beltDir = Vector3.new(1, 0, 0) end
+		beltDir = beltDir.Unit
+
+		-- Orientation: face along belt, tip 90° on X to lie flat
+		local orientCF = CFrame.lookAt(Vector3.zero, beltDir) * CFrame.Angles(math.rad(90), 0, 0)
+
+		if elapsed < SLIDE_TIME then
+			-- Phase 1: Log slides from placer to saw blade
+			local t = elapsed / SLIDE_TIME
+			local pos = placerPos:Lerp(sawBladePos, t)
+			if anim.logClone and anim.logClone.Parent then
+				anim.logClone:PivotTo(orientCF + pos)
+			end
+
+		elseif elapsed < SLIDE_TIME + SAW_TIME then
+			-- Phase 2: Sawing - destroy log
+			if anim.logClone and anim.logClone.Parent then
+				anim.logClone:Destroy()
+				anim.logClone = nil
+			end
+
+			-- Create plank visual if not yet
+			if not anim.plankClone then
+				anim.plankClone = createVisualClone("plank")
+			end
+			-- Keep plank at saw blade during sawing
+			if anim.plankClone and anim.plankClone.Parent then
+				anim.plankClone:PivotTo(orientCF + sawBladePos)
+			end
+
+		elseif elapsed < SLIDE_TIME + SAW_TIME + OUTPUT_TIME then
+			-- Phase 3: Plank slides from saw blade to claimer
+			if anim.logClone and anim.logClone.Parent then
+				anim.logClone:Destroy()
+				anim.logClone = nil
+			end
+			if not anim.plankClone then
+				anim.plankClone = createVisualClone("plank")
+			end
+
+			local plankElapsed = elapsed - SLIDE_TIME - SAW_TIME
+			local t = plankElapsed / OUTPUT_TIME
+			local pos = sawBladePos:Lerp(claimerPos, t)
+			if anim.plankClone and anim.plankClone.Parent then
+				anim.plankClone:PivotTo(orientCF + pos)
+			end
+
+		else
+			-- Done: clean up client visuals (server spawns the real DroppedItem)
+			if anim.logClone and anim.logClone.Parent then anim.logClone:Destroy() end
+			if anim.plankClone and anim.plankClone.Parent then anim.plankClone:Destroy() end
+			activeAnimations[sawmill] = nil
 		end
 	end
 
@@ -156,21 +310,28 @@ RunService.RenderStepped:Connect(function(dt)
 	end
 end)
 
--- ─── Listen for server animation events ───
+-- ─── Listen for server events ───
 sawmillActionEvent.OnClientEvent:Connect(function(action, sawmill)
 	if action == "startProcessing" then
 		if sawmill and sawmill.Parent then
 			spinningSawmills[sawmill] = true
 			spinAngles[sawmill] = 0
+			startBeltAnimation(sawmill)
 		end
 	elseif action == "stopProcessing" then
 		if sawmill then
 			spinningSawmills[sawmill] = nil
 			spinAngles[sawmill] = nil
-			-- Reset motors to default
 			local motors = getSpinMotors(sawmill)
 			for _, motor in motors do
 				motor.Transform = CFrame.new()
+			end
+			-- Clean up animation if still active
+			if activeAnimations[sawmill] then
+				local anim = activeAnimations[sawmill]
+				if anim.logClone and anim.logClone.Parent then anim.logClone:Destroy() end
+				if anim.plankClone and anim.plankClone.Parent then anim.plankClone:Destroy() end
+				activeAnimations[sawmill] = nil
 			end
 		end
 	end

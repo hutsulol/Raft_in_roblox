@@ -1,30 +1,24 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
-local PhysicsService = game:GetService("PhysicsService")
 
 local rs = ReplicatedStorage
-
--- Create a collision group for sawmill belt items that collides with nothing
-PhysicsService:RegisterCollisionGroup("SawmillBelt")
-PhysicsService:CollisionGroupSetCollidable("SawmillBelt", "Default", false)
-PhysicsService:CollisionGroupSetCollidable("SawmillBelt", "SawmillBelt", false)
 
 local sawmillActionEvent = Instance.new("RemoteEvent")
 sawmillActionEvent.Name = "SawmillAction"
 sawmillActionEvent.Parent = rs
 
 -- Constants
-local SLIDE_TIME = 5       -- seconds: log slides from placer to saw
-local SAW_TIME = 1.5       -- seconds: sawing pause
-local OUTPUT_TIME = 3      -- seconds: planks slide from saw to claimer
+local SLIDE_TIME = 5
+local SAW_TIME = 1.5
+local OUTPUT_TIME = 3
 local PLANKS_PER_LOG = 2
-local DETECT_RADIUS = 6    -- studs: how close a dropped log must be to the placer
+local DETECT_RADIUS = 6
 
 local function getRaft()
 	return workspace:FindFirstChild("Raft")
 end
 
--- Names of parts that need to spin (use Motor6D so client can rotate via C0)
+-- Names of parts that need to spin (use Motor6D so client can rotate via Transform)
 local SPIN_PART_NAMES = { Hexagon = true, Hexagon_placer = true, Hexagon_claimer = true, SawBlade = true }
 
 local function weldToRaft(obj, raft)
@@ -33,7 +27,6 @@ local function weldToRaft(obj, raft)
 		if part:IsA("BasePart") then
 			part.Anchored = false
 			if SPIN_PART_NAMES[part.Name] then
-				-- Use Motor6D so the client can spin via Transform/C0
 				local motor = Instance.new("Motor6D")
 				motor.Name = "SpinMotor"
 				motor.Part0 = raftPart
@@ -66,204 +59,64 @@ local function getPartPosition(part)
 	return part.CFrame.Position
 end
 
--- Ensure PrimaryPart on a model clone
-local function ensurePrimaryPart(model)
-	if model:IsA("Model") and not model.PrimaryPart then
-		local first = model:FindFirstChildWhichIsA("BasePart")
-		if first then model.PrimaryPart = first end
-	end
-end
-
--- Prepare a model for belt animation: no collision, massless, unanchored for welding
-local function prepareForBelt(model)
-	if model:IsA("BasePart") then
-		model.Anchored = false
-		model.CanCollide = false
-		model.CanTouch = false
-		model.CanQuery = false
-		model.Massless = true
-		model.CollisionGroup = "SawmillBelt"
-	end
-	for _, p in model:GetDescendants() do
-		if p:IsA("BasePart") then
-			p.Anchored = false
-			p.CanCollide = false
-			p.CanTouch = false
-			p.CanQuery = false
-			p.Massless = true
-			p.CollisionGroup = "SawmillBelt"
-		end
-	end
-end
-
--- Animate a model sliding along the belt using a Motor6D weld (jitter-free)
--- startPart/endPart: sawmill parts to interpolate between
--- beltDirLocal: pre-computed belt direction in raft-local space
-local function slideModel(model, startPart, endPart, duration, beltDirLocal)
-	if not model or not model.Parent then return end
-
-	local raft = getRaft()
-	if not raft or not raft.PrimaryPart then return end
-	local raftPart = raft.PrimaryPart
-	local raftCF = raftPart.CFrame
-
-	-- Get positions in raft-local space (computed once, stable)
-	local startLocal = raftCF:PointToObjectSpace(getPartPosition(startPart) + Vector3.new(0, 1.5, 0))
-	local endLocal = raftCF:PointToObjectSpace(getPartPosition(endPart) + Vector3.new(0, 1.5, 0))
-
-	-- Prepare model: unanchored, no collision, massless
-	prepareForBelt(model)
-
-	-- Get the model's primary part for welding
-	local primaryPart = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
-	if not primaryPart then return end
-
-	-- Weld all child parts to the primary part
-	if model:IsA("Model") then
-		for _, p in model:GetDescendants() do
-			if p:IsA("BasePart") and p ~= primaryPart then
-				local w = Instance.new("WeldConstraint")
-				w.Part0 = primaryPart
-				w.Part1 = p
-				w.Parent = p
-			end
-		end
-	end
-
-	-- Create a Motor6D from raft to primary part
-	local motor = Instance.new("Motor6D")
-	motor.Name = "BeltMotor"
-	motor.Part0 = raftPart
-	motor.Part1 = primaryPart
-	motor.C1 = CFrame.new()
-	motor.Parent = primaryPart
-
-	-- Orientation: face along belt, rotate 90° on X to lie flat
-	local orientLocal = CFrame.lookAt(Vector3.zero, beltDirLocal) * CFrame.Angles(math.rad(90), 0, 0)
-
-	local steps = math.max(1, math.ceil(duration * 30))
-	for i = 0, steps do
-		if not model or not model.Parent then return end
-		if not raftPart or not raftPart.Parent then return end
-
-		local t = i / steps
-		local localPos = startLocal:Lerp(endLocal, t)
-
-		motor.C0 = CFrame.new(localPos) * orientLocal
-
-		if i < steps then
-			task.wait(1 / 30)
-		end
-	end
-
-	-- Anchor all parts BEFORE destroying motor so nothing flies off
-	if model and model.Parent then
-		if model:IsA("BasePart") then model.Anchored = true end
-		for _, p in model:GetDescendants() do
-			if p:IsA("BasePart") then p.Anchored = true end
-		end
-	end
-
-	if motor and motor.Parent then
-		motor:Destroy()
-	end
-end
-
 -- ─── Process a log through the sawmill ───
+-- Server: handles inventory/state only, tells clients to animate visuals
 local function processLog(sawmill, droppedLog)
 	if sawmill:GetAttribute("SawmillState") ~= "idle" then return end
 
 	local resType = droppedLog:GetAttribute("ResourceType")
 	if resType ~= "Log" then return end
 
-	sawmill:SetAttribute("SawmillState", "processing")
+	local parts = getSawmillParts(sawmill)
+	if not parts.hexagonPlacer or not parts.sawBlade or not parts.hexagonClaimer then return end
 
-	-- Destroy the dropped log immediately
+	sawmill:SetAttribute("SawmillState", "processing")
 	droppedLog:Destroy()
 
-	local parts = getSawmillParts(sawmill)
-
-	-- Notify clients to start spinning
+	-- Tell clients to start visual animation (spinning + log/plank models)
 	sawmillActionEvent:FireAllClients("startProcessing", sawmill)
 
 	task.spawn(function()
-		if not parts.hexagonPlacer or not parts.sawBlade or not parts.hexagonClaimer then
-			sawmill:SetAttribute("SawmillState", "idle")
-			sawmillActionEvent:FireAllClients("stopProcessing", sawmill)
-			return
-		end
+		-- Wait for full animation: log slide + sawing + plank slide
+		task.wait(SLIDE_TIME + SAW_TIME + OUTPUT_TIME)
 
-		-- Compute belt direction from actual placer→claimer positions (raft-local)
-		local raft = getRaft()
-		if not raft or not raft.PrimaryPart then
-			sawmill:SetAttribute("SawmillState", "idle")
-			sawmillActionEvent:FireAllClients("stopProcessing", sawmill)
-			return
-		end
-		local raftCF = raft.PrimaryPart.CFrame
-		local placerLocal = raftCF:PointToObjectSpace(getPartPosition(parts.hexagonPlacer))
-		local claimerLocal = raftCF:PointToObjectSpace(getPartPosition(parts.hexagonClaimer))
-		local beltDirLocal = (claimerLocal - placerLocal)
-		beltDirLocal = Vector3.new(beltDirLocal.X, 0, beltDirLocal.Z)
-		if beltDirLocal.Magnitude < 0.01 then beltDirLocal = Vector3.new(1, 0, 0) end
-		beltDirLocal = beltDirLocal.Unit
-
-		-- Phase 1: Spawn log and slide to saw blade
-		local logTemplate = rs:FindFirstChild("Log")
-		if not logTemplate then
-			sawmill:SetAttribute("SawmillState", "idle")
-			sawmillActionEvent:FireAllClients("stopProcessing", sawmill)
-			return
-		end
-
-		local logClone = logTemplate:Clone()
-		logClone.Name = "SawmillLog"
-		ensurePrimaryPart(logClone)
-		logClone.Parent = workspace
-
-		slideModel(logClone, parts.hexagonPlacer, parts.sawBlade, SLIDE_TIME, beltDirLocal)
-
-		-- Phase 2: Destroy log at saw, pause
-		if logClone and logClone.Parent then
-			logClone:Destroy()
-		end
-		task.wait(SAW_TIME)
-
-		-- Phase 3: Spawn planks and slide to claimer
+		-- Spawn the final plank as a DroppedItem at the claimer position
 		local plankTemplate = rs:FindFirstChild("plank")
-		if plankTemplate then
+		if plankTemplate and parts.hexagonClaimer and parts.hexagonClaimer.Parent then
 			local plankClone = plankTemplate:Clone()
 			plankClone.Name = "SawmillPlank"
-			ensurePrimaryPart(plankClone)
+
+			if plankClone:IsA("Model") and not plankClone.PrimaryPart then
+				local first = plankClone:FindFirstChildWhichIsA("BasePart")
+				if first then plankClone.PrimaryPart = first end
+			end
+
+			-- Anchor, no collision — just a pickup target
+			if plankClone:IsA("BasePart") then
+				plankClone.Anchored = true
+				plankClone.CanCollide = false
+			end
+			for _, p in plankClone:GetDescendants() do
+				if p:IsA("BasePart") then
+					p.Anchored = true
+					p.CanCollide = false
+				end
+			end
+
+			local claimerPos = getPartPosition(parts.hexagonClaimer) + Vector3.new(0, 1.5, 0)
+			plankClone:PivotTo(CFrame.new(claimerPos))
 			plankClone.Parent = workspace
 
-			slideModel(plankClone, parts.sawBlade, parts.hexagonClaimer, OUTPUT_TIME, beltDirLocal)
+			plankClone:SetAttribute("ResourceType", "Plank")
+			plankClone:SetAttribute("ResourceAmount", PLANKS_PER_LOG)
+			plankClone:SetAttribute("IsToolDrop", false)
+			CollectionService:AddTag(plankClone, "DroppedItem")
 
-			-- Turn planks into a pickupable dropped item
-			if plankClone and plankClone.Parent then
-				-- Anchor and re-enable CanQuery for pickup
-				if plankClone:IsA("BasePart") then
-					plankClone.Anchored = true
-					plankClone.CanQuery = true
+			task.delay(120, function()
+				if plankClone and plankClone.Parent then
+					plankClone:Destroy()
 				end
-				for _, p in plankClone:GetDescendants() do
-					if p:IsA("BasePart") then
-						p.Anchored = true
-						p.CanQuery = true
-					end
-				end
-				plankClone:SetAttribute("ResourceType", "Plank")
-				plankClone:SetAttribute("ResourceAmount", PLANKS_PER_LOG)
-				plankClone:SetAttribute("IsToolDrop", false)
-				CollectionService:AddTag(plankClone, "DroppedItem")
-
-				-- Auto-despawn after 2 minutes
-				task.delay(120, function()
-					if plankClone and plankClone.Parent then
-						plankClone:Destroy()
-					end
-				end)
-			end
+			end)
 		end
 
 		sawmill:SetAttribute("SawmillState", "idle")
@@ -300,7 +153,6 @@ local function checkForLogsNearSawmills()
 	end
 end
 
--- Poll for nearby logs every 0.5 seconds
 task.spawn(function()
 	while true do
 		task.wait(0.5)
