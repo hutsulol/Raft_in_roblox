@@ -74,10 +74,10 @@ local function ensurePrimaryPart(model)
 	end
 end
 
--- Fully neutralize physics on a clone: anchor, no collision, no mass, separate collision group
-local function disablePhysics(model)
+-- Prepare a model for belt animation: no collision, massless, unanchored for welding
+local function prepareForBelt(model)
 	if model:IsA("BasePart") then
-		model.Anchored = true
+		model.Anchored = false
 		model.CanCollide = false
 		model.CanTouch = false
 		model.CanQuery = false
@@ -86,7 +86,7 @@ local function disablePhysics(model)
 	end
 	for _, p in model:GetDescendants() do
 		if p:IsA("BasePart") then
-			p.Anchored = true
+			p.Anchored = false
 			p.CanCollide = false
 			p.CanTouch = false
 			p.CanQuery = false
@@ -96,42 +96,74 @@ local function disablePhysics(model)
 	end
 end
 
--- Animate a model sliding between two sawmill parts (reads positions live each frame)
--- startPart/endPart: the actual BaseParts to interpolate between
--- sawmill: used to get the belt orientation
+-- Animate a model sliding along the belt using a Weld (jitter-free, moves with raft)
+-- startPart/endPart: sawmill parts to interpolate between
+-- sawmill: used for belt orientation
 local function slideModel(model, startPart, endPart, duration, sawmill)
 	if not model or not model.Parent then return end
 
-	-- Ensure anchored + no collision
-	disablePhysics(model)
+	local raft = getRaft()
+	if not raft or not raft.PrimaryPart then return end
+	local raftPart = raft.PrimaryPart
+	local raftCF = raftPart.CFrame
+
+	-- Get positions in raft-local space (computed once, stable)
+	local startLocal = raftCF:PointToObjectSpace(getPartPosition(startPart) + Vector3.new(0, 1.5, 0))
+	local endLocal = raftCF:PointToObjectSpace(getPartPosition(endPart) + Vector3.new(0, 1.5, 0))
+
+	-- Get belt direction in raft-local space for orientation
+	local beltDirWorld = sawmill:GetPivot().RightVector
+	local beltDirLocal = raftCF:VectorToObjectSpace(beltDirWorld)
+
+	-- Prepare model: unanchored, no collision, massless
+	prepareForBelt(model)
+
+	-- Get the model's primary part for welding
+	local primaryPart = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart")
+	if not primaryPart then return end
+
+	-- Weld all child parts to the primary part
+	if model:IsA("Model") then
+		for _, p in model:GetDescendants() do
+			if p:IsA("BasePart") and p ~= primaryPart then
+				local w = Instance.new("WeldConstraint")
+				w.Part0 = primaryPart
+				w.Part1 = p
+				w.Parent = p
+			end
+		end
+	end
+
+	-- Create a Motor6D from raft to primary part (allows smooth C0 animation)
+	local motor = Instance.new("Motor6D")
+	motor.Name = "BeltMotor"
+	motor.Part0 = raftPart
+	motor.Part1 = primaryPart
+	motor.C1 = CFrame.new()
+	motor.Parent = primaryPart
+
+	-- Orientation: face along belt, rotate 90° on X to lie flat
+	local orientLocal = CFrame.lookAt(Vector3.zero, beltDirLocal) * CFrame.Angles(math.rad(90), 0, 0)
 
 	local steps = math.max(1, math.ceil(duration * 30))
 	for i = 0, steps do
 		if not model or not model.Parent then return end
-		if not startPart or not startPart.Parent then return end
-		if not endPart or not endPart.Parent then return end
+		if not raftPart or not raftPart.Parent then return end
 
 		local t = i / steps
+		local localPos = startLocal:Lerp(endLocal, t)
 
-		-- Read current world positions each frame (follows raft movement)
-		local startPos = getPartPosition(startPart) + Vector3.new(0, 1.5, 0)
-		local endPos = getPartPosition(endPart) + Vector3.new(0, 1.5, 0)
-		local worldPos = startPos:Lerp(endPos, t)
-
-		-- Get belt direction from sawmill's current orientation
-		local beltDir = sawmill:GetPivot().RightVector
-		beltDir = Vector3.new(beltDir.X, 0, beltDir.Z)
-		if beltDir.Magnitude < 0.01 then beltDir = Vector3.new(1, 0, 0) end
-		beltDir = beltDir.Unit
-
-		-- Orient log: face along belt, then roll 90° on Z so it lies sideways
-		local orientCF = CFrame.lookAt(worldPos, worldPos + beltDir) * CFrame.Angles(0, 0, math.rad(90))
-
-		model:PivotTo(orientCF)
+		-- Update weld offset (smooth, no jitter — moves with raft physically)
+		motor.C0 = CFrame.new(localPos) * orientLocal
 
 		if i < steps then
 			task.wait(1 / 30)
 		end
+	end
+
+	-- Clean up motor before destroying model
+	if motor and motor.Parent then
+		motor:Destroy()
 	end
 end
 
@@ -170,7 +202,6 @@ local function processLog(sawmill, droppedLog)
 		local logClone = logTemplate:Clone()
 		logClone.Name = "SawmillLog"
 		ensurePrimaryPart(logClone)
-		disablePhysics(logClone)
 		logClone.Parent = workspace
 
 		slideModel(logClone, parts.hexagonPlacer, parts.sawBlade, SLIDE_TIME, sawmill)
@@ -187,17 +218,22 @@ local function processLog(sawmill, droppedLog)
 			local plankClone = plankTemplate:Clone()
 			plankClone.Name = "SawmillPlank"
 			ensurePrimaryPart(plankClone)
-			disablePhysics(plankClone)
 			plankClone.Parent = workspace
 
 			slideModel(plankClone, parts.sawBlade, parts.hexagonClaimer, OUTPUT_TIME, sawmill)
 
 			-- Turn planks into a pickupable dropped item
 			if plankClone and plankClone.Parent then
-				-- Re-enable CanQuery so pickup raycast can detect it
-				if plankClone:IsA("BasePart") then plankClone.CanQuery = true end
+				-- Anchor and re-enable CanQuery for pickup
+				if plankClone:IsA("BasePart") then
+					plankClone.Anchored = true
+					plankClone.CanQuery = true
+				end
 				for _, p in plankClone:GetDescendants() do
-					if p:IsA("BasePart") then p.CanQuery = true end
+					if p:IsA("BasePart") then
+						p.Anchored = true
+						p.CanQuery = true
+					end
 				end
 				plankClone:SetAttribute("ResourceType", "Plank")
 				plankClone:SetAttribute("ResourceAmount", PLANKS_PER_LOG)
