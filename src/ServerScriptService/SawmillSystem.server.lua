@@ -18,14 +18,29 @@ local function getRaft()
 	return workspace:FindFirstChild("Raft")
 end
 
+-- Names of parts that need to spin (use Motor6D so client can rotate via C0)
+local SPIN_PART_NAMES = { Hexagon = true, Hexagon_placer = true, Hexagon_claimer = true, SawBlade = true }
+
 local function weldToRaft(obj, raft)
+	local raftPart = raft.PrimaryPart
 	for _, part in obj:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
-			local weld = Instance.new("WeldConstraint")
-			weld.Part0 = part
-			weld.Part1 = raft.PrimaryPart
-			weld.Parent = part
+			if SPIN_PART_NAMES[part.Name] then
+				-- Use Motor6D so the client can spin via Transform/C0
+				local motor = Instance.new("Motor6D")
+				motor.Name = "SpinMotor"
+				motor.Part0 = raftPart
+				motor.Part1 = part
+				motor.C0 = raftPart.CFrame:Inverse() * part.CFrame
+				motor.C1 = CFrame.new()
+				motor.Parent = part
+			else
+				local weld = Instance.new("WeldConstraint")
+				weld.Part0 = part
+				weld.Part1 = raftPart
+				weld.Parent = part
+			end
 		end
 	end
 end

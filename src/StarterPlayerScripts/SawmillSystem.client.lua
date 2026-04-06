@@ -12,6 +12,9 @@ local sawmillActionEvent = ReplicatedStorage:WaitForChild("SawmillAction")
 -- Track which sawmills are currently spinning
 local spinningSawmills = {}
 
+-- Track cumulative rotation angle per sawmill
+local spinAngles = {}
+
 local HEXAGON_SPIN_SPEED = math.rad(360)
 
 -- Billboard for "Drop a log here" hint
@@ -29,17 +32,15 @@ local function findSawmillFromPart(part)
 	return nil
 end
 
-local function getSpinParts(sawmill)
-	local hexagons = {}
-	local sawBlade = nil
+-- Find all Motor6D joints named "SpinMotor" inside the sawmill
+local function getSpinMotors(sawmill)
+	local motors = {}
 	for _, desc in sawmill:GetDescendants() do
-		if desc.Name == "Hexagon" and desc:IsA("BasePart") then
-			table.insert(hexagons, desc)
-		elseif desc.Name == "SawBlade" and desc:IsA("BasePart") then
-			sawBlade = desc
+		if desc:IsA("Motor6D") and desc.Name == "SpinMotor" then
+			table.insert(motors, desc)
 		end
 	end
-	return hexagons, sawBlade
+	return motors
 end
 
 local function clearBillboard()
@@ -98,19 +99,21 @@ end
 
 -- ─── Update each frame ───
 RunService.RenderStepped:Connect(function(dt)
-	-- Spin hexagons and saw blades for active sawmills
+	-- Spin motors for active sawmills (safe: doesn't fight physics)
 	for sawmill, _ in spinningSawmills do
 		if not sawmill or not sawmill.Parent then
 			spinningSawmills[sawmill] = nil
+			spinAngles[sawmill] = nil
 			continue
 		end
 
-		local hexagons, sawBlade = getSpinParts(sawmill)
-		for _, hex in hexagons do
-			hex.CFrame = hex.CFrame * CFrame.Angles(HEXAGON_SPIN_SPEED * dt, 0, 0)
-		end
-		if sawBlade then
-			sawBlade.CFrame = sawBlade.CFrame * CFrame.Angles(HEXAGON_SPIN_SPEED * dt, 0, 0)
+		spinAngles[sawmill] = (spinAngles[sawmill] or 0) + HEXAGON_SPIN_SPEED * dt
+
+		local angle = spinAngles[sawmill]
+		local motors = getSpinMotors(sawmill)
+		for _, motor in motors do
+			-- Rotate around local X axis via Transform (physics-safe)
+			motor.Transform = CFrame.Angles(angle, 0, 0)
 		end
 	end
 
@@ -134,7 +137,6 @@ RunService.RenderStepped:Connect(function(dt)
 		if sawmill then
 			local state = sawmill:GetAttribute("SawmillState") or "idle"
 
-			-- Find placer part for billboard
 			local placerPart = nil
 			for _, desc in sawmill:GetDescendants() do
 				if desc.Name == "Hexagon_placer" then
@@ -159,10 +161,17 @@ sawmillActionEvent.OnClientEvent:Connect(function(action, sawmill)
 	if action == "startProcessing" then
 		if sawmill and sawmill.Parent then
 			spinningSawmills[sawmill] = true
+			spinAngles[sawmill] = 0
 		end
 	elseif action == "stopProcessing" then
 		if sawmill then
 			spinningSawmills[sawmill] = nil
+			spinAngles[sawmill] = nil
+			-- Reset motors to default
+			local motors = getSpinMotors(sawmill)
+			for _, motor in motors do
+				motor.Transform = CFrame.new()
+			end
 		end
 	end
 end)
