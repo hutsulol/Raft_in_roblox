@@ -16,6 +16,7 @@ local HOTBAR_SLOTS = 8
 
 local currentHighlight = nil
 local currentTarget = nil
+local promptBillboard = nil
 
 -- Shared flag: when true, InventoryUI should NOT toggle on E press
 _G.SuppressInventoryToggle = false
@@ -53,8 +54,74 @@ local function clearHighlight()
 		currentHighlight:Destroy()
 		currentHighlight = nil
 	end
+	if promptBillboard then
+		promptBillboard:Destroy()
+		promptBillboard = nil
+	end
 	currentTarget = nil
-	_G.SuppressInventoryToggle = false
+	-- Defer the flag reset so InventoryUI's InputBegan handler
+	-- still sees it as true during the same frame
+	task.defer(function()
+		if currentTarget == nil then
+			_G.SuppressInventoryToggle = false
+		end
+	end)
+end
+
+local function getAdornee(resource)
+	if resource:IsA("Model") and resource.PrimaryPart then
+		return resource.PrimaryPart
+	elseif resource:IsA("BasePart") then
+		return resource
+	end
+	return resource:FindFirstChildWhichIsA("BasePart", true) or resource
+end
+
+local function createPrompt(resource)
+	if promptBillboard then promptBillboard:Destroy() end
+
+	local adornee = getAdornee(resource)
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Size = UDim2.new(5, 0, 1.2, 0)
+	billboard.StudsOffset = Vector3.new(0, 4, 0)
+	billboard.AlwaysOnTop = true
+	billboard.Adornee = adornee
+	billboard.Parent = playerGui
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 0.5, 0)
+	label.Position = UDim2.new(0, 0, 0, 0)
+	label.BackgroundTransparency = 1
+	label.Text = "Press E to pick up"
+	label.TextColor3 = Color3.fromRGB(255, 220, 100)
+	label.TextStrokeTransparency = 0.3
+	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.Font = Enum.Font.GothamBold
+	label.TextScaled = true
+	label.Parent = billboard
+
+	-- Show item name below
+	local resType = resource:GetAttribute("ResourceType") or "Item"
+	local resAmount = resource:GetAttribute("ResourceAmount") or 1
+	local displayText = resType:gsub("_", " ")
+	if resAmount > 1 then
+		displayText = displayText .. " x" .. resAmount
+	end
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Size = UDim2.new(1, 0, 0.4, 0)
+	nameLabel.Position = UDim2.new(0, 0, 0.55, 0)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = displayText
+	nameLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+	nameLabel.TextStrokeTransparency = 0.4
+	nameLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	nameLabel.Font = Enum.Font.Gotham
+	nameLabel.TextScaled = true
+	nameLabel.Parent = billboard
+
+	promptBillboard = billboard
 end
 
 -- Find which hotbar slot the mouse is hovering over
@@ -114,6 +181,8 @@ RunService.RenderStepped:Connect(function()
 		highlight.OutlineTransparency = 0
 		highlight.Parent = resource
 		currentHighlight = highlight
+
+		createPrompt(resource)
 	end
 end)
 
@@ -146,15 +215,19 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 		local data = slotData[slotIndex]
 		if not data then return end
-		if data.type ~= "resource" then return end
 
-		if data.count <= 1 then
+		if data.type == "resource" then
+			if data.count <= 1 then
+				slotData[slotIndex] = nil
+			else
+				data.count = data.count - 1
+			end
+			local dropPos = getMouseWorldPosition()
+			dropEvent:FireServer(data.name, 1, dropPos)
+		elseif data.type == "tool" then
 			slotData[slotIndex] = nil
-		else
-			data.count = data.count - 1
+			local dropPos = getMouseWorldPosition()
+			dropEvent:FireServer(data.toolName, 1, dropPos)
 		end
-
-		local dropPos = getMouseWorldPosition()
-		dropEvent:FireServer(data.name, 1, dropPos)
 	end
 end)

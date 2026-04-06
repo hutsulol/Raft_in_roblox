@@ -546,11 +546,9 @@ local function endDrag(mousePos)
 	elseif not targetSlot and srcSlot then
 		-- Dropped outside any slot: drop item into the world
 		local srcData = slotData[srcSlot]
-		if srcData and srcData.type == "resource" then
-			local dropEvent = ReplicatedStorage:FindFirstChild("DropItem")
-			if dropEvent then
-				local dropCount = isSplit and 1 or srcData.count
-
+		if srcData then
+			local dropEvt = ReplicatedStorage:FindFirstChild("DropItem")
+			if dropEvt then
 				-- Raycast from mouse to find drop position in the world
 				local cam = workspace.CurrentCamera
 				local mPos = UserInputService:GetMouseLocation()
@@ -562,14 +560,18 @@ local function endDrag(mousePos)
 				local result = workspace:Raycast(ray.Origin, ray.Direction * 500, rayParams)
 				local dropPos = result and result.Position or nil
 
-				-- Deduct from this specific slot so server sync doesn't take from wrong slot
-				if dropCount >= srcData.count then
+				if srcData.type == "resource" then
+					local dropCount = isSplit and 1 or srcData.count
+					if dropCount >= srcData.count then
+						slotData[srcSlot] = nil
+					else
+						srcData.count = srcData.count - dropCount
+					end
+					dropEvt:FireServer(srcData.name, dropCount, dropPos)
+				elseif srcData.type == "tool" then
 					slotData[srcSlot] = nil
-				else
-					srcData.count = srcData.count - dropCount
+					dropEvt:FireServer(srcData.toolName, 1, dropPos)
 				end
-
-				dropEvent:FireServer(srcData.name, dropCount, dropPos)
 			end
 		end
 	end

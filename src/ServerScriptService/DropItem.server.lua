@@ -18,7 +18,16 @@ local RESOURCE_TEMPLATES = {
 	Iron_Ingot = "box_model",
 }
 
--- Fallback template for any unmapped items
+-- Known resource names (items stored as counts in inventory)
+local RESOURCE_ITEMS = {
+	Log = true,
+	Plastic = true,
+	Stone = true,
+	Iron_Ore = true,
+	Iron_Ingot = true,
+}
+
+-- Fallback template for any unmapped items (tools, etc.)
 local FALLBACK_TEMPLATE = "box_model"
 
 local DROP_COOLDOWN = 0.3
@@ -44,9 +53,28 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 	local hrp = char:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 
-	local inv = _G.GetInventory and _G.GetInventory(player)
-	if not inv then return end
-	if (inv[itemName] or 0) < dropCount then return end
+	local isResource = RESOURCE_ITEMS[itemName]
+
+	if isResource then
+		-- Resource drop: deduct from inventory count
+		local inv = _G.GetInventory and _G.GetInventory(player)
+		if not inv then return end
+		if (inv[itemName] or 0) < dropCount then return end
+		inv[itemName] = inv[itemName] - dropCount
+	else
+		-- Tool drop: find and remove the tool from backpack or character
+		local tool = nil
+		local backpack = player:FindFirstChild("Backpack")
+		if backpack then
+			tool = backpack:FindFirstChild(itemName)
+		end
+		if not tool and char then
+			tool = char:FindFirstChild(itemName)
+			if tool and not tool:IsA("Tool") then tool = nil end
+		end
+		if not tool then return end
+		tool:Destroy()
+	end
 
 	-- Find the template
 	local templateName = RESOURCE_TEMPLATES[itemName] or FALLBACK_TEMPLATE
@@ -55,9 +83,6 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 		template = ReplicatedStorage:FindFirstChild(FALLBACK_TEMPLATE)
 	end
 	if not template then return end
-
-	-- Deduct from inventory
-	inv[itemName] = inv[itemName] - dropCount
 
 	-- Determine spawn position
 	local spawnPos
@@ -78,9 +103,10 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 		end
 	end
 
-	-- Set resource attributes so pickup knows what this is
+	-- Set attributes so pickup knows what this is
 	clone:SetAttribute("ResourceType", itemName)
 	clone:SetAttribute("ResourceAmount", dropCount)
+	clone:SetAttribute("IsToolDrop", not isResource)
 
 	clone:PivotTo(CFrame.new(spawnPos))
 	clone.Parent = workspace
@@ -139,15 +165,26 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 	end
 	if (hrp.Position - itemPos).Magnitude > PICKUP_DISTANCE then return end
 
-	-- Get resource info
+	-- Get item info
 	local resType = droppedItem:GetAttribute("ResourceType")
 	local resAmount = droppedItem:GetAttribute("ResourceAmount") or 1
+	local isToolDrop = droppedItem:GetAttribute("IsToolDrop")
 	if not resType then return end
 
-	-- Add to inventory
-	local inv = _G.GetInventory and _G.GetInventory(player)
-	if not inv then return end
-	inv[resType] = (inv[resType] or 0) + resAmount
+	if isToolDrop then
+		-- Tool pickup: clone the tool template and give to player
+		local toolTemplate = ReplicatedStorage:FindFirstChild(resType)
+		if not toolTemplate then return end
+		local backpack = player:FindFirstChild("Backpack")
+		if not backpack then return end
+		local toolClone = toolTemplate:Clone()
+		toolClone.Parent = backpack
+	else
+		-- Resource pickup: add to inventory count
+		local inv = _G.GetInventory and _G.GetInventory(player)
+		if not inv then return end
+		inv[resType] = (inv[resType] or 0) + resAmount
+	end
 
 	-- Destroy the dropped item
 	droppedItem:Destroy()
