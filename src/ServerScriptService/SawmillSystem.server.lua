@@ -91,9 +91,15 @@ local function slideModel(model, startPos, endPos, duration, beltDir)
 	disablePhysics(model)
 
 	-- Orient the model so its long axis (Y) lies along the belt direction
-	-- CFrame.lookAt makes -Z point along beltDir
-	-- Rotate 90° around Z to tip the Y axis into the -Z direction (lay it flat along belt)
-	local orientCF = CFrame.lookAt(Vector3.zero, beltDir) * CFrame.Angles(0, math.rad(90), math.rad(90))
+	-- Build a CFrame where Y axis = beltDir (log lies along belt)
+	local up = beltDir  -- Y axis becomes the belt direction
+	local right = up:Cross(Vector3.new(0, 1, 0))
+	if right.Magnitude < 0.01 then
+		right = up:Cross(Vector3.new(0, 0, 1))
+	end
+	right = right.Unit
+	local forward = right:Cross(up).Unit
+	local orientCF = CFrame.fromMatrix(Vector3.zero, right, up, -forward)
 
 	model:PivotTo(orientCF + startPos)
 
