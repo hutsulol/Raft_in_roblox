@@ -83,27 +83,24 @@ local function disablePhysics(model)
 end
 
 -- Animate a model sliding from A to B (anchored, in workspace)
+-- Keeps the model's default orientation, only moves its position
 local function slideModel(model, startPos, endPos, duration)
 	if not model or not model.Parent then return end
-
-	local dir = (endPos - startPos)
-	local flatDir = Vector3.new(dir.X, 0, dir.Z)
-	if flatDir.Magnitude < 0.01 then flatDir = Vector3.new(1, 0, 0) end
-	flatDir = flatDir.Unit
-
-	-- Lie the log/plank down along the belt direction (tip forward 90° around X)
-	local startCF = CFrame.lookAt(startPos, startPos + flatDir) * CFrame.Angles(math.rad(90), 0, 0)
-	local endCF = CFrame.lookAt(endPos, endPos + flatDir) * CFrame.Angles(math.rad(90), 0, 0)
 
 	-- Ensure anchored + no collision
 	disablePhysics(model)
 
-	model:PivotTo(startCF)
+	-- Place at start, keeping the model's original rotation
+	local origCF = model:GetPivot()
+	local rotation = origCF - origCF.Position  -- extract rotation only
+	model:PivotTo(rotation + startPos)
 
 	local steps = math.max(1, math.ceil(duration * 30))
 	for i = 1, steps do
 		if not model or not model.Parent then return end
-		model:PivotTo(startCF:Lerp(endCF, i / steps))
+		local t = i / steps
+		local pos = startPos:Lerp(endPos, t)
+		model:PivotTo(rotation + pos)
 		task.wait(1 / 30)
 	end
 end
