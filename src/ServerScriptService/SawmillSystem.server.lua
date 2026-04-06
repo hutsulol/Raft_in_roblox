@@ -8,12 +8,11 @@ sawmillActionEvent.Name = "SawmillAction"
 sawmillActionEvent.Parent = rs
 
 -- Constants
-local PROCESS_TIME = 5
-local SAW_TIME = 2
-local OUTPUT_TIME = 3
+local SLIDE_TIME = 5       -- seconds: log slides from placer to saw
+local SAW_TIME = 1.5       -- seconds: sawing pause
+local OUTPUT_TIME = 3      -- seconds: planks slide from saw to claimer
 local PLANKS_PER_LOG = 2
-
-local sawmillStates = {}
+local DETECT_RADIUS = 6    -- studs: how close a dropped log must be to the placer
 
 local function getRaft()
 	return workspace:FindFirstChild("Raft")
@@ -32,11 +31,7 @@ local function weldToRaft(obj, raft)
 end
 
 local function getSawmillParts(sawmill)
-	local parts = {
-		hexagonPlacer = nil,
-		hexagonClaimer = nil,
-		sawBlade = nil,
-	}
+	local parts = { hexagonPlacer = nil, hexagonClaimer = nil, sawBlade = nil }
 	for _, child in sawmill:GetDescendants() do
 		if child.Name == "Hexagon_placer" then parts.hexagonPlacer = child end
 		if child.Name == "Hexagon_claimer" then parts.hexagonClaimer = child end
@@ -46,10 +41,16 @@ local function getSawmillParts(sawmill)
 end
 
 local function getPartPosition(part)
-	if part:IsA("Model") then
-		return part:GetPivot().Position
-	end
+	if part:IsA("Model") then return part:GetPivot().Position end
 	return part.CFrame.Position
+end
+
+-- Ensure PrimaryPart on a model clone
+local function ensurePrimaryPart(model)
+	if model:IsA("Model") and not model.PrimaryPart then
+		local first = model:FindFirstChildWhichIsA("BasePart")
+		if first then model.PrimaryPart = first end
+	end
 end
 
 -- Animate a model sliding from A to B (anchored, in workspace)
@@ -58,16 +59,13 @@ local function slideModel(model, startPos, endPos, duration)
 
 	local dir = (endPos - startPos)
 	local flatDir = Vector3.new(dir.X, 0, dir.Z)
-	if flatDir.Magnitude < 0.01 then
-		flatDir = Vector3.new(1, 0, 0)
-	end
+	if flatDir.Magnitude < 0.01 then flatDir = Vector3.new(1, 0, 0) end
 	flatDir = flatDir.Unit
 
-	-- Build start/end CFrames: lying on its side, oriented along the belt
 	local startCF = CFrame.lookAt(startPos, startPos + flatDir) * CFrame.Angles(0, 0, math.rad(90))
 	local endCF = CFrame.lookAt(endPos, endPos + flatDir) * CFrame.Angles(0, 0, math.rad(90))
 
-	-- Anchor everything so physics doesn't interfere
+	-- Anchor everything
 	if model:IsA("BasePart") then
 		model.Anchored = true
 		model.CanCollide = false
@@ -89,6 +87,137 @@ local function slideModel(model, startPos, endPos, duration)
 	end
 end
 
+-- ─── Process a log through the sawmill ───
+local function processLog(sawmill, droppedLog)
+	if sawmill:GetAttribute("SawmillState") ~= "idle" then return end
+
+	-- Get the resource info before destroying
+	local resType = droppedLog:GetAttribute("ResourceType")
+	if resType ~= "Log" then return end
+
+	sawmill:SetAttribute("SawmillState", "processing")
+
+	-- Destroy the dropped log
+	droppedLog:Destroy()
+
+	local parts = getSawmillParts(sawmill)
+
+	-- Notify clients to start spinning
+	sawmillActionEvent:FireAllClients("startProcessing", sawmill)
+
+	task.spawn(function()
+		local placerPos = parts.hexagonPlacer and getPartPosition(parts.hexagonPlacer) or sawmill:GetPivot().Position
+		local sawBladePos = parts.sawBlade and getPartPosition(parts.sawBlade) or sawmill:GetPivot().Position
+		local claimerPos = parts.hexagonClaimer and getPartPosition(parts.hexagonClaimer) or sawmill:GetPivot().Position
+
+		-- Raise above belt surface
+		placerPos = placerPos + Vector3.new(0, 1.5, 0)
+		sawBladePos = sawBladePos + Vector3.new(0, 1.5, 0)
+		claimerPos = claimerPos + Vector3.new(0, 1.5, 0)
+
+		-- Phase 1: Spawn log and slide to saw blade
+		local logTemplate = rs:FindFirstChild("Log")
+		if not logTemplate then
+			sawmill:SetAttribute("SawmillState", "idle")
+			sawmillActionEvent:FireAllClients("stopProcessing", sawmill)
+			return
+		end
+
+		local logClone = logTemplate:Clone()
+		logClone.Name = "SawmillLog"
+		ensurePrimaryPart(logClone)
+		logClone.Parent = workspace
+
+		slideModel(logClone, placerPos, sawBladePos, SLIDE_TIME)
+
+		-- Phase 2: Destroy log at saw, pause
+		if logClone and logClone.Parent then
+			logClone:Destroy()
+		end
+		task.wait(SAW_TIME)
+
+		-- Phase 3: Spawn planks and slide to claimer
+		local plankTemplate = rs:FindFirstChild("plank")
+		if plankTemplate then
+			local plankClone = plankTemplate:Clone()
+			plankClone.Name = "SawmillPlank"
+			ensurePrimaryPart(plankClone)
+			plankClone.Parent = workspace
+
+			slideModel(plankClone, sawBladePos, claimerPos, OUTPUT_TIME)
+
+			-- Turn planks into a pickupable dropped item at the end
+			if plankClone and plankClone.Parent then
+				plankClone:SetAttribute("ResourceType", "Plank")
+				plankClone:SetAttribute("ResourceAmount", PLANKS_PER_LOG)
+				plankClone:SetAttribute("IsToolDrop", false)
+				CollectionService:AddTag(plankClone, "DroppedItem")
+
+				-- Unanchor so highlight/pickup works normally
+				if plankClone:IsA("BasePart") then
+					plankClone.Anchored = false
+					plankClone:SetNetworkOwner(nil)
+				end
+				for _, p in plankClone:GetDescendants() do
+					if p:IsA("BasePart") then
+						p.Anchored = false
+						p:SetNetworkOwner(nil)
+					end
+				end
+
+				-- Auto-despawn after 2 minutes
+				task.delay(120, function()
+					if plankClone and plankClone.Parent then
+						plankClone:Destroy()
+					end
+				end)
+			end
+		end
+
+		sawmill:SetAttribute("SawmillState", "idle")
+		sawmillActionEvent:FireAllClients("stopProcessing", sawmill)
+	end)
+end
+
+-- ─── Check for dropped logs near sawmill placers ───
+local function checkForLogsNearSawmills()
+	for _, sawmill in CollectionService:GetTagged("Sawmill") do
+		if sawmill:GetAttribute("SawmillState") ~= "idle" then continue end
+
+		local parts = getSawmillParts(sawmill)
+		if not parts.hexagonPlacer then continue end
+
+		local placerPos = getPartPosition(parts.hexagonPlacer)
+
+		-- Look for dropped logs near the placer
+		for _, droppedItem in CollectionService:GetTagged("DroppedItem") do
+			if not droppedItem or not droppedItem.Parent then continue end
+			if droppedItem:GetAttribute("ResourceType") ~= "Log" then continue end
+
+			local itemPos
+			if droppedItem:IsA("Model") then
+				itemPos = droppedItem:GetPivot().Position
+			else
+				itemPos = droppedItem.Position
+			end
+
+			if (itemPos - placerPos).Magnitude <= DETECT_RADIUS then
+				processLog(sawmill, droppedItem)
+				break -- one log at a time
+			end
+		end
+	end
+end
+
+-- Poll for nearby logs every 0.5 seconds
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+		checkForLogsNearSawmills()
+	end
+end)
+
+-- ─── Place sawmill on raft (unchanged) ───
 sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 	if action == "placeSawmill" then
 		local char = player.Character
@@ -124,153 +253,8 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 
 		sawmill:SetAttribute("IsSawmill", true)
 		sawmill:SetAttribute("SawmillState", "idle")
-		sawmill:SetAttribute("PlanksReady", 0)
 		CollectionService:AddTag(sawmill, "Sawmill")
 
 		tool:Destroy()
-
-	elseif action == "loadLog" then
-		local char = player.Character
-		if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-		if not data or not data.Parent then return end
-
-		local sawmill = nil
-		if data:GetAttribute("IsSawmill") then
-			sawmill = data
-		else
-			local current = data
-			while current and current ~= workspace do
-				if current:GetAttribute("IsSawmill") then
-					sawmill = current
-					break
-				end
-				current = current.Parent
-			end
-		end
-		if not sawmill then return end
-
-		if sawmill:GetAttribute("SawmillState") ~= "idle" then return end
-
-		local hrp = char.HumanoidRootPart
-		if (hrp.Position - sawmill:GetPivot().Position).Magnitude > 25 then return end
-
-		local inv = _G.GetInventory and _G.GetInventory(player)
-		if not inv then return end
-		if (inv.Log or 0) < 1 then return end
-
-		inv.Log = inv.Log - 1
-		if _G.SendInventory then _G.SendInventory(player) end
-
-		sawmill:SetAttribute("SawmillState", "processing")
-
-		local parts = getSawmillParts(sawmill)
-		local raft = getRaft()
-		if not raft or not raft.PrimaryPart then return end
-
-		sawmillActionEvent:FireAllClients("startProcessing", sawmill)
-
-		task.spawn(function()
-			-- Get world positions of key parts
-			local placerPos = parts.hexagonPlacer and getPartPosition(parts.hexagonPlacer) or sawmill:GetPivot().Position
-			local sawBladePos = parts.sawBlade and getPartPosition(parts.sawBlade) or sawmill:GetPivot().Position
-			local claimerPos = parts.hexagonClaimer and getPartPosition(parts.hexagonClaimer) or sawmill:GetPivot().Position
-
-			-- Raise slightly above the belt surface
-			placerPos = placerPos + Vector3.new(0, 1.5, 0)
-			sawBladePos = sawBladePos + Vector3.new(0, 1.5, 0)
-			claimerPos = claimerPos + Vector3.new(0, 1.5, 0)
-
-			-- Phase 1: Spawn log in WORKSPACE (not inside sawmill) and slide it
-			local logTemplate = rs:FindFirstChild("Log")
-			if not logTemplate then
-				sawmill:SetAttribute("SawmillState", "idle")
-				sawmillActionEvent:FireAllClients("stopProcessing", sawmill)
-				return
-			end
-
-			local logClone = logTemplate:Clone()
-			logClone.Name = "SawmillLog"
-			-- Ensure PrimaryPart is set for PivotTo to work
-			if logClone:IsA("Model") and not logClone.PrimaryPart then
-				local first = logClone:FindFirstChildWhichIsA("BasePart")
-				if first then logClone.PrimaryPart = first end
-			end
-			logClone.Parent = workspace
-
-			slideModel(logClone, placerPos, sawBladePos, PROCESS_TIME)
-
-			-- Phase 2: Destroy log, sawing pause
-			if logClone and logClone.Parent then
-				logClone:Destroy()
-			end
-			task.wait(SAW_TIME)
-
-			-- Phase 3: Spawn planks and slide to claimer
-			local plankTemplate = rs:FindFirstChild("plank")
-			local plankClone = nil
-			if plankTemplate then
-				plankClone = plankTemplate:Clone()
-				plankClone.Name = "SawmillPlank"
-				if plankClone:IsA("Model") and not plankClone.PrimaryPart then
-					local first = plankClone:FindFirstChildWhichIsA("BasePart")
-					if first then plankClone.PrimaryPart = first end
-				end
-				plankClone.Parent = workspace
-
-				slideModel(plankClone, sawBladePos, claimerPos, OUTPUT_TIME)
-			end
-
-			-- Ready for pickup
-			sawmill:SetAttribute("SawmillState", "ready")
-			sawmill:SetAttribute("PlanksReady", PLANKS_PER_LOG)
-			sawmillStates[sawmill] = { plankClone = plankClone }
-
-			sawmillActionEvent:FireAllClients("stopProcessing", sawmill)
-		end)
-
-	elseif action == "claimPlanks" then
-		local char = player.Character
-		if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-		if not data or not data.Parent then return end
-
-		local sawmill = nil
-		if data:GetAttribute("IsSawmill") then
-			sawmill = data
-		else
-			local current = data
-			while current and current ~= workspace do
-				if current:GetAttribute("IsSawmill") then
-					sawmill = current
-					break
-				end
-				current = current.Parent
-			end
-		end
-		if not sawmill then return end
-
-		if sawmill:GetAttribute("SawmillState") ~= "ready" then return end
-
-		local planksReady = sawmill:GetAttribute("PlanksReady") or 0
-		if planksReady <= 0 then return end
-
-		local hrp = char.HumanoidRootPart
-		if (hrp.Position - sawmill:GetPivot().Position).Magnitude > 25 then return end
-
-		local inv = _G.GetInventory and _G.GetInventory(player)
-		if not inv then return end
-		inv.Plank = (inv.Plank or 0) + planksReady
-
-		-- Clean up plank model
-		if sawmillStates[sawmill] and sawmillStates[sawmill].plankClone then
-			if sawmillStates[sawmill].plankClone.Parent then
-				sawmillStates[sawmill].plankClone:Destroy()
-			end
-		end
-
-		sawmill:SetAttribute("SawmillState", "idle")
-		sawmill:SetAttribute("PlanksReady", 0)
-		sawmillStates[sawmill] = nil
-
-		if _G.SendInventory then _G.SendInventory(player) end
 	end
 end)

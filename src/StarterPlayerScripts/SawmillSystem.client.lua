@@ -1,6 +1,4 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local CollectionService = game:GetService("CollectionService")
-local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
 
@@ -14,12 +12,12 @@ local sawmillActionEvent = ReplicatedStorage:WaitForChild("SawmillAction")
 -- Track which sawmills are currently spinning
 local spinningSawmills = {}
 
--- Track billboard UIs
-local activeBillboards = {}
-
 local HEXAGON_SPIN_SPEED = math.rad(360)
 
--- ─── Find sawmill from a hit part ───
+-- Billboard for "Drop a log here" hint
+local activeBillboard = nil
+local billboardSawmill = nil
+
 local function findSawmillFromPart(part)
 	local current = part
 	while current and current ~= workspace do
@@ -31,7 +29,6 @@ local function findSawmillFromPart(part)
 	return nil
 end
 
--- ─── Get all hexagons and saw blade for spinning ───
 local function getSpinParts(sawmill)
 	local hexagons = {}
 	local sawBlade = nil
@@ -45,37 +42,33 @@ local function getSpinParts(sawmill)
 	return hexagons, sawBlade
 end
 
--- ─── Billboard prompt management ───
-local function clearAllBillboards()
-	for sm, bb in activeBillboards do
-		if bb and bb.Parent then bb:Destroy() end
+local function clearBillboard()
+	if activeBillboard then
+		activeBillboard:Destroy()
+		activeBillboard = nil
 	end
-	activeBillboards = {}
+	billboardSawmill = nil
 end
 
-local function showBillboard(adornee, text, subText, sawmill)
-	if activeBillboards[sawmill] then
-		activeBillboards[sawmill]:Destroy()
-		activeBillboards[sawmill] = nil
-	end
+local function showBillboard(part, text, subText, sawmill)
+	clearBillboard()
 
-	local part = adornee
-	if adornee:IsA("Model") then
-		part = adornee.PrimaryPart or adornee:FindFirstChildWhichIsA("BasePart")
+	local adornee = part
+	if part:IsA("Model") then
+		adornee = part.PrimaryPart or part:FindFirstChildWhichIsA("BasePart")
 	end
-	if not part then return end
+	if not adornee then return end
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Size = UDim2.new(5, 0, 1.2, 0)
 	billboard.StudsOffset = Vector3.new(0, 2, 0)
 	billboard.AlwaysOnTop = true
 	billboard.MaxDistance = 20
-	billboard.Adornee = part
+	billboard.Adornee = adornee
 	billboard.Parent = playerGui
 
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.new(1, 0, 0.5, 0)
-	label.Position = UDim2.new(0, 0, 0, 0)
 	label.BackgroundTransparency = 1
 	label.Text = text
 	label.TextColor3 = Color3.fromRGB(255, 220, 100)
@@ -99,66 +92,11 @@ local function showBillboard(adornee, text, subText, sawmill)
 		sub.Parent = billboard
 	end
 
-	activeBillboards[sawmill] = billboard
+	activeBillboard = billboard
+	billboardSawmill = sawmill
 end
 
--- ─── Determine which side of sawmill the player is looking at ───
-local hoveredSawmill = nil
-local hoveredSide = nil -- "placer" or "claimer"
-
-local function detectSawmillHover()
-	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	if player.Character then
-		params.FilterDescendantsInstances = {player.Character}
-	end
-
-	local result = workspace:Raycast(ray.Origin, ray.Direction * 50, params)
-	if not result or not result.Instance then
-		return nil, nil
-	end
-
-	local sawmill = findSawmillFromPart(result.Instance)
-	if not sawmill then return nil, nil end
-
-	-- Find placer and claimer positions
-	local placerPart, claimerPart
-	for _, desc in sawmill:GetDescendants() do
-		if desc.Name == "Hexagon_placer" then placerPart = desc end
-		if desc.Name == "Hexagon_claimer" then claimerPart = desc end
-	end
-
-	if not placerPart and not claimerPart then
-		return sawmill, nil
-	end
-
-	-- Determine which is closer to the hit point
-	local hitPos = result.Position
-	local side = nil
-
-	local placerDist = math.huge
-	local claimerDist = math.huge
-
-	if placerPart then
-		local pPos = placerPart:IsA("Model") and placerPart:GetPivot().Position or placerPart.CFrame.Position
-		placerDist = (hitPos - pPos).Magnitude
-	end
-	if claimerPart then
-		local cPos = claimerPart:IsA("Model") and claimerPart:GetPivot().Position or claimerPart.CFrame.Position
-		claimerDist = (hitPos - cPos).Magnitude
-	end
-
-	if placerDist < claimerDist then
-		side = "placer"
-	else
-		side = "claimer"
-	end
-
-	return sawmill, side
-end
-
--- ─── Update hover state and billboards each frame ───
+-- ─── Update each frame ───
 RunService.RenderStepped:Connect(function(dt)
 	-- Spin hexagons and saw blades for active sawmills
 	for sawmill, _ in spinningSawmills do
@@ -176,69 +114,43 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 	end
 
-	-- Update hover detection
-	local sawmill, side = detectSawmillHover()
+	-- Hover detection for billboard hints
+	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	if player.Character then
+		params.FilterDescendantsInstances = {player.Character}
+	end
 
-	if sawmill ~= hoveredSawmill or side ~= hoveredSide then
-		-- Clear old billboards
-		clearAllBillboards()
-		_G.SuppressInventoryToggle = false
+	local result = workspace:Raycast(ray.Origin, ray.Direction * 50, params)
+	local sawmill = nil
+	if result and result.Instance then
+		sawmill = findSawmillFromPart(result.Instance)
+	end
 
-		hoveredSawmill = sawmill
-		hoveredSide = side
+	if sawmill ~= billboardSawmill then
+		clearBillboard()
 
-		if sawmill and side then
+		if sawmill then
 			local state = sawmill:GetAttribute("SawmillState") or "idle"
-			_G.SuppressInventoryToggle = true
 
-			-- Find the part to attach billboard to
-			local adornee = sawmill
+			-- Find placer part for billboard
+			local placerPart = nil
 			for _, desc in sawmill:GetDescendants() do
-				if side == "placer" and desc.Name == "Hexagon_placer" then
-					adornee = desc
-					break
-				elseif side == "claimer" and desc.Name == "Hexagon_claimer" then
-					adornee = desc
+				if desc.Name == "Hexagon_placer" then
+					placerPart = desc
 					break
 				end
 			end
 
-			if side == "placer" then
-				if state == "idle" then
-					showBillboard(adornee, "Press E to load wood", "Sawmill", sawmill)
-				elseif state == "processing" then
-					showBillboard(adornee, "Processing...", "Sawmill", sawmill)
-				elseif state == "ready" then
-					showBillboard(adornee, "Planks ready!", "Collect from other side", sawmill)
-				end
-			elseif side == "claimer" then
-				if state == "ready" then
-					local planks = sawmill:GetAttribute("PlanksReady") or 0
-					showBillboard(adornee, "Press E to collect", "Plank x" .. planks, sawmill)
-				elseif state == "processing" then
-					showBillboard(adornee, "Processing...", "Sawmill", sawmill)
-				elseif state == "idle" then
-					showBillboard(adornee, "Load wood first", "Use the other side", sawmill)
-				end
+			local adornee = placerPart or sawmill
+
+			if state == "idle" then
+				showBillboard(adornee, "Drop a Log here", "Sawmill", sawmill)
+			elseif state == "processing" then
+				showBillboard(adornee, "Processing...", "Sawmill", sawmill)
 			end
 		end
-	end
-end)
-
--- ─── E key interaction ───
-UserInputService.InputBegan:Connect(function(input, processed)
-	if input.KeyCode ~= Enum.KeyCode.E then return end
-
-	-- Don't check 'processed' here - our own billboard GUI causes it to be true
-	if not hoveredSawmill or not hoveredSide then return end
-	if not hoveredSawmill.Parent then return end
-
-	local state = hoveredSawmill:GetAttribute("SawmillState") or "idle"
-
-	if hoveredSide == "placer" and state == "idle" then
-		sawmillActionEvent:FireServer("loadLog", hoveredSawmill)
-	elseif hoveredSide == "claimer" and state == "ready" then
-		sawmillActionEvent:FireServer("claimPlanks", hoveredSawmill)
 	end
 end)
 
