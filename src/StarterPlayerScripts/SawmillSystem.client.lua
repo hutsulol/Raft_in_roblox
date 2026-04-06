@@ -192,9 +192,9 @@ RunService.RenderStepped:Connect(function(dt)
 		end
 
 		-- Current world positions (follow raft automatically)
-		local placerPos = getPartPosition(p.hexagonPlacer) + Vector3.new(0, 1.5, 0)
-		local sawBladePos = getPartPosition(p.sawBlade) + Vector3.new(0, 1.5, 0)
-		local claimerPos = getPartPosition(p.hexagonClaimer) + Vector3.new(0, 1.5, 0)
+		local placerPos = getPartPosition(p.hexagonPlacer) + Vector3.new(0, 1.0, 0)
+		local sawBladePos = getPartPosition(p.sawBlade) + Vector3.new(0, 1.0, 0)
+		local claimerPos = getPartPosition(p.hexagonClaimer) + Vector3.new(0, 1.0, 0)
 
 		-- Belt direction
 		local beltDir = (claimerPos - placerPos)

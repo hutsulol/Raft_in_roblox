@@ -108,7 +108,7 @@ local function processLog(sawmill, droppedLog)
 			end
 
 			-- Place upright at claimer position
-			local claimerPos = getPartPosition(parts.hexagonClaimer) + Vector3.new(0, 1.5, 0)
+			local claimerPos = getPartPosition(parts.hexagonClaimer) + Vector3.new(0, 0.5, 0)
 			plankClone:PivotTo(CFrame.new(claimerPos))
 			plankClone.Parent = workspace
 
