@@ -1,65 +1,44 @@
 -- BoilerSoundController
--- Lives in its own folder so it only handles sawmill BoilerSound playback.
--- Watches every sawmill's SawmillState attribute (set by SawmillSystem.server.lua)
--- and plays the BoilerSound only while the sawmill is processing.
+-- Lives inside the sawmill model as a child of the "Boiler" part.
+-- Sets BoilerSound.Volume = 0.5 while the sawmill is processing,
+-- and 0 when idle.
 
+local IDLE_VOLUME = 0
+local ACTIVE_VOLUME = 0.5
+
+local boiler = script.Parent
+local sound = boiler:WaitForChild("BoilerSound")
+
+-- Walk up to find the sawmill model (the one carrying the SawmillState attribute
+-- or tagged "Sawmill").
 local CollectionService = game:GetService("CollectionService")
-
-local function findBoilerSound(sawmill)
-	for _, desc in sawmill:GetDescendants() do
-		if desc:IsA("Sound") and desc.Name == "BoilerSound" then
-			return desc
-		end
+local sawmill = boiler
+while sawmill do
+	if sawmill:GetAttribute("SawmillState") ~= nil or CollectionService:HasTag(sawmill, "Sawmill") then
+		break
 	end
-	return nil
+	sawmill = sawmill.Parent
+end
+if not sawmill then
+	sawmill = boiler.Parent
 end
 
-local function applyState(sawmill, sound)
+sound.Looped = true
+sound.PlayOnRemove = false
+
+local function apply()
 	local state = sawmill:GetAttribute("SawmillState")
 	if state == "processing" then
+		sound.Volume = ACTIVE_VOLUME
 		if not sound.Playing then
-			sound.Looped = true
 			sound:Play()
 		end
 	else
-		if sound.Playing then
-			sound:Stop()
-		end
+		sound.Volume = IDLE_VOLUME
+		sound:Stop()
 	end
 end
 
-local function setupSawmill(sawmill)
-	-- Wait for the BoilerSound to be present (model may still be loading)
-	local sound = findBoilerSound(sawmill)
-	if not sound then
-		local conn
-		conn = sawmill.DescendantAdded:Connect(function(desc)
-			if desc:IsA("Sound") and desc.Name == "BoilerSound" then
-				conn:Disconnect()
-				setupSawmill(sawmill)
-			end
-		end)
-		return
-	end
+apply()
 
-	-- Force sound off until processing begins
-	sound.Looped = true
-	sound.PlayOnRemove = false
-	sound:Stop()
-
-	applyState(sawmill, sound)
-
-	sawmill:GetAttributeChangedSignal("SawmillState"):Connect(function()
-		if sound.Parent then
-			applyState(sawmill, sound)
-		end
-	end)
-end
-
-for _, sawmill in CollectionService:GetTagged("Sawmill") do
-	task.spawn(setupSawmill, sawmill)
-end
-
-CollectionService:GetInstanceAddedSignal("Sawmill"):Connect(function(sawmill)
-	task.spawn(setupSawmill, sawmill)
-end)
+sawmill:GetAttributeChangedSignal("SawmillState"):Connect(apply)

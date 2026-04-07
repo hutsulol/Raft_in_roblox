@@ -203,7 +203,7 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 		sawmill.Name = "Sawmill"
 
 		for _, desc in sawmill:GetDescendants() do
-			if desc:IsA("Script") or desc:IsA("LocalScript") then
+			if (desc:IsA("Script") or desc:IsA("LocalScript")) and desc.Name ~= "BoilerSoundController" then
 				desc:Destroy()
 			end
 		end
