@@ -763,7 +763,7 @@ local function openCategoryOverlay(cat)
 	title.BackgroundTransparency = 1
 	title.Text = cat
 	title.TextColor3 = COLORS.titleText
-	title.Font = Enum.Font.GothamBold
+	title.Font = Enum.Font.GothamMedium
 	title.TextSize = 22
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.ZIndex = 16
@@ -786,7 +786,7 @@ local function openCategoryOverlay(cat)
 	craftList.ScrollBarThickness = 6
 	craftList.CanvasSize = UDim2.new(0, 0, 0, 0)
 	craftList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	craftList.ZIndex = 16
+	craftList.ZIndex = 17
 	craftList.Parent = categoryOverlay
 
 	local listLayout = Instance.new("UIListLayout")
@@ -995,6 +995,7 @@ function rebuildCraftList()
 			btn.BorderSizePixel = 0
 			btn.LayoutOrder = idx
 			btn.AutoButtonColor = false
+			btn.ZIndex = 17
 			btn.Parent = craftList
 			btn:SetAttribute("RecipeName", recipe.name)
 
@@ -1008,6 +1009,7 @@ function rebuildCraftList()
 			icon.BackgroundTransparency = 1
 			icon.Image = recipe.icon or ""
 			icon.ScaleType = Enum.ScaleType.Fit
+			icon.ZIndex = 18
 			icon.Parent = btn
 
 			local nameLabel = Instance.new("TextLabel")
@@ -1016,10 +1018,11 @@ function rebuildCraftList()
 			nameLabel.BackgroundTransparency = 1
 			nameLabel.Text = recipe.displayName or recipe.name
 			nameLabel.TextColor3 = COLORS.titleText
-			nameLabel.Font = Enum.Font.GothamBold
-			nameLabel.TextSize = 13
+			nameLabel.Font = Enum.Font.Gotham
+			nameLabel.TextSize = 14
 			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 			nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+			nameLabel.ZIndex = 18
 			nameLabel.Parent = btn
 
 			local costText = ""
@@ -1037,6 +1040,7 @@ function rebuildCraftList()
 			costLabel.Font = Enum.Font.Gotham
 			costLabel.TextSize = 11
 			costLabel.TextXAlignment = Enum.TextXAlignment.Left
+			costLabel.ZIndex = 18
 			costLabel.Parent = btn
 
 			btn.MouseEnter:Connect(function()
@@ -1430,7 +1434,7 @@ local function buildUI()
 	craftTitle.BackgroundTransparency = 1
 	craftTitle.Text = "Crafting"
 	craftTitle.TextColor3 = COLORS.titleText
-	craftTitle.Font = Enum.Font.GothamBold
+	craftTitle.Font = Enum.Font.GothamMedium
 	craftTitle.TextSize = 18
 	craftTitle.TextXAlignment = Enum.TextXAlignment.Left
 	craftTitle.Parent = craftPanel
@@ -1464,8 +1468,8 @@ local function buildUI()
 		tab.BackgroundColor3 = COLORS.craftItemBg
 		tab.TextColor3 = COLORS.titleText
 		tab.Text = cat
-		tab.Font = Enum.Font.GothamBold
-		tab.TextSize = 15
+		tab.Font = Enum.Font.GothamMedium
+		tab.TextSize = 14
 		tab.BorderSizePixel = 0
 		tab.AutoButtonColor = false
 		tab.Parent = tabFrame
