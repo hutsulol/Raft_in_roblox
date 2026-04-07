@@ -32,7 +32,7 @@ local recipes = {
 	{
 		name = "Sawmill",
 		displayName = "Sawmill",
-		icon = "rbxassetid://115059743309259",
+		icon = "rbxassetid://75858978626954",
 		costs = {Log = 1},
 	},
 }
@@ -50,7 +50,7 @@ local COST_ICONS = {
 	Iron_Ingot = "rbxassetid://72890243946368",
 	Plank = "rbxassetid://118108820731466",
 	Leaves = "rbxassetid://96691360298069",
-	Rope = "rbxassetid://95342944157679",
+	Rope = "rbxassetid://78492721752628",
 }
 
 local function canAfford(recipe)

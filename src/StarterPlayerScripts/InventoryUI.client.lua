@@ -21,7 +21,7 @@ local IRON_INGOT_ICON = "rbxassetid://72890243946368"
 local LEAVES_ICON = "rbxassetid://96691360298069"
 
 local PLANK_ICON = "rbxassetid://118108820731466"
-local ROPE_ICON = "rbxassetid://95342944157679"
+local ROPE_ICON = "rbxassetid://78492721752628"
 
 local RESOURCE_ICONS = {
 	Log = LOG_ICON,
@@ -47,8 +47,8 @@ local TOOL_ICONS = {
 	["WorkBench"] = "rbxassetid://104306543647624",
 	["Bed"] = "rbxassetid://85069521486600",
 	["Garden"] = "rbxassetid://77159786623285",
-	["Paddle"] = "rbxassetid://107619954605534",
-	["Sawmill"] = "rbxassetid://115059743309259",
+	["Paddle"] = "rbxassetid://93358108538106",
+	["Sawmill"] = "rbxassetid://75858978626954",
 	["Hook"] = "rbxassetid://110032041583533",
 	["Axe"] = "rbxassetid://110032041583533",
 	["[GRAPES]"] = "rbxassetid://137478230275649",

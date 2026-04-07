@@ -84,7 +84,7 @@ local recipes = {
 	{
 		name = "Paddle",
 		displayName = "Paddle",
-		icon = "rbxassetid://107619954605534",
+		icon = "rbxassetid://93358108538106",
 		costs = {Log = 1, Plastic = 3},
 		craftType = "tool",
 		category = "Tools",
@@ -93,7 +93,7 @@ local recipes = {
 	{
 		name = "Rope",
 		displayName = "Rope",
-		icon = "rbxassetid://95342944157679",
+		icon = "rbxassetid://78492721752628",
 		costs = {Leaves = 4},
 		craftType = "resource",
 		category = "Resources",

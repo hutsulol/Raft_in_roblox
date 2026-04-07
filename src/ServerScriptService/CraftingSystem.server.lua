@@ -20,7 +20,7 @@ local recipes = {
 	{
 		name = "Sawmill",
 		displayName = "Sawmill",
-		icon = "rbxassetid://115059743309259",
+		icon = "rbxassetid://75858978626954",
 		costs = {Log = 1},
 		craftType = "placeable",
 	},
