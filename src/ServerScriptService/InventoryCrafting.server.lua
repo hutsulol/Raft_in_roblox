@@ -66,7 +66,7 @@ local recipes = {
 	{
 		name = "Garden",
 		displayName = "Garden Bed",
-		icon = "rbxassetid://94231479058737",
+		icon = "rbxassetid://77159786623285",
 		costs = {Log = 4},
 		craftType = "placeable",
 		category = "Technology",
@@ -84,7 +84,7 @@ local recipes = {
 	{
 		name = "Paddle",
 		displayName = "Paddle",
-		icon = "rbxassetid://110032041583533",
+		icon = "rbxassetid://107619954605534",
 		costs = {Log = 1, Plastic = 3},
 		craftType = "tool",
 		category = "Tools",

@@ -20,7 +20,8 @@ local IRON_ORE_ICON = "rbxassetid://73676755288746"
 local IRON_INGOT_ICON = "rbxassetid://72890243946368"
 local LEAVES_ICON = "rbxassetid://96691360298069"
 
-local PLANK_ICON = "rbxassetid://110032041583533"
+local PLANK_ICON = "rbxassetid://118108820731466"
+local ROPE_ICON = "rbxassetid://95342944157679"
 
 local RESOURCE_ICONS = {
 	Log = LOG_ICON,
@@ -30,6 +31,7 @@ local RESOURCE_ICONS = {
 	Iron_Ingot = IRON_INGOT_ICON,
 	Plank = PLANK_ICON,
 	Leaves = LEAVES_ICON,
+	Rope = ROPE_ICON,
 }
 
 local TOOL_ICONS = {
@@ -44,7 +46,9 @@ local TOOL_ICONS = {
 	["Wood_Knife"] = "rbxassetid://110032041583533",
 	["WorkBench"] = "rbxassetid://104306543647624",
 	["Bed"] = "rbxassetid://85069521486600",
-	["Garden"] = "rbxassetid://94231479058737",
+	["Garden"] = "rbxassetid://77159786623285",
+	["Paddle"] = "rbxassetid://107619954605534",
+	["Sawmill"] = "rbxassetid://115059743309259",
 	["Hook"] = "rbxassetid://110032041583533",
 	["Axe"] = "rbxassetid://110032041583533",
 	["[GRAPES]"] = "rbxassetid://137478230275649",
