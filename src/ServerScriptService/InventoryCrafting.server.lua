@@ -99,6 +99,15 @@ local recipes = {
 		category = "Resources",
 		description = "A sturdy rope woven from leaves. Used to craft advanced equipment.",
 	},
+	{
+		name = "Shovel",
+		displayName = "Shovel",
+		icon = "rbxassetid://110032041583533",
+		costs = {Rope = 1, Stone = 3, Log = 1},
+		craftType = "tool",
+		category = "Tools",
+		description = "A shovel for digging sand and clay on islands.",
+	},
 }
 
 inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)

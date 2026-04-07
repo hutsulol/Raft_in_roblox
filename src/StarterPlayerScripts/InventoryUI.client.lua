@@ -32,6 +32,8 @@ local RESOURCE_ICONS = {
 	Plank = PLANK_ICON,
 	Leaves = LEAVES_ICON,
 	Rope = ROPE_ICON,
+	Sand = LOG_ICON,
+	Clay = LOG_ICON,
 }
 
 local TOOL_ICONS = {
@@ -49,6 +51,7 @@ local TOOL_ICONS = {
 	["Garden"] = "rbxassetid://77159786623285",
 	["Paddle"] = "rbxassetid://93358108538106",
 	["Sawmill"] = "rbxassetid://75858978626954",
+	["Shovel"] = "rbxassetid://110032041583533",
 	["Hook"] = "rbxassetid://110032041583533",
 	["Axe"] = "rbxassetid://110032041583533",
 	["[GRAPES]"] = "rbxassetid://137478230275649",
