@@ -1,6 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -33,6 +34,35 @@ local function findSawmillFromPart(part)
 	end
 	return nil
 end
+
+local function silenceBoilerSound(sound)
+	sound.Playing = false
+	sound:Stop()
+	-- Re-stop if something tries to start it
+	sound:GetPropertyChangedSignal("Playing"):Connect(function()
+		if sound.Playing and not sound:GetAttribute("SawmillActive") then
+			sound.Playing = false
+			sound:Stop()
+		end
+	end)
+end
+
+local function setupSawmillSound(sawmill)
+	local function handleSound(sound)
+		if sound:IsA("Sound") and sound.Name == "BoilerSound" then
+			silenceBoilerSound(sound)
+		end
+	end
+	for _, desc in sawmill:GetDescendants() do
+		handleSound(desc)
+	end
+	sawmill.DescendantAdded:Connect(handleSound)
+end
+
+for _, sawmill in CollectionService:GetTagged("Sawmill") do
+	setupSawmillSound(sawmill)
+end
+CollectionService:GetInstanceAddedSignal("Sawmill"):Connect(setupSawmillSound)
 
 local function getBoilerSound(sawmill)
 	for _, desc in sawmill:GetDescendants() do
@@ -301,6 +331,7 @@ sawmillActionEvent.OnClientEvent:Connect(function(action, sawmill)
 			startBeltAnimation(sawmill)
 			local boilerSound = getBoilerSound(sawmill)
 			if boilerSound then
+				boilerSound:SetAttribute("SawmillActive", true)
 				boilerSound.Looped = true
 				boilerSound:Play()
 			end
@@ -311,6 +342,7 @@ sawmillActionEvent.OnClientEvent:Connect(function(action, sawmill)
 			spinAngles[sawmill] = nil
 			local boilerSound = getBoilerSound(sawmill)
 			if boilerSound then
+				boilerSound:SetAttribute("SawmillActive", false)
 				boilerSound:Stop()
 			end
 			local motors = getSpinMotors(sawmill)
