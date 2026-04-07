@@ -8,6 +8,7 @@ if not ENABLED then return end
 local START_LOG = 200
 local START_PLASTIC = 0
 local START_STONE = 60
+local START_LEAVES = 60
 
 local Players = game:GetService("Players")
 
@@ -23,6 +24,7 @@ local function giveStartResources(player)
 	if START_LOG > 0 then inv.Log = (inv.Log or 0) + START_LOG end
 	if START_PLASTIC > 0 then inv.Plastic = (inv.Plastic or 0) + START_PLASTIC end
 	if START_STONE > 0 then inv.Stone = (inv.Stone or 0) + START_STONE end
+	if START_LEAVES > 0 then inv.Leaves = (inv.Leaves or 0) + START_LEAVES end
 
 	if _G.SendInventory then
 		_G.SendInventory(player)

@@ -93,23 +93,6 @@ Players.PlayerRemoving:Connect(function(player)
 	_G_Inventories[player] = nil
 end)
 
--- ─── Developer starter inventory ───
-local DEVELOPER_NAME = "hutsulol"
-local function grantDeveloperStartingItems(player)
-	if player.Name ~= DEVELOPER_NAME then return end
-	task.wait(2)
-	local inv = _G.GetInventory(player)
-	inv.Leaves = (inv.Leaves or 0) + 60
-	if _G.SendInventory then
-		_G.SendInventory(player)
-	end
-end
-
-Players.PlayerAdded:Connect(function(p) task.spawn(grantDeveloperStartingItems, p) end)
-for _, p in Players:GetPlayers() do
-	task.spawn(grantDeveloperStartingItems, p)
-end
-
 collectEvent.OnServerEvent:Connect(function(player, targetPart)
 	if typeof(targetPart) ~= "Instance" then return end
 	if not targetPart:IsDescendantOf(workspace) then return end
