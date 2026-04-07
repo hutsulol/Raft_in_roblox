@@ -17,17 +17,21 @@ local MINE_RANGE = 15
 
 -- ─── Dig sound (from Shovel tool) ───
 local function playDigSound(atPart)
-	if not atPart or not atPart.Parent then return end
+	if not atPart then return end
 	local shovel = rs:FindFirstChild("Shovel")
 	if not shovel then return end
 	local handle = shovel:FindFirstChild("Handle")
 	if not handle then return end
 	local dig = handle:FindFirstChild("Dig")
 	if not dig or not dig:IsA("Sound") then return end
+	local attach = Instance.new("Attachment")
+	attach.WorldPosition = atPart.Position
+	attach.Parent = workspace.Terrain
 	local clone = dig:Clone()
-	clone.Parent = atPart
+	clone.Parent = attach
 	clone:Play()
-	Debris:AddItem(clone, (clone.TimeLength > 0 and clone.TimeLength or 2) + 0.5)
+	local lifetime = (clone.TimeLength > 0 and clone.TimeLength or 2) + 0.5
+	Debris:AddItem(attach, lifetime)
 end
 
 -- ─── RemoteEvents ───
