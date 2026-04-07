@@ -204,6 +204,11 @@ local function showTooltipForSlot(slotIndex)
 		hideTooltip()
 		return
 	end
+	-- Don't show tooltip while crafting overlays cover the inventory
+	if categoryOverlay or detailOverlay then
+		hideTooltip()
+		return
+	end
 	ensureTooltipGui()
 	tooltipLabel.Text = name
 	tooltipGui.Enabled = true
