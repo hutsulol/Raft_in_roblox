@@ -1,6 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 local Players = game:GetService("Players")
+local RunService = game:GetService("RunService")
 
 local rs = ReplicatedStorage
 
@@ -19,35 +20,63 @@ local function getRaft()
 	return workspace:FindFirstChild("Raft")
 end
 
--- Names of parts that need to spin (use Motor6D so client can rotate via Transform)
+-- Names of parts that need to spin (client uses Motor6D Transform for visual spin)
 local SPIN_PART_NAMES = { Hexagon = true, Hexagon_placer = true, Hexagon_claimer = true, SawBlade = true }
 
-local function weldToRaft(obj, raft)
+-- Track sawmills so each Heartbeat we can update their part CFrames relative to the raft.
+-- Using anchored parts + manual CFrame updates eliminates ALL physics interaction
+-- between the sawmill and the raft (no mass, no buoyancy, no joints, no drift).
+local trackedSawmills = {}
+
+local function attachToRaft(sawmill, raft)
 	local raftPart = raft.PrimaryPart
-	for _, part in obj:GetDescendants() do
+	if not raftPart then return end
+
+	local raftInverse = raftPart.CFrame:Inverse()
+	local entries = {}
+
+	for _, part in sawmill:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.Anchored = false
-			part.Massless = true
+			part.Anchored = true
 			part.CanCollide = false
 			part.CanTouch = false
 			part.CanQuery = false
+			part.Massless = true
+			-- Store the part's pose relative to the raft's PrimaryPart
+			local relCF = raftInverse * part.CFrame
+			table.insert(entries, { part = part, relCF = relCF })
+
+			-- Spin parts still need a Motor6D so the client animation
+			-- (motor.Transform = CFrame.Angles(...)) keeps working.
 			if SPIN_PART_NAMES[part.Name] then
 				local motor = Instance.new("Motor6D")
 				motor.Name = "SpinMotor"
-				motor.Part0 = raftPart
+				motor.Part0 = part
 				motor.Part1 = part
-				motor.C0 = raftPart.CFrame:Inverse() * part.CFrame
+				motor.C0 = CFrame.new()
 				motor.C1 = CFrame.new()
 				motor.Parent = part
-			else
-				local weld = Instance.new("WeldConstraint")
-				weld.Part0 = part
-				weld.Part1 = raftPart
-				weld.Parent = part
 			end
 		end
 	end
+
+	trackedSawmills[sawmill] = { raft = raft, entries = entries }
 end
+
+RunService.Heartbeat:Connect(function()
+	for sawmill, data in trackedSawmills do
+		if not sawmill.Parent or not data.raft.Parent or not data.raft.PrimaryPart then
+			trackedSawmills[sawmill] = nil
+		else
+			local raftCF = data.raft.PrimaryPart.CFrame
+			for _, entry in data.entries do
+				if entry.part.Parent then
+					entry.part.CFrame = raftCF * entry.relCF
+				end
+			end
+		end
+	end
+end)
 
 local function getSawmillParts(sawmill)
 	local parts = { hexagonPlacer = nil, hexagonClaimer = nil, sawBlade = nil }
@@ -237,7 +266,7 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(data)
 		sawmill:PivotTo(worldCF)
 		sawmill.Parent = raft
-		weldToRaft(sawmill, raft)
+		attachToRaft(sawmill, raft)
 
 		sawmill:SetAttribute("IsSawmill", true)
 		sawmill:SetAttribute("SawmillState", "idle")
