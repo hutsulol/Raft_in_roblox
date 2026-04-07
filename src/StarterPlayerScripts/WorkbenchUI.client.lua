@@ -51,6 +51,10 @@ local COST_ICONS = {
 	Plank = "rbxassetid://118108820731466",
 	Leaves = "rbxassetid://96691360298069",
 	Rope = "rbxassetid://78492721752628",
+	Sand = "rbxassetid://92407877736322",
+	Clay = "rbxassetid://129473903672183",
+	Wet_Brick = "rbxassetid://77999856849195",
+	Dry_Brick = "rbxassetid://129896663405682",
 }
 
 local function canAfford(recipe)

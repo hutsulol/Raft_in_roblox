@@ -100,6 +100,15 @@ local recipes = {
 		description = "A sturdy rope woven from leaves. Used to craft advanced equipment.",
 	},
 	{
+		name = "Wet_Brick",
+		displayName = "Wet Brick",
+		icon = "rbxassetid://77999856849195",
+		costs = {Sand = 2, Clay = 2},
+		craftType = "resource",
+		category = "Resources",
+		description = "A wet brick made from sand and clay. Dries in the sun to become a Dry Brick.",
+	},
+	{
 		name = "Shovel",
 		displayName = "Shovel",
 		icon = "rbxassetid://110032041583533",

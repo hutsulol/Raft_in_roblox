@@ -22,6 +22,10 @@ local LEAVES_ICON = "rbxassetid://96691360298069"
 
 local PLANK_ICON = "rbxassetid://118108820731466"
 local ROPE_ICON = "rbxassetid://78492721752628"
+local SAND_ICON = "rbxassetid://92407877736322"
+local CLAY_ICON = "rbxassetid://129473903672183"
+local WET_BRICK_ICON = "rbxassetid://77999856849195"
+local DRY_BRICK_ICON = "rbxassetid://129896663405682"
 
 local RESOURCE_ICONS = {
 	Log = LOG_ICON,
@@ -32,8 +36,10 @@ local RESOURCE_ICONS = {
 	Plank = PLANK_ICON,
 	Leaves = LEAVES_ICON,
 	Rope = ROPE_ICON,
-	Sand = LOG_ICON,
-	Clay = LOG_ICON,
+	Sand = SAND_ICON,
+	Clay = CLAY_ICON,
+	Wet_Brick = WET_BRICK_ICON,
+	Dry_Brick = DRY_BRICK_ICON,
 }
 
 local TOOL_ICONS = {
