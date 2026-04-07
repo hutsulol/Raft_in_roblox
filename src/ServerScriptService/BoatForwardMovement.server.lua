@@ -2,10 +2,18 @@ local SPEED = 25
 local FORCE_PER_MASS = 33 -- force scales with total raft mass
 local PADDLE_BOOST = 6 -- small extra push from a paddle stroke
 local PADDLE_DECAY = 1.5 -- seconds for paddle boost to decay
-local PADDLE_NUDGE_RATIO = 0.15 -- how much of the boost goes sideways (0..1)
+local PADDLE_COURSE_NUDGE = math.rad(3) -- max course rotation per paddle stroke
+
+-- ─── Ocean current ───
+local CURRENT_INTERVAL = 120 -- seconds between random current changes
+local TURN_SPEED = 0.25 -- radians/sec the raft rotates to face the current
+
+-- Model has a -45° offset between its LookVector and its visible front.
+local MODEL_FRONT_OFFSET = math.rad(-45)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
 
 local boat = workspace:WaitForChild("Raft")
 while not boat.PrimaryPart do
@@ -14,21 +22,23 @@ end
 
 local primaryPart = boat.PrimaryPart
 
--- Lock the raft heading at startup so it travels in a straight line
 -- Preserve initial pitch/roll (from the sideways-log PrimaryPart orientation)
 local initialPitch, initialYaw, initialRoll = primaryPart.CFrame:ToEulerAnglesYXZ()
 local lockedYaw = initialYaw
 
 -- Store the rest CFrame (used by BuildingSystem for stable placement)
--- Must include the log's inherent pitch/roll so floor placement works correctly
 local restY = primaryPart.Position.Y
 primaryPart:SetAttribute("RestCFrame", primaryPart.CFrame)
 primaryPart:SetAttribute("RestYaw", lockedYaw)
 
--- RemoteEvent for paddle input
+-- RemoteEvents
 local paddleEvent = Instance.new("RemoteEvent")
 paddleEvent.Name = "PaddleAction"
 paddleEvent.Parent = ReplicatedStorage
+
+local currentEvent = Instance.new("RemoteEvent")
+currentEvent.Name = "OceanCurrentChanged"
+currentEvent.Parent = ReplicatedStorage
 
 local attachment = Instance.new("Attachment")
 attachment.Parent = primaryPart
@@ -48,28 +58,64 @@ alignOrientation.MaxTorque = 500000
 alignOrientation.Responsiveness = 5
 alignOrientation.Parent = primaryPart
 
--- Forward direction is always derived from the locked yaw + initial pitch/roll
--- so it stays consistent with the AlignOrientation target, even if the raft
--- is pivoted (e.g., by RaftSaveSystem on load) after this script started.
-local function computeForwardDirection(yaw)
+-- ─── Direction helpers ───
+
+-- Compute the visible "front" direction of the raft for a given yaw.
+-- This is the direction the bow points (and where the raft should move).
+local function computeVisualFront(yaw)
 	local cf = CFrame.fromEulerAnglesYXZ(initialPitch, yaw, initialRoll)
 	local lv = cf.LookVector
-	local flat = Vector3.new(lv.X, 0, lv.Z)
-	if flat.Magnitude > 0.001 then
-		return flat.Unit
+	local flat = Vector3.new(-lv.X, 0, -lv.Z)
+	if flat.Magnitude < 0.001 then
+		return Vector3.new(0, 0, -1)
 	end
-	return Vector3.new(0, 0, -1)
+	flat = flat.Unit
+	local cosA = math.cos(MODEL_FRONT_OFFSET)
+	local sinA = math.sin(MODEL_FRONT_OFFSET)
+	return Vector3.new(
+		flat.X * cosA + flat.Z * sinA,
+		0,
+		-flat.X * sinA + flat.Z * cosA
+	).Unit
 end
 
-local forwardDirection = computeForwardDirection(lockedYaw)
+-- Inverse of computeVisualFront: yaw such that the raft's bow points along `dir`.
+-- Derived from: visualFront(y) = ((sin(y)-cos(y))/√2, 0, (sin(y)+cos(y))/√2)
+local function yawFromVisualFront(dir)
+	return math.atan2(dir.X + dir.Z, dir.Z - dir.X)
+end
 
--- Paddle state
-local paddleBoostRemaining = 0 -- seconds left of boost
-local paddleDirection = Vector3.zero -- direction of last paddle stroke
+local function randomHorizontalDirection()
+	local angle = math.random() * math.pi * 2
+	return Vector3.new(math.sin(angle), 0, math.cos(angle))
+end
 
--- Handle paddle input from clients. The paddle gives a small forward boost
--- and a tiny sideways nudge toward the swing direction. It does NOT change
--- the raft's locked heading.
+-- ─── Ocean current state ───
+local currentDirection = computeVisualFront(lockedYaw) -- start matching the raft's current heading
+
+local function broadcastCurrent()
+	currentEvent:FireAllClients(currentDirection)
+end
+
+task.spawn(function()
+	while true do
+		task.wait(CURRENT_INTERVAL)
+		currentDirection = randomHorizontalDirection()
+		broadcastCurrent()
+		print(string.format("[OceanCurrent] New direction (%.2f, %.2f)", currentDirection.X, currentDirection.Z))
+	end
+end)
+
+-- Re-broadcast on player join
+Players.PlayerAdded:Connect(function(plr)
+	task.wait(2)
+	currentEvent:FireClient(plr, currentDirection)
+end)
+
+-- ─── Paddle state ───
+local paddleBoostRemaining = 0
+local paddleDirection = Vector3.zero
+
 paddleEvent.OnServerEvent:Connect(function(player, direction)
 	if typeof(direction) ~= "Vector3" then return end
 
@@ -77,55 +123,62 @@ paddleEvent.OnServerEvent:Connect(function(player, direction)
 	if flat.Magnitude < 0.5 then return end
 	paddleDirection = flat.Unit
 	paddleBoostRemaining = PADDLE_DECAY
+
+	-- Apply a tiny rotation to the current direction toward where the player paddled.
+	-- This is the only way the player can influence the course, and it's intentionally minimal.
+	local curAngle = math.atan2(currentDirection.X, currentDirection.Z)
+	local pAngle = math.atan2(paddleDirection.X, paddleDirection.Z)
+	local diff = math.atan2(math.sin(pAngle - curAngle), math.cos(pAngle - curAngle))
+	local nudge = math.clamp(diff, -PADDLE_COURSE_NUDGE, PADDLE_COURSE_NUDGE)
+	local cosA = math.cos(nudge)
+	local sinA = math.sin(nudge)
+	currentDirection = Vector3.new(
+		currentDirection.X * cosA + currentDirection.Z * sinA,
+		0,
+		-currentDirection.X * sinA + currentDirection.Z * cosA
+	).Unit
+	broadcastCurrent()
 end)
 
-game:GetService("RunService").Heartbeat:Connect(function(dt)
+-- Initial broadcast after a brief delay so clients can subscribe
+task.delay(2, broadcastCurrent)
+
+local forwardDirection = computeVisualFront(lockedYaw)
+
+RunService.Heartbeat:Connect(function(dt)
 	if not primaryPart or not primaryPart.Parent then
 		return
 	end
 
-	-- Use the current physical raft heading to compute forward, so
-	-- any drift in raft yaw doesn't push the raft off-course (we always push
-	-- along the raft's actual forward, not a stale cached vector).
-	-- Rotate by -45° around Y to align with the raft's true front.
-	local actualLook = primaryPart.CFrame.LookVector
-	local flatLook = Vector3.new(-actualLook.X, 0, -actualLook.Z)
-	if flatLook.Magnitude > 0.001 then
-		flatLook = flatLook.Unit
-		local cosA = math.cos(math.rad(-45))
-		local sinA = math.sin(math.rad(-45))
-		forwardDirection = Vector3.new(
-			flatLook.X * cosA + flatLook.Z * sinA,
-			0,
-			-flatLook.X * sinA + flatLook.Z * cosA
-		).Unit
+	-- Steer locked yaw toward the yaw that points the bow at the current direction
+	local desiredYaw = yawFromVisualFront(currentDirection)
+	local diff = desiredYaw - lockedYaw
+	diff = math.atan2(math.sin(diff), math.cos(diff))
+	local step = TURN_SPEED * dt
+	if math.abs(diff) <= step then
+		lockedYaw = desiredYaw
+	else
+		lockedYaw = lockedYaw + math.sign(diff) * step
 	end
+
+	-- Forward force is always along the bow's current visual front,
+	-- so the raft front always leads (no sideways drifting).
+	forwardDirection = computeVisualFront(lockedYaw)
 
 	local currentVelocity = primaryPart.AssemblyLinearVelocity
 	local flatVelocity = Vector3.new(currentVelocity.X, 0, currentVelocity.Z)
-	local flatSpeed = flatVelocity.Magnitude
-
-	local forceFactor = math.clamp(1 - (flatSpeed / SPEED), 0, 1)
+	-- Use velocity component along forward, not magnitude, so cross-currents don't kill thrust
+	local forwardSpeed = flatVelocity:Dot(forwardDirection)
+	local forceFactor = math.clamp(1 - (forwardSpeed / SPEED), 0, 1)
 
 	local totalMass = primaryPart.AssemblyMass
 	local baseForce = forwardDirection * FORCE_PER_MASS * totalMass * forceFactor
 
-	-- Paddle gives a small extra forward push plus a tiny sideways nudge
-	-- toward the swing direction. The raft's heading is NOT changed.
+	-- Paddle: small forward boost only (course is influenced via the nudge above)
 	local paddleForce = Vector3.zero
 	if paddleBoostRemaining > 0 then
 		local boostFactor = paddleBoostRemaining / PADDLE_DECAY
-
-		-- Forward component (most of the boost)
-		local forwardPush = forwardDirection * (1 - PADDLE_NUDGE_RATIO)
-
-		-- Small lateral nudge perpendicular to forward, signed by where the
-		-- player paddled relative to forward.
-		local right = Vector3.new(forwardDirection.Z, 0, -forwardDirection.X)
-		local sideSign = math.clamp(paddleDirection:Dot(right), -1, 1)
-		local lateralNudge = right * sideSign * PADDLE_NUDGE_RATIO
-
-		paddleForce = (forwardPush + lateralNudge) * PADDLE_BOOST * totalMass * boostFactor
+		paddleForce = forwardDirection * PADDLE_BOOST * totalMass * boostFactor
 		paddleBoostRemaining = math.max(0, paddleBoostRemaining - dt)
 	end
 
@@ -133,13 +186,10 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
 
 	-- Scale torque with raft mass so it always rotates, even with many tiles
 	alignOrientation.MaxTorque = totalMass * 500
-	-- Preserve log's natural pitch/roll, only control yaw (use YXZ Euler order to match decomposition)
 	alignOrientation.CFrame = CFrame.fromEulerAnglesYXZ(initialPitch, lockedYaw, initialRoll)
 
-	-- Update RestCFrame so building systems use the current yaw (not startup yaw)
-	-- Preserve the log's inherent pitch/roll, only update yaw + position
+	-- Update RestCFrame so building systems use the current yaw
 	local pos = primaryPart.Position
 	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos.X, restY, pos.Z) * CFrame.fromEulerAnglesYXZ(initialPitch, lockedYaw, initialRoll))
-	-- Store yaw as a plain number — avoids Euler decomposition issues with rotated log
 	primaryPart:SetAttribute("RestYaw", lockedYaw)
 end)
