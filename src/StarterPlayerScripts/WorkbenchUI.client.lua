@@ -32,7 +32,7 @@ local recipes = {
 	{
 		name = "Sawmill",
 		displayName = "Sawmill",
-		icon = "rbxassetid://110032041583533",
+		icon = "rbxassetid://115059743309259",
 		costs = {Log = 1},
 	},
 }
@@ -41,6 +41,17 @@ local isOpen = false
 local screenGui = nil
 
 local LOG_ICON = "rbxassetid://110032041583533"
+
+local COST_ICONS = {
+	Log = LOG_ICON,
+	Stone = "rbxassetid://134781813180973",
+	Plastic = "rbxassetid://132919988751848",
+	Iron_Ore = "rbxassetid://73676755288746",
+	Iron_Ingot = "rbxassetid://72890243946368",
+	Plank = "rbxassetid://118108820731466",
+	Leaves = "rbxassetid://96691360298069",
+	Rope = "rbxassetid://95342944157679",
+}
 
 local function canAfford(recipe)
 	if not recipe or not recipe.costs then return false end
@@ -101,13 +112,42 @@ local function updateUI()
 			if detailIcon then
 				detailIcon.Image = selectedRecipe.icon or ""
 			end
-			local costDetail = detailPanel:FindFirstChild("CostDetail")
-			if costDetail then
-				local txt = ""
-				for item, amount in selectedRecipe.costs do
-					txt = txt .. tostring(amount) .. " " .. item
+			local costList = detailPanel:FindFirstChild("CostList")
+			if costList then
+				for _, child in costList:GetChildren() do
+					if child:IsA("Frame") then
+						child:Destroy()
+					end
 				end
-				costDetail.Text = txt
+				local order = 0
+				for item, amount in selectedRecipe.costs do
+					order = order + 1
+					local row = Instance.new("Frame")
+					row.Name = "CostRow"
+					row.Size = UDim2.new(1, 0, 0, 28)
+					row.BackgroundTransparency = 1
+					row.LayoutOrder = order
+					row.Parent = costList
+
+					local rIcon = Instance.new("ImageLabel")
+					rIcon.Size = UDim2.new(0, 24, 0, 24)
+					rIcon.Position = UDim2.new(0, 0, 0.5, -12)
+					rIcon.BackgroundTransparency = 1
+					rIcon.Image = COST_ICONS[item] or LOG_ICON
+					rIcon.ScaleType = Enum.ScaleType.Fit
+					rIcon.Parent = row
+
+					local rLabel = Instance.new("TextLabel")
+					rLabel.Size = UDim2.new(1, -32, 1, 0)
+					rLabel.Position = UDim2.new(0, 32, 0, 0)
+					rLabel.BackgroundTransparency = 1
+					rLabel.Text = tostring(amount) .. " " .. item
+					rLabel.TextColor3 = Color3.fromRGB(255, 220, 100)
+					rLabel.TextScaled = true
+					rLabel.Font = Enum.Font.GothamBold
+					rLabel.TextXAlignment = Enum.TextXAlignment.Left
+					rLabel.Parent = row
+				end
 			end
 			local craftBtn = detailPanel:FindFirstChild("CraftButton")
 			if craftBtn then
@@ -280,11 +320,6 @@ local function buildUI()
 		nameLabel.Font = Enum.Font.Gotham
 		nameLabel.Parent = btn
 
-		local COST_ICONS = {
-			Log = LOG_ICON,
-			Stone = "rbxassetid://134781813180973",
-		}
-
 		local costOffsetX = 8
 		for item, amount in recipe.costs do
 			local cIcon = Instance.new("ImageLabel")
@@ -348,25 +383,19 @@ local function buildUI()
 	detailIcon.ScaleType = Enum.ScaleType.Fit
 	detailIcon.Parent = detailPanel
 
-	local costDetailIcon = Instance.new("ImageLabel")
-	costDetailIcon.Size = UDim2.new(0, 25, 0, 25)
-	costDetailIcon.Position = UDim2.new(0.5, -30, 0, 200)
-	costDetailIcon.BackgroundTransparency = 1
-	costDetailIcon.Image = LOG_ICON
-	costDetailIcon.ScaleType = Enum.ScaleType.Fit
-	costDetailIcon.Parent = detailPanel
+	local costList = Instance.new("Frame")
+	costList.Name = "CostList"
+	costList.Size = UDim2.new(1, -40, 0, 80)
+	costList.Position = UDim2.new(0, 20, 0, 195)
+	costList.BackgroundTransparency = 1
+	costList.Parent = detailPanel
 
-	local costDetail = Instance.new("TextLabel")
-	costDetail.Name = "CostDetail"
-	costDetail.Size = UDim2.new(0, 60, 0, 25)
-	costDetail.Position = UDim2.new(0.5, 0, 0, 200)
-	costDetail.BackgroundTransparency = 1
-	costDetail.Text = ""
-	costDetail.TextColor3 = Color3.fromRGB(255, 220, 100)
-	costDetail.TextScaled = true
-	costDetail.Font = Enum.Font.GothamBold
-	costDetail.TextXAlignment = Enum.TextXAlignment.Left
-	costDetail.Parent = detailPanel
+	local costLayout = Instance.new("UIListLayout")
+	costLayout.FillDirection = Enum.FillDirection.Vertical
+	costLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	costLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	costLayout.Padding = UDim.new(0, 4)
+	costLayout.Parent = costList
 
 	local craftBtn = Instance.new("TextButton")
 	craftBtn.Name = "CraftButton"
