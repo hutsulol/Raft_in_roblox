@@ -34,6 +34,15 @@ local function findSawmillFromPart(part)
 	return nil
 end
 
+local function getBoilerSound(sawmill)
+	for _, desc in sawmill:GetDescendants() do
+		if desc:IsA("Sound") and desc.Name == "BoilerSound" then
+			return desc
+		end
+	end
+	return nil
+end
+
 local function getSpinMotors(sawmill)
 	local motors = {}
 	for _, desc in sawmill:GetDescendants() do
@@ -290,11 +299,20 @@ sawmillActionEvent.OnClientEvent:Connect(function(action, sawmill)
 			spinningSawmills[sawmill] = true
 			spinAngles[sawmill] = 0
 			startBeltAnimation(sawmill)
+			local boilerSound = getBoilerSound(sawmill)
+			if boilerSound then
+				boilerSound.Looped = true
+				boilerSound:Play()
+			end
 		end
 	elseif action == "stopProcessing" then
 		if sawmill then
 			spinningSawmills[sawmill] = nil
 			spinAngles[sawmill] = nil
+			local boilerSound = getBoilerSound(sawmill)
+			if boilerSound then
+				boilerSound:Stop()
+			end
 			local motors = getSpinMotors(sawmill)
 			for _, motor in motors do
 				motor.Transform = CFrame.new()

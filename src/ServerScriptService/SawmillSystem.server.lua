@@ -206,6 +206,10 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 			if desc:IsA("Script") or desc:IsA("LocalScript") then
 				desc:Destroy()
 			end
+			if desc:IsA("Sound") and desc.Name == "BoilerSound" then
+				desc.Playing = false
+				desc.PlayOnRemove = false
+			end
 		end
 
 		if sawmill:IsA("Model") then
