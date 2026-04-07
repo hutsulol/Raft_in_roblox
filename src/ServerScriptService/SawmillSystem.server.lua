@@ -44,15 +44,6 @@ local function weldToRaft(obj, raft)
 	end
 end
 
-local function getBoilerSound(sawmill)
-	for _, desc in sawmill:GetDescendants() do
-		if desc:IsA("Sound") and desc.Name == "BoilerSound" then
-			return desc
-		end
-	end
-	return nil
-end
-
 local function getSawmillParts(sawmill)
 	local parts = { hexagonPlacer = nil, hexagonClaimer = nil, sawBlade = nil }
 	for _, child in sawmill:GetDescendants() do
@@ -81,13 +72,6 @@ local function processLog(sawmill, droppedLog)
 
 	sawmill:SetAttribute("SawmillState", "processing")
 	droppedLog:Destroy()
-
-	-- Start boiler sound
-	local boilerSound = getBoilerSound(sawmill)
-	if boilerSound then
-		boilerSound.Looped = true
-		boilerSound:Play()
-	end
 
 	-- Tell clients to start visual animation (spinning + log/plank models)
 	sawmillActionEvent:FireAllClients("startProcessing", sawmill)
@@ -160,8 +144,6 @@ local function processLog(sawmill, droppedLog)
 		end
 
 		sawmill:SetAttribute("SawmillState", "idle")
-		local bs = getBoilerSound(sawmill)
-		if bs then bs:Stop() end
 		sawmillActionEvent:FireAllClients("stopProcessing", sawmill)
 	end)
 end
@@ -195,21 +177,6 @@ local function checkForLogsNearSawmills()
 	end
 end
 
--- Silence BoilerSound on any pre-existing sawmills
-local function initSawmillSound(sawmill)
-	local bs = getBoilerSound(sawmill)
-	if bs then
-		bs.Playing = false
-		bs.PlayOnRemove = false
-		bs.Looped = true
-		bs:Stop()
-	end
-end
-for _, sawmill in CollectionService:GetTagged("Sawmill") do
-	initSawmillSound(sawmill)
-end
-CollectionService:GetInstanceAddedSignal("Sawmill"):Connect(initSawmillSound)
-
 task.spawn(function()
 	while true do
 		task.wait(0.5)
@@ -238,12 +205,6 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 		for _, desc in sawmill:GetDescendants() do
 			if desc:IsA("Script") or desc:IsA("LocalScript") then
 				desc:Destroy()
-			end
-			if desc:IsA("Sound") and desc.Name == "BoilerSound" then
-				desc.Playing = false
-				desc.PlayOnRemove = false
-				desc.Looped = true
-				desc:Stop()
 			end
 		end
 
