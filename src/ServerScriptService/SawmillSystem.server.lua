@@ -1,5 +1,6 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
 
 local rs = ReplicatedStorage
 
@@ -69,6 +70,22 @@ local function processLog(sawmill, droppedLog)
 
 	local parts = getSawmillParts(sawmill)
 	if not parts.hexagonPlacer or not parts.sawBlade or not parts.hexagonClaimer then return end
+
+	-- Take only one log; return any extras to the dropper's inventory
+	local stackAmount = droppedLog:GetAttribute("ResourceAmount") or 1
+	if stackAmount > 1 then
+		local dropperId = droppedLog:GetAttribute("DropperUserId")
+		local dropper = dropperId and Players:GetPlayerByUserId(dropperId) or nil
+		if dropper and _G.GetInventory then
+			local inv = _G.GetInventory(dropper)
+			if inv then
+				inv["Log"] = (inv["Log"] or 0) + (stackAmount - 1)
+				if _G.SendInventory then
+					_G.SendInventory(dropper)
+				end
+			end
+		end
+	end
 
 	sawmill:SetAttribute("SawmillState", "processing")
 	droppedLog:Destroy()

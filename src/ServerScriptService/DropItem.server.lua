@@ -109,6 +109,7 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 	clone:SetAttribute("ResourceType", itemName)
 	clone:SetAttribute("ResourceAmount", dropCount)
 	clone:SetAttribute("IsToolDrop", not isResource)
+	clone:SetAttribute("DropperUserId", player.UserId)
 
 	clone:PivotTo(CFrame.new(spawnPos))
 	clone.Parent = workspace
