@@ -58,8 +58,9 @@ local TOOL_ICONS = {
 local inventory = {Log = 0, Plastic = 0, Stone = 0, Iron_Ore = 0, Iron_Ingot = 0, Leaves = 0}
 local recipes = {}
 local selectedRecipe = nil
-local selectedCategory = "Tools"
+local selectedCategory = nil
 local detailOverlay = nil
+local categoryOverlay = nil
 local CATEGORIES = {"Tools", "Technology", "Misc", "Resources"}
 local isOpen = false
 local screenGui = nil
@@ -678,12 +679,122 @@ end
 
 -- ─── UI Update ───
 
+local rebuildCraftList
+
 local function closeDetailOverlay()
 	if detailOverlay then
 		detailOverlay:Destroy()
 		detailOverlay = nil
 	end
 	selectedRecipe = nil
+end
+
+local function closeCategoryOverlay()
+	closeDetailOverlay()
+	if categoryOverlay then
+		categoryOverlay:Destroy()
+		categoryOverlay = nil
+	end
+	selectedCategory = nil
+	if screenGui then
+		local tabFrame = screenGui:FindFirstChild("CategoryTabs", true)
+		if tabFrame then
+			for _, tab in tabFrame:GetChildren() do
+				if tab:IsA("TextButton") then
+					tab.BackgroundColor3 = COLORS.craftItemBg
+					tab.TextColor3 = COLORS.titleText
+				end
+			end
+		end
+	end
+end
+
+local function openCategoryOverlay(cat)
+	if not screenGui then return end
+	local centerPanel = screenGui:FindFirstChild("CenterPanel")
+	if not centerPanel then return end
+
+	closeDetailOverlay()
+	if categoryOverlay then
+		categoryOverlay:Destroy()
+		categoryOverlay = nil
+	end
+	selectedCategory = cat
+
+	categoryOverlay = Instance.new("Frame")
+	categoryOverlay.Name = "CategoryOverlay"
+	categoryOverlay.Size = centerPanel.Size
+	categoryOverlay.Position = centerPanel.Position
+	categoryOverlay.BackgroundColor3 = COLORS.panelBg
+	categoryOverlay.BorderSizePixel = 0
+	categoryOverlay.ZIndex = 15
+	categoryOverlay.Parent = screenGui
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = categoryOverlay
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = COLORS.panelBorder
+	stroke.Thickness = 3
+	stroke.Parent = categoryOverlay
+
+	local backBtn = Instance.new("TextButton")
+	backBtn.Size = UDim2.new(0, 60, 0, 28)
+	backBtn.Position = UDim2.new(0, 10, 0, 8)
+	backBtn.BackgroundColor3 = COLORS.craftItemBg
+	backBtn.Text = "< Back"
+	backBtn.TextColor3 = COLORS.titleText
+	backBtn.Font = Enum.Font.GothamBold
+	backBtn.TextSize = 13
+	backBtn.BorderSizePixel = 0
+	backBtn.ZIndex = 16
+	backBtn.Parent = categoryOverlay
+
+	local backCorner = Instance.new("UICorner")
+	backCorner.CornerRadius = UDim.new(0, 6)
+	backCorner.Parent = backBtn
+
+	backBtn.MouseButton1Click:Connect(closeCategoryOverlay)
+
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -90, 0, 30)
+	title.Position = UDim2.new(0, 80, 0, 8)
+	title.BackgroundTransparency = 1
+	title.Text = cat
+	title.TextColor3 = COLORS.titleText
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 22
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.ZIndex = 16
+	title.Parent = categoryOverlay
+
+	local sep = Instance.new("Frame")
+	sep.Size = UDim2.new(1, -30, 0, 2)
+	sep.Position = UDim2.new(0, 15, 0, 42)
+	sep.BackgroundColor3 = COLORS.separator
+	sep.BorderSizePixel = 0
+	sep.ZIndex = 16
+	sep.Parent = categoryOverlay
+
+	local craftList = Instance.new("ScrollingFrame")
+	craftList.Name = "CraftList"
+	craftList.Size = UDim2.new(1, -20, 1, -60)
+	craftList.Position = UDim2.new(0, 10, 0, 50)
+	craftList.BackgroundTransparency = 1
+	craftList.BorderSizePixel = 0
+	craftList.ScrollBarThickness = 6
+	craftList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	craftList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	craftList.ZIndex = 16
+	craftList.Parent = categoryOverlay
+
+	local listLayout = Instance.new("UIListLayout")
+	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	listLayout.Padding = UDim.new(0, 5)
+	listLayout.Parent = craftList
+
+	rebuildCraftList()
 end
 
 local function openDetailOverlay(recipe)
@@ -857,8 +968,9 @@ local function openDetailOverlay(recipe)
 	end)
 end
 
-local function rebuildCraftList()
+function rebuildCraftList()
 	if not screenGui then return end
+	if not selectedCategory then return end
 	local craftList = screenGui:FindFirstChild("CraftList", true)
 	if not craftList then return end
 
@@ -1024,12 +1136,17 @@ end
 
 local function closeUI()
 	closeDetailOverlay()
+	if categoryOverlay then
+		categoryOverlay:Destroy()
+		categoryOverlay = nil
+	end
 	if screenGui then
 		screenGui:Destroy()
 		screenGui = nil
 	end
 	isOpen = false
 	selectedRecipe = nil
+	selectedCategory = nil
 	if hotbarGui then hotbarGui.DisplayOrder = 5 end
 end
 
@@ -1288,8 +1405,8 @@ local function buildUI()
 		end)
 	end
 
-	-- ─── Left Crafting Panel ───
-	local craftPanelWidth = 200
+	-- ─── Left Crafting Panel (vertical category list) ───
+	local craftPanelWidth = 160
 	local craftPanel = Instance.new("Frame")
 	craftPanel.Name = "CraftPanel"
 	craftPanel.Size = UDim2.new(0, craftPanelWidth, 0, panelHeight)
@@ -1325,56 +1442,60 @@ local function buildUI()
 	craftSep.BorderSizePixel = 0
 	craftSep.Parent = craftPanel
 
-	-- Category tabs
+	-- Vertical category tabs
 	local tabFrame = Instance.new("Frame")
 	tabFrame.Name = "CategoryTabs"
-	tabFrame.Size = UDim2.new(1, -16, 0, 26)
-	tabFrame.Position = UDim2.new(0, 8, 0, 44)
+	tabFrame.Size = UDim2.new(1, -20, 1, -55)
+	tabFrame.Position = UDim2.new(0, 10, 0, 48)
 	tabFrame.BackgroundTransparency = 1
 	tabFrame.Parent = craftPanel
 
-	local tabWidth = math.floor((craftPanelWidth - 16 - (#CATEGORIES - 1) * 3) / #CATEGORIES)
+	local tabsLayout = Instance.new("UIListLayout")
+	tabsLayout.FillDirection = Enum.FillDirection.Vertical
+	tabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	tabsLayout.Padding = UDim.new(0, 8)
+	tabsLayout.Parent = tabFrame
+
 	for i, cat in CATEGORIES do
 		local tab = Instance.new("TextButton")
 		tab.Name = "Tab_" .. cat
-		tab.Size = UDim2.new(0, tabWidth, 0, 24)
-		tab.Position = UDim2.new(0, (i - 1) * (tabWidth + 3), 0, 0)
-		tab.BackgroundColor3 = cat == selectedCategory and COLORS.panelBg or COLORS.craftItemBg
-		tab.TextColor3 = cat == selectedCategory and COLORS.lightText or COLORS.titleText
+		tab.Size = UDim2.new(1, 0, 0, 38)
+		tab.LayoutOrder = i
+		tab.BackgroundColor3 = COLORS.craftItemBg
+		tab.TextColor3 = COLORS.titleText
 		tab.Text = cat
 		tab.Font = Enum.Font.GothamBold
-		tab.TextSize = 10
+		tab.TextSize = 15
 		tab.BorderSizePixel = 0
 		tab.AutoButtonColor = false
 		tab.Parent = tabFrame
 		tab:SetAttribute("Category", cat)
 
 		local tabCorner = Instance.new("UICorner")
-		tabCorner.CornerRadius = UDim.new(0, 5)
+		tabCorner.CornerRadius = UDim.new(0, 6)
 		tabCorner.Parent = tab
 
+		local tabStroke = Instance.new("UIStroke")
+		tabStroke.Color = COLORS.panelBorder
+		tabStroke.Thickness = 1
+		tabStroke.Parent = tab
+
+		tab.MouseEnter:Connect(function()
+			if selectedCategory ~= cat then
+				tab.BackgroundColor3 = COLORS.craftItemHover
+			end
+		end)
+		tab.MouseLeave:Connect(function()
+			if selectedCategory ~= cat then
+				tab.BackgroundColor3 = COLORS.craftItemBg
+			end
+		end)
+
 		tab.MouseButton1Click:Connect(function()
-			selectedCategory = cat
-			closeDetailOverlay()
+			openCategoryOverlay(cat)
 			updateCategoryTabs()
-			rebuildCraftList()
 		end)
 	end
-
-	-- Recipe list (filtered by category)
-	local craftList = Instance.new("Frame")
-	craftList.Name = "CraftList"
-	craftList.Size = UDim2.new(1, -16, 1, -80)
-	craftList.Position = UDim2.new(0, 8, 0, 76)
-	craftList.BackgroundTransparency = 1
-	craftList.Parent = craftPanel
-
-	local listLayout = Instance.new("UIListLayout")
-	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	listLayout.Padding = UDim.new(0, 5)
-	listLayout.Parent = craftList
-
-	rebuildCraftList()
 
 	-- Close button
 	local closeBtn = Instance.new("TextButton")
