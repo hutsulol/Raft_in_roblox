@@ -27,6 +27,7 @@ local function weldToRaft(obj, raft)
 	for _, part in obj:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
+			part.Massless = true
 			if SPIN_PART_NAMES[part.Name] then
 				local motor = Instance.new("Motor6D")
 				motor.Name = "SpinMotor"
