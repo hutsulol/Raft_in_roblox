@@ -118,6 +118,98 @@ local dragState = {
 }
 local DRAG_THRESHOLD = 5
 
+-- ─── Tooltip ───
+local tooltipGui = nil
+local tooltipLabel = nil
+
+local DISPLAY_NAMES = {
+	Iron_Ore = "Iron Ore",
+	Iron_Ingot = "Iron Ingot",
+	Wet_Brick = "Wet Brick",
+	Dry_Brick = "Dry Brick",
+	["Pick-Axe"] = "Pick-Axe",
+	WorkBench = "Workbench",
+	Wooden_Spear = "Wooden Spear",
+	Wood_Knife = "Wood Knife",
+}
+
+local function getDisplayName(data)
+	if not data then return nil end
+	local key = data.name or data.toolName
+	if not key then return nil end
+	if DISPLAY_NAMES[key] then return DISPLAY_NAMES[key] end
+	return (key:gsub("_", " "))
+end
+
+local function ensureTooltipGui()
+	if tooltipGui and tooltipGui.Parent then return end
+	tooltipGui = Instance.new("ScreenGui")
+	tooltipGui.Name = "InventoryTooltip"
+	tooltipGui.ResetOnSpawn = false
+	tooltipGui.IgnoreGuiInset = true
+	tooltipGui.DisplayOrder = 200
+	tooltipGui.Enabled = false
+	tooltipGui.Parent = playerGui
+
+	tooltipLabel = Instance.new("TextLabel")
+	tooltipLabel.Name = "Label"
+	tooltipLabel.AutomaticSize = Enum.AutomaticSize.XY
+	tooltipLabel.Size = UDim2.new(0, 0, 0, 0)
+	tooltipLabel.BackgroundColor3 = Color3.fromRGB(30, 22, 10)
+	tooltipLabel.BackgroundTransparency = 0.1
+	tooltipLabel.BorderSizePixel = 0
+	tooltipLabel.TextColor3 = Color3.fromRGB(255, 245, 220)
+	tooltipLabel.Font = Enum.Font.GothamMedium
+	tooltipLabel.TextSize = 14
+	tooltipLabel.Text = ""
+	tooltipLabel.Parent = tooltipGui
+
+	local pad = Instance.new("UIPadding")
+	pad.PaddingTop = UDim.new(0, 4)
+	pad.PaddingBottom = UDim.new(0, 4)
+	pad.PaddingLeft = UDim.new(0, 8)
+	pad.PaddingRight = UDim.new(0, 8)
+	pad.Parent = tooltipLabel
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = tooltipLabel
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(120, 90, 50)
+	stroke.Thickness = 1
+	stroke.Parent = tooltipLabel
+end
+
+local function hideTooltip()
+	if tooltipGui then tooltipGui.Enabled = false end
+end
+
+local function updateTooltipPosition(mousePos)
+	if not tooltipGui or not tooltipGui.Enabled or not tooltipLabel then return end
+	local x = mousePos.X + 14
+	local y = mousePos.Y - tooltipLabel.AbsoluteSize.Y - 10
+	if y < 4 then y = mousePos.Y + 18 end
+	tooltipLabel.Position = UDim2.fromOffset(x, y)
+end
+
+local function showTooltipForSlot(slotIndex)
+	local data = slotData[slotIndex]
+	local name = getDisplayName(data)
+	if not name then
+		hideTooltip()
+		return
+	end
+	if dragState.active then
+		hideTooltip()
+		return
+	end
+	ensureTooltipGui()
+	tooltipLabel.Text = name
+	tooltipGui.Enabled = true
+	updateTooltipPosition(UserInputService:GetMouseLocation())
+end
+
 -- ─── Helpers ───
 
 local function canAfford(recipe)
@@ -407,6 +499,7 @@ local function activateDrag(mousePos)
 	if dragState.active then return end
 	dragState.active = true
 	dragState.didDrag = true
+	hideTooltip()
 
 	local data = dragState.data
 	local ghostGui = Instance.new("ScreenGui")
@@ -1157,6 +1250,7 @@ local function closeUI()
 		screenGui:Destroy()
 		screenGui = nil
 	end
+	hideTooltip()
 	isOpen = false
 	selectedRecipe = nil
 	selectedCategory = nil
@@ -1215,6 +1309,13 @@ local function buildHotbar()
 		slotStroke.Parent = slot
 
 		local slotIndex = i
+
+		slot.MouseEnter:Connect(function()
+			showTooltipForSlot(slotIndex)
+		end)
+		slot.MouseLeave:Connect(function()
+			hideTooltip()
+		end)
 
 		slot.MouseButton1Down:Connect(function()
 			local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
@@ -1384,6 +1485,13 @@ local function buildUI()
 		slotStroke.Parent = slot
 
 		local globalIdx = HOTBAR_SLOTS + i
+
+		slot.MouseEnter:Connect(function()
+			showTooltipForSlot(globalIdx)
+		end)
+		slot.MouseLeave:Connect(function()
+			hideTooltip()
+		end)
 
 		slot.MouseButton1Down:Connect(function()
 			local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
@@ -1574,6 +1682,9 @@ UserInputService.InputChanged:Connect(function(input)
 	if input.UserInputType == Enum.UserInputType.MouseMovement or input.UserInputType == Enum.UserInputType.Touch then
 		if dragState.startPos then
 			updateDragPosition(UserInputService:GetMouseLocation())
+		end
+		if tooltipGui and tooltipGui.Enabled then
+			updateTooltipPosition(UserInputService:GetMouseLocation())
 		end
 	end
 end)
