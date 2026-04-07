@@ -173,11 +173,16 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 
 	local template = rs:FindFirstChild(templateName)
 	if not template then
+		warn("[ResourceSpawner] template not found: " .. templateName)
 		return
 	end
-	local clone = template:Clone()
+	local ok, clone = pcall(function() return template:Clone() end)
+	if not ok or not clone then
+		warn("[ResourceSpawner] clone failed for " .. templateName .. ": " .. tostring(clone))
+		return
+	end
 
-	if not clone.PrimaryPart then
+	if clone:IsA("Model") and not clone.PrimaryPart then
 		local first = clone:FindFirstChildWhichIsA("BasePart", true)
 		if first then
 			clone.PrimaryPart = first
@@ -187,17 +192,30 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 	clone:SetAttribute("ResourceType", resourceType)
 	clone:SetAttribute("ResourceAmount", resourceAmount)
 
-	clone:PivotTo(CFrame.new(spawnPos))
+	local pivotOk, pivotErr = pcall(function()
+		clone:PivotTo(CFrame.new(spawnPos))
+	end)
+	if not pivotOk then
+		warn("[ResourceSpawner] PivotTo failed for " .. templateName .. ": " .. tostring(pivotErr))
+		clone:Destroy()
+		return
+	end
+
 	clone.Parent = workspace
 
 	for _, part in clone:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
-			part:SetNetworkOwner(nil)
+			pcall(function() part:SetNetworkOwner(nil) end)
 		end
+	end
+	if clone:IsA("BasePart") then
+		clone.Anchored = false
+		pcall(function() clone:SetNetworkOwner(nil) end)
 	end
 
 	CollectionService:AddTag(clone, "Resource")
+	print(string.format("[ResourceSpawner] spawned %s at (%.0f,%.0f,%.0f)", templateName, spawnPos.X, spawnPos.Y, spawnPos.Z))
 
 	task.delay(LIFETIME, function()
 		if clone and clone.Parent then
