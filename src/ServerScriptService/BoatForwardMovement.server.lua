@@ -48,14 +48,20 @@ alignOrientation.MaxTorque = 500000
 alignOrientation.Responsiveness = 5
 alignOrientation.Parent = primaryPart
 
--- Compute forward direction once (LookVector = along the logs)
-local forwardVector = primaryPart.CFrame.LookVector
-local forwardDirection = Vector3.new(forwardVector.X, 0, forwardVector.Z)
-if forwardDirection.Magnitude > 0.001 then
-	forwardDirection = forwardDirection.Unit
-else
-	forwardDirection = Vector3.new(0, 0, -1)
+-- Forward direction is always derived from the locked yaw + initial pitch/roll
+-- so it stays consistent with the AlignOrientation target, even if the raft
+-- is pivoted (e.g., by RaftSaveSystem on load) after this script started.
+local function computeForwardDirection(yaw)
+	local cf = CFrame.fromEulerAnglesYXZ(initialPitch, yaw, initialRoll)
+	local lv = cf.LookVector
+	local flat = Vector3.new(lv.X, 0, lv.Z)
+	if flat.Magnitude > 0.001 then
+		return flat.Unit
+	end
+	return Vector3.new(0, 0, -1)
 end
+
+local forwardDirection = computeForwardDirection(lockedYaw)
 
 -- Paddle state
 local paddleBoostRemaining = 0 -- seconds left of boost
@@ -96,7 +102,16 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
 			lockedYaw = lockedYaw + math.sign(diff) * step
 		end
 		-- Update forward direction to match new yaw
-		forwardDirection = Vector3.new(-math.sin(lockedYaw), 0, -math.cos(lockedYaw)).Unit
+		forwardDirection = computeForwardDirection(lockedYaw)
+	end
+
+	-- Also use the current physical raft heading to compute forward, so
+	-- any drift in raft yaw doesn't push the raft off-course (we always push
+	-- along the raft's actual forward, not a stale cached vector).
+	local actualLook = primaryPart.CFrame.LookVector
+	local actualFlat = Vector3.new(actualLook.X, 0, actualLook.Z)
+	if actualFlat.Magnitude > 0.001 then
+		forwardDirection = actualFlat.Unit
 	end
 
 	local currentVelocity = primaryPart.AssemblyLinearVelocity
