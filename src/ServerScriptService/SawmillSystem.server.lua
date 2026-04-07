@@ -28,6 +28,9 @@ local function weldToRaft(obj, raft)
 		if part:IsA("BasePart") then
 			part.Anchored = false
 			part.Massless = true
+			part.CanCollide = false
+			part.CanTouch = false
+			part.CanQuery = false
 			if SPIN_PART_NAMES[part.Name] then
 				local motor = Instance.new("Motor6D")
 				motor.Name = "SpinMotor"
