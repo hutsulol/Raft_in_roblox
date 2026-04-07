@@ -195,6 +195,13 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 		end
 	end
 
+	-- Align the model's pivot with its PrimaryPart so PivotTo positions the
+	-- visible part exactly where we want it (otherwise WorldPivot can be at
+	-- the bounding box center and the part ends up far from the spawn point).
+	if clone.PrimaryPart then
+		clone.WorldPivot = clone.PrimaryPart.CFrame
+	end
+
 	clone:SetAttribute("ResourceType", resourceType)
 	clone:SetAttribute("ResourceAmount", resourceAmount)
 
