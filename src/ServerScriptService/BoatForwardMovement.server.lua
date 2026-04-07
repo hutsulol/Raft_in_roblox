@@ -1,8 +1,8 @@
 local SPEED = 25
 local FORCE_PER_MASS = 33 -- force scales with total raft mass
-local PADDLE_BOOST = 20 -- extra force from a paddle stroke
-local PADDLE_DECAY = 2.0 -- seconds for paddle boost to decay
-local PADDLE_TURN_SPEED = 1.5 -- radians/sec for yaw steering
+local PADDLE_BOOST = 6 -- small extra push from a paddle stroke
+local PADDLE_DECAY = 1.5 -- seconds for paddle boost to decay
+local PADDLE_NUDGE_RATIO = 0.15 -- how much of the boost goes sideways (0..1)
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -66,23 +66,17 @@ local forwardDirection = computeForwardDirection(lockedYaw)
 -- Paddle state
 local paddleBoostRemaining = 0 -- seconds left of boost
 local paddleDirection = Vector3.zero -- direction of last paddle stroke
-local targetYaw = lockedYaw -- yaw the paddle is steering toward
 
--- Handle paddle input from clients
+-- Handle paddle input from clients. The paddle gives a small forward boost
+-- and a tiny sideways nudge toward the swing direction. It does NOT change
+-- the raft's locked heading.
 paddleEvent.OnServerEvent:Connect(function(player, direction)
 	if typeof(direction) ~= "Vector3" then return end
 
-	-- Validate: must be a unit-ish horizontal vector
 	local flat = Vector3.new(direction.X, 0, direction.Z)
 	if flat.Magnitude < 0.5 then return end
-	flat = flat.Unit
-
-	-- Apply paddle boost
-	paddleDirection = flat
+	paddleDirection = flat.Unit
 	paddleBoostRemaining = PADDLE_DECAY
-
-	-- Set the target yaw to the paddle direction
-	targetYaw = math.atan2(-flat.X, -flat.Z)
 end)
 
 game:GetService("RunService").Heartbeat:Connect(function(dt)
@@ -90,22 +84,7 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
 		return
 	end
 
-	-- Smoothly steer lockedYaw toward targetYaw
-	if lockedYaw ~= targetYaw then
-		local diff = targetYaw - lockedYaw
-		-- Normalize angle difference to [-pi, pi]
-		diff = math.atan2(math.sin(diff), math.cos(diff))
-		local step = PADDLE_TURN_SPEED * dt
-		if math.abs(diff) <= step then
-			lockedYaw = targetYaw
-		else
-			lockedYaw = lockedYaw + math.sign(diff) * step
-		end
-		-- Update forward direction to match new yaw
-		forwardDirection = computeForwardDirection(lockedYaw)
-	end
-
-	-- Also use the current physical raft heading to compute forward, so
+	-- Use the current physical raft heading to compute forward, so
 	-- any drift in raft yaw doesn't push the raft off-course (we always push
 	-- along the raft's actual forward, not a stale cached vector).
 	-- Rotate by -45° around Y to align with the raft's true front.
@@ -131,11 +110,22 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
 	local totalMass = primaryPart.AssemblyMass
 	local baseForce = forwardDirection * FORCE_PER_MASS * totalMass * forceFactor
 
-	-- Add paddle boost (decays over time)
+	-- Paddle gives a small extra forward push plus a tiny sideways nudge
+	-- toward the swing direction. The raft's heading is NOT changed.
 	local paddleForce = Vector3.zero
 	if paddleBoostRemaining > 0 then
 		local boostFactor = paddleBoostRemaining / PADDLE_DECAY
-		paddleForce = paddleDirection * PADDLE_BOOST * totalMass * boostFactor
+
+		-- Forward component (most of the boost)
+		local forwardPush = forwardDirection * (1 - PADDLE_NUDGE_RATIO)
+
+		-- Small lateral nudge perpendicular to forward, signed by where the
+		-- player paddled relative to forward.
+		local right = Vector3.new(forwardDirection.Z, 0, -forwardDirection.X)
+		local sideSign = math.clamp(paddleDirection:Dot(right), -1, 1)
+		local lateralNudge = right * sideSign * PADDLE_NUDGE_RATIO
+
+		paddleForce = (forwardPush + lateralNudge) * PADDLE_BOOST * totalMass * boostFactor
 		paddleBoostRemaining = math.max(0, paddleBoostRemaining - dt)
 	end
 
