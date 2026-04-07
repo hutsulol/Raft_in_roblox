@@ -18,6 +18,7 @@ local PLASTIC_ICON = "rbxassetid://132919988751848"
 local STONE_ICON = "rbxassetid://134781813180973"
 local IRON_ORE_ICON = "rbxassetid://73676755288746"
 local IRON_INGOT_ICON = "rbxassetid://72890243946368"
+local LEAVES_ICON = "rbxassetid://96691360298069"
 
 local PLANK_ICON = "rbxassetid://110032041583533"
 
@@ -28,6 +29,7 @@ local RESOURCE_ICONS = {
 	Iron_Ore = IRON_ORE_ICON,
 	Iron_Ingot = IRON_INGOT_ICON,
 	Plank = PLANK_ICON,
+	Leaves = LEAVES_ICON,
 }
 
 local TOOL_ICONS = {
@@ -49,7 +51,7 @@ local TOOL_ICONS = {
 	["Grapes"] = "rbxassetid://137478230275649",
 }
 
-local inventory = {Log = 0, Plastic = 0, Stone = 0, Iron_Ore = 0, Iron_Ingot = 0}
+local inventory = {Log = 0, Plastic = 0, Stone = 0, Iron_Ore = 0, Iron_Ingot = 0, Leaves = 0}
 local recipes = {}
 local selectedRecipe = nil
 local selectedCategory = "Tools"

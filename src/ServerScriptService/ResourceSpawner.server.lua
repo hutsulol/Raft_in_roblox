@@ -43,6 +43,9 @@ _G.GetInventory = function(player)
 	if not _G_Inventories[player].Plank then
 		_G_Inventories[player].Plank = 0
 	end
+	if not _G_Inventories[player].Leaves then
+		_G_Inventories[player].Leaves = 0
+	end
 	return _G_Inventories[player]
 end
 
@@ -223,6 +226,11 @@ while true do
 	-- plastic_canister: every 4th cycle (quarter as often)
 	if spawnCycle % 4 == 0 then
 		spawnResource("plastic_canister", "Plastic", 3, boat)
+	end
+
+	-- leaves: every 2nd cycle
+	if spawnCycle % 2 == 0 then
+		spawnResource("leaves", "Leaves", 1, boat)
 	end
 
 end
