@@ -9,6 +9,7 @@ local Cooldown = 3
 local CurrentPlayer = nil
 local CallbackHandler = nil
 local CName = 'BedCooldown'
+local SavedMassless = nil
 
 local function isNight()
 	local clock = Lighting.ClockTime
@@ -35,14 +36,32 @@ function StandupFromBed()
 		local C = Instance.new("StringValue", CurrentPlayer)
 		C.Name = CName
 		game.Debris:AddItem(C, Cooldown)
+
+		-- Anchor HRP first so removing the weld can't transfer momentum to the raft
+		CurrentPlayer.HumanoidRootPart.Anchored = true
 		script.Parent.WeldConstraint:Remove()
+
 		if CallbackHandler ~= nil then
 			CallbackHandler:disconnect()
 			CallbackHandler = nil
 		end
+
+		-- Compute a stand-up position above the bed without inheriting bed orientation
+		local bedPos = script.Parent.Position
+		local standCF = CFrame.new(bedPos + Vector3.new(0, 5, 0))
+		CurrentPlayer.HumanoidRootPart.CFrame = standCF
 		CurrentPlayer.Humanoid.PlatformStand = false
-		CurrentPlayer.HumanoidRootPart.CFrame = script.Parent.CFrame * CFrame.Angles(0, math.rad(180), 0) + Vector3.new(0, 5, 0)
-		CurrentPlayer.HumanoidRootPart.Anchored = true
+
+		-- Restore mass on character parts
+		if SavedMassless then
+			for part, wasMassless in pairs(SavedMassless) do
+				if part and part.Parent then
+					part.Massless = wasMassless
+				end
+			end
+			SavedMassless = nil
+		end
+
 		wait()
 		CurrentPlayer.HumanoidRootPart.Anchored = false
 		CurrentPlayer = nil
@@ -55,6 +74,17 @@ function LayToBed(character)
 		if not isNight() then return end
 
 		CurrentPlayer = character
+
+		-- Make all character parts massless so the player's weight cannot
+		-- apply torque to the raft via the weld constraint
+		SavedMassless = {}
+		for _, part in character:GetDescendants() do
+			if part:IsA("BasePart") then
+				SavedMassless[part] = part.Massless
+				part.Massless = true
+			end
+		end
+
 		CurrentPlayer.HumanoidRootPart.CFrame = script.Parent.CFrame * CFrame.Angles(math.rad(90), 0, math.rad(-90))
 		CurrentPlayer.Humanoid.PlatformStand = true
 		local Weld = Instance.new("WeldConstraint", script.Parent)
