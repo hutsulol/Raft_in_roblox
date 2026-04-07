@@ -7,6 +7,11 @@ local LIFETIME = 120
 local AREA_SIZE = 25
 local MAX_PER_AREA = 25
 
+-- Per-resource click overrides (default = CLICKS_TO_COLLECT)
+local CLICKS_BY_TYPE = {
+	Leaves = 3,
+}
+
 local collectEvent = rs:FindFirstChild("CollectResource")
 if not collectEvent then
 	collectEvent = Instance.new("RemoteEvent")
@@ -110,9 +115,12 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 	clickCounts[resource][player] = clickCounts[resource][player] + 1
 	local clicks = clickCounts[resource][player]
 
-	collectNotify:FireClient(player, "progress", resource, clicks, CLICKS_TO_COLLECT)
+	local resTypeForClicks = resource:GetAttribute("ResourceType") or "Log"
+	local clicksNeeded = CLICKS_BY_TYPE[resTypeForClicks] or CLICKS_TO_COLLECT
 
-	if clicks >= CLICKS_TO_COLLECT then
+	collectNotify:FireClient(player, "progress", resource, clicks, clicksNeeded)
+
+	if clicks >= clicksNeeded then
 		clickCounts[resource] = nil
 		local inv = _G.GetInventory(player)
 
@@ -246,9 +254,7 @@ while true do
 		spawnResource("plastic_canister", "Plastic", 3, boat)
 	end
 
-	-- leaves: every 2nd cycle
-	if spawnCycle % 2 == 0 then
-		spawnResource("leaves", "Leaves", 1, boat)
-	end
+	-- Leaves: every cycle (same chance as Log)
+	spawnResource("leaves", "Leaves", 1, boat)
 
 end
