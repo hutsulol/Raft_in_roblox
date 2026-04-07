@@ -4,6 +4,7 @@
 
 local rs = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local Debris = game:GetService("Debris")
 
 -- ─── Config ───
 local ROCK_MAX_HITS = 5
@@ -13,6 +14,21 @@ local IRON_HITS = 20
 local IRON_MIN_SCALE = 0.75
 local IRON_REWARD = 1
 local MINE_RANGE = 15
+
+-- ─── Dig sound (from Shovel tool) ───
+local function playDigSound(atPart)
+	if not atPart or not atPart.Parent then return end
+	local shovel = rs:FindFirstChild("Shovel")
+	if not shovel then return end
+	local handle = shovel:FindFirstChild("Handle")
+	if not handle then return end
+	local dig = handle:FindFirstChild("Dig")
+	if not dig or not dig:IsA("Sound") then return end
+	local clone = dig:Clone()
+	clone.Parent = atPart
+	clone:Play()
+	Debris:AddItem(clone, (clone.TimeLength > 0 and clone.TimeLength or 2) + 0.5)
+end
 
 -- ─── RemoteEvents ───
 local mineRockEvent = rs:WaitForChild("MineRock") -- used by PickAxeSystem for rocks
@@ -181,6 +197,9 @@ mineOreEvent.OnServerEvent:Connect(function(player, orePart)
 	local health = orePart:GetAttribute("MineHealth") or IRON_HITS
 	health = health - 1
 	orePart:SetAttribute("MineHealth", health)
+
+	-- Play Dig sound on each successful hit
+	playDigSound(orePart)
 
 	-- Shrink
 	if health > 0 then

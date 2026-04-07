@@ -3,12 +3,28 @@
 
 local rs = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local Debris = game:GetService("Debris")
 
 -- ─── Config ───
 local MINE_HITS_REQUIRED = 5
 local STONE_REWARD_MIN = 1
 local STONE_REWARD_MAX = 3
 local MINE_RANGE = 15
+
+-- ─── Dig sound (from Shovel tool) ───
+local function playDigSound(atPart)
+	if not atPart or not atPart.Parent then return end
+	local shovel = rs:FindFirstChild("Shovel")
+	if not shovel then return end
+	local handle = shovel:FindFirstChild("Handle")
+	if not handle then return end
+	local dig = handle:FindFirstChild("Dig")
+	if not dig or not dig:IsA("Sound") then return end
+	local clone = dig:Clone()
+	clone.Parent = atPart
+	clone:Play()
+	Debris:AddItem(clone, (clone.TimeLength > 0 and clone.TimeLength or 2) + 0.5)
+end
 
 -- Rock materials to auto-tag as mineable
 local ROCK_MATERIALS = {
@@ -131,6 +147,9 @@ mineRockEvent.OnServerEvent:Connect(function(player, rockPart)
 	local health = rockPart:GetAttribute("MineHealth") or MINE_HITS_REQUIRED
 	health = health - 1
 	rockPart:SetAttribute("MineHealth", health)
+
+	-- Play Dig sound on each successful hit
+	playDigSound(rockPart)
 
 	-- Shrinking is handled by MiningShrink.server.lua via MineHealth attribute
 
