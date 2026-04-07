@@ -1,17 +1,20 @@
 -- BoilerSoundController
 -- Lives inside the sawmill model as a child of the "Boiler" part.
--- Sets BoilerSound.Volume = 0.5 while the sawmill is processing,
--- and 0 when idle.
+-- Controls all sawmill sounds (BoilerSound, SawSound):
+--   processing -> Volume = active value, Playing
+--   idle       -> Volume = 0, Stopped
 
-local IDLE_VOLUME = 0
-local ACTIVE_VOLUME = 0.5
+local CollectionService = game:GetService("CollectionService")
+
+-- Sound name -> volume while sawmill is processing
+local SOUND_VOLUMES = {
+	BoilerSound = 0.5,
+	SawSound = 1,
+}
 
 local boiler = script.Parent
-local sound = boiler:WaitForChild("BoilerSound")
 
--- Walk up to find the sawmill model (the one carrying the SawmillState attribute
--- or tagged "Sawmill").
-local CollectionService = game:GetService("CollectionService")
+-- Walk up to find the sawmill model.
 local sawmill = boiler
 while sawmill do
 	if sawmill:GetAttribute("SawmillState") ~= nil or CollectionService:HasTag(sawmill, "Sawmill") then
@@ -23,22 +26,40 @@ if not sawmill then
 	sawmill = boiler.Parent
 end
 
-sound.Looped = true
-sound.PlayOnRemove = false
+local function collectSounds()
+	local sounds = {}
+	for _, desc in sawmill:GetDescendants() do
+		if desc:IsA("Sound") and SOUND_VOLUMES[desc.Name] then
+			table.insert(sounds, desc)
+		end
+	end
+	return sounds
+end
 
 local function apply()
-	local state = sawmill:GetAttribute("SawmillState")
-	if state == "processing" then
-		sound.Volume = ACTIVE_VOLUME
-		if not sound.Playing then
-			sound:Play()
+	local processing = sawmill:GetAttribute("SawmillState") == "processing"
+	for _, sound in collectSounds() do
+		sound.Looped = true
+		sound.PlayOnRemove = false
+		if processing then
+			sound.Volume = SOUND_VOLUMES[sound.Name]
+			if not sound.Playing then
+				sound:Play()
+			end
+		else
+			sound.Volume = 0
+			sound:Stop()
 		end
-	else
-		sound.Volume = IDLE_VOLUME
-		sound:Stop()
 	end
 end
 
 apply()
 
 sawmill:GetAttributeChangedSignal("SawmillState"):Connect(apply)
+
+-- Re-apply if a relevant sound is added later
+sawmill.DescendantAdded:Connect(function(desc)
+	if desc:IsA("Sound") and SOUND_VOLUMES[desc.Name] then
+		apply()
+	end
+end)
