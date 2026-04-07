@@ -90,6 +90,15 @@ local recipes = {
 		category = "Tools",
 		description = "A paddle to steer and boost your raft. Click where you want to go.",
 	},
+	{
+		name = "Rope",
+		displayName = "Rope",
+		icon = "rbxassetid://95342944157679",
+		costs = {Leaves = 4},
+		craftType = "resource",
+		category = "Resources",
+		description = "A sturdy rope woven from leaves. Used to craft advanced equipment.",
+	},
 }
 
 inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
@@ -203,6 +212,9 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 		if backpack then
 			tool.Parent = backpack
 		end
+
+	elseif recipe.craftType == "resource" then
+		inv[recipe.name] = (inv[recipe.name] or 0) + 1
 
 	elseif recipe.craftType == "place" then
 		if template then

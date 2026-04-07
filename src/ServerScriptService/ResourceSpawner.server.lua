@@ -51,6 +51,9 @@ _G.GetInventory = function(player)
 	if not _G_Inventories[player].Leaves then
 		_G_Inventories[player].Leaves = 0
 	end
+	if not _G_Inventories[player].Rope then
+		_G_Inventories[player].Rope = 0
+	end
 	return _G_Inventories[player]
 end
 
