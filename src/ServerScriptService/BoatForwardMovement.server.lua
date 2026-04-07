@@ -108,8 +108,10 @@ game:GetService("RunService").Heartbeat:Connect(function(dt)
 	-- Also use the current physical raft heading to compute forward, so
 	-- any drift in raft yaw doesn't push the raft off-course (we always push
 	-- along the raft's actual forward, not a stale cached vector).
+	-- Negate so the raft moves opposite of its LookVector (the model's
+	-- "front" faces the back of the raft).
 	local actualLook = primaryPart.CFrame.LookVector
-	local actualFlat = Vector3.new(actualLook.X, 0, actualLook.Z)
+	local actualFlat = Vector3.new(-actualLook.X, 0, -actualLook.Z)
 	if actualFlat.Magnitude > 0.001 then
 		forwardDirection = actualFlat.Unit
 	end
