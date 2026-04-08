@@ -157,9 +157,8 @@ end
 -- Convert local studs position to world position.
 -- Position is computed via the stable RestCFrame approach (same as the save
 -- system) so the local offset captured by the WeldConstraint is always the
--- same regardless of current wave-induced tilt. Only the returned yaw uses
--- the raft's ACTUAL physical value so beams/walls face the right direction
--- during a wind-driven turn (the fix from commit 9c15658).
+-- same regardless of current wave-induced tilt. Returned yaw is RestYaw so
+-- beams/walls stay perfectly aligned to the build grid.
 local function localToWorld(raft, studX, studZ)
 	local primaryCF = raft.PrimaryPart.CFrame
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
@@ -167,8 +166,7 @@ local function localToWorld(raft, studX, studZ)
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	local _, actualYaw = primaryCF:ToEulerAnglesYXZ()
-	return (primaryCF * CFrame.new(localOffset)).Position, actualYaw
+	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
 end
 
 local function weldToRaft(obj, raft)
