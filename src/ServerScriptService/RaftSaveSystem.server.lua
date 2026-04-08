@@ -567,7 +567,13 @@ local function rebuildRaft(player, saveData)
 			clone:SetAttribute("BeamCZ2", dr.cz2)
 			if clone:IsA("Model") then clone:PivotTo(dCF) else clone.CFrame = dCF end
 			clone.Parent = raft
-			weldAndUnanchor(clone)
+			-- Route through DoorController so the restored door uses a
+			-- Motor6D hinge instead of being rigidly welded.
+			if _G.SetupDoor then
+				_G.SetupDoor(clone, raft)
+			else
+				weldAndUnanchor(clone)
+			end
 		end
 	end
 

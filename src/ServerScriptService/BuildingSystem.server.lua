@@ -538,7 +538,14 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		end
 		placeWithVelocityPreserved(raft, function()
 			newDoor.Parent = raft
-			weldToRaft(newDoor, raft)
+			-- Doors need a Motor6D-based weld so the panel can swing without
+			-- fighting the raft's rigid weld network. Fall back to the plain
+			-- weld routine if the DoorController hasn't loaded yet.
+			if _G.SetupDoor then
+				_G.SetupDoor(newDoor, raft)
+			else
+				weldToRaft(newDoor, raft)
+			end
 		end)
 	end
 
