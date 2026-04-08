@@ -477,6 +477,13 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 				end
 			end
 			weldToRaft(newWall, raft, skipWeld)
+			if attrBuildType == "door_wood" then
+				task.defer(function()
+					if newWall.Parent then
+						prepareDoorForAnimation(newWall)
+					end
+				end)
+			end
 		end)
 	end
 

@@ -526,6 +526,13 @@ local function rebuildRaft(player, saveData)
 			end
 			clone.Parent = raft
 			weldAndUnanchor(clone)
+			if buildType == "door_wood" then
+				task.defer(function()
+					if clone.Parent then
+						prepareDoorForAnimation(clone)
+					end
+				end)
+			end
 		end
 	end
 
@@ -559,6 +566,13 @@ local function rebuildRaft(player, saveData)
 			end
 			clone.Parent = raft
 			weldAndUnanchor(clone)
+			if buildType == "door_wood" then
+				task.defer(function()
+					if clone.Parent then
+						prepareDoorForAnimation(clone)
+					end
+				end)
+			end
 		end
 	end
 
