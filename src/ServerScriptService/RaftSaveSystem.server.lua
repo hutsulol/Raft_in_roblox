@@ -417,6 +417,19 @@ local function rebuildRaft(player, saveData)
 		return (raftCF * CFrame.new(localOffset)).Position
 	end
 
+	local function prepareDoorForAnimation(model)
+		if not model or not model:IsA("Model") then return end
+		local hinge = model:FindFirstChild("Hinge", true)
+		if not hinge or not hinge:IsA("BasePart") then return end
+
+		for _, desc in model:GetDescendants() do
+			if desc:IsA("WeldConstraint") and (desc.Part0 == hinge or desc.Part1 == hinge) then
+				desc:Destroy()
+			end
+		end
+		hinge.Anchored = false
+	end
+
 	local function weldAndUnanchor(clone)
 		local skipHinge = clone:GetAttribute("BuildType") == "door_wood"
 		if clone:IsA("Model") then
@@ -506,6 +519,9 @@ local function rebuildRaft(player, saveData)
 			clone:SetAttribute("BeamCX2", wp.cx2)
 			clone:SetAttribute("BeamCZ2", wp.cz2)
 			if clone:IsA("Model") then clone:PivotTo(wCF) else clone.CFrame = wCF end
+			if buildType == "door_wood" then
+				prepareDoorForAnimation(clone)
+			end
 			clone.Parent = raft
 			weldAndUnanchor(clone)
 		end
@@ -536,6 +552,9 @@ local function rebuildRaft(player, saveData)
 			clone:SetAttribute("BeamCX2", wp.cx2)
 			clone:SetAttribute("BeamCZ2", wp.cz2)
 			if clone:IsA("Model") then clone:PivotTo(wCF) else clone.CFrame = wCF end
+			if buildType == "door_wood" then
+				prepareDoorForAnimation(clone)
+			end
 			clone.Parent = raft
 			weldAndUnanchor(clone)
 		end

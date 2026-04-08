@@ -255,6 +255,25 @@ local function weldToRaft(obj, raft, shouldSkipWeld)
 	end
 end
 
+local function prepareDoorForAnimation(model)
+	if not model or not model:IsA("Model") then return end
+	local hinge = model:FindFirstChild("Hinge", true)
+	if not hinge or not hinge:IsA("BasePart") then return end
+
+	-- If the template contains prebuilt welds to the hinge, they lock the
+	-- leaf in place and TweenService CFrame changes won't rotate it.
+	for _, desc in model:GetDescendants() do
+		if desc:IsA("WeldConstraint") and (desc.Part0 == hinge or desc.Part1 == hinge) then
+			desc:Destroy()
+		end
+	end
+
+	hinge.Anchored = false
+	pcall(function()
+		hinge:SetNetworkOwner(nil)
+	end)
+end
+
 -- Welding a new part with mass into the moving raft assembly causes Roblox
 -- to equilibrate momentum: the combined velocity = (M*V + m*0)/(M+m), so
 -- the raft loses a factor of m/M of its forward velocity. Across many
@@ -443,6 +462,9 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 			newWall:PivotTo(wallCF)
 		else
 			newWall.CFrame = wallCF
+		end
+		if attrBuildType == "door_wood" then
+			prepareDoorForAnimation(newWall)
 		end
 		placeWithVelocityPreserved(raft, function()
 			newWall.Parent = raft
