@@ -19,6 +19,16 @@ end
 
 local AUTOSAVE_INTERVAL = 120 -- seconds
 
+-- Keep the map's original raft transform so a "new game" (or missing save)
+-- can always start from the intended spawn position.
+local INITIAL_RAFT_CFRAME = nil
+do
+	local raft = workspace:FindFirstChild("Raft")
+	if raft and raft.PrimaryPart then
+		INITIAL_RAFT_CFRAME = raft.PrimaryPart.CFrame
+	end
+end
+
 -- ─── Slot layout sync: client sends slot positions to server ───
 local slotLayoutEvent = Instance.new("RemoteEvent")
 slotLayoutEvent.Name = "SlotLayoutSync"
@@ -57,7 +67,6 @@ local function collectRaftData(player)
 
 	local raftCF = raft.PrimaryPart.CFrame
 	local data = {
-		raftPosition = serializeCFrame(raftCF),
 		floors = {},
 		walls = {},
 		beams = {},
@@ -266,11 +275,16 @@ local function rebuildRaft(player, saveData)
 	local rs = ReplicatedStorage
 	local raftData = saveData.raft
 
-	-- Restore raft world position
-	if raftData.raftPosition then
+	-- Always start from the map's initial raft position, even when loading a save.
+	-- We persist raft layout and objects, but not world drift position.
+	if INITIAL_RAFT_CFRAME then
+		raft:PivotTo(INITIAL_RAFT_CFRAME)
+		print("[RaftSave] Reset raft position to initial map spawn before rebuild")
+	elseif raftData.raftPosition then
+		-- Backward compatibility if initial CFrame wasn't captured for any reason.
 		local savedCF = deserializeCFrame(raftData.raftPosition)
 		raft:PivotTo(savedCF)
-		print("[RaftSave] Restored raft position to " .. tostring(savedCF.Position))
+		print("[RaftSave] Restored raft position from legacy save to " .. tostring(savedCF.Position))
 	end
 
 	local raftCF = raft.PrimaryPart.CFrame
@@ -493,6 +507,17 @@ local function rebuildRaft(player, saveData)
 	print("[RaftSave] Rebuilt raft for " .. player.Name)
 end
 
+local function resetRaftToInitialPosition()
+	local raft = workspace:FindFirstChild("Raft")
+	if not raft or not raft.PrimaryPart or not INITIAL_RAFT_CFRAME then return end
+
+	raft:PivotTo(INITIAL_RAFT_CFRAME)
+	raft.PrimaryPart:SetAttribute("RestCFrame", INITIAL_RAFT_CFRAME)
+	local _, iy, _ = INITIAL_RAFT_CFRAME:ToEulerAnglesYXZ()
+	raft.PrimaryPart:SetAttribute("RestYaw", iy)
+	print("[RaftSave] Reset raft to initial map position")
+end
+
 -- ─── Restore inventory ───
 local function restoreInventory(player, saveData)
 	if not saveData or not saveData.inventory then return end
@@ -626,6 +651,12 @@ Players.PlayerAdded:Connect(function(player)
 			saveData = loadPlayerDataByUserId(saveOwnerId)
 		else
 			saveData = loadPlayerData(player)
+		end
+
+		-- If save-loading was requested but no save exists, force "new game"
+		-- spawn position instead of leaving the raft in a stale runtime state.
+		if not saveData then
+			resetRaftToInitialPosition()
 		end
 
 		-- Rebuild raft only once (the first player to join triggers it)
