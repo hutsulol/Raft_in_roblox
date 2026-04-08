@@ -11,7 +11,7 @@ local VELOCITY_GAIN = 6
 local WIND_INTERVAL_MIN = 10 -- seconds, min delay between wind events (TEMP: testing)
 local WIND_INTERVAL_MAX = 10 -- seconds, max delay between wind events (TEMP: testing)
 local WIND_DURATION = 6 -- seconds the wind blows
-local WIND_PLAYER_ACCEL = 80 -- studs/s² horizontal force applied to players standing on the raft
+local WIND_PLAYER_ACCEL = 400 -- studs/s² horizontal force applied to players standing on the raft
 local TURN_SPEED = 0.6 -- radians/sec the raft rotates to face the wind
 
 local Players = game:GetService("Players")
