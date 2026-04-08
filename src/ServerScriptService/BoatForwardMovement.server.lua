@@ -322,28 +322,6 @@ RunService.Heartbeat:Connect(function(dt)
 	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos.X, restY, pos.Z) * CFrame.fromEulerAnglesYXZ(initialPitch, lockedYaw, initialRoll))
 	primaryPart:SetAttribute("RestYaw", lockedYaw)
 
-	-- ─── Kinematic floor follower ───
-	-- Floor tiles placed by BuildingSystem are anchored, NOT welded to the
-	-- raft assembly, so they contribute zero mass and zero buoyancy. Each
-	-- frame we re-pivot every floor tile to follow the raft, using the
-	-- FloorLocalCF attribute that BuildingSystem captured at placement time.
-	-- This makes floor placement physics-neutral: it can never tilt the raft,
-	-- never cause a placement teleport, and never make the raft fly upward.
-	local primaryCF = primaryPart.CFrame
-	for _, child in boat:GetChildren() do
-		if child:GetAttribute("BuildType") == "raft" then
-			local localCF = child:GetAttribute("FloorLocalCF")
-			if localCF then
-				local worldCF = primaryCF * localCF
-				if child:IsA("Model") then
-					child:PivotTo(worldCF)
-				elseif child:IsA("BasePart") then
-					child.CFrame = worldCF
-				end
-			end
-		end
-	end
-
 	-- ─── Wind event: apply a horizontal force to players standing on the raft ───
 	-- Using a VectorForce (instead of overriding velocity) lets the Humanoid
 	-- walk controller still respond to player input — they get pushed but can

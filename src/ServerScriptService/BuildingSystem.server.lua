@@ -222,44 +222,6 @@ local function placeWithVelocityPreserved(raft, doPlace)
 	primary.AssemblyAngularVelocity = angVel
 end
 
--- Floor tiles are placed as kinematic anchored parts, NOT welded into the
--- raft physics assembly. A Heartbeat loop in BoatForwardMovement.server.lua
--- updates each tile's CFrame to follow the raft's PrimaryPart every frame.
---
--- Why: welding floors into the assembly was causing two unfixable problems:
---   1. Mass change → Roblox momentum equilibration → raft visibly teleports
---      backward on every placement (the velocity-preserve hack helped but
---      didn't fully eliminate it once the inertia tensor changed).
---   2. Off-center mass → buoyancy + gravity create a torque around the
---      shifted center of mass → placing a floor on the left side tilts
---      the raft to the left.
---
--- Anchored kinematic tiles fix BOTH because they contribute zero mass,
--- zero inertia, and zero buoyancy to the raft assembly. The raft's
--- physics state is exactly the same with 1 floor as with 100 floors.
--- Players can still walk on them — Roblox handles standing on a moving
--- anchored platform via its kinematic platform support.
---
--- Beams and walls stay welded because they're small structural elements
--- and the user reports they work fine.
-local function setupAsKinematicTile(obj, raft)
-	local primary = raft.PrimaryPart
-	local localCF
-	if obj:IsA("Model") then
-		local tileCF = obj:GetPivot()
-		localCF = primary.CFrame:ToObjectSpace(tileCF)
-		for _, desc in obj:GetDescendants() do
-			if desc:IsA("BasePart") then
-				desc.Anchored = true
-			end
-		end
-	elseif obj:IsA("BasePart") then
-		localCF = primary.CFrame:ToObjectSpace(obj.CFrame)
-		obj.Anchored = true
-	end
-	obj:SetAttribute("FloorLocalCF", localCF)
-end
-
 placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 	if type(buildType) ~= "string" then return end
 
@@ -309,10 +271,10 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		elseif newPart:IsA("BasePart") then
 			newPart.CFrame = worldCF
 		end
-		newPart.Parent = raft
-		-- Floors are kinematic followers, not welded into the physics assembly.
-		-- See setupAsKinematicTile for the rationale.
-		setupAsKinematicTile(newPart, raft)
+		placeWithVelocityPreserved(raft, function()
+			newPart.Parent = raft
+			weldToRaft(newPart, raft)
+		end)
 
 	elseif buildType == "beam" then
 		if not beamTemplate then return end
