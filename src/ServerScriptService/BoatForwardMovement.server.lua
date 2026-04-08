@@ -7,9 +7,12 @@ local PADDLE_COURSE_NUDGE = math.rad(3) -- max course rotation per paddle stroke
 -- bow-aligned target velocity faster (kills sideways drift more aggressively).
 local VELOCITY_GAIN = 6
 
--- ─── Ocean current ───
-local CURRENT_INTERVAL = 120 -- seconds between random current changes
-local TURN_SPEED = 0.35 -- radians/sec the raft rotates to face the current
+-- ─── Wind event ───
+local WIND_INTERVAL_MIN = 90 -- seconds, min delay between wind events
+local WIND_INTERVAL_MAX = 180 -- seconds, max delay between wind events
+local WIND_DURATION = 6 -- seconds the wind blows
+local WIND_PLAYER_ACCEL = 55 -- m/s² applied to players standing on the raft
+local TURN_SPEED = 0.6 -- radians/sec the raft rotates to face the wind
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -39,6 +42,10 @@ paddleEvent.Parent = ReplicatedStorage
 local currentEvent = Instance.new("RemoteEvent")
 currentEvent.Name = "OceanCurrentChanged"
 currentEvent.Parent = ReplicatedStorage
+
+local windEvent = Instance.new("RemoteEvent")
+windEvent.Name = "WindUpdate"
+windEvent.Parent = ReplicatedStorage
 
 local attachment = Instance.new("Attachment")
 attachment.Parent = primaryPart
@@ -78,19 +85,51 @@ local function randomHorizontalDirection()
 	return Vector3.new(math.sin(angle), 0, math.cos(angle))
 end
 
--- ─── Ocean current state ───
+-- ─── Course state ───
+-- The course only changes during a wind event. Outside of wind events the
+-- raft holds its current heading.
 local currentDirection = computeVisualFront(lockedYaw) -- start matching the raft's current heading
 
 local function broadcastCurrent()
 	currentEvent:FireAllClients(currentDirection)
 end
 
+-- ─── Wind state ───
+local windActive = false
+local windRemainingTime = 0
+local windDirection = Vector3.new(0, 0, -1)
+
+local function startWindEvent()
+	windDirection = randomHorizontalDirection()
+	-- The wind redirects the raft's course immediately. The raft will rotate
+	-- toward this new heading via the existing turn logic.
+	currentDirection = windDirection
+	windActive = true
+	windRemainingTime = WIND_DURATION
+
+	for _, plr in Players:GetPlayers() do
+		plr:SetAttribute("WindActive", true)
+	end
+
+	windEvent:FireAllClients(true, WIND_DURATION, WIND_DURATION, windDirection)
+	broadcastCurrent()
+	print(string.format("[Wind] Wind event started, direction (%.2f, %.2f)", windDirection.X, windDirection.Z))
+end
+
+local function endWindEvent()
+	windActive = false
+	windRemainingTime = 0
+	for _, plr in Players:GetPlayers() do
+		plr:SetAttribute("WindActive", false)
+	end
+	windEvent:FireAllClients(false, 0, WIND_DURATION, windDirection)
+end
+
 task.spawn(function()
 	while true do
-		task.wait(CURRENT_INTERVAL)
-		currentDirection = randomHorizontalDirection()
-		broadcastCurrent()
-		print(string.format("[OceanCurrent] New direction (%.2f, %.2f)", currentDirection.X, currentDirection.Z))
+		local delay = math.random(WIND_INTERVAL_MIN, WIND_INTERVAL_MAX)
+		task.wait(delay)
+		startWindEvent()
 	end
 end)
 
@@ -98,7 +137,16 @@ end)
 Players.PlayerAdded:Connect(function(plr)
 	task.wait(2)
 	currentEvent:FireClient(plr, currentDirection)
+	if windActive then
+		plr:SetAttribute("WindActive", true)
+		windEvent:FireClient(plr, true, windRemainingTime, WIND_DURATION, windDirection)
+	end
 end)
+
+-- ─── Player push (raycast filter set up once) ───
+local windRayParams = RaycastParams.new()
+windRayParams.FilterType = Enum.RaycastFilterType.Include
+windRayParams.FilterDescendantsInstances = {boat}
 
 -- ─── Paddle state ───
 local paddleBoostRemaining = 0
@@ -182,4 +230,27 @@ RunService.Heartbeat:Connect(function(dt)
 	local pos = primaryPart.Position
 	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos.X, restY, pos.Z) * CFrame.fromEulerAnglesYXZ(initialPitch, lockedYaw, initialRoll))
 	primaryPart:SetAttribute("RestYaw", lockedYaw)
+
+	-- ─── Wind event: push players standing on the raft ───
+	if windActive then
+		windRemainingTime = math.max(0, windRemainingTime - dt)
+		for _, plr in Players:GetPlayers() do
+			local char = plr.Character
+			if char then
+				local hrp = char:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					local origin = hrp.Position
+					local result = workspace:Raycast(origin, Vector3.new(0, -8, 0), windRayParams)
+					if result then
+						local v = hrp.AssemblyLinearVelocity
+						local accel = windDirection * WIND_PLAYER_ACCEL * dt
+						hrp.AssemblyLinearVelocity = Vector3.new(v.X + accel.X, v.Y, v.Z + accel.Z)
+					end
+				end
+			end
+		end
+		if windRemainingTime <= 0 then
+			endWindEvent()
+		end
+	end
 end)
