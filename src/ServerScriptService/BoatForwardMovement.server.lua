@@ -11,7 +11,7 @@ local VELOCITY_GAIN = 6
 local WIND_INTERVAL_MIN = 10 -- seconds, min delay between wind events (TEMP: testing)
 local WIND_INTERVAL_MAX = 10 -- seconds, max delay between wind events (TEMP: testing)
 local WIND_DURATION = 6 -- seconds the wind blows
-local WIND_PLAYER_VELOCITY = 35 -- studs/s the wind drags players standing on the raft
+local WIND_PLAYER_ACCEL = 80 -- studs/s² horizontal force applied to players standing on the raft
 local TURN_SPEED = 0.6 -- radians/sec the raft rotates to face the wind
 
 local Players = game:GetService("Players")
@@ -98,7 +98,8 @@ end
 local windActive = false
 local windRemainingTime = 0
 local windDirection = Vector3.new(0, 0, -1)
-local affectedPlayers = {} -- player -> humanoid (so we can restore PlatformStand)
+-- player -> { force = VectorForce, attach = Attachment }
+local affectedPlayers = {}
 
 local function startWindEvent()
 	windDirection = randomHorizontalDirection()
@@ -117,12 +118,34 @@ local function startWindEvent()
 	print(string.format("[Wind] Wind event started, direction (%.2f, %.2f)", windDirection.X, windDirection.Z))
 end
 
+local function detachWindForce(plr)
+	local data = affectedPlayers[plr]
+	if not data then return end
+	if data.force then data.force:Destroy() end
+	if data.attach then data.attach:Destroy() end
+	affectedPlayers[plr] = nil
+end
+
+local function attachWindForce(plr, hrp)
+	if affectedPlayers[plr] then return end
+	local attach = Instance.new("Attachment")
+	attach.Name = "WindAttach"
+	attach.Parent = hrp
+
+	local force = Instance.new("VectorForce")
+	force.Name = "WindForce"
+	force.Attachment0 = attach
+	force.RelativeTo = Enum.ActuatorRelativeTo.World
+	force.ApplyAtCenterOfMass = true
+	force.Force = windDirection * hrp.AssemblyMass * WIND_PLAYER_ACCEL
+	force.Parent = hrp
+
+	affectedPlayers[plr] = {force = force, attach = attach}
+end
+
 local function releaseAffectedPlayers()
-	for plr, hum in pairs(affectedPlayers) do
-		if hum and hum.Parent then
-			hum.PlatformStand = false
-		end
-		affectedPlayers[plr] = nil
+	for plr in pairs(affectedPlayers) do
+		detachWindForce(plr)
 	end
 end
 
@@ -242,30 +265,21 @@ RunService.Heartbeat:Connect(function(dt)
 	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos.X, restY, pos.Z) * CFrame.fromEulerAnglesYXZ(initialPitch, lockedYaw, initialRoll))
 	primaryPart:SetAttribute("RestYaw", lockedYaw)
 
-	-- ─── Wind event: knock players over and drag them along the wind ───
+	-- ─── Wind event: apply a horizontal force to players standing on the raft ───
+	-- Using a VectorForce (instead of overriding velocity) lets the Humanoid
+	-- walk controller still respond to player input — they get pushed but can
+	-- walk against the wind.
 	if windActive then
 		windRemainingTime = math.max(0, windRemainingTime - dt)
 		for _, plr in Players:GetPlayers() do
 			local char = plr.Character
 			if char then
 				local hrp = char:FindFirstChild("HumanoidRootPart")
-				local hum = char:FindFirstChildOfClass("Humanoid")
-				if hrp and hum then
+				if hrp then
 					local origin = hrp.Position
 					local result = workspace:Raycast(origin, Vector3.new(0, -8, 0), windRayParams)
 					if result then
-						-- Ragdoll the character so the Humanoid controller stops
-						-- fighting the velocity we apply each frame.
-						if not affectedPlayers[plr] then
-							affectedPlayers[plr] = hum
-							hum.PlatformStand = true
-						end
-						local v = hrp.AssemblyLinearVelocity
-						hrp.AssemblyLinearVelocity = Vector3.new(
-							windDirection.X * WIND_PLAYER_VELOCITY,
-							v.Y,
-							windDirection.Z * WIND_PLAYER_VELOCITY
-						)
+						attachWindForce(plr, hrp)
 					end
 				end
 			end
@@ -276,7 +290,7 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 end)
 
--- Restore PlatformStand if a character respawns mid-wind
+-- Clean up if a player leaves mid-wind
 Players.PlayerRemoving:Connect(function(plr)
-	affectedPlayers[plr] = nil
+	detachWindForce(plr)
 end)
