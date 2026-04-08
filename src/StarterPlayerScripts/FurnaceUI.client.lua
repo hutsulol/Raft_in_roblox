@@ -564,6 +564,13 @@ inventoryEvent.OnClientEvent:Connect(function(inv)
 	if isOpen then updateSlots() end
 end)
 
+-- ─── Unlock cursor while UI is open (overrides first-person camera lock) ───
+RunService.RenderStepped:Connect(function()
+	if isOpen then
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
+	end
+end)
+
 -- ─── Drag: follow mouse ───
 RunService.RenderStepped:Connect(function()
 	-- Progress bar
@@ -645,6 +652,12 @@ end)
 
 -- ─── Right-click: take 1 item | Shift+Right-click: take all items ───
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	-- E key closes the furnace UI (needed in first-person where cursor is locked)
+	if input.KeyCode == Enum.KeyCode.E and isOpen then
+		closeUI()
+		return
+	end
+
 	if input.UserInputType ~= Enum.UserInputType.MouseButton2 then return end
 	if not isOpen then return end
 
