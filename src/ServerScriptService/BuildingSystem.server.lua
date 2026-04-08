@@ -172,15 +172,24 @@ local function localToWorld(raft, studX, studZ)
 end
 
 local function weldToRaft(obj, raft)
-	-- Weld FIRST while still anchored, then unanchor in a second pass.
-	-- If we unanchor first, each part briefly exists as a zero-velocity body
-	-- before the weld attaches it to the moving raft. Welding while still
-	-- anchored captures the relative pose without any free-physics step.
-	-- After unanchoring we also pin network ownership to the server so
-	-- Roblox doesn't reassign ownership of the raft assembly mid-placement
-	-- (which causes a one-frame replication desync that visibly teleports
-	-- the entire raft).
-	local function pinOwnership(part)
+	-- Order of operations matters here. We need to:
+	--   1. Mark the new part Massless so it adds no inertia to the raft
+	--      assembly. This is the key fix for the placement teleport: when
+	--      a part with mass is welded into the moving raft, Roblox has to
+	--      equilibrate the assembly's momentum and recompute its inertia
+	--      tensor, which causes a one-frame physics hiccup that desyncs
+	--      the player from the raft (visible as a teleport opposite to
+	--      the raft's direction of travel). A massless part contributes
+	--      nothing to either, so the assembly is undisturbed.
+	--   2. Create the WeldConstraint while the part is still anchored, so
+	--      the relative pose is captured without a free-physics step.
+	--   3. Unanchor and pin network ownership to the server so Roblox
+	--      doesn't reassign ownership of the raft assembly mid-placement.
+	local function setupPart(part)
+		part.Massless = true
+	end
+	local function unanchorAndPin(part)
+		part.Anchored = false
 		pcall(function()
 			part:SetNetworkOwner(nil)
 		end)
@@ -188,6 +197,7 @@ local function weldToRaft(obj, raft)
 	if obj:IsA("Model") then
 		for _, desc in obj:GetDescendants() do
 			if desc:IsA("BasePart") then
+				setupPart(desc)
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = desc
 				weld.Part1 = raft.PrimaryPart
@@ -196,17 +206,16 @@ local function weldToRaft(obj, raft)
 		end
 		for _, desc in obj:GetDescendants() do
 			if desc:IsA("BasePart") then
-				desc.Anchored = false
-				pinOwnership(desc)
+				unanchorAndPin(desc)
 			end
 		end
 	elseif obj:IsA("BasePart") then
+		setupPart(obj)
 		local weld = Instance.new("WeldConstraint")
 		weld.Part0 = obj
 		weld.Part1 = raft.PrimaryPart
 		weld.Parent = obj
-		obj.Anchored = false
-		pinOwnership(obj)
+		unanchorAndPin(obj)
 	end
 end
 
