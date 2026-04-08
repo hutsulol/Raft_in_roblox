@@ -215,7 +215,7 @@ local function localToWorld(raft, studX, studZ)
 	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
 end
 
-local function weldToRaft(obj, raft)
+local function weldToRaft(obj, raft, shouldSkipWeld)
 	-- Weld FIRST while still anchored, then unanchor in a second pass.
 	-- If we unanchor first, each part briefly exists as a zero-velocity body
 	-- before the weld attaches it to the moving raft. Welding while still
@@ -231,10 +231,12 @@ local function weldToRaft(obj, raft)
 	if obj:IsA("Model") then
 		for _, desc in obj:GetDescendants() do
 			if desc:IsA("BasePart") then
-				local weld = Instance.new("WeldConstraint")
-				weld.Part0 = desc
-				weld.Part1 = raft.PrimaryPart
-				weld.Parent = desc
+				if not (shouldSkipWeld and shouldSkipWeld(desc)) then
+					local weld = Instance.new("WeldConstraint")
+					weld.Part0 = desc
+					weld.Part1 = raft.PrimaryPart
+					weld.Parent = desc
+				end
 			end
 		end
 		for _, desc in obj:GetDescendants() do
@@ -243,10 +245,12 @@ local function weldToRaft(obj, raft)
 			end
 		end
 	elseif obj:IsA("BasePart") then
-		local weld = Instance.new("WeldConstraint")
-		weld.Part0 = obj
-		weld.Part1 = raft.PrimaryPart
-		weld.Parent = obj
+		if not (shouldSkipWeld and shouldSkipWeld(obj)) then
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = obj
+			weld.Part1 = raft.PrimaryPart
+			weld.Parent = obj
+		end
 		unanchorAndPin(obj)
 	end
 end
@@ -442,7 +446,13 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		end
 		placeWithVelocityPreserved(raft, function()
 			newWall.Parent = raft
-			weldToRaft(newWall, raft)
+			local skipWeld = nil
+			if attrBuildType == "door_wood" then
+				skipWeld = function(part)
+					return part.Name == "Hinge"
+				end
+			end
+			weldToRaft(newWall, raft, skipWeld)
 		end)
 	end
 

@@ -418,13 +418,16 @@ local function rebuildRaft(player, saveData)
 	end
 
 	local function weldAndUnanchor(clone)
+		local skipHinge = clone:GetAttribute("BuildType") == "door_wood"
 		if clone:IsA("Model") then
 			for _, part in clone:GetDescendants() do
 				if part:IsA("BasePart") then
-					local weld = Instance.new("WeldConstraint")
-					weld.Part0 = raft.PrimaryPart
-					weld.Part1 = part
-					weld.Parent = part
+					if not (skipHinge and part.Name == "Hinge") then
+						local weld = Instance.new("WeldConstraint")
+						weld.Part0 = raft.PrimaryPart
+						weld.Part1 = part
+						weld.Parent = part
+					end
 				end
 			end
 			for _, part in clone:GetDescendants() do
