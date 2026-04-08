@@ -13,7 +13,8 @@ local WIND_INTERVAL_MAX = 10 -- seconds, max delay between wind events (TEMP: te
 local WIND_DURATION = 6 -- seconds the wind blows
 local WIND_PLAYER_ACCEL = 400 -- studs/s² horizontal force applied to players standing on the raft
 local WIND_AIRBORNE_ACCEL = 30 -- much smaller force while the player is in the air, so a jump doesn't launch them
-local WIND_SHELTER_DISTANCE = 4 -- studs; if any obstacle is closer than this on the upwind side, the player is sheltered
+local WIND_SHELTER_DISTANCE = 50 -- studs; max distance the upwind shelter probe checks
+local WIND_SHELTER_BOX_SIZE = Vector3.new(3, 5, 3) -- approximate character cross-section for the Blockcast
 local TURN_SPEED = 0.6 -- radians/sec the raft rotates to face the wind
 
 local Players = game:GetService("Players")
@@ -149,13 +150,16 @@ end
 local shelterRayParams = RaycastParams.new()
 shelterRayParams.FilterType = Enum.RaycastFilterType.Exclude
 
--- A player is sheltered if a short ray cast from their HRP toward the
--- wind source (i.e. opposite of the wind direction) hits any obstacle.
--- The character itself is excluded so the body doesn't block the ray.
+-- A player is sheltered if a Blockcast the size of their body, swept from
+-- their HRP toward the wind source (i.e. opposite of the wind direction),
+-- hits any obstacle. We use a Blockcast instead of a single ray so a wall
+-- that's slightly off-center from the HRP still counts as cover, and we
+-- give it enough range to cover any reasonable raft layout.
 local function isShelteredFromWind(hrp, char)
 	if not hrp or not hrp.Parent then return false end
 	shelterRayParams.FilterDescendantsInstances = {char}
-	local result = workspace:Raycast(hrp.Position, -windDirection * WIND_SHELTER_DISTANCE, shelterRayParams)
+	local cf = CFrame.new(hrp.Position)
+	local result = workspace:Blockcast(cf, WIND_SHELTER_BOX_SIZE, -windDirection * WIND_SHELTER_DISTANCE, shelterRayParams)
 	return result ~= nil
 end
 
