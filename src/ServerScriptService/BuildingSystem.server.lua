@@ -11,7 +11,6 @@ local raftPartTemplate = rs:WaitForChild("Raft_part")
 local beamTemplate = rs:FindFirstChild("beam")
 local wallPanelTemplate = rs:FindFirstChild("wall_model_wood")
 local wallArchTemplate = rs:FindFirstChild("wall_model_wood_arch")
-local doorWoodTemplate = rs:FindFirstChild("Door_Wood")
 
 -- Measure grid size from the actual template bounding box
 local GRID_SIZE
@@ -63,16 +62,6 @@ if wallArchTemplate then
 end
 raftPartTemplate:SetAttribute("ArchHeight", ARCH_HEIGHT)
 
-local DOOR_HEIGHT = 0
-if doorWoodTemplate then
-	if doorWoodTemplate:IsA("Model") then
-		DOOR_HEIGHT = doorWoodTemplate:GetExtentsSize().Y
-	elseif doorWoodTemplate:IsA("BasePart") then
-		DOOR_HEIGHT = doorWoodTemplate.Size.Y
-	end
-end
-raftPartTemplate:SetAttribute("DoorHeight", DOOR_HEIGHT)
-
 -- Beam/wall X-axis correction (pivot offset in template)
 local BEAM_X_OFFSET = 1
 
@@ -80,7 +69,6 @@ local RAFT_COST = 2
 local BEAM_COST = 1
 local WALL_PANEL_COST = 3
 local WALL_ARCH_COST = 3
-local DOOR_WOOD_COST = 2
 
 local function getRaft()
 	return workspace:FindFirstChild("Raft")
@@ -189,17 +177,6 @@ local function getWallArchKeys(raft)
 	return keys
 end
 
-local function getDoorKeys(raft)
-	local keys = {}
-	for _, child in raft:GetChildren() do
-		if child:GetAttribute("BuildType") == "door_wood" then
-			local dk = child:GetAttribute("DoorKey")
-			if dk then keys[dk] = true end
-		end
-	end
-	return keys
-end
-
 -- Convert local studs position to world position.
 -- Position is computed via the stable RestCFrame approach (same as the save
 -- system) so the local offset captured by the WeldConstraint is always the
@@ -253,67 +230,6 @@ local function weldToRaft(obj, raft, shouldSkipWeld)
 		end
 		unanchorAndPin(obj)
 	end
-end
-
-local function prepareDoorForAnimation(model)
-	if not model or not model:IsA("Model") then return end
-	local hinge = model:FindFirstChild("Hinge", true)
-	if not hinge or not hinge:IsA("BasePart") then return end
-
-	-- If the template contains prebuilt rigid joints to the hinge, they lock
-	-- the leaf in place and TweenService CFrame changes won't rotate it.
-	for _, desc in model:GetDescendants() do
-		if desc:IsA("WeldConstraint") and (desc.Part0 == hinge or desc.Part1 == hinge) then
-			desc:Destroy()
-		elseif desc:IsA("JointInstance") and (desc.Part0 == hinge or desc.Part1 == hinge) then
-			desc:Destroy()
-		end
-	end
-
-	hinge.Anchored = false
-	pcall(function()
-		hinge:SetNetworkOwner(nil)
-	end)
-end
-
-local function setDoorGhostState(model, isOpen)
-	local hinge = model and model:FindFirstChild("Hinge", true)
-	if hinge and hinge:IsA("BasePart") then
-		hinge.Transparency = isOpen and 1 or 0
-		hinge.CanCollide = not isOpen
-	end
-	model:SetAttribute("DoorIsOpen", isOpen)
-end
-
-local function installDoorPromptLogic(model)
-	if not model or not model:IsA("Model") then return end
-	if model:GetAttribute("DoorPromptHooked") then return end
-
-	local legacyScript = model:FindFirstChildWhichIsA("Script", true)
-	if legacyScript then
-		legacyScript.Disabled = true
-	end
-
-	local base = model:FindFirstChild("Base", true)
-	local prompt = base and base:FindFirstChildWhichIsA("ProximityPrompt")
-	if not prompt then return end
-
-	local function refreshPromptText()
-		prompt.ActionText = (model:GetAttribute("DoorIsOpen") and "Close") or "Open"
-	end
-
-	model:SetAttribute("DoorPromptHooked", true)
-	if model:GetAttribute("DoorIsOpen") == nil then
-		model:SetAttribute("DoorIsOpen", false)
-	end
-	setDoorGhostState(model, model:GetAttribute("DoorIsOpen"))
-	refreshPromptText()
-
-	prompt.Triggered:Connect(function()
-		local openNow = not model:GetAttribute("DoorIsOpen")
-		setDoorGhostState(model, openNow)
-		refreshPromptText()
-	end)
 end
 
 -- Welding a new part with mass into the moving raft assembly causes Roblox
@@ -427,7 +343,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 			weldToRaft(newBeam, raft)
 		end)
 
-	elseif buildType == "wall_panel" or buildType == "wall_arch" or buildType == "door_wood" then
+	elseif buildType == "wall_panel" or buildType == "wall_arch" then
 		local cx1, cz1, cx2, cz2 = ...
 		if type(cx1) ~= "number" or type(cz1) ~= "number" or type(cx2) ~= "number" or type(cz2) ~= "number" then return end
 
@@ -443,7 +359,6 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local wpk = makeWallPanelKey(cx1, cz1, cx2, cz2)
 		local panelKeys = getWallPanelKeys(raft)
 		local archKeys = getWallArchKeys(raft)
-		local doorKeys = getDoorKeys(raft)
 		local beamKeys = getBeamKeys(raft)
 
 		local cost = WALL_PANEL_COST
@@ -452,28 +367,17 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local keyAttrName = "WallPanelKey"
 		local elementHeight = PANEL_HEIGHT
 
-		if buildType == "door_wood" then
-			if not doorWoodTemplate then return end
-			if not archKeys[wpk] then return end
-			if doorKeys[wpk] then return end
-			cost = DOOR_WOOD_COST
-			template = doorWoodTemplate
-			attrBuildType = "door_wood"
-			keyAttrName = "DoorKey"
-			elementHeight = DOOR_HEIGHT
+		if not beamKeys[makeBeamKey(cx1, cz1)] or not beamKeys[makeBeamKey(cx2, cz2)] then return end
+		if panelKeys[wpk] or archKeys[wpk] then return end
+		if buildType == "wall_arch" then
+			if not wallArchTemplate then return end
+			cost = WALL_ARCH_COST
+			template = wallArchTemplate
+			attrBuildType = "wall_arch"
+			keyAttrName = "WallArchKey"
+			elementHeight = ARCH_HEIGHT
 		else
-			if not beamKeys[makeBeamKey(cx1, cz1)] or not beamKeys[makeBeamKey(cx2, cz2)] then return end
-			if panelKeys[wpk] or archKeys[wpk] then return end
-			if buildType == "wall_arch" then
-				if not wallArchTemplate then return end
-				cost = WALL_ARCH_COST
-				template = wallArchTemplate
-				attrBuildType = "wall_arch"
-				keyAttrName = "WallArchKey"
-				elementHeight = ARCH_HEIGHT
-			else
-				if not wallPanelTemplate then return end
-			end
+			if not wallPanelTemplate then return end
 		end
 
 		if (inv.Log or 0) < cost then return end
@@ -505,25 +409,9 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		else
 			newWall.CFrame = wallCF
 		end
-		if attrBuildType == "door_wood" then
-			prepareDoorForAnimation(newWall)
-		end
 		placeWithVelocityPreserved(raft, function()
 			newWall.Parent = raft
-			local skipWeld = nil
-			if attrBuildType == "door_wood" then
-				skipWeld = function(part)
-					return part.Name == "Hinge"
-				end
-			end
-			weldToRaft(newWall, raft, skipWeld)
-			if attrBuildType == "door_wood" then
-				task.defer(function()
-					if newWall.Parent then
-						prepareDoorForAnimation(newWall)
-					end
-				end)
-			end
+			weldToRaft(newWall, raft)
 		end)
 	end
 

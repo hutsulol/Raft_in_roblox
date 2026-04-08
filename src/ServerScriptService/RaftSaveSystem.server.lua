@@ -72,7 +72,6 @@ local function collectRaftData(player)
 		beams = {},
 		wallPanels = {},
 		wallArches = {},
-		doors = {},
 		objects = {},
 	}
 
@@ -109,15 +108,6 @@ local function collectRaftData(player)
 			local cz2 = child:GetAttribute("BeamCZ2")
 			if cx1 and cz1 and cx2 and cz2 then
 				table.insert(data.wallArches, {cx1 = cx1, cz1 = cz1, cx2 = cx2, cz2 = cz2})
-			end
-
-		elseif buildType == "door_wood" then
-			local cx1 = child:GetAttribute("BeamCX1")
-			local cz1 = child:GetAttribute("BeamCZ1")
-			local cx2 = child:GetAttribute("BeamCX2")
-			local cz2 = child:GetAttribute("BeamCZ2")
-			if cx1 and cz1 and cx2 and cz2 then
-				table.insert(data.doors, {cx1 = cx1, cz1 = cz1, cx2 = cx2, cz2 = cz2})
 			end
 
 		elseif buildType == "wall" then
@@ -170,7 +160,7 @@ local function collectRaftData(player)
 		end
 	end
 
-	print("[RaftSave] Collected: " .. #data.floors .. " floors, " .. #data.beams .. " beams, " .. #data.wallPanels .. " wallPanels, " .. #data.wallArches .. " wallArches, " .. #data.doors .. " doors, " .. #data.walls .. " walls(legacy), " .. #data.objects .. " objects")
+	print("[RaftSave] Collected: " .. #data.floors .. " floors, " .. #data.beams .. " beams, " .. #data.wallPanels .. " wallPanels, " .. #data.wallArches .. " wallArches, " .. #data.walls .. " walls(legacy), " .. #data.objects .. " objects")
 	return data
 end
 
@@ -327,7 +317,6 @@ local function rebuildRaft(player, saveData)
 	local beamTemplate = rs:FindFirstChild("beam")
 	local wallPanelTemplate = rs:FindFirstChild("wall_model_wood")
 	local wallArchTemplate = rs:FindFirstChild("wall_model_wood_arch")
-	local doorWoodTemplate = rs:FindFirstChild("Door_Wood")
 
 	-- Determine grid size and floor height from template
 	local GRID_SIZE = 6
@@ -376,15 +365,6 @@ local function rebuildRaft(player, saveData)
 		end
 	end
 
-	local DOOR_HEIGHT = 0
-	if doorWoodTemplate then
-		if doorWoodTemplate:IsA("Model") then
-			DOOR_HEIGHT = doorWoodTemplate:GetExtentsSize().Y
-		elseif doorWoodTemplate:IsA("BasePart") then
-			DOOR_HEIGHT = doorWoodTemplate.Size.Y
-		end
-	end
-
 	-- Floor offsets for beam inset calculation
 	local function isFloorOccupied(gx, gz)
 		if gx == 0 and gz == 0 then return true end
@@ -417,72 +397,14 @@ local function rebuildRaft(player, saveData)
 		return (raftCF * CFrame.new(localOffset)).Position
 	end
 
-	local function prepareDoorForAnimation(model)
-		if not model or not model:IsA("Model") then return end
-		local hinge = model:FindFirstChild("Hinge", true)
-		if not hinge or not hinge:IsA("BasePart") then return end
-
-		for _, desc in model:GetDescendants() do
-			if desc:IsA("WeldConstraint") and (desc.Part0 == hinge or desc.Part1 == hinge) then
-				desc:Destroy()
-			elseif desc:IsA("JointInstance") and (desc.Part0 == hinge or desc.Part1 == hinge) then
-				desc:Destroy()
-			end
-		end
-		hinge.Anchored = false
-	end
-
-	local function setDoorGhostState(model, isOpen)
-		local hinge = model and model:FindFirstChild("Hinge", true)
-		if hinge and hinge:IsA("BasePart") then
-			hinge.Transparency = isOpen and 1 or 0
-			hinge.CanCollide = not isOpen
-		end
-		model:SetAttribute("DoorIsOpen", isOpen)
-	end
-
-	local function installDoorPromptLogic(model)
-		if not model or not model:IsA("Model") then return end
-		if model:GetAttribute("DoorPromptHooked") then return end
-
-		local legacyScript = model:FindFirstChildWhichIsA("Script", true)
-		if legacyScript then
-			legacyScript.Disabled = true
-		end
-
-		local base = model:FindFirstChild("Base", true)
-		local prompt = base and base:FindFirstChildWhichIsA("ProximityPrompt")
-		if not prompt then return end
-
-		local function refreshPromptText()
-			prompt.ActionText = (model:GetAttribute("DoorIsOpen") and "Close") or "Open"
-		end
-
-		model:SetAttribute("DoorPromptHooked", true)
-		if model:GetAttribute("DoorIsOpen") == nil then
-			model:SetAttribute("DoorIsOpen", false)
-		end
-		setDoorGhostState(model, model:GetAttribute("DoorIsOpen"))
-		refreshPromptText()
-
-		prompt.Triggered:Connect(function()
-			local openNow = not model:GetAttribute("DoorIsOpen")
-			setDoorGhostState(model, openNow)
-			refreshPromptText()
-		end)
-	end
-
 	local function weldAndUnanchor(clone)
-		local skipHinge = clone:GetAttribute("BuildType") == "door_wood"
 		if clone:IsA("Model") then
 			for _, part in clone:GetDescendants() do
 				if part:IsA("BasePart") then
-					if not (skipHinge and part.Name == "Hinge") then
-						local weld = Instance.new("WeldConstraint")
-						weld.Part0 = raft.PrimaryPart
-						weld.Part1 = part
-						weld.Parent = part
-					end
+					local weld = Instance.new("WeldConstraint")
+					weld.Part0 = raft.PrimaryPart
+					weld.Part1 = part
+					weld.Parent = part
 				end
 			end
 			for _, part in clone:GetDescendants() do
@@ -561,18 +483,8 @@ local function rebuildRaft(player, saveData)
 			clone:SetAttribute("BeamCX2", wp.cx2)
 			clone:SetAttribute("BeamCZ2", wp.cz2)
 			if clone:IsA("Model") then clone:PivotTo(wCF) else clone.CFrame = wCF end
-			if buildType == "door_wood" then
-				prepareDoorForAnimation(clone)
-			end
 			clone.Parent = raft
 			weldAndUnanchor(clone)
-			if buildType == "door_wood" then
-				task.defer(function()
-					if clone.Parent then
-						prepareDoorForAnimation(clone)
-					end
-				end)
-			end
 		end
 	end
 
@@ -601,23 +513,12 @@ local function rebuildRaft(player, saveData)
 			clone:SetAttribute("BeamCX2", wp.cx2)
 			clone:SetAttribute("BeamCZ2", wp.cz2)
 			if clone:IsA("Model") then clone:PivotTo(wCF) else clone.CFrame = wCF end
-			if buildType == "door_wood" then
-				prepareDoorForAnimation(clone)
-			end
 			clone.Parent = raft
 			weldAndUnanchor(clone)
-			if buildType == "door_wood" then
-				task.defer(function()
-					if clone.Parent then
-						prepareDoorForAnimation(clone)
-					end
-				end)
-			end
 		end
 	end
 
 	placeWallLike(wallArchTemplate, "wall_arch", "WallArchKey", raftData.wallArches, ARCH_HEIGHT)
-	placeWallLike(doorWoodTemplate, "door_wood", "DoorKey", raftData.doors, DOOR_HEIGHT)
 
 	-- Place objects
 	if raftData.objects then
