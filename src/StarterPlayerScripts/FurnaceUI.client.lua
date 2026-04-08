@@ -652,8 +652,8 @@ end)
 
 -- ─── Right-click: take 1 item | Shift+Right-click: take all items ───
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	-- E key closes the furnace UI (needed in first-person where cursor is locked)
-	if input.KeyCode == Enum.KeyCode.E and isOpen then
+	-- Escape key closes the furnace UI (needed in first-person where cursor is locked)
+	if input.KeyCode == Enum.KeyCode.Escape and isOpen then
 		closeUI()
 		return
 	end
