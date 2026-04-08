@@ -191,16 +191,19 @@ end
 
 -- ===================== Coordinate conversion =====================
 
+-- Both raycastToRaftPlane and localToWorld must use the SAME yaw, otherwise
+-- the cursor → grid → world round-trip rotates the placement around the raft
+-- center by the difference. We use the raft's actual physical yaw (extracted
+-- from primaryCF) rather than RestYaw, so previews and placement stay glued
+-- to the cursor even while the raft is mid-rotation during a wind event.
 local function raycastToRaftPlane()
 	local raft = getRaft()
 	if not raft or not raft.PrimaryPart then return nil end
 
 	local cf = raft.PrimaryPart.CFrame
-	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or cf
-	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
-	local stableY = restCF.Position.Y
-	local planePoint = Vector3.new(cf.Position.X, stableY, cf.Position.Z)
-	local flatCF = CFrame.new(planePoint) * CFrame.Angles(0, restYaw, 0)
+	local _, actualYaw = cf:ToEulerAnglesYXZ()
+	local planePoint = cf.Position
+	local flatCF = CFrame.new(planePoint) * CFrame.Angles(0, actualYaw, 0)
 
 	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
 	local planeNormal = Vector3.new(0, 1, 0)
@@ -220,17 +223,9 @@ local function localToWorld(studX, studZ)
 	local raft = getRaft()
 	if not raft or not raft.PrimaryPart then return Vector3.zero, 0 end
 	local primaryCF = raft.PrimaryPart.CFrame
-	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
-	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
-	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
-	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
-	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	-- Use the raft's ACTUAL physical yaw (not RestYaw, which is the target).
-	-- During a wind-driven turn the physical yaw lags behind the target, so
-	-- placed beams/walls must use the lagged value to stay aligned with the
-	-- already-welded beams that are physically rotating with the raft.
 	local _, actualYaw = primaryCF:ToEulerAnglesYXZ()
-	return (primaryCF * CFrame.new(localOffset)).Position, actualYaw
+	local flatCF = CFrame.new(primaryCF.Position) * CFrame.Angles(0, actualYaw, 0)
+	return (flatCF * Vector3.new(studX, 0, studZ)), actualYaw
 end
 
 -- ===================== Floor grid =====================
@@ -240,19 +235,14 @@ local function getFloorGridFromMouse()
 	if not localHit then return nil, nil, nil end
 
 	local raft = getRaft()
-	local primaryCF = raft.PrimaryPart.CFrame
-	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
-	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
-	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
-	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(
-		math.round(localHit.X / GRID_SIZE) * GRID_SIZE, 0,
-		math.round(localHit.Z / GRID_SIZE) * GRID_SIZE
-	))
-	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-
 	local gx = math.round(localHit.X / GRID_SIZE)
 	local gz = math.round(localHit.Z / GRID_SIZE)
-	local worldCF = primaryCF * CFrame.new(localOffset)
+	local worldPos = localToWorld(gx * GRID_SIZE, gz * GRID_SIZE)
+	-- Inherit the raft's full rotation (pitch/roll/yaw) so the floor preview
+	-- sits flush with the existing raft surface, matching how the server
+	-- actually welds the new tile.
+	local primaryCF = raft.PrimaryPart.CFrame
+	local worldCF = CFrame.new(worldPos) * (primaryCF - primaryCF.Position)
 
 	return gx, gz, worldCF
 end
