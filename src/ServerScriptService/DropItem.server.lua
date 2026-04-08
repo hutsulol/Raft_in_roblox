@@ -125,6 +125,17 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 		end
 	end
 
+	-- Inherit the raft's velocity so the item stays with the raft long enough
+	-- to be detected by on-raft systems (e.g. the sawmill log polling). The
+	-- raft cruises at 25 studs/s; without this, a freshly dropped log has
+	-- zero horizontal velocity and the raft slides out from under it within
+	-- a single detection cycle.
+	local raft = workspace:FindFirstChild("Raft")
+	local primaryClonePart = clone:IsA("BasePart") and clone or (clone:IsA("Model") and clone.PrimaryPart)
+	if raft and raft.PrimaryPart and primaryClonePart then
+		primaryClonePart.AssemblyLinearVelocity = raft.PrimaryPart.AssemblyLinearVelocity
+	end
+
 	-- Tag as DroppedItem for E-key instant pickup
 	CollectionService:AddTag(clone, "DroppedItem")
 
