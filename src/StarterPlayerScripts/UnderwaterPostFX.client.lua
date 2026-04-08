@@ -4,10 +4,12 @@ local Workspace = game:GetService("Workspace")
 
 local VOXEL_RESOLUTION = 4
 local SAMPLE_HALF_SIZE = 2
+local SURFACE_RAY_UP = 10
+local DEPTH_THRESHOLD = 2.5
 
-local BLUR_SIZE_UNDERWATER = 22
-local TINT_UNDERWATER = Color3.fromRGB(0, 110, 90)
-local SATURATION_UNDERWATER = -0.3
+local BLUR_SIZE_UNDERWATER = 25
+local TINT_UNDERWATER = Color3.fromRGB(0, 140, 180)
+local SATURATION_UNDERWATER = -0.25
 local CONTRAST_UNDERWATER = 0.05
 
 local blur = Lighting:FindFirstChild("UnderwaterBlur")
@@ -29,6 +31,9 @@ if not colorFx or not colorFx:IsA("ColorCorrectionEffect") then
 end
 
 local isUnderwater = false
+local rayParams = RaycastParams.new()
+rayParams.FilterType = Enum.RaycastFilterType.Exclude
+rayParams.IgnoreWater = false
 
 local function applyUnderwaterEffects(enabled)
 	if enabled then
@@ -57,11 +62,33 @@ local function cameraInsideWater(cameraPos)
 	return materials[cx][cy][cz] == Enum.Material.Water and occupancy[cx][cy][cz] > 0.1
 end
 
+local function getDepthToWaterSurface(cameraPos)
+	rayParams.FilterDescendantsInstances = {Workspace.CurrentCamera}
+	local result = Workspace:Raycast(cameraPos, Vector3.new(0, SURFACE_RAY_UP, 0), rayParams)
+	if result and result.Material == Enum.Material.Water then
+		return (result.Position - cameraPos).Magnitude
+	end
+	return nil
+end
+
 RunService.RenderStepped:Connect(function()
 	local camera = Workspace.CurrentCamera
 	if not camera then return end
 
-	local nowUnderwater = cameraInsideWater(camera.CFrame.Position)
+	local camPos = camera.CFrame.Position
+	local inWater = cameraInsideWater(camPos)
+	local nowUnderwater = false
+
+	if inWater then
+		local depth = getDepthToWaterSurface(camPos)
+		if depth == nil then
+			-- Surface выше луча: считаем камеру погруженной достаточно глубоко.
+			nowUnderwater = true
+		else
+			nowUnderwater = depth > DEPTH_THRESHOLD
+		end
+	end
+
 	if nowUnderwater ~= isUnderwater then
 		isUnderwater = nowUnderwater
 		applyUnderwaterEffects(isUnderwater)
