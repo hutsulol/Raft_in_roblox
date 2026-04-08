@@ -225,7 +225,12 @@ local function localToWorld(studX, studZ)
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
+	-- Use the raft's ACTUAL physical yaw (not RestYaw, which is the target).
+	-- During a wind-driven turn the physical yaw lags behind the target, so
+	-- placed beams/walls must use the lagged value to stay aligned with the
+	-- already-welded beams that are physically rotating with the raft.
+	local _, actualYaw = primaryCF:ToEulerAnglesYXZ()
+	return (primaryCF * CFrame.new(localOffset)).Position, actualYaw
 end
 
 -- ===================== Floor grid =====================

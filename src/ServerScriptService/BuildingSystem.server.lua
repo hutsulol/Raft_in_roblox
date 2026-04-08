@@ -154,7 +154,12 @@ local function getWallPanelKeys(raft)
 	return keys
 end
 
--- Convert local studs position to world position
+-- Convert local studs position to world position. Returns world position and
+-- the raft's ACTUAL physical yaw (not RestYaw, which is the target the
+-- AlignOrientation is steering toward). During a wind-driven turn the
+-- physical yaw lags behind the target, so we must use the lagged value when
+-- rotating placed beams/walls — otherwise they get welded to the raft at the
+-- wrong relative angle and end up askew once the turn finishes.
 local function localToWorld(raft, studX, studZ)
 	local primaryCF = raft.PrimaryPart.CFrame
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
@@ -162,7 +167,8 @@ local function localToWorld(raft, studX, studZ)
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
+	local _, actualYaw = primaryCF:ToEulerAnglesYXZ()
+	return (primaryCF * CFrame.new(localOffset)).Position, actualYaw
 end
 
 local function weldToRaft(obj, raft)
