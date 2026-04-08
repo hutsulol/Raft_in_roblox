@@ -11,9 +11,6 @@ local VELOCITY_GAIN = 6
 local CURRENT_INTERVAL = 120 -- seconds between random current changes
 local TURN_SPEED = 0.35 -- radians/sec the raft rotates to face the current
 
--- Model has a -45° offset between its LookVector and its visible front.
-local MODEL_FRONT_OFFSET = math.rad(-45)
-
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -63,29 +60,17 @@ alignOrientation.Parent = primaryPart
 
 -- ─── Direction helpers ───
 
--- Compute the visible "front" direction of the raft for a given yaw.
--- This is the direction the bow points (and where the raft should move).
+-- The raft's PrimaryPart is oriented so that its LookVector points along the
+-- visible bow of the model. For a CFrame built with Euler order YXZ, the
+-- horizontal projection of the LookVector at yaw Y is always (-sin Y, 0, -cos Y),
+-- regardless of pitch and roll — so we don't need to rebuild the CFrame here.
 local function computeVisualFront(yaw)
-	local cf = CFrame.fromEulerAnglesYXZ(initialPitch, yaw, initialRoll)
-	local lv = cf.LookVector
-	local flat = Vector3.new(-lv.X, 0, -lv.Z)
-	if flat.Magnitude < 0.001 then
-		return Vector3.new(0, 0, -1)
-	end
-	flat = flat.Unit
-	local cosA = math.cos(MODEL_FRONT_OFFSET)
-	local sinA = math.sin(MODEL_FRONT_OFFSET)
-	return Vector3.new(
-		flat.X * cosA + flat.Z * sinA,
-		0,
-		-flat.X * sinA + flat.Z * cosA
-	).Unit
+	return Vector3.new(-math.sin(yaw), 0, -math.cos(yaw))
 end
 
--- Inverse of computeVisualFront: yaw such that the raft's bow points along `dir`.
--- Derived from: visualFront(y) = ((sin(y)-cos(y))/√2, 0, (sin(y)+cos(y))/√2)
+-- Inverse: yaw such that computeVisualFront(yaw) == dir.
 local function yawFromVisualFront(dir)
-	return math.atan2(dir.X + dir.Z, dir.Z - dir.X)
+	return math.atan2(-dir.X, -dir.Z)
 end
 
 local function randomHorizontalDirection()
