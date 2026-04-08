@@ -260,10 +260,12 @@ local function prepareDoorForAnimation(model)
 	local hinge = model:FindFirstChild("Hinge", true)
 	if not hinge or not hinge:IsA("BasePart") then return end
 
-	-- If the template contains prebuilt welds to the hinge, they lock the
-	-- leaf in place and TweenService CFrame changes won't rotate it.
+	-- If the template contains prebuilt rigid joints to the hinge, they lock
+	-- the leaf in place and TweenService CFrame changes won't rotate it.
 	for _, desc in model:GetDescendants() do
 		if desc:IsA("WeldConstraint") and (desc.Part0 == hinge or desc.Part1 == hinge) then
+			desc:Destroy()
+		elseif desc:IsA("JointInstance") and (desc.Part0 == hinge or desc.Part1 == hinge) then
 			desc:Destroy()
 		end
 	end

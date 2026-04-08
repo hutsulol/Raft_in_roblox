@@ -425,6 +425,8 @@ local function rebuildRaft(player, saveData)
 		for _, desc in model:GetDescendants() do
 			if desc:IsA("WeldConstraint") and (desc.Part0 == hinge or desc.Part1 == hinge) then
 				desc:Destroy()
+			elseif desc:IsA("JointInstance") and (desc.Part0 == hinge or desc.Part1 == hinge) then
+				desc:Destroy()
 			end
 		end
 		hinge.Anchored = false
