@@ -385,6 +385,26 @@ local function rebuildRaft(player, saveData)
 		end
 	end
 
+	-- Floors restored from save are kinematic anchored followers, not welded.
+	-- See BuildingSystem.server.lua for the rationale (floor placement must
+	-- never affect raft physics — no tilt, no teleport, no flying upward).
+	-- BoatForwardMovement.server.lua updates each tile's CFrame every frame
+	-- via the FloorLocalCF attribute we set here.
+	local function setupAsKinematicTile(clone)
+		local primary = raft.PrimaryPart
+		local localCF
+		if clone:IsA("Model") then
+			localCF = primary.CFrame:ToObjectSpace(clone:GetPivot())
+			for _, part in clone:GetDescendants() do
+				if part:IsA("BasePart") then part.Anchored = true end
+			end
+		else
+			localCF = primary.CFrame:ToObjectSpace(clone.CFrame)
+			clone.Anchored = true
+		end
+		clone:SetAttribute("FloorLocalCF", localCF)
+	end
+
 	-- Place floors (skip origin 0,0 which already exists)
 	if floorTemplate and raftData.floors then
 		for _, floor in raftData.floors do
@@ -399,7 +419,7 @@ local function rebuildRaft(player, saveData)
 				clone:SetAttribute("GridZ", floor.gz)
 				clone:SetAttribute("BuildType", "raft")
 				clone.Parent = raft
-				weldAndUnanchor(clone)
+				setupAsKinematicTile(clone)
 			end
 		end
 	end
