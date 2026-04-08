@@ -8,6 +8,10 @@ local PADDLE_COURSE_NUDGE = math.rad(3) -- max course rotation per paddle stroke
 local VELOCITY_GAIN = 6
 
 -- ─── Wind event ───
+-- Master switch: wind events are currently disabled because they interact
+-- badly with the building system (turning raft causes misaligned placements).
+-- Flip back to true to re-enable, everything else below stays wired up.
+local WIND_ENABLED = false
 local WIND_INTERVAL_MIN = 10 -- seconds, min delay between wind events (TEMP: testing)
 local WIND_INTERVAL_MAX = 10 -- seconds, max delay between wind events (TEMP: testing)
 local WIND_DURATION = 6 -- seconds the wind blows
@@ -201,13 +205,15 @@ local function endWindEvent()
 	windEvent:FireAllClients(false, 0, WIND_DURATION, windDirection)
 end
 
-task.spawn(function()
-	while true do
-		local delay = math.random(WIND_INTERVAL_MIN, WIND_INTERVAL_MAX)
-		task.wait(delay)
-		startWindEvent()
-	end
-end)
+if WIND_ENABLED then
+	task.spawn(function()
+		while true do
+			local delay = math.random(WIND_INTERVAL_MIN, WIND_INTERVAL_MAX)
+			task.wait(delay)
+			startWindEvent()
+		end
+	end)
+end
 
 -- Re-broadcast on player join
 Players.PlayerAdded:Connect(function(plr)
