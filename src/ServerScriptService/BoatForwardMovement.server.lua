@@ -32,6 +32,15 @@ end
 
 local primaryPart = boat.PrimaryPart
 
+-- Lock the raft as server-controlled. Without this, Roblox auto-assigns
+-- network ownership to the nearest player, and any time a new part is
+-- welded into the raft assembly the ownership gets recomputed — that
+-- transition causes a brief replication desync where the raft visibly
+-- disappears and teleports for one frame on every placement.
+pcall(function()
+	primaryPart:SetNetworkOwner(nil)
+end)
+
 -- Preserve initial pitch/roll (from the sideways-log PrimaryPart orientation)
 local initialPitch, initialYaw, initialRoll = primaryPart.CFrame:ToEulerAnglesYXZ()
 local lockedYaw = initialYaw

@@ -174,10 +174,17 @@ end
 local function weldToRaft(obj, raft)
 	-- Weld FIRST while still anchored, then unanchor in a second pass.
 	-- If we unanchor first, each part briefly exists as a zero-velocity body
-	-- before the weld attaches it to the moving raft. Roblox then has to
-	-- equilibrate momentum (raft slows to absorb the dead weight), which
-	-- jolts the player standing on it. Welding while still anchored captures
-	-- the relative pose without any free-physics step.
+	-- before the weld attaches it to the moving raft. Welding while still
+	-- anchored captures the relative pose without any free-physics step.
+	-- After unanchoring we also pin network ownership to the server so
+	-- Roblox doesn't reassign ownership of the raft assembly mid-placement
+	-- (which causes a one-frame replication desync that visibly teleports
+	-- the entire raft).
+	local function pinOwnership(part)
+		pcall(function()
+			part:SetNetworkOwner(nil)
+		end)
+	end
 	if obj:IsA("Model") then
 		for _, desc in obj:GetDescendants() do
 			if desc:IsA("BasePart") then
@@ -190,6 +197,7 @@ local function weldToRaft(obj, raft)
 		for _, desc in obj:GetDescendants() do
 			if desc:IsA("BasePart") then
 				desc.Anchored = false
+				pinOwnership(desc)
 			end
 		end
 	elseif obj:IsA("BasePart") then
@@ -198,6 +206,7 @@ local function weldToRaft(obj, raft)
 		weld.Part1 = raft.PrimaryPart
 		weld.Parent = obj
 		obj.Anchored = false
+		pinOwnership(obj)
 	end
 end
 
