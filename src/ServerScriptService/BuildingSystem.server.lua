@@ -172,22 +172,12 @@ local function localToWorld(raft, studX, studZ)
 end
 
 local function weldToRaft(obj, raft)
-	-- Order of operations matters here. We need to:
-	--   1. Mark the new part Massless so it adds no inertia to the raft
-	--      assembly. This is the key fix for the placement teleport: when
-	--      a part with mass is welded into the moving raft, Roblox has to
-	--      equilibrate the assembly's momentum and recompute its inertia
-	--      tensor, which causes a one-frame physics hiccup that desyncs
-	--      the player from the raft (visible as a teleport opposite to
-	--      the raft's direction of travel). A massless part contributes
-	--      nothing to either, so the assembly is undisturbed.
-	--   2. Create the WeldConstraint while the part is still anchored, so
-	--      the relative pose is captured without a free-physics step.
-	--   3. Unanchor and pin network ownership to the server so Roblox
-	--      doesn't reassign ownership of the raft assembly mid-placement.
-	local function setupPart(part)
-		part.Massless = true
-	end
+	-- Weld FIRST while still anchored, then unanchor in a second pass.
+	-- If we unanchor first, each part briefly exists as a zero-velocity body
+	-- before the weld attaches it to the moving raft. Welding while still
+	-- anchored captures the relative pose without any free-physics step.
+	-- After unanchoring we also pin network ownership to the server so
+	-- Roblox doesn't reassign ownership of the raft assembly mid-placement.
 	local function unanchorAndPin(part)
 		part.Anchored = false
 		pcall(function()
@@ -197,7 +187,6 @@ local function weldToRaft(obj, raft)
 	if obj:IsA("Model") then
 		for _, desc in obj:GetDescendants() do
 			if desc:IsA("BasePart") then
-				setupPart(desc)
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = desc
 				weld.Part1 = raft.PrimaryPart
@@ -210,13 +199,27 @@ local function weldToRaft(obj, raft)
 			end
 		end
 	elseif obj:IsA("BasePart") then
-		setupPart(obj)
 		local weld = Instance.new("WeldConstraint")
 		weld.Part0 = obj
 		weld.Part1 = raft.PrimaryPart
 		weld.Parent = obj
 		unanchorAndPin(obj)
 	end
+end
+
+-- Welding a new part with mass into the moving raft assembly causes Roblox
+-- to equilibrate momentum: the combined velocity = (M*V + m*0)/(M+m), so
+-- the raft loses a factor of m/M of its forward velocity. Across many
+-- placements this manifests as the player visibly desyncing from the raft.
+-- We snapshot the raft's velocity before the weld and restore it after, so
+-- the assembly's velocity is unaffected by the addition.
+local function placeWithVelocityPreserved(raft, doPlace)
+	local primary = raft.PrimaryPart
+	local linVel = primary.AssemblyLinearVelocity
+	local angVel = primary.AssemblyAngularVelocity
+	doPlace()
+	primary.AssemblyLinearVelocity = linVel
+	primary.AssemblyAngularVelocity = angVel
 end
 
 placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
@@ -268,8 +271,10 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		elseif newPart:IsA("BasePart") then
 			newPart.CFrame = worldCF
 		end
-		newPart.Parent = raft
-		weldToRaft(newPart, raft)
+		placeWithVelocityPreserved(raft, function()
+			newPart.Parent = raft
+			weldToRaft(newPart, raft)
+		end)
 
 	elseif buildType == "beam" then
 		if not beamTemplate then return end
@@ -308,8 +313,10 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		else
 			newBeam.CFrame = beamCF
 		end
-		newBeam.Parent = raft
-		weldToRaft(newBeam, raft)
+		placeWithVelocityPreserved(raft, function()
+			newBeam.Parent = raft
+			weldToRaft(newBeam, raft)
+		end)
 
 	elseif buildType == "wall_panel" then
 		if not wallPanelTemplate then return end
@@ -359,8 +366,10 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		else
 			newWall.CFrame = wallCF
 		end
-		newWall.Parent = raft
-		weldToRaft(newWall, raft)
+		placeWithVelocityPreserved(raft, function()
+			newWall.Parent = raft
+			weldToRaft(newWall, raft)
+		end)
 	end
 
 	if _G.SendInventory then
