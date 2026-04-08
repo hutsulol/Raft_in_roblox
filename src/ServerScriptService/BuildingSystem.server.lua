@@ -155,11 +155,8 @@ local function getWallPanelKeys(raft)
 end
 
 -- Convert local studs position to world position.
--- Position is computed via the stable RestCFrame approach (same as the save
--- system) so the local offset captured by the WeldConstraint is always the
--- same regardless of current wave-induced tilt. Only the returned yaw uses
--- the raft's ACTUAL physical value so beams/walls face the right direction
--- during a wind-driven turn (the fix from commit 9c15658).
+-- Position and yaw are both computed from the stable RestCFrame/RestYaw
+-- snapshot so collisions with floating ocean objects can't skew wall angles.
 local function localToWorld(raft, studX, studZ)
 	local primaryCF = raft.PrimaryPart.CFrame
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
@@ -167,8 +164,7 @@ local function localToWorld(raft, studX, studZ)
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	local _, actualYaw = primaryCF:ToEulerAnglesYXZ()
-	return (primaryCF * CFrame.new(localOffset)).Position, actualYaw
+	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
 end
 
 local function weldToRaft(obj, raft)
@@ -332,11 +328,8 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local wpk = makeWallPanelKey(cx1, cz1, cx2, cz2)
 		if getWallPanelKeys(raft)[wpk] then return end
 
-		local offsets = getFloorOffsets(raft)
-		local inset1X, inset1Z = computeBeamInset(offsets, cx1, cz1)
-		local inset2X, inset2Z = computeBeamInset(offsets, cx2, cz2)
-		local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2 + BEAM_X_OFFSET
-		local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
+		local midStudX = ((cx1 * GRID_SIZE) + (cx2 * GRID_SIZE)) / 2 + BEAM_X_OFFSET
+		local midStudZ = ((cz1 * GRID_SIZE) + (cz2 * GRID_SIZE)) / 2
 		local worldPos, restYaw = localToWorld(raft, midStudX, midStudZ)
 		worldPos = worldPos + Vector3.new(0, PANEL_HEIGHT / 2, 0)
 

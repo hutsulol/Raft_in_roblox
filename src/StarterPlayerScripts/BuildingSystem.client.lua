@@ -193,9 +193,7 @@ end
 
 -- Both raycastToRaftPlane and localToWorld use RestYaw/RestCFrame so the
 -- cursor → grid → world round-trip is consistent, giving stable grid coords
--- regardless of current wave-induced pitch/roll. localToWorld returns the
--- raft's ACTUAL physical yaw for rotation so beams/walls face the right
--- direction during a wind turn.
+-- and stable wall angles even when the raft is bumped by ocean objects.
 local function raycastToRaftPlane()
 	local raft = getRaft()
 	if not raft or not raft.PrimaryPart then return nil end
@@ -230,8 +228,7 @@ local function localToWorld(studX, studZ)
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	local _, actualYaw = primaryCF:ToEulerAnglesYXZ()
-	return (primaryCF * CFrame.new(localOffset)).Position, actualYaw
+	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
 end
 
 -- ===================== Floor grid =====================
@@ -317,11 +314,8 @@ local function getWallPanelFromMouse()
 		cx2, cz2 = gx + 0.5, gz + 0.5
 	end
 
-	local offsets = getFloorOffsets()
-	local inset1X, inset1Z = computeBeamInset(offsets, cx1, cz1)
-	local inset2X, inset2Z = computeBeamInset(offsets, cx2, cz2)
-	local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2 + BEAM_X_OFFSET
-	local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
+	local midStudX = ((cx1 * GRID_SIZE) + (cx2 * GRID_SIZE)) / 2 + BEAM_X_OFFSET
+	local midStudZ = ((cz1 * GRID_SIZE) + (cz2 * GRID_SIZE)) / 2
 
 	local worldPos, restYaw = localToWorld(midStudX, midStudZ)
 	worldPos = worldPos + Vector3.new(0, PANEL_HEIGHT / 2, 0)
