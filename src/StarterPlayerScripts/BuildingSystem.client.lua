@@ -84,6 +84,7 @@ local buildingUI = nil
 local previewPart = nil
 local inventory = { Log = 0 }
 local renderConnection = nil
+local hammerWatchConnection = nil
 
 inventoryEvent.OnClientEvent:Connect(function(inv)
 	inventory = inv
@@ -230,8 +231,7 @@ local function localToWorld(studX, studZ)
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	local _, actualYaw = primaryCF:ToEulerAnglesYXZ()
-	return (primaryCF * CFrame.new(localOffset)).Position, actualYaw
+	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
 end
 
 -- ===================== Floor grid =====================
@@ -653,25 +653,53 @@ local function startBuildMode()
 	end)
 end
 
+local function hasEquippedHammer(character)
+	if not character then return false end
+	local equippedTool = character:FindFirstChildWhichIsA("Tool")
+	return equippedTool and equippedTool.Name == "Hammer"
+end
+
+local function syncBuildMode(character)
+	local equipped = hasEquippedHammer(character)
+	if equipped and not isBuilding then
+		startBuildMode()
+	elseif not equipped and isBuilding then
+		closeBuildMode()
+	end
+end
+
 local function onCharacterAdded(character)
 	character.ChildAdded:Connect(function(child)
 		if child:IsA("Tool") and child.Name == "Hammer" then
-			startBuildMode()
+			syncBuildMode(character)
 		end
 	end)
 
 	character.ChildRemoved:Connect(function(child)
 		if child:IsA("Tool") and child.Name == "Hammer" then
-			closeBuildMode()
+			syncBuildMode(character)
 		end
 	end)
 
-	for _, child in character:GetChildren() do
-		if child:IsA("Tool") and child.Name == "Hammer" then
-			startBuildMode()
-			break
-		end
+	-- Some inventory flows re-parent tools in a way that can miss ChildAdded/Removed
+	-- transitions, so we keep a lightweight heartbeat sync as a safety net.
+	if hammerWatchConnection then
+		hammerWatchConnection:Disconnect()
 	end
+	hammerWatchConnection = RunService.Heartbeat:Connect(function()
+		syncBuildMode(character)
+	end)
+
+	syncBuildMode(character)
+	character.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			if hammerWatchConnection then
+				hammerWatchConnection:Disconnect()
+				hammerWatchConnection = nil
+			end
+			closeBuildMode()
+		end
+	end)
 end
 
 if player.Character then
