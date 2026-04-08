@@ -363,7 +363,14 @@ local function rebuildRaft(player, saveData)
 		return (raftCF * CFrame.new(localOffset)).Position
 	end
 
+	local function applyPartPhysics(part, buildType)
+		part.Massless = true
+		part.CanCollide = (buildType == "raft")
+		part.CanTouch = (buildType == "raft")
+	end
+
 	local function weldAndUnanchor(clone)
+		local buildType = clone:GetAttribute("BuildType")
 		if clone:IsA("Model") then
 			for _, part in clone:GetDescendants() do
 				if part:IsA("BasePart") then
@@ -374,13 +381,17 @@ local function rebuildRaft(player, saveData)
 				end
 			end
 			for _, part in clone:GetDescendants() do
-				if part:IsA("BasePart") then part.Anchored = false end
+				if part:IsA("BasePart") then
+					applyPartPhysics(part, buildType)
+					part.Anchored = false
+				end
 			end
 		else
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = raft.PrimaryPart
 			weld.Part1 = clone
 			weld.Parent = clone
+			applyPartPhysics(clone, buildType)
 			clone.Anchored = false
 		end
 	end

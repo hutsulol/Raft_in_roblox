@@ -171,7 +171,18 @@ local function localToWorld(raft, studX, studZ)
 	return (primaryCF * CFrame.new(localOffset)).Position, actualYaw
 end
 
+local function applyPartPhysics(part, buildType)
+	-- Keep the raft as a single stable rigid body:
+	-- 1) all newly attached pieces are massless (no per-piece inertia spikes),
+	-- 2) only floor tiles stay collidable (players can still stand on raft),
+	-- 3) vertical structures don't physically "hook" floating loot and launch raft.
+	part.Massless = true
+	part.CanCollide = (buildType == "raft")
+	part.CanTouch = (buildType == "raft")
+end
+
 local function weldToRaft(obj, raft)
+	local buildType = obj:GetAttribute("BuildType")
 	-- Weld FIRST while still anchored, then unanchor in a second pass.
 	-- If we unanchor first, each part briefly exists as a zero-velocity body
 	-- before the weld attaches it to the moving raft. Welding while still
@@ -179,6 +190,7 @@ local function weldToRaft(obj, raft)
 	-- After unanchoring we also pin network ownership to the server so
 	-- Roblox doesn't reassign ownership of the raft assembly mid-placement.
 	local function unanchorAndPin(part)
+		applyPartPhysics(part, buildType)
 		part.Anchored = false
 		pcall(function()
 			part:SetNetworkOwner(nil)
