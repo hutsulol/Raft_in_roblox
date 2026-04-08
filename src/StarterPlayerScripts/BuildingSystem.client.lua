@@ -13,6 +13,8 @@ local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local raftPartTemplate = ReplicatedStorage:WaitForChild("Raft_part")
 local beamTemplate = ReplicatedStorage:FindFirstChild("beam")
 local wallPanelTemplate = ReplicatedStorage:FindFirstChild("wall_model_wood")
+local wallArchTemplate = ReplicatedStorage:FindFirstChild("wall_model_wood_arch")
+local doorWoodTemplate = ReplicatedStorage:FindFirstChild("Door_Wood")
 
 local GRID_SIZE = raftPartTemplate:GetAttribute("GridSize")
 if not GRID_SIZE then
@@ -29,6 +31,8 @@ end
 local BEAM_HEIGHT = raftPartTemplate:GetAttribute("BeamHeight") or 0
 local BEAM_INSET = raftPartTemplate:GetAttribute("BeamInset") or 0
 local PANEL_HEIGHT = raftPartTemplate:GetAttribute("PanelHeight") or 0
+local ARCH_HEIGHT = raftPartTemplate:GetAttribute("ArchHeight") or 0
+local DOOR_HEIGHT = raftPartTemplate:GetAttribute("DoorHeight") or 0
 
 -- Fallback measurements if attributes not set yet
 if BEAM_HEIGHT == 0 and beamTemplate then
@@ -46,6 +50,20 @@ if PANEL_HEIGHT == 0 and wallPanelTemplate then
 		PANEL_HEIGHT = wallPanelTemplate:GetExtentsSize().Y
 	elseif wallPanelTemplate:IsA("BasePart") then
 		PANEL_HEIGHT = wallPanelTemplate.Size.Y
+	end
+end
+if ARCH_HEIGHT == 0 and wallArchTemplate then
+	if wallArchTemplate:IsA("Model") then
+		ARCH_HEIGHT = wallArchTemplate:GetExtentsSize().Y
+	elseif wallArchTemplate:IsA("BasePart") then
+		ARCH_HEIGHT = wallArchTemplate.Size.Y
+	end
+end
+if DOOR_HEIGHT == 0 and doorWoodTemplate then
+	if doorWoodTemplate:IsA("Model") then
+		DOOR_HEIGHT = doorWoodTemplate:GetExtentsSize().Y
+	elseif doorWoodTemplate:IsA("BasePart") then
+		DOOR_HEIGHT = doorWoodTemplate.Size.Y
 	end
 end
 
@@ -73,6 +91,8 @@ local categories = {
 		items = {
 			{id = "beam", name = "Beam", icon = LOG_ICON, cost = 1, costType = "Log", buildType = "beam"},
 			{id = "wall_panel", name = "Wood Wall", icon = LOG_ICON, cost = 3, costType = "Log", buildType = "wall_panel"},
+			{id = "wall_arch", name = "Wood Arch", icon = LOG_ICON, cost = 3, costType = "Log", buildType = "wall_arch"},
+			{id = "door_wood", name = "Wood Door", icon = LOG_ICON, cost = 2, costType = "Log", buildType = "door_wood"},
 		},
 	},
 }
@@ -84,6 +104,7 @@ local buildingUI = nil
 local previewPart = nil
 local inventory = { Log = 0 }
 local renderConnection = nil
+local hammerWatchConnection = nil
 
 inventoryEvent.OnClientEvent:Connect(function(inv)
 	inventory = inv
@@ -189,6 +210,32 @@ local function getWallPanelKeys()
 	return keys
 end
 
+local function getWallArchKeys()
+	local raft = getRaft()
+	if not raft then return {} end
+	local keys = {}
+	for _, child in raft:GetChildren() do
+		if child:GetAttribute("BuildType") == "wall_arch" then
+			local wk = child:GetAttribute("WallArchKey")
+			if wk then keys[wk] = true end
+		end
+	end
+	return keys
+end
+
+local function getDoorKeys()
+	local raft = getRaft()
+	if not raft then return {} end
+	local keys = {}
+	for _, child in raft:GetChildren() do
+		if child:GetAttribute("BuildType") == "door_wood" then
+			local dk = child:GetAttribute("DoorKey")
+			if dk then keys[dk] = true end
+		end
+	end
+	return keys
+end
+
 -- ===================== Coordinate conversion =====================
 
 -- Both raycastToRaftPlane and localToWorld use RestYaw/RestCFrame so the
@@ -230,8 +277,7 @@ local function localToWorld(studX, studZ)
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	local _, actualYaw = primaryCF:ToEulerAnglesYXZ()
-	return (primaryCF * CFrame.new(localOffset)).Position, actualYaw
+	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
 end
 
 -- ===================== Floor grid =====================
@@ -324,7 +370,13 @@ local function getWallPanelFromMouse()
 	local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
 
 	local worldPos, restYaw = localToWorld(midStudX, midStudZ)
-	worldPos = worldPos + Vector3.new(0, PANEL_HEIGHT / 2, 0)
+	local elementHeight = PANEL_HEIGHT
+	if selectedItem and selectedItem.buildType == "wall_arch" then
+		elementHeight = ARCH_HEIGHT
+	elseif selectedItem and selectedItem.buildType == "door_wood" then
+		elementHeight = DOOR_HEIGHT
+	end
+	worldPos = worldPos + Vector3.new(0, elementHeight / 2, 0)
 
 	local sideAngle = (side == 2 or side == 3) and math.rad(90) or 0
 	local worldCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
@@ -375,6 +427,8 @@ local function getTemplateForItem(item)
 	if not item then return raftPartTemplate end
 	if item.buildType == "beam" then return beamTemplate or raftPartTemplate end
 	if item.buildType == "wall_panel" then return wallPanelTemplate or raftPartTemplate end
+	if item.buildType == "wall_arch" then return wallArchTemplate or wallPanelTemplate or raftPartTemplate end
+	if item.buildType == "door_wood" then return doorWoodTemplate or wallPanelTemplate or raftPartTemplate end
 	return raftPartTemplate
 end
 
@@ -636,7 +690,7 @@ local function startBuildMode()
 			local valid = hasFloor and not alreadyPlaced and canAfford
 			setPreviewAppearance(valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID)
 
-		elseif selectedItem.buildType == "wall_panel" then
+		elseif selectedItem.buildType == "wall_panel" or selectedItem.buildType == "wall_arch" or selectedItem.buildType == "door_wood" then
 			local cx1, cz1, cx2, cz2, side, worldCF = getWallPanelFromMouse()
 			if not cx1 then hidePreview(); return end
 
@@ -646,32 +700,69 @@ local function startBuildMode()
 			local hasBeam2 = beams[makeBeamKey(cx2, cz2)]
 			local wpk = makeWallPanelKey(cx1, cz1, cx2, cz2)
 			local alreadyPlaced = getWallPanelKeys()[wpk]
+			local archPlaced = getWallArchKeys()[wpk]
+			local doorPlaced = getDoorKeys()[wpk]
 			local canAfford = (inventory[selectedItem.costType] or 0) >= selectedItem.cost
-			local valid = hasBeam1 and hasBeam2 and not alreadyPlaced and canAfford
+			local valid
+			if selectedItem.buildType == "wall_panel" then
+				valid = hasBeam1 and hasBeam2 and not alreadyPlaced and not archPlaced and canAfford
+			elseif selectedItem.buildType == "wall_arch" then
+				valid = hasBeam1 and hasBeam2 and not alreadyPlaced and not archPlaced and canAfford
+			else -- door_wood
+				valid = archPlaced and not doorPlaced and canAfford
+			end
 			setPreviewAppearance(valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID)
 		end
 	end)
 end
 
+local function hasEquippedHammer(character)
+	if not character then return false end
+	local equippedTool = character:FindFirstChildWhichIsA("Tool")
+	return equippedTool and equippedTool.Name == "Hammer"
+end
+
+local function syncBuildMode(character)
+	local equipped = hasEquippedHammer(character)
+	if equipped and not isBuilding then
+		startBuildMode()
+	elseif not equipped and isBuilding then
+		closeBuildMode()
+	end
+end
+
 local function onCharacterAdded(character)
 	character.ChildAdded:Connect(function(child)
 		if child:IsA("Tool") and child.Name == "Hammer" then
-			startBuildMode()
+			syncBuildMode(character)
 		end
 	end)
 
 	character.ChildRemoved:Connect(function(child)
 		if child:IsA("Tool") and child.Name == "Hammer" then
-			closeBuildMode()
+			syncBuildMode(character)
 		end
 	end)
 
-	for _, child in character:GetChildren() do
-		if child:IsA("Tool") and child.Name == "Hammer" then
-			startBuildMode()
-			break
-		end
+	-- Some inventory flows re-parent tools in a way that can miss ChildAdded/Removed
+	-- transitions, so we keep a lightweight heartbeat sync as a safety net.
+	if hammerWatchConnection then
+		hammerWatchConnection:Disconnect()
 	end
+	hammerWatchConnection = RunService.Heartbeat:Connect(function()
+		syncBuildMode(character)
+	end)
+
+	syncBuildMode(character)
+	character.AncestryChanged:Connect(function(_, parent)
+		if not parent then
+			if hammerWatchConnection then
+				hammerWatchConnection:Disconnect()
+				hammerWatchConnection = nil
+			end
+			closeBuildMode()
+		end
+	end)
 end
 
 if player.Character then
@@ -707,16 +798,26 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 		placeBlockEvent:FireServer("beam", cx, cz)
 
-	elseif selectedItem.buildType == "wall_panel" then
+	elseif selectedItem.buildType == "wall_panel" or selectedItem.buildType == "wall_arch" or selectedItem.buildType == "door_wood" then
 		local cx1, cz1, cx2, cz2, side, _ = getWallPanelFromMouse()
 		if not cx1 then return end
 
+		local wpk = makeWallPanelKey(cx1, cz1, cx2, cz2)
 		local beams = getBeamKeys()
-		if not beams[makeBeamKey(cx1, cz1)] or not beams[makeBeamKey(cx2, cz2)] then return end
-		if getWallPanelKeys()[makeWallPanelKey(cx1, cz1, cx2, cz2)] then return end
+		local archKeys = getWallArchKeys()
+		local doorKeys = getDoorKeys()
+		local panelKeys = getWallPanelKeys()
+
+		if selectedItem.buildType == "door_wood" then
+			if not archKeys[wpk] then return end
+			if doorKeys[wpk] then return end
+		else
+			if not beams[makeBeamKey(cx1, cz1)] or not beams[makeBeamKey(cx2, cz2)] then return end
+			if panelKeys[wpk] or archKeys[wpk] then return end
+		end
 		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
 
-		placeBlockEvent:FireServer("wall_panel", cx1, cz1, cx2, cz2)
+		placeBlockEvent:FireServer(selectedItem.buildType, cx1, cz1, cx2, cz2)
 	end
 end)
 

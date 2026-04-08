@@ -19,6 +19,16 @@ end
 
 local AUTOSAVE_INTERVAL = 120 -- seconds
 
+-- Keep the map's original raft transform so a "new game" (or missing save)
+-- can always start from the intended spawn position.
+local INITIAL_RAFT_CFRAME = nil
+do
+	local raft = workspace:FindFirstChild("Raft")
+	if raft and raft.PrimaryPart then
+		INITIAL_RAFT_CFRAME = raft.PrimaryPart.CFrame
+	end
+end
+
 -- ─── Slot layout sync: client sends slot positions to server ───
 local slotLayoutEvent = Instance.new("RemoteEvent")
 slotLayoutEvent.Name = "SlotLayoutSync"
@@ -57,11 +67,12 @@ local function collectRaftData(player)
 
 	local raftCF = raft.PrimaryPart.CFrame
 	local data = {
-		raftPosition = serializeCFrame(raftCF),
 		floors = {},
 		walls = {},
 		beams = {},
 		wallPanels = {},
+		wallArches = {},
+		doors = {},
 		objects = {},
 	}
 
@@ -89,6 +100,24 @@ local function collectRaftData(player)
 			local cz2 = child:GetAttribute("BeamCZ2")
 			if cx1 and cz1 and cx2 and cz2 then
 				table.insert(data.wallPanels, {cx1 = cx1, cz1 = cz1, cx2 = cx2, cz2 = cz2})
+			end
+
+		elseif buildType == "wall_arch" then
+			local cx1 = child:GetAttribute("BeamCX1")
+			local cz1 = child:GetAttribute("BeamCZ1")
+			local cx2 = child:GetAttribute("BeamCX2")
+			local cz2 = child:GetAttribute("BeamCZ2")
+			if cx1 and cz1 and cx2 and cz2 then
+				table.insert(data.wallArches, {cx1 = cx1, cz1 = cz1, cx2 = cx2, cz2 = cz2})
+			end
+
+		elseif buildType == "door_wood" then
+			local cx1 = child:GetAttribute("BeamCX1")
+			local cz1 = child:GetAttribute("BeamCZ1")
+			local cx2 = child:GetAttribute("BeamCX2")
+			local cz2 = child:GetAttribute("BeamCZ2")
+			if cx1 and cz1 and cx2 and cz2 then
+				table.insert(data.doors, {cx1 = cx1, cz1 = cz1, cx2 = cx2, cz2 = cz2})
 			end
 
 		elseif buildType == "wall" then
@@ -141,7 +170,7 @@ local function collectRaftData(player)
 		end
 	end
 
-	print("[RaftSave] Collected: " .. #data.floors .. " floors, " .. #data.beams .. " beams, " .. #data.wallPanels .. " wallPanels, " .. #data.walls .. " walls(legacy), " .. #data.objects .. " objects")
+	print("[RaftSave] Collected: " .. #data.floors .. " floors, " .. #data.beams .. " beams, " .. #data.wallPanels .. " wallPanels, " .. #data.wallArches .. " wallArches, " .. #data.doors .. " doors, " .. #data.walls .. " walls(legacy), " .. #data.objects .. " objects")
 	return data
 end
 
@@ -266,11 +295,16 @@ local function rebuildRaft(player, saveData)
 	local rs = ReplicatedStorage
 	local raftData = saveData.raft
 
-	-- Restore raft world position
-	if raftData.raftPosition then
+	-- Always start from the map's initial raft position, even when loading a save.
+	-- We persist raft layout and objects, but not world drift position.
+	if INITIAL_RAFT_CFRAME then
+		raft:PivotTo(INITIAL_RAFT_CFRAME)
+		print("[RaftSave] Reset raft position to initial map spawn before rebuild")
+	elseif raftData.raftPosition then
+		-- Backward compatibility if initial CFrame wasn't captured for any reason.
 		local savedCF = deserializeCFrame(raftData.raftPosition)
 		raft:PivotTo(savedCF)
-		print("[RaftSave] Restored raft position to " .. tostring(savedCF.Position))
+		print("[RaftSave] Restored raft position from legacy save to " .. tostring(savedCF.Position))
 	end
 
 	local raftCF = raft.PrimaryPart.CFrame
@@ -292,6 +326,8 @@ local function rebuildRaft(player, saveData)
 	local wallTemplate = rs:FindFirstChild("Wood_wall")
 	local beamTemplate = rs:FindFirstChild("beam")
 	local wallPanelTemplate = rs:FindFirstChild("wall_model_wood")
+	local wallArchTemplate = rs:FindFirstChild("wall_model_wood_arch")
+	local doorWoodTemplate = rs:FindFirstChild("Door_Wood")
 
 	-- Determine grid size and floor height from template
 	local GRID_SIZE = 6
@@ -328,6 +364,24 @@ local function rebuildRaft(player, saveData)
 			PANEL_HEIGHT = wallPanelTemplate:GetExtentsSize().Y
 		elseif wallPanelTemplate:IsA("BasePart") then
 			PANEL_HEIGHT = wallPanelTemplate.Size.Y
+		end
+	end
+
+	local ARCH_HEIGHT = 0
+	if wallArchTemplate then
+		if wallArchTemplate:IsA("Model") then
+			ARCH_HEIGHT = wallArchTemplate:GetExtentsSize().Y
+		elseif wallArchTemplate:IsA("BasePart") then
+			ARCH_HEIGHT = wallArchTemplate.Size.Y
+		end
+	end
+
+	local DOOR_HEIGHT = 0
+	if doorWoodTemplate then
+		if doorWoodTemplate:IsA("Model") then
+			DOOR_HEIGHT = doorWoodTemplate:GetExtentsSize().Y
+		elseif doorWoodTemplate:IsA("BasePart") then
+			DOOR_HEIGHT = doorWoodTemplate.Size.Y
 		end
 	end
 
@@ -455,6 +509,39 @@ local function rebuildRaft(player, saveData)
 	end
 
 	-- Place objects
+	local function placeWallLike(template, buildType, keyName, list, elementHeight)
+		if not template or not list then return end
+		for _, wp in list do
+			local inset1X, inset1Z = computeBeamInset(wp.cx1, wp.cz1)
+			local inset2X, inset2Z = computeBeamInset(wp.cx2, wp.cz2)
+			local midStudX = ((wp.cx1 * GRID_SIZE + inset1X) + (wp.cx2 * GRID_SIZE + inset2X)) / 2 + 1
+			local midStudZ = ((wp.cz1 * GRID_SIZE + inset1Z) + (wp.cz2 * GRID_SIZE + inset2Z)) / 2
+			local worldPos = localToWorldPos(midStudX, midStudZ)
+			worldPos = worldPos + Vector3.new(0, elementHeight / 2, 0)
+
+			local sideAngle = (wp.cx1 == wp.cx2) and math.rad(90) or 0
+			local wCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
+
+			local clone = template:Clone()
+			local wpk = string.format("wp_%.1f_%.1f_%.1f_%.1f",
+				math.min(wp.cx1, wp.cx2), math.min(wp.cz1, wp.cz2),
+				math.max(wp.cx1, wp.cx2), math.max(wp.cz1, wp.cz2))
+			clone:SetAttribute("BuildType", buildType)
+			clone:SetAttribute(keyName, wpk)
+			clone:SetAttribute("BeamCX1", wp.cx1)
+			clone:SetAttribute("BeamCZ1", wp.cz1)
+			clone:SetAttribute("BeamCX2", wp.cx2)
+			clone:SetAttribute("BeamCZ2", wp.cz2)
+			if clone:IsA("Model") then clone:PivotTo(wCF) else clone.CFrame = wCF end
+			clone.Parent = raft
+			weldAndUnanchor(clone)
+		end
+	end
+
+	placeWallLike(wallArchTemplate, "wall_arch", "WallArchKey", raftData.wallArches, ARCH_HEIGHT)
+	placeWallLike(doorWoodTemplate, "door_wood", "DoorKey", raftData.doors, DOOR_HEIGHT)
+
+	-- Place objects
 	if raftData.objects then
 		for _, obj in raftData.objects do
 			local template = rs:FindFirstChild(obj.name)
@@ -491,6 +578,17 @@ local function rebuildRaft(player, saveData)
 	end
 
 	print("[RaftSave] Rebuilt raft for " .. player.Name)
+end
+
+local function resetRaftToInitialPosition()
+	local raft = workspace:FindFirstChild("Raft")
+	if not raft or not raft.PrimaryPart or not INITIAL_RAFT_CFRAME then return end
+
+	raft:PivotTo(INITIAL_RAFT_CFRAME)
+	raft.PrimaryPart:SetAttribute("RestCFrame", INITIAL_RAFT_CFRAME)
+	local _, iy, _ = INITIAL_RAFT_CFRAME:ToEulerAnglesYXZ()
+	raft.PrimaryPart:SetAttribute("RestYaw", iy)
+	print("[RaftSave] Reset raft to initial map position")
 end
 
 -- ─── Restore inventory ───
@@ -626,6 +724,12 @@ Players.PlayerAdded:Connect(function(player)
 			saveData = loadPlayerDataByUserId(saveOwnerId)
 		else
 			saveData = loadPlayerData(player)
+		end
+
+		-- If save-loading was requested but no save exists, force "new game"
+		-- spawn position instead of leaving the raft in a stale runtime state.
+		if not saveData then
+			resetRaftToInitialPosition()
 		end
 
 		-- Rebuild raft only once (the first player to join triggers it)

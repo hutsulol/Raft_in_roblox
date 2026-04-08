@@ -10,6 +10,8 @@ end
 local raftPartTemplate = rs:WaitForChild("Raft_part")
 local beamTemplate = rs:FindFirstChild("beam")
 local wallPanelTemplate = rs:FindFirstChild("wall_model_wood")
+local wallArchTemplate = rs:FindFirstChild("wall_model_wood_arch")
+local doorWoodTemplate = rs:FindFirstChild("Door_Wood")
 
 -- Measure grid size from the actual template bounding box
 local GRID_SIZE
@@ -51,12 +53,34 @@ if wallPanelTemplate then
 end
 raftPartTemplate:SetAttribute("PanelHeight", PANEL_HEIGHT)
 
+local ARCH_HEIGHT = 0
+if wallArchTemplate then
+	if wallArchTemplate:IsA("Model") then
+		ARCH_HEIGHT = wallArchTemplate:GetExtentsSize().Y
+	elseif wallArchTemplate:IsA("BasePart") then
+		ARCH_HEIGHT = wallArchTemplate.Size.Y
+	end
+end
+raftPartTemplate:SetAttribute("ArchHeight", ARCH_HEIGHT)
+
+local DOOR_HEIGHT = 0
+if doorWoodTemplate then
+	if doorWoodTemplate:IsA("Model") then
+		DOOR_HEIGHT = doorWoodTemplate:GetExtentsSize().Y
+	elseif doorWoodTemplate:IsA("BasePart") then
+		DOOR_HEIGHT = doorWoodTemplate.Size.Y
+	end
+end
+raftPartTemplate:SetAttribute("DoorHeight", DOOR_HEIGHT)
+
 -- Beam/wall X-axis correction (pivot offset in template)
 local BEAM_X_OFFSET = 1
 
 local RAFT_COST = 2
 local BEAM_COST = 1
 local WALL_PANEL_COST = 3
+local WALL_ARCH_COST = 3
+local DOOR_WOOD_COST = 2
 
 local function getRaft()
 	return workspace:FindFirstChild("Raft")
@@ -154,12 +178,33 @@ local function getWallPanelKeys(raft)
 	return keys
 end
 
+local function getWallArchKeys(raft)
+	local keys = {}
+	for _, child in raft:GetChildren() do
+		if child:GetAttribute("BuildType") == "wall_arch" then
+			local wk = child:GetAttribute("WallArchKey")
+			if wk then keys[wk] = true end
+		end
+	end
+	return keys
+end
+
+local function getDoorKeys(raft)
+	local keys = {}
+	for _, child in raft:GetChildren() do
+		if child:GetAttribute("BuildType") == "door_wood" then
+			local dk = child:GetAttribute("DoorKey")
+			if dk then keys[dk] = true end
+		end
+	end
+	return keys
+end
+
 -- Convert local studs position to world position.
 -- Position is computed via the stable RestCFrame approach (same as the save
 -- system) so the local offset captured by the WeldConstraint is always the
--- same regardless of current wave-induced tilt. Only the returned yaw uses
--- the raft's ACTUAL physical value so beams/walls face the right direction
--- during a wind-driven turn (the fix from commit 9c15658).
+-- same regardless of current wave-induced tilt. Returned yaw is RestYaw so
+-- beams/walls stay perfectly aligned to the build grid.
 local function localToWorld(raft, studX, studZ)
 	local primaryCF = raft.PrimaryPart.CFrame
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
@@ -167,8 +212,7 @@ local function localToWorld(raft, studX, studZ)
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	local _, actualYaw = primaryCF:ToEulerAnglesYXZ()
-	return (primaryCF * CFrame.new(localOffset)).Position, actualYaw
+	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
 end
 
 local function weldToRaft(obj, raft)
@@ -318,11 +362,9 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 			weldToRaft(newBeam, raft)
 		end)
 
-	elseif buildType == "wall_panel" then
-		if not wallPanelTemplate then return end
+	elseif buildType == "wall_panel" or buildType == "wall_arch" or buildType == "door_wood" then
 		local cx1, cz1, cx2, cz2 = ...
 		if type(cx1) ~= "number" or type(cz1) ~= "number" or type(cx2) ~= "number" or type(cz2) ~= "number" then return end
-		if (inv.Log or 0) < WALL_PANEL_COST then return end
 
 		cx1 = math.floor(cx1) + 0.5
 		cz1 = math.floor(cz1) + 0.5
@@ -333,11 +375,43 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local dz = math.abs(cz1 - cz2)
 		if not ((dx == 1 and dz == 0) or (dx == 0 and dz == 1)) then return end
 
-		local beamKeys = getBeamKeys(raft)
-		if not beamKeys[makeBeamKey(cx1, cz1)] or not beamKeys[makeBeamKey(cx2, cz2)] then return end
-
 		local wpk = makeWallPanelKey(cx1, cz1, cx2, cz2)
-		if getWallPanelKeys(raft)[wpk] then return end
+		local panelKeys = getWallPanelKeys(raft)
+		local archKeys = getWallArchKeys(raft)
+		local doorKeys = getDoorKeys(raft)
+		local beamKeys = getBeamKeys(raft)
+
+		local cost = WALL_PANEL_COST
+		local template = wallPanelTemplate
+		local attrBuildType = "wall_panel"
+		local keyAttrName = "WallPanelKey"
+		local elementHeight = PANEL_HEIGHT
+
+		if buildType == "door_wood" then
+			if not doorWoodTemplate then return end
+			if not archKeys[wpk] then return end
+			if doorKeys[wpk] then return end
+			cost = DOOR_WOOD_COST
+			template = doorWoodTemplate
+			attrBuildType = "door_wood"
+			keyAttrName = "DoorKey"
+			elementHeight = DOOR_HEIGHT
+		else
+			if not beamKeys[makeBeamKey(cx1, cz1)] or not beamKeys[makeBeamKey(cx2, cz2)] then return end
+			if panelKeys[wpk] or archKeys[wpk] then return end
+			if buildType == "wall_arch" then
+				if not wallArchTemplate then return end
+				cost = WALL_ARCH_COST
+				template = wallArchTemplate
+				attrBuildType = "wall_arch"
+				keyAttrName = "WallArchKey"
+				elementHeight = ARCH_HEIGHT
+			else
+				if not wallPanelTemplate then return end
+			end
+		end
+
+		if (inv.Log or 0) < cost then return end
 
 		local offsets = getFloorOffsets(raft)
 		local inset1X, inset1Z = computeBeamInset(offsets, cx1, cz1)
@@ -345,15 +419,15 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2 + BEAM_X_OFFSET
 		local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
 		local worldPos, restYaw = localToWorld(raft, midStudX, midStudZ)
-		worldPos = worldPos + Vector3.new(0, PANEL_HEIGHT / 2, 0)
+		worldPos = worldPos + Vector3.new(0, elementHeight / 2, 0)
 
 		if (char.HumanoidRootPart.Position - worldPos).Magnitude > 80 then return end
 
-		inv.Log = inv.Log - WALL_PANEL_COST
+		inv.Log = inv.Log - cost
 
-		local newWall = wallPanelTemplate:Clone()
-		newWall:SetAttribute("BuildType", "wall_panel")
-		newWall:SetAttribute("WallPanelKey", wpk)
+		local newWall = template:Clone()
+		newWall:SetAttribute("BuildType", attrBuildType)
+		newWall:SetAttribute(keyAttrName, wpk)
 		newWall:SetAttribute("BeamCX1", cx1)
 		newWall:SetAttribute("BeamCZ1", cz1)
 		newWall:SetAttribute("BeamCX2", cx2)
