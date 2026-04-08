@@ -71,6 +71,8 @@ local function collectRaftData(player)
 		walls = {},
 		beams = {},
 		wallPanels = {},
+		wallArches = {},
+		doors = {},
 		objects = {},
 	}
 
@@ -98,6 +100,24 @@ local function collectRaftData(player)
 			local cz2 = child:GetAttribute("BeamCZ2")
 			if cx1 and cz1 and cx2 and cz2 then
 				table.insert(data.wallPanels, {cx1 = cx1, cz1 = cz1, cx2 = cx2, cz2 = cz2})
+			end
+
+		elseif buildType == "wall_arch" then
+			local cx1 = child:GetAttribute("BeamCX1")
+			local cz1 = child:GetAttribute("BeamCZ1")
+			local cx2 = child:GetAttribute("BeamCX2")
+			local cz2 = child:GetAttribute("BeamCZ2")
+			if cx1 and cz1 and cx2 and cz2 then
+				table.insert(data.wallArches, {cx1 = cx1, cz1 = cz1, cx2 = cx2, cz2 = cz2})
+			end
+
+		elseif buildType == "door" then
+			local cx1 = child:GetAttribute("BeamCX1")
+			local cz1 = child:GetAttribute("BeamCZ1")
+			local cx2 = child:GetAttribute("BeamCX2")
+			local cz2 = child:GetAttribute("BeamCZ2")
+			if cx1 and cz1 and cx2 and cz2 then
+				table.insert(data.doors, {cx1 = cx1, cz1 = cz1, cx2 = cx2, cz2 = cz2})
 			end
 
 		elseif buildType == "wall" then
@@ -150,7 +170,7 @@ local function collectRaftData(player)
 		end
 	end
 
-	print("[RaftSave] Collected: " .. #data.floors .. " floors, " .. #data.beams .. " beams, " .. #data.wallPanels .. " wallPanels, " .. #data.walls .. " walls(legacy), " .. #data.objects .. " objects")
+	print("[RaftSave] Collected: " .. #data.floors .. " floors, " .. #data.beams .. " beams, " .. #data.wallPanels .. " wallPanels, " .. #data.wallArches .. " arches, " .. #data.doors .. " doors, " .. #data.walls .. " walls(legacy), " .. #data.objects .. " objects")
 	return data
 end
 
@@ -306,6 +326,8 @@ local function rebuildRaft(player, saveData)
 	local wallTemplate = rs:FindFirstChild("Wood_wall")
 	local beamTemplate = rs:FindFirstChild("beam")
 	local wallPanelTemplate = rs:FindFirstChild("wall_model_wood")
+	local wallArchTemplate = rs:FindFirstChild("wall_model_wood_arch")
+	local doorTemplate = rs:FindFirstChild("Door_Wood")
 
 	-- Determine grid size and floor height from template
 	local GRID_SIZE = 6
@@ -342,6 +364,24 @@ local function rebuildRaft(player, saveData)
 			PANEL_HEIGHT = wallPanelTemplate:GetExtentsSize().Y
 		elseif wallPanelTemplate:IsA("BasePart") then
 			PANEL_HEIGHT = wallPanelTemplate.Size.Y
+		end
+	end
+
+	-- Wall arch / Door measurements
+	local ARCH_HEIGHT = 0
+	if wallArchTemplate then
+		if wallArchTemplate:IsA("Model") then
+			ARCH_HEIGHT = wallArchTemplate:GetExtentsSize().Y
+		elseif wallArchTemplate:IsA("BasePart") then
+			ARCH_HEIGHT = wallArchTemplate.Size.Y
+		end
+	end
+	local DOOR_HEIGHT = 0
+	if doorTemplate then
+		if doorTemplate:IsA("Model") then
+			DOOR_HEIGHT = doorTemplate:GetExtentsSize().Y
+		elseif doorTemplate:IsA("BasePart") then
+			DOOR_HEIGHT = doorTemplate.Size.Y
 		end
 	end
 
@@ -439,6 +479,15 @@ local function rebuildRaft(player, saveData)
 		end
 	end
 
+	-- Helper to build the normalized span string used by both walls and arches
+	local function spanKeyStr(cx1, cz1, cx2, cz2)
+		local a1, b1, a2, b2 = cx1, cz1, cx2, cz2
+		if a1 > a2 or (a1 == a2 and b1 > b2) then
+			a1, b1, a2, b2 = a2, b2, a1, b1
+		end
+		return string.format("%.1f_%.1f_%.1f_%.1f", a1, b1, a2, b2)
+	end
+
 	-- Place wall panels
 	if wallPanelTemplate and raftData.wallPanels then
 		for _, wp in raftData.wallPanels do
@@ -453,16 +502,70 @@ local function rebuildRaft(player, saveData)
 			local wCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 
 			local clone = wallPanelTemplate:Clone()
-			local wpk = string.format("wp_%.1f_%.1f_%.1f_%.1f",
-				math.min(wp.cx1, wp.cx2), math.min(wp.cz1, wp.cz2),
-				math.max(wp.cx1, wp.cx2), math.max(wp.cz1, wp.cz2))
+			local sk = spanKeyStr(wp.cx1, wp.cz1, wp.cx2, wp.cz2)
 			clone:SetAttribute("BuildType", "wall_panel")
-			clone:SetAttribute("WallPanelKey", wpk)
+			clone:SetAttribute("WallPanelKey", "wp_" .. sk)
+			clone:SetAttribute("WallSpanKey", sk)
 			clone:SetAttribute("BeamCX1", wp.cx1)
 			clone:SetAttribute("BeamCZ1", wp.cz1)
 			clone:SetAttribute("BeamCX2", wp.cx2)
 			clone:SetAttribute("BeamCZ2", wp.cz2)
 			if clone:IsA("Model") then clone:PivotTo(wCF) else clone.CFrame = wCF end
+			clone.Parent = raft
+			weldAndUnanchor(clone)
+		end
+	end
+
+	-- Place wall arches
+	if wallArchTemplate and raftData.wallArches then
+		for _, wa in raftData.wallArches do
+			local inset1X, inset1Z = computeBeamInset(wa.cx1, wa.cz1)
+			local inset2X, inset2Z = computeBeamInset(wa.cx2, wa.cz2)
+			local midStudX = ((wa.cx1 * GRID_SIZE + inset1X) + (wa.cx2 * GRID_SIZE + inset2X)) / 2 + 1
+			local midStudZ = ((wa.cz1 * GRID_SIZE + inset1Z) + (wa.cz2 * GRID_SIZE + inset2Z)) / 2
+			local worldPos = localToWorldPos(midStudX, midStudZ)
+			worldPos = worldPos + Vector3.new(0, ARCH_HEIGHT / 2, 0)
+
+			local sideAngle = (wa.cx1 == wa.cx2) and math.rad(90) or 0
+			local aCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
+
+			local clone = wallArchTemplate:Clone()
+			local sk = spanKeyStr(wa.cx1, wa.cz1, wa.cx2, wa.cz2)
+			clone:SetAttribute("BuildType", "wall_arch")
+			clone:SetAttribute("WallArchKey", "wa_" .. sk)
+			clone:SetAttribute("WallSpanKey", sk)
+			clone:SetAttribute("BeamCX1", wa.cx1)
+			clone:SetAttribute("BeamCZ1", wa.cz1)
+			clone:SetAttribute("BeamCX2", wa.cx2)
+			clone:SetAttribute("BeamCZ2", wa.cz2)
+			if clone:IsA("Model") then clone:PivotTo(aCF) else clone.CFrame = aCF end
+			clone.Parent = raft
+			weldAndUnanchor(clone)
+		end
+	end
+
+	-- Place doors (each door must correspond to a wall arch on the same span)
+	if doorTemplate and raftData.doors then
+		for _, dr in raftData.doors do
+			local inset1X, inset1Z = computeBeamInset(dr.cx1, dr.cz1)
+			local inset2X, inset2Z = computeBeamInset(dr.cx2, dr.cz2)
+			local midStudX = ((dr.cx1 * GRID_SIZE + inset1X) + (dr.cx2 * GRID_SIZE + inset2X)) / 2 + 1
+			local midStudZ = ((dr.cz1 * GRID_SIZE + inset1Z) + (dr.cz2 * GRID_SIZE + inset2Z)) / 2
+			local worldPos = localToWorldPos(midStudX, midStudZ)
+			worldPos = worldPos + Vector3.new(0, DOOR_HEIGHT / 2, 0)
+
+			local sideAngle = (dr.cx1 == dr.cx2) and math.rad(90) or 0
+			local dCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
+
+			local clone = doorTemplate:Clone()
+			local sk = spanKeyStr(dr.cx1, dr.cz1, dr.cx2, dr.cz2)
+			clone:SetAttribute("BuildType", "door")
+			clone:SetAttribute("DoorKey", "dr_" .. sk)
+			clone:SetAttribute("BeamCX1", dr.cx1)
+			clone:SetAttribute("BeamCZ1", dr.cz1)
+			clone:SetAttribute("BeamCX2", dr.cx2)
+			clone:SetAttribute("BeamCZ2", dr.cz2)
+			if clone:IsA("Model") then clone:PivotTo(dCF) else clone.CFrame = dCF end
 			clone.Parent = raft
 			weldAndUnanchor(clone)
 		end

@@ -13,6 +13,8 @@ local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local raftPartTemplate = ReplicatedStorage:WaitForChild("Raft_part")
 local beamTemplate = ReplicatedStorage:FindFirstChild("beam")
 local wallPanelTemplate = ReplicatedStorage:FindFirstChild("wall_model_wood")
+local wallArchTemplate = ReplicatedStorage:FindFirstChild("wall_model_wood_arch")
+local doorTemplate = ReplicatedStorage:FindFirstChild("Door_Wood")
 
 local GRID_SIZE = raftPartTemplate:GetAttribute("GridSize")
 if not GRID_SIZE then
@@ -29,6 +31,8 @@ end
 local BEAM_HEIGHT = raftPartTemplate:GetAttribute("BeamHeight") or 0
 local BEAM_INSET = raftPartTemplate:GetAttribute("BeamInset") or 0
 local PANEL_HEIGHT = raftPartTemplate:GetAttribute("PanelHeight") or 0
+local ARCH_HEIGHT = raftPartTemplate:GetAttribute("ArchHeight") or 0
+local DOOR_HEIGHT = raftPartTemplate:GetAttribute("DoorHeight") or 0
 
 -- Fallback measurements if attributes not set yet
 if BEAM_HEIGHT == 0 and beamTemplate then
@@ -46,6 +50,20 @@ if PANEL_HEIGHT == 0 and wallPanelTemplate then
 		PANEL_HEIGHT = wallPanelTemplate:GetExtentsSize().Y
 	elseif wallPanelTemplate:IsA("BasePart") then
 		PANEL_HEIGHT = wallPanelTemplate.Size.Y
+	end
+end
+if ARCH_HEIGHT == 0 and wallArchTemplate then
+	if wallArchTemplate:IsA("Model") then
+		ARCH_HEIGHT = wallArchTemplate:GetExtentsSize().Y
+	elseif wallArchTemplate:IsA("BasePart") then
+		ARCH_HEIGHT = wallArchTemplate.Size.Y
+	end
+end
+if DOOR_HEIGHT == 0 and doorTemplate then
+	if doorTemplate:IsA("Model") then
+		DOOR_HEIGHT = doorTemplate:GetExtentsSize().Y
+	elseif doorTemplate:IsA("BasePart") then
+		DOOR_HEIGHT = doorTemplate.Size.Y
 	end
 end
 
@@ -73,6 +91,8 @@ local categories = {
 		items = {
 			{id = "beam", name = "Beam", icon = LOG_ICON, cost = 1, costType = "Log", buildType = "beam"},
 			{id = "wall_panel", name = "Wood Wall", icon = LOG_ICON, cost = 3, costType = "Log", buildType = "wall_panel"},
+			{id = "wall_arch", name = "Door Arch", icon = LOG_ICON, cost = 3, costType = "Log", buildType = "wall_arch"},
+			{id = "door", name = "Wood Door", icon = LOG_ICON, cost = 2, costType = "Log", buildType = "door"},
 		},
 	},
 }
@@ -161,11 +181,23 @@ local function makeBeamKey(cx, cz)
 	return string.format("%.1f_%.1f", cx, cz)
 end
 
-local function makeWallPanelKey(cx1, cz1, cx2, cz2)
+local function makeSpanKey(cx1, cz1, cx2, cz2)
 	if cx1 > cx2 or (cx1 == cx2 and cz1 > cz2) then
 		cx1, cz1, cx2, cz2 = cx2, cz2, cx1, cz1
 	end
-	return string.format("wp_%.1f_%.1f_%.1f_%.1f", cx1, cz1, cx2, cz2)
+	return string.format("%.1f_%.1f_%.1f_%.1f", cx1, cz1, cx2, cz2)
+end
+
+local function makeWallPanelKey(cx1, cz1, cx2, cz2)
+	return "wp_" .. makeSpanKey(cx1, cz1, cx2, cz2)
+end
+
+local function makeWallArchKey(cx1, cz1, cx2, cz2)
+	return "wa_" .. makeSpanKey(cx1, cz1, cx2, cz2)
+end
+
+local function makeDoorKey(cx1, cz1, cx2, cz2)
+	return "dr_" .. makeSpanKey(cx1, cz1, cx2, cz2)
 end
 
 local function getBeamKeys()
@@ -179,6 +211,17 @@ local function getBeamKeys()
 	return keys
 end
 
+local function getWallSpanKeys()
+	local raft = getRaft()
+	if not raft then return {} end
+	local keys = {}
+	for _, child in raft:GetChildren() do
+		local sk = child:GetAttribute("WallSpanKey")
+		if sk then keys[sk] = true end
+	end
+	return keys
+end
+
 local function getWallPanelKeys()
 	local raft = getRaft()
 	if not raft then return {} end
@@ -186,6 +229,28 @@ local function getWallPanelKeys()
 	for _, child in raft:GetChildren() do
 		local wk = child:GetAttribute("WallPanelKey")
 		if wk then keys[wk] = true end
+	end
+	return keys
+end
+
+local function getWallArchKeys()
+	local raft = getRaft()
+	if not raft then return {} end
+	local keys = {}
+	for _, child in raft:GetChildren() do
+		local wk = child:GetAttribute("WallArchKey")
+		if wk then keys[wk] = true end
+	end
+	return keys
+end
+
+local function getDoorKeys()
+	local raft = getRaft()
+	if not raft then return {} end
+	local keys = {}
+	for _, child in raft:GetChildren() do
+		local dk = child:GetAttribute("DoorKey")
+		if dk then keys[dk] = true end
 	end
 	return keys
 end
@@ -332,6 +397,68 @@ local function getWallPanelFromMouse()
 	return cx1, cz1, cx2, cz2, side, worldCF
 end
 
+-- ===================== Wall arch / Door (same beam-pair geometry) =====================
+
+-- Shared computation: pick the cell side under the cursor and return both
+-- the beam-pair coords AND the world position for an object of `height`
+-- centered between those two beams.
+local function getBeamPairFromMouse(height)
+	local localHit = raycastToRaftPlane()
+	if not localHit then return nil end
+
+	local gx = math.round(localHit.X / GRID_SIZE)
+	local gz = math.round(localHit.Z / GRID_SIZE)
+
+	local cellCenterX = gx * GRID_SIZE
+	local cellCenterZ = gz * GRID_SIZE
+	local dx = localHit.X - cellCenterX
+	local dz = localHit.Z - cellCenterZ
+
+	local side
+	if math.abs(dx) > math.abs(dz) then
+		side = (dx > 0) and 3 or 2
+	else
+		side = (dz > 0) and 0 or 1
+	end
+
+	local cx1, cz1, cx2, cz2
+	if side == 0 then
+		cx1, cz1 = gx - 0.5, gz + 0.5
+		cx2, cz2 = gx + 0.5, gz + 0.5
+	elseif side == 1 then
+		cx1, cz1 = gx - 0.5, gz - 0.5
+		cx2, cz2 = gx + 0.5, gz - 0.5
+	elseif side == 2 then
+		cx1, cz1 = gx - 0.5, gz - 0.5
+		cx2, cz2 = gx - 0.5, gz + 0.5
+	elseif side == 3 then
+		cx1, cz1 = gx + 0.5, gz - 0.5
+		cx2, cz2 = gx + 0.5, gz + 0.5
+	end
+
+	local offsets = getFloorOffsets()
+	local inset1X, inset1Z = computeBeamInset(offsets, cx1, cz1)
+	local inset2X, inset2Z = computeBeamInset(offsets, cx2, cz2)
+	local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2 + BEAM_X_OFFSET
+	local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
+
+	local worldPos, restYaw = localToWorld(midStudX, midStudZ)
+	worldPos = worldPos + Vector3.new(0, height / 2, 0)
+
+	local sideAngle = (side == 2 or side == 3) and math.rad(90) or 0
+	local worldCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
+
+	return cx1, cz1, cx2, cz2, side, worldCF
+end
+
+local function getWallArchFromMouse()
+	return getBeamPairFromMouse(ARCH_HEIGHT)
+end
+
+local function getDoorFromMouse()
+	return getBeamPairFromMouse(DOOR_HEIGHT)
+end
+
 -- ===================== Preview helpers =====================
 
 local function setPreviewAppearance(color)
@@ -375,6 +502,8 @@ local function getTemplateForItem(item)
 	if not item then return raftPartTemplate end
 	if item.buildType == "beam" then return beamTemplate or raftPartTemplate end
 	if item.buildType == "wall_panel" then return wallPanelTemplate or raftPartTemplate end
+	if item.buildType == "wall_arch" then return wallArchTemplate or raftPartTemplate end
+	if item.buildType == "door" then return doorTemplate or raftPartTemplate end
 	return raftPartTemplate
 end
 
@@ -644,10 +773,35 @@ local function startBuildMode()
 			local beams = getBeamKeys()
 			local hasBeam1 = beams[makeBeamKey(cx1, cz1)]
 			local hasBeam2 = beams[makeBeamKey(cx2, cz2)]
-			local wpk = makeWallPanelKey(cx1, cz1, cx2, cz2)
-			local alreadyPlaced = getWallPanelKeys()[wpk]
+			local spanKey = makeSpanKey(cx1, cz1, cx2, cz2)
+			local spanOccupied = getWallSpanKeys()[spanKey]
 			local canAfford = (inventory[selectedItem.costType] or 0) >= selectedItem.cost
-			local valid = hasBeam1 and hasBeam2 and not alreadyPlaced and canAfford
+			local valid = hasBeam1 and hasBeam2 and not spanOccupied and canAfford
+			setPreviewAppearance(valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID)
+
+		elseif selectedItem.buildType == "wall_arch" then
+			local cx1, cz1, cx2, cz2, side, worldCF = getWallArchFromMouse()
+			if not cx1 then hidePreview(); return end
+
+			movePreview(worldCF)
+			local beams = getBeamKeys()
+			local hasBeam1 = beams[makeBeamKey(cx1, cz1)]
+			local hasBeam2 = beams[makeBeamKey(cx2, cz2)]
+			local spanKey = makeSpanKey(cx1, cz1, cx2, cz2)
+			local spanOccupied = getWallSpanKeys()[spanKey]
+			local canAfford = (inventory[selectedItem.costType] or 0) >= selectedItem.cost
+			local valid = hasBeam1 and hasBeam2 and not spanOccupied and canAfford
+			setPreviewAppearance(valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID)
+
+		elseif selectedItem.buildType == "door" then
+			local cx1, cz1, cx2, cz2, side, worldCF = getDoorFromMouse()
+			if not cx1 then hidePreview(); return end
+
+			movePreview(worldCF)
+			local hasArch = getWallArchKeys()[makeWallArchKey(cx1, cz1, cx2, cz2)]
+			local doorExists = getDoorKeys()[makeDoorKey(cx1, cz1, cx2, cz2)]
+			local canAfford = (inventory[selectedItem.costType] or 0) >= selectedItem.cost
+			local valid = hasArch and not doorExists and canAfford
 			setPreviewAppearance(valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID)
 		end
 	end)
@@ -741,10 +895,31 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 		local beams = getBeamKeys()
 		if not beams[makeBeamKey(cx1, cz1)] or not beams[makeBeamKey(cx2, cz2)] then return end
-		if getWallPanelKeys()[makeWallPanelKey(cx1, cz1, cx2, cz2)] then return end
+		if getWallSpanKeys()[makeSpanKey(cx1, cz1, cx2, cz2)] then return end
 		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
 
 		placeBlockEvent:FireServer("wall_panel", cx1, cz1, cx2, cz2)
+
+	elseif selectedItem.buildType == "wall_arch" then
+		local cx1, cz1, cx2, cz2, side, _ = getWallArchFromMouse()
+		if not cx1 then return end
+
+		local beams = getBeamKeys()
+		if not beams[makeBeamKey(cx1, cz1)] or not beams[makeBeamKey(cx2, cz2)] then return end
+		if getWallSpanKeys()[makeSpanKey(cx1, cz1, cx2, cz2)] then return end
+		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
+
+		placeBlockEvent:FireServer("wall_arch", cx1, cz1, cx2, cz2)
+
+	elseif selectedItem.buildType == "door" then
+		local cx1, cz1, cx2, cz2, side, _ = getDoorFromMouse()
+		if not cx1 then return end
+
+		if not getWallArchKeys()[makeWallArchKey(cx1, cz1, cx2, cz2)] then return end
+		if getDoorKeys()[makeDoorKey(cx1, cz1, cx2, cz2)] then return end
+		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
+
+		placeBlockEvent:FireServer("door", cx1, cz1, cx2, cz2)
 	end
 end)
 

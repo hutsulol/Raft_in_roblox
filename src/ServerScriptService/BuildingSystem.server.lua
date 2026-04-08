@@ -10,6 +10,8 @@ end
 local raftPartTemplate = rs:WaitForChild("Raft_part")
 local beamTemplate = rs:FindFirstChild("beam")
 local wallPanelTemplate = rs:FindFirstChild("wall_model_wood")
+local wallArchTemplate = rs:FindFirstChild("wall_model_wood_arch")
+local doorTemplate = rs:FindFirstChild("Door_Wood")
 
 -- Measure grid size from the actual template bounding box
 local GRID_SIZE
@@ -51,12 +53,36 @@ if wallPanelTemplate then
 end
 raftPartTemplate:SetAttribute("PanelHeight", PANEL_HEIGHT)
 
+-- Measure wall arch height
+local ARCH_HEIGHT = 0
+if wallArchTemplate then
+	if wallArchTemplate:IsA("Model") then
+		ARCH_HEIGHT = wallArchTemplate:GetExtentsSize().Y
+	elseif wallArchTemplate:IsA("BasePart") then
+		ARCH_HEIGHT = wallArchTemplate.Size.Y
+	end
+end
+raftPartTemplate:SetAttribute("ArchHeight", ARCH_HEIGHT)
+
+-- Measure door height
+local DOOR_HEIGHT = 0
+if doorTemplate then
+	if doorTemplate:IsA("Model") then
+		DOOR_HEIGHT = doorTemplate:GetExtentsSize().Y
+	elseif doorTemplate:IsA("BasePart") then
+		DOOR_HEIGHT = doorTemplate.Size.Y
+	end
+end
+raftPartTemplate:SetAttribute("DoorHeight", DOOR_HEIGHT)
+
 -- Beam/wall X-axis correction (pivot offset in template)
 local BEAM_X_OFFSET = 1
 
 local RAFT_COST = 2
 local BEAM_COST = 1
 local WALL_PANEL_COST = 3
+local WALL_ARCH_COST = 3
+local DOOR_COST = 2
 
 local function getRaft()
 	return workspace:FindFirstChild("Raft")
@@ -129,11 +155,26 @@ local function makeBeamKey(cx, cz)
 	return string.format("%.1f_%.1f", cx, cz)
 end
 
-local function makeWallPanelKey(cx1, cz1, cx2, cz2)
+-- Normalized span between two beam corners (no prefix). Used as a shared
+-- "this side of these two beams is occupied" key, so a wall panel and a wall
+-- arch can never coexist on the same span.
+local function makeSpanKey(cx1, cz1, cx2, cz2)
 	if cx1 > cx2 or (cx1 == cx2 and cz1 > cz2) then
 		cx1, cz1, cx2, cz2 = cx2, cz2, cx1, cz1
 	end
-	return string.format("wp_%.1f_%.1f_%.1f_%.1f", cx1, cz1, cx2, cz2)
+	return string.format("%.1f_%.1f_%.1f_%.1f", cx1, cz1, cx2, cz2)
+end
+
+local function makeWallPanelKey(cx1, cz1, cx2, cz2)
+	return "wp_" .. makeSpanKey(cx1, cz1, cx2, cz2)
+end
+
+local function makeWallArchKey(cx1, cz1, cx2, cz2)
+	return "wa_" .. makeSpanKey(cx1, cz1, cx2, cz2)
+end
+
+local function makeDoorKey(cx1, cz1, cx2, cz2)
+	return "dr_" .. makeSpanKey(cx1, cz1, cx2, cz2)
 end
 
 local function getBeamKeys(raft)
@@ -145,11 +186,32 @@ local function getBeamKeys(raft)
 	return keys
 end
 
-local function getWallPanelKeys(raft)
+-- Returns the set of normalized spans currently occupied by ANY wall-like
+-- object (wall_panel or wall_arch). Used to block placing two wall-types on
+-- the same beam pair side.
+local function getWallSpanKeys(raft)
 	local keys = {}
 	for _, child in raft:GetChildren() do
-		local wk = child:GetAttribute("WallPanelKey")
+		local sk = child:GetAttribute("WallSpanKey")
+		if sk then keys[sk] = true end
+	end
+	return keys
+end
+
+local function getWallArchKeys(raft)
+	local keys = {}
+	for _, child in raft:GetChildren() do
+		local wk = child:GetAttribute("WallArchKey")
 		if wk then keys[wk] = true end
+	end
+	return keys
+end
+
+local function getDoorKeys(raft)
+	local keys = {}
+	for _, child in raft:GetChildren() do
+		local dk = child:GetAttribute("DoorKey")
+		if dk then keys[dk] = true end
 	end
 	return keys
 end
@@ -334,8 +396,9 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local beamKeys = getBeamKeys(raft)
 		if not beamKeys[makeBeamKey(cx1, cz1)] or not beamKeys[makeBeamKey(cx2, cz2)] then return end
 
+		local spanKey = makeSpanKey(cx1, cz1, cx2, cz2)
+		if getWallSpanKeys(raft)[spanKey] then return end
 		local wpk = makeWallPanelKey(cx1, cz1, cx2, cz2)
-		if getWallPanelKeys(raft)[wpk] then return end
 
 		local offsets = getFloorOffsets(raft)
 		local inset1X, inset1Z = computeBeamInset(offsets, cx1, cz1)
@@ -352,6 +415,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local newWall = wallPanelTemplate:Clone()
 		newWall:SetAttribute("BuildType", "wall_panel")
 		newWall:SetAttribute("WallPanelKey", wpk)
+		newWall:SetAttribute("WallSpanKey", spanKey)
 		newWall:SetAttribute("BeamCX1", cx1)
 		newWall:SetAttribute("BeamCZ1", cz1)
 		newWall:SetAttribute("BeamCX2", cx2)
@@ -367,6 +431,114 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		placeWithVelocityPreserved(raft, function()
 			newWall.Parent = raft
 			weldToRaft(newWall, raft)
+		end)
+
+	elseif buildType == "wall_arch" then
+		if not wallArchTemplate then return end
+		local cx1, cz1, cx2, cz2 = ...
+		if type(cx1) ~= "number" or type(cz1) ~= "number" or type(cx2) ~= "number" or type(cz2) ~= "number" then return end
+		if (inv.Log or 0) < WALL_ARCH_COST then return end
+
+		cx1 = math.floor(cx1) + 0.5
+		cz1 = math.floor(cz1) + 0.5
+		cx2 = math.floor(cx2) + 0.5
+		cz2 = math.floor(cz2) + 0.5
+
+		local dx = math.abs(cx1 - cx2)
+		local dz = math.abs(cz1 - cz2)
+		if not ((dx == 1 and dz == 0) or (dx == 0 and dz == 1)) then return end
+
+		local beamKeys = getBeamKeys(raft)
+		if not beamKeys[makeBeamKey(cx1, cz1)] or not beamKeys[makeBeamKey(cx2, cz2)] then return end
+
+		local spanKey = makeSpanKey(cx1, cz1, cx2, cz2)
+		if getWallSpanKeys(raft)[spanKey] then return end
+		local wak = makeWallArchKey(cx1, cz1, cx2, cz2)
+
+		local offsets = getFloorOffsets(raft)
+		local inset1X, inset1Z = computeBeamInset(offsets, cx1, cz1)
+		local inset2X, inset2Z = computeBeamInset(offsets, cx2, cz2)
+		local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2 + BEAM_X_OFFSET
+		local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
+		local worldPos, restYaw = localToWorld(raft, midStudX, midStudZ)
+		worldPos = worldPos + Vector3.new(0, ARCH_HEIGHT / 2, 0)
+
+		if (char.HumanoidRootPart.Position - worldPos).Magnitude > 80 then return end
+
+		inv.Log = inv.Log - WALL_ARCH_COST
+
+		local newArch = wallArchTemplate:Clone()
+		newArch:SetAttribute("BuildType", "wall_arch")
+		newArch:SetAttribute("WallArchKey", wak)
+		newArch:SetAttribute("WallSpanKey", spanKey)
+		newArch:SetAttribute("BeamCX1", cx1)
+		newArch:SetAttribute("BeamCZ1", cz1)
+		newArch:SetAttribute("BeamCX2", cx2)
+		newArch:SetAttribute("BeamCZ2", cz2)
+
+		local sideAngle = (cx1 == cx2) and math.rad(90) or 0
+		local archCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
+		if newArch:IsA("Model") then
+			newArch:PivotTo(archCF)
+		else
+			newArch.CFrame = archCF
+		end
+		placeWithVelocityPreserved(raft, function()
+			newArch.Parent = raft
+			weldToRaft(newArch, raft)
+		end)
+
+	elseif buildType == "door" then
+		if not doorTemplate then return end
+		local cx1, cz1, cx2, cz2 = ...
+		if type(cx1) ~= "number" or type(cz1) ~= "number" or type(cx2) ~= "number" or type(cz2) ~= "number" then return end
+		if (inv.Log or 0) < DOOR_COST then return end
+
+		cx1 = math.floor(cx1) + 0.5
+		cz1 = math.floor(cz1) + 0.5
+		cx2 = math.floor(cx2) + 0.5
+		cz2 = math.floor(cz2) + 0.5
+
+		local dx = math.abs(cx1 - cx2)
+		local dz = math.abs(cz1 - cz2)
+		if not ((dx == 1 and dz == 0) or (dx == 0 and dz == 1)) then return end
+
+		-- A door requires a wall_arch on the same span and no existing door.
+		local wak = makeWallArchKey(cx1, cz1, cx2, cz2)
+		if not getWallArchKeys(raft)[wak] then return end
+		local dk = makeDoorKey(cx1, cz1, cx2, cz2)
+		if getDoorKeys(raft)[dk] then return end
+
+		local offsets = getFloorOffsets(raft)
+		local inset1X, inset1Z = computeBeamInset(offsets, cx1, cz1)
+		local inset2X, inset2Z = computeBeamInset(offsets, cx2, cz2)
+		local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2 + BEAM_X_OFFSET
+		local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
+		local worldPos, restYaw = localToWorld(raft, midStudX, midStudZ)
+		worldPos = worldPos + Vector3.new(0, DOOR_HEIGHT / 2, 0)
+
+		if (char.HumanoidRootPart.Position - worldPos).Magnitude > 80 then return end
+
+		inv.Log = inv.Log - DOOR_COST
+
+		local newDoor = doorTemplate:Clone()
+		newDoor:SetAttribute("BuildType", "door")
+		newDoor:SetAttribute("DoorKey", dk)
+		newDoor:SetAttribute("BeamCX1", cx1)
+		newDoor:SetAttribute("BeamCZ1", cz1)
+		newDoor:SetAttribute("BeamCX2", cx2)
+		newDoor:SetAttribute("BeamCZ2", cz2)
+
+		local sideAngle = (cx1 == cx2) and math.rad(90) or 0
+		local doorCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
+		if newDoor:IsA("Model") then
+			newDoor:PivotTo(doorCF)
+		else
+			newDoor.CFrame = doorCF
+		end
+		placeWithVelocityPreserved(raft, function()
+			newDoor.Parent = raft
+			weldToRaft(newDoor, raft)
 		end)
 	end
 
