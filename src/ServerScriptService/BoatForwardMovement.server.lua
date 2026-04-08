@@ -13,6 +13,7 @@ local WIND_INTERVAL_MAX = 10 -- seconds, max delay between wind events (TEMP: te
 local WIND_DURATION = 6 -- seconds the wind blows
 local WIND_PLAYER_ACCEL = 400 -- studs/s² horizontal force applied to players standing on the raft
 local WIND_AIRBORNE_ACCEL = 30 -- much smaller force while the player is in the air, so a jump doesn't launch them
+local WIND_SHELTER_DISTANCE = 4 -- studs; if any obstacle is closer than this on the upwind side, the player is sheltered
 local TURN_SPEED = 0.6 -- radians/sec the raft rotates to face the wind
 
 local Players = game:GetService("Players")
@@ -144,19 +145,38 @@ local function attachWindForce(plr, hrp)
 	affectedPlayers[plr] = {force = force, attach = attach, hrp = hrp}
 end
 
--- Update force magnitude based on whether the player is grounded.
+-- Reusable raycast params for the shelter check (filter is set per call).
+local shelterRayParams = RaycastParams.new()
+shelterRayParams.FilterType = Enum.RaycastFilterType.Exclude
+
+-- A player is sheltered if a short ray cast from their HRP toward the
+-- wind source (i.e. opposite of the wind direction) hits any obstacle.
+-- The character itself is excluded so the body doesn't block the ray.
+local function isShelteredFromWind(hrp, char)
+	if not hrp or not hrp.Parent then return false end
+	shelterRayParams.FilterDescendantsInstances = {char}
+	local result = workspace:Raycast(hrp.Position, -windDirection * WIND_SHELTER_DISTANCE, shelterRayParams)
+	return result ~= nil
+end
+
+-- Update force magnitude based on whether the player is grounded and exposed.
 -- The grounded force is large (so the wind feels strong while walking), but
 -- when the Humanoid leaves the floor (jump / fall) we drop it to a small
--- value so the player doesn't get launched off the raft.
+-- value so the player doesn't get launched off the raft. If the player is
+-- behind an obstacle (wall, log, etc.) on the upwind side, the force is zero.
 local function updateWindForces()
 	for plr, data in pairs(affectedPlayers) do
 		local char = plr.Character
 		local hum = char and char:FindFirstChildOfClass("Humanoid")
 		local hrp = data.hrp
 		if hum and hrp and data.force and data.force.Parent then
-			local airborne = hum.FloorMaterial == Enum.Material.Air
-			local accel = airborne and WIND_AIRBORNE_ACCEL or WIND_PLAYER_ACCEL
-			data.force.Force = windDirection * hrp.AssemblyMass * accel
+			if isShelteredFromWind(hrp, char) then
+				data.force.Force = Vector3.zero
+			else
+				local airborne = hum.FloorMaterial == Enum.Material.Air
+				local accel = airborne and WIND_AIRBORNE_ACCEL or WIND_PLAYER_ACCEL
+				data.force.Force = windDirection * hrp.AssemblyMass * accel
+			end
 		end
 	end
 end
