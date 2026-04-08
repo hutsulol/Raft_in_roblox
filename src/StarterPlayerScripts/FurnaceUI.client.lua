@@ -564,13 +564,6 @@ inventoryEvent.OnClientEvent:Connect(function(inv)
 	if isOpen then updateSlots() end
 end)
 
--- ─── Unlock cursor while UI is open (overrides first-person camera lock) ───
-RunService.RenderStepped:Connect(function()
-	if isOpen then
-		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-	end
-end)
-
 -- ─── Drag: follow mouse ───
 RunService.RenderStepped:Connect(function()
 	-- Progress bar
