@@ -154,17 +154,21 @@ local function getWallPanelKeys(raft)
 	return keys
 end
 
--- Convert local studs position to world position. Uses the raft's ACTUAL
--- physical yaw (not RestYaw, which is the target the AlignOrientation is
--- steering toward). During a wind-driven turn the physical yaw lags behind
--- the target, so we must use the lagged value — otherwise the placement
--- ends up rotated around the raft center by the lag amount, no longer
--- under the cursor and welded to the raft at the wrong relative angle.
+-- Convert local studs position to world position.
+-- Position is computed via the stable RestCFrame approach (same as the save
+-- system) so the local offset captured by the WeldConstraint is always the
+-- same regardless of current wave-induced tilt. Only the returned yaw uses
+-- the raft's ACTUAL physical value so beams/walls face the right direction
+-- during a wind-driven turn (the fix from commit 9c15658).
 local function localToWorld(raft, studX, studZ)
 	local primaryCF = raft.PrimaryPart.CFrame
+	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
+	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
+	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
+	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
+	local localOffset = restCF:VectorToObjectSpace(worldOffset)
 	local _, actualYaw = primaryCF:ToEulerAnglesYXZ()
-	local flatCF = CFrame.new(primaryCF.Position) * CFrame.Angles(0, actualYaw, 0)
-	return (flatCF * Vector3.new(studX, 0, studZ)), actualYaw
+	return (primaryCF * CFrame.new(localOffset)).Position, actualYaw
 end
 
 local function weldToRaft(obj, raft)
@@ -213,11 +217,14 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		if isFloorOccupied(offsets, gx, gz) then return end
 		if not isFloorAdjacent(offsets, gx, gz) then return end
 
-		-- Position from the actual-yaw helper, but inherit the raft's full
-		-- rotation (including pitch/roll from the sideways-log PrimaryPart) so
-		-- the new floor tile sits flush with the existing raft surface.
-		local worldPos = localToWorld(raft, gx * GRID_SIZE, gz * GRID_SIZE)
-		local worldCF = CFrame.new(worldPos) * (raft.PrimaryPart.CFrame - raft.PrimaryPart.CFrame.Position)
+		-- Use the stable RestCFrame approach so the WeldConstraint captures the
+		-- same local offset as all other tiles, regardless of current tilt.
+		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
+		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
+		local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
+		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
+		local localOffset = restCF:VectorToObjectSpace(worldOffset)
+		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset)
 
 		if (char.HumanoidRootPart.Position - worldCF.Position).Magnitude > 80 then return end
 
