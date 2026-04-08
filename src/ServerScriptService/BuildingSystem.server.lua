@@ -172,22 +172,32 @@ local function localToWorld(raft, studX, studZ)
 end
 
 local function weldToRaft(obj, raft)
+	-- Weld FIRST while still anchored, then unanchor in a second pass.
+	-- If we unanchor first, each part briefly exists as a zero-velocity body
+	-- before the weld attaches it to the moving raft. Roblox then has to
+	-- equilibrate momentum (raft slows to absorb the dead weight), which
+	-- jolts the player standing on it. Welding while still anchored captures
+	-- the relative pose without any free-physics step.
 	if obj:IsA("Model") then
 		for _, desc in obj:GetDescendants() do
 			if desc:IsA("BasePart") then
-				desc.Anchored = false
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = desc
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = desc
 			end
 		end
+		for _, desc in obj:GetDescendants() do
+			if desc:IsA("BasePart") then
+				desc.Anchored = false
+			end
+		end
 	elseif obj:IsA("BasePart") then
-		obj.Anchored = false
 		local weld = Instance.new("WeldConstraint")
 		weld.Part0 = obj
 		weld.Part1 = raft.PrimaryPart
 		weld.Parent = obj
+		obj.Anchored = false
 	end
 end
 
