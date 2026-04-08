@@ -12,6 +12,7 @@ local WIND_INTERVAL_MIN = 10 -- seconds, min delay between wind events (TEMP: te
 local WIND_INTERVAL_MAX = 10 -- seconds, max delay between wind events (TEMP: testing)
 local WIND_DURATION = 6 -- seconds the wind blows
 local WIND_PLAYER_ACCEL = 400 -- studs/s² horizontal force applied to players standing on the raft
+local WIND_AIRBORNE_ACCEL = 30 -- much smaller force while the player is in the air, so a jump doesn't launch them
 local TURN_SPEED = 0.6 -- radians/sec the raft rotates to face the wind
 
 local Players = game:GetService("Players")
@@ -140,7 +141,24 @@ local function attachWindForce(plr, hrp)
 	force.Force = windDirection * hrp.AssemblyMass * WIND_PLAYER_ACCEL
 	force.Parent = hrp
 
-	affectedPlayers[plr] = {force = force, attach = attach}
+	affectedPlayers[plr] = {force = force, attach = attach, hrp = hrp}
+end
+
+-- Update force magnitude based on whether the player is grounded.
+-- The grounded force is large (so the wind feels strong while walking), but
+-- when the Humanoid leaves the floor (jump / fall) we drop it to a small
+-- value so the player doesn't get launched off the raft.
+local function updateWindForces()
+	for plr, data in pairs(affectedPlayers) do
+		local char = plr.Character
+		local hum = char and char:FindFirstChildOfClass("Humanoid")
+		local hrp = data.hrp
+		if hum and hrp and data.force and data.force.Parent then
+			local airborne = hum.FloorMaterial == Enum.Material.Air
+			local accel = airborne and WIND_AIRBORNE_ACCEL or WIND_PLAYER_ACCEL
+			data.force.Force = windDirection * hrp.AssemblyMass * accel
+		end
+	end
 end
 
 local function releaseAffectedPlayers()
@@ -284,6 +302,7 @@ RunService.Heartbeat:Connect(function(dt)
 				end
 			end
 		end
+		updateWindForces()
 		if windRemainingTime <= 0 then
 			endWindEvent()
 		end
