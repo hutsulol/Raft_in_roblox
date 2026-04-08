@@ -1,12 +1,15 @@
 local SPEED = 25
-local FORCE_PER_MASS = 33 -- force scales with total raft mass
-local PADDLE_BOOST = 6 -- small extra push from a paddle stroke
+local PADDLE_BOOST = 5 -- extra m/s added to base speed during a paddle stroke
 local PADDLE_DECAY = 1.5 -- seconds for paddle boost to decay
 local PADDLE_COURSE_NUDGE = math.rad(3) -- max course rotation per paddle stroke
 
+-- Strength of the velocity correction. Higher = the raft locks onto its
+-- bow-aligned target velocity faster (kills sideways drift more aggressively).
+local VELOCITY_GAIN = 6
+
 -- ─── Ocean current ───
 local CURRENT_INTERVAL = 120 -- seconds between random current changes
-local TURN_SPEED = 0.25 -- radians/sec the raft rotates to face the current
+local TURN_SPEED = 0.35 -- radians/sec the raft rotates to face the current
 
 -- Model has a -45° offset between its LookVector and its visible front.
 local MODEL_FRONT_OFFSET = math.rad(-45)
@@ -161,28 +164,30 @@ RunService.Heartbeat:Connect(function(dt)
 		lockedYaw = lockedYaw + math.sign(diff) * step
 	end
 
-	-- Forward force is always along the bow's current visual front,
-	-- so the raft front always leads (no sideways drifting).
+	-- The raft moves along its current bow direction. The bow rotates smoothly
+	-- toward the ocean current (above), so during a turn the velocity simply
+	-- arcs along with the bow — the raft can never end up moving sideways or
+	-- backwards relative to its front.
 	forwardDirection = computeVisualFront(lockedYaw)
 
+	local totalMass = primaryPart.AssemblyMass
 	local currentVelocity = primaryPart.AssemblyLinearVelocity
 	local flatVelocity = Vector3.new(currentVelocity.X, 0, currentVelocity.Z)
-	-- Use velocity component along forward, not magnitude, so cross-currents don't kill thrust
-	local forwardSpeed = flatVelocity:Dot(forwardDirection)
-	local forceFactor = math.clamp(1 - (forwardSpeed / SPEED), 0, 1)
 
-	local totalMass = primaryPart.AssemblyMass
-	local baseForce = forwardDirection * FORCE_PER_MASS * totalMass * forceFactor
-
-	-- Paddle: small forward boost only (course is influenced via the nudge above)
-	local paddleForce = Vector3.zero
+	-- Target velocity: constant SPEED along the bow.
+	local targetSpeed = SPEED
 	if paddleBoostRemaining > 0 then
-		local boostFactor = paddleBoostRemaining / PADDLE_DECAY
-		paddleForce = forwardDirection * PADDLE_BOOST * totalMass * boostFactor
+		targetSpeed = targetSpeed + PADDLE_BOOST * (paddleBoostRemaining / PADDLE_DECAY)
 		paddleBoostRemaining = math.max(0, paddleBoostRemaining - dt)
 	end
+	local desiredVelocity = forwardDirection * targetSpeed
 
-	vectorForce.Force = baseForce + paddleForce
+	-- Velocity correction force. This simultaneously:
+	--   • kills any lateral velocity (sideways drift)
+	--   • kills any backwards velocity
+	--   • holds forward speed constant at SPEED regardless of turning
+	local velocityError = desiredVelocity - flatVelocity
+	vectorForce.Force = velocityError * totalMass * VELOCITY_GAIN
 
 	-- Scale torque with raft mass so it always rotates, even with many tiles
 	alignOrientation.MaxTorque = totalMass * 500
