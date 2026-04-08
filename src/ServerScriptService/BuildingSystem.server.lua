@@ -1,4 +1,6 @@
 local rs = game:GetService("ReplicatedStorage")
+local PhysicsService = game:GetService("PhysicsService")
+local Players = game:GetService("Players")
 
 local placeBlockEvent = rs:FindFirstChild("PlaceBlock")
 if not placeBlockEvent then
@@ -57,9 +59,62 @@ local BEAM_X_OFFSET = 1
 local RAFT_COST = 2
 local BEAM_COST = 1
 local WALL_PANEL_COST = 3
+local RAFT_COLLISION_GROUP = "RaftStructure"
+local PLAYER_COLLISION_GROUP = "RaftPlayers"
+
+local function ensureCollisionGroup(name)
+	local existingGroups = PhysicsService:GetRegisteredCollisionGroups()
+	local hasGroup = false
+	for _, group in ipairs(existingGroups) do
+		if group.name == name then
+			hasGroup = true
+			break
+		end
+	end
+	if not hasGroup then
+		PhysicsService:RegisterCollisionGroup(name)
+	end
+end
+
+local function ensureRaftCollisionGroup()
+	ensureCollisionGroup(RAFT_COLLISION_GROUP)
+	ensureCollisionGroup(PLAYER_COLLISION_GROUP)
+
+	-- Raft should not exchange impulses with the world. This prevents the
+	-- full raft assembly from being launched when debris/islands get under it.
+	PhysicsService:CollisionGroupSetCollidable(RAFT_COLLISION_GROUP, "Default", false)
+	PhysicsService:CollisionGroupSetCollidable(RAFT_COLLISION_GROUP, RAFT_COLLISION_GROUP, true)
+	PhysicsService:CollisionGroupSetCollidable(RAFT_COLLISION_GROUP, PLAYER_COLLISION_GROUP, true)
+end
+
+ensureRaftCollisionGroup()
 
 local function getRaft()
 	return workspace:FindFirstChild("Raft")
+end
+
+local function applyRaftPhysics(part)
+	part.CollisionGroup = RAFT_COLLISION_GROUP
+end
+
+local function applyRaftPhysicsRecursive(obj)
+	if obj:IsA("BasePart") then
+		applyRaftPhysics(obj)
+		return
+	end
+	for _, desc in obj:GetDescendants() do
+		if desc:IsA("BasePart") then
+			applyRaftPhysics(desc)
+		end
+	end
+end
+
+local function setCharacterCollisionGroup(char)
+	for _, desc in char:GetDescendants() do
+		if desc:IsA("BasePart") then
+			desc.CollisionGroup = PLAYER_COLLISION_GROUP
+		end
+	end
 end
 
 local function getFloorOffsets(raft)
@@ -187,6 +242,7 @@ local function weldToRaft(obj, raft)
 	if obj:IsA("Model") then
 		for _, desc in obj:GetDescendants() do
 			if desc:IsA("BasePart") then
+				applyRaftPhysics(desc)
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = desc
 				weld.Part1 = raft.PrimaryPart
@@ -199,6 +255,7 @@ local function weldToRaft(obj, raft)
 			end
 		end
 	elseif obj:IsA("BasePart") then
+		applyRaftPhysics(obj)
 		local weld = Instance.new("WeldConstraint")
 		weld.Part0 = obj
 		weld.Part1 = raft.PrimaryPart
@@ -377,4 +434,29 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 	end
 
 	placeBlockEvent:FireClient(player, "placed")
+end)
+
+local raft = getRaft()
+if raft then
+	applyRaftPhysicsRecursive(raft)
+end
+
+local function onCharacterAdded(char)
+	setCharacterCollisionGroup(char)
+	char.DescendantAdded:Connect(function(desc)
+		if desc:IsA("BasePart") then
+			desc.CollisionGroup = PLAYER_COLLISION_GROUP
+		end
+	end)
+end
+
+for _, plr in Players:GetPlayers() do
+	if plr.Character then
+		onCharacterAdded(plr.Character)
+	end
+	plr.CharacterAdded:Connect(onCharacterAdded)
+end
+
+Players.PlayerAdded:Connect(function(plr)
+	plr.CharacterAdded:Connect(onCharacterAdded)
 end)
