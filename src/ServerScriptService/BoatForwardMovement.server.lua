@@ -8,10 +8,10 @@ local PADDLE_COURSE_NUDGE = math.rad(3) -- max course rotation per paddle stroke
 local VELOCITY_GAIN = 6
 
 -- ─── Wind event ───
-local WIND_INTERVAL_MIN = 90 -- seconds, min delay between wind events
-local WIND_INTERVAL_MAX = 180 -- seconds, max delay between wind events
+local WIND_INTERVAL_MIN = 10 -- seconds, min delay between wind events (TEMP: testing)
+local WIND_INTERVAL_MAX = 10 -- seconds, max delay between wind events (TEMP: testing)
 local WIND_DURATION = 6 -- seconds the wind blows
-local WIND_PLAYER_ACCEL = 55 -- m/s² applied to players standing on the raft
+local WIND_PLAYER_VELOCITY = 35 -- studs/s the wind drags players standing on the raft
 local TURN_SPEED = 0.6 -- radians/sec the raft rotates to face the wind
 
 local Players = game:GetService("Players")
@@ -98,6 +98,7 @@ end
 local windActive = false
 local windRemainingTime = 0
 local windDirection = Vector3.new(0, 0, -1)
+local affectedPlayers = {} -- player -> humanoid (so we can restore PlatformStand)
 
 local function startWindEvent()
 	windDirection = randomHorizontalDirection()
@@ -116,9 +117,19 @@ local function startWindEvent()
 	print(string.format("[Wind] Wind event started, direction (%.2f, %.2f)", windDirection.X, windDirection.Z))
 end
 
+local function releaseAffectedPlayers()
+	for plr, hum in pairs(affectedPlayers) do
+		if hum and hum.Parent then
+			hum.PlatformStand = false
+		end
+		affectedPlayers[plr] = nil
+	end
+end
+
 local function endWindEvent()
 	windActive = false
 	windRemainingTime = 0
+	releaseAffectedPlayers()
 	for _, plr in Players:GetPlayers() do
 		plr:SetAttribute("WindActive", false)
 	end
@@ -231,20 +242,30 @@ RunService.Heartbeat:Connect(function(dt)
 	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos.X, restY, pos.Z) * CFrame.fromEulerAnglesYXZ(initialPitch, lockedYaw, initialRoll))
 	primaryPart:SetAttribute("RestYaw", lockedYaw)
 
-	-- ─── Wind event: push players standing on the raft ───
+	-- ─── Wind event: knock players over and drag them along the wind ───
 	if windActive then
 		windRemainingTime = math.max(0, windRemainingTime - dt)
 		for _, plr in Players:GetPlayers() do
 			local char = plr.Character
 			if char then
 				local hrp = char:FindFirstChild("HumanoidRootPart")
-				if hrp then
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				if hrp and hum then
 					local origin = hrp.Position
 					local result = workspace:Raycast(origin, Vector3.new(0, -8, 0), windRayParams)
 					if result then
+						-- Ragdoll the character so the Humanoid controller stops
+						-- fighting the velocity we apply each frame.
+						if not affectedPlayers[plr] then
+							affectedPlayers[plr] = hum
+							hum.PlatformStand = true
+						end
 						local v = hrp.AssemblyLinearVelocity
-						local accel = windDirection * WIND_PLAYER_ACCEL * dt
-						hrp.AssemblyLinearVelocity = Vector3.new(v.X + accel.X, v.Y, v.Z + accel.Z)
+						hrp.AssemblyLinearVelocity = Vector3.new(
+							windDirection.X * WIND_PLAYER_VELOCITY,
+							v.Y,
+							windDirection.Z * WIND_PLAYER_VELOCITY
+						)
 					end
 				end
 			end
@@ -253,4 +274,9 @@ RunService.Heartbeat:Connect(function(dt)
 			endWindEvent()
 		end
 	end
+end)
+
+-- Restore PlatformStand if a character respawns mid-wind
+Players.PlayerRemoving:Connect(function(plr)
+	affectedPlayers[plr] = nil
 end)
