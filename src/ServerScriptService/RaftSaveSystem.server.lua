@@ -432,6 +432,46 @@ local function rebuildRaft(player, saveData)
 		hinge.Anchored = false
 	end
 
+	local function setDoorGhostState(model, isOpen)
+		local hinge = model and model:FindFirstChild("Hinge", true)
+		if hinge and hinge:IsA("BasePart") then
+			hinge.Transparency = isOpen and 1 or 0
+			hinge.CanCollide = not isOpen
+		end
+		model:SetAttribute("DoorIsOpen", isOpen)
+	end
+
+	local function installDoorPromptLogic(model)
+		if not model or not model:IsA("Model") then return end
+		if model:GetAttribute("DoorPromptHooked") then return end
+
+		local legacyScript = model:FindFirstChildWhichIsA("Script", true)
+		if legacyScript then
+			legacyScript.Disabled = true
+		end
+
+		local base = model:FindFirstChild("Base", true)
+		local prompt = base and base:FindFirstChildWhichIsA("ProximityPrompt")
+		if not prompt then return end
+
+		local function refreshPromptText()
+			prompt.ActionText = (model:GetAttribute("DoorIsOpen") and "Close") or "Open"
+		end
+
+		model:SetAttribute("DoorPromptHooked", true)
+		if model:GetAttribute("DoorIsOpen") == nil then
+			model:SetAttribute("DoorIsOpen", false)
+		end
+		setDoorGhostState(model, model:GetAttribute("DoorIsOpen"))
+		refreshPromptText()
+
+		prompt.Triggered:Connect(function()
+			local openNow = not model:GetAttribute("DoorIsOpen")
+			setDoorGhostState(model, openNow)
+			refreshPromptText()
+		end)
+	end
+
 	local function weldAndUnanchor(clone)
 		local skipHinge = clone:GetAttribute("BuildType") == "door_wood"
 		if clone:IsA("Model") then
@@ -530,6 +570,7 @@ local function rebuildRaft(player, saveData)
 				task.defer(function()
 					if clone.Parent then
 						prepareDoorForAnimation(clone)
+						installDoorPromptLogic(clone)
 					end
 				end)
 			end

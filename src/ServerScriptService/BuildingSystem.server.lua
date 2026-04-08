@@ -276,6 +276,46 @@ local function prepareDoorForAnimation(model)
 	end)
 end
 
+local function setDoorGhostState(model, isOpen)
+	local hinge = model and model:FindFirstChild("Hinge", true)
+	if hinge and hinge:IsA("BasePart") then
+		hinge.Transparency = isOpen and 1 or 0
+		hinge.CanCollide = not isOpen
+	end
+	model:SetAttribute("DoorIsOpen", isOpen)
+end
+
+local function installDoorPromptLogic(model)
+	if not model or not model:IsA("Model") then return end
+	if model:GetAttribute("DoorPromptHooked") then return end
+
+	local legacyScript = model:FindFirstChildWhichIsA("Script", true)
+	if legacyScript then
+		legacyScript.Disabled = true
+	end
+
+	local base = model:FindFirstChild("Base", true)
+	local prompt = base and base:FindFirstChildWhichIsA("ProximityPrompt")
+	if not prompt then return end
+
+	local function refreshPromptText()
+		prompt.ActionText = (model:GetAttribute("DoorIsOpen") and "Close") or "Open"
+	end
+
+	model:SetAttribute("DoorPromptHooked", true)
+	if model:GetAttribute("DoorIsOpen") == nil then
+		model:SetAttribute("DoorIsOpen", false)
+	end
+	setDoorGhostState(model, model:GetAttribute("DoorIsOpen"))
+	refreshPromptText()
+
+	prompt.Triggered:Connect(function()
+		local openNow = not model:GetAttribute("DoorIsOpen")
+		setDoorGhostState(model, openNow)
+		refreshPromptText()
+	end)
+end
+
 -- Welding a new part with mass into the moving raft assembly causes Roblox
 -- to equilibrate momentum: the combined velocity = (M*V + m*0)/(M+m), so
 -- the raft loses a factor of m/M of its forward velocity. Across many
@@ -481,6 +521,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 				task.defer(function()
 					if newWall.Parent then
 						prepareDoorForAnimation(newWall)
+						installDoorPromptLogic(newWall)
 					end
 				end)
 			end
