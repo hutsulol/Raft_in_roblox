@@ -521,7 +521,6 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 				task.defer(function()
 					if newWall.Parent then
 						prepareDoorForAnimation(newWall)
-						installDoorPromptLogic(newWall)
 					end
 				end)
 			end

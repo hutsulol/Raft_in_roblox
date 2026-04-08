@@ -570,7 +570,6 @@ local function rebuildRaft(player, saveData)
 				task.defer(function()
 					if clone.Parent then
 						prepareDoorForAnimation(clone)
-						installDoorPromptLogic(clone)
 					end
 				end)
 			end
