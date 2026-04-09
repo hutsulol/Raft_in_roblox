@@ -44,8 +44,15 @@ local FishEating = Tool.FishEating
 -- ─── State ───
 local InWater = false
 local onGround = false
-local biteLoopId = 0    -- increments each cast so stale bite loops exit
-local hookedItem = nil  -- currently-welded catch (Model), or nil
+local biteLoopId = 0       -- increments each cast so stale bite loops exit
+local tetherWatchdogId = 0 -- increments each cast so stale tether loops exit
+local hookedItem = nil     -- currently-welded catch (Model), or nil
+
+-- How far past Maxlength the player can stray before the line auto-releases.
+-- The rope length is set well beyond this so the RopeConstraint never goes
+-- taut first — the watchdog releases the rod before any physical tug is
+-- applied to the player's character.
+local TETHER_SLACK = 5
 
 -- ─── Pointer ↔ Device welding ───
 local function attach(source, destination, offset)
@@ -228,6 +235,51 @@ local function clearBiteEffect()
 	end
 end
 
+-- ─── Forced release ───
+-- Called when the player strays past the line's max range. Snaps the bobber
+-- back onto the rod without any animation or reward so the rope never pulls
+-- the character off the raft. Any hooked catch is discarded.
+local function forceReleaseRod()
+	if not Tool.isThrown.Value then return end
+	Tool.isThrown.Value = false
+
+	tetherWatchdogId = tetherWatchdogId + 1
+	cancelBiteLoopPreservingCatch()
+	destroyHookedItem()
+	clearBiteEffect()
+
+	local bv = Pointer:FindFirstChild("BodyVelocity")
+	if bv then bv:Destroy() end
+
+	Pointer.Anchored = false
+	Pointer.AssemblyLinearVelocity = Vector3.zero
+	Pointer.AssemblyAngularVelocity = Vector3.zero
+	attach(Pointer, Device, CFrame.new(0, 0, 0))
+	Pointer.RopeConstraint.Length = 1
+end
+
+-- ─── Tether watchdog ───
+-- Runs while the rod is cast. If the player walks far enough that the line
+-- would go taut (more than Maxlength + TETHER_SLACK studs from the rod tip),
+-- auto-release the rod before the RopeConstraint can drag the character.
+local function startTetherWatchdog(maxDistance)
+	tetherWatchdogId = tetherWatchdogId + 1
+	local myId = tetherWatchdogId
+	local limit = maxDistance + TETHER_SLACK
+
+	task.spawn(function()
+		while Tool.isThrown.Value and tetherWatchdogId == myId do
+			if not Device or not Device.Parent then return end
+			local dist = (Pointer.Position - Device.Position).Magnitude
+			if dist > limit then
+				forceReleaseRod()
+				return
+			end
+			RunService.Heartbeat:Wait()
+		end
+	end)
+end
+
 -- ─── onGround tracking (so the woosh plays only on a real airborne cast) ───
 Point.Touched:Connect(function()
 	onGround = true
@@ -272,8 +324,10 @@ local function onThrow(player, mouseCF, rootpart, Maxlength, speed, LP)
 	local landingPos, landedOnWater = resolveLandingPoint(aimPos)
 	local finalDistance = (landingPos - startPos).Magnitude
 
-	-- Make sure the rope can reach the landing point with a little slack
-	Pointer.RopeConstraint.Length = math.max(finalDistance + 2, 1)
+	-- Keep the rope long enough that it never goes taut inside the tether
+	-- watchdog's allowed range — the watchdog releases the rod before any
+	-- physical pull can drag the player off the raft.
+	Pointer.RopeConstraint.Length = Maxlength + TETHER_SLACK + 10
 
 	-- Animate a parabolic arc from the rod tip to the landing point. The
 	-- Pointer is anchored during flight and kinematic-updated per Heartbeat,
@@ -305,6 +359,9 @@ local function onThrow(player, mouseCF, rootpart, Maxlength, speed, LP)
 	if landedOnWater then
 		startFishBiteLoop()
 	end
+
+	-- Start tethering now that the bobber is anchored at its final spot.
+	startTetherWatchdog(Maxlength)
 end
 
 -- ─── Reel in: release the anchor and weld back to the rod ───
@@ -313,6 +370,10 @@ local function onRetract(player, mouseCF, rootpart, LP)
 	if not Tool.isThrown.Value then return end
 
 	Tool.isThrown.Value = false
+
+	-- Shut down the tether watchdog so it can't race with the retract path
+	-- and stomp on the hooked catch.
+	tetherWatchdogId = tetherWatchdogId + 1
 
 	-- Was there a catch on the hook when the player pulled?
 	local hadCatch = hookedItem ~= nil
