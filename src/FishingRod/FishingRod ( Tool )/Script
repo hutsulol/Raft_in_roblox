@@ -1,156 +1,215 @@
+-- FishingRod server script
+-- Handles the cast (RemoteThrow) and reel-in (RemoteRetract) requests from
+-- the LocalScript. The bobber (Pointer) flies along a parabolic arc that
+-- lands precisely on the mouse target, snaps to the water surface if the
+-- target is over terrain water, and stays there (anchored) until retracted.
+
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+local Debris = game:GetService("Debris")
+local Players = game:GetService("Players")
+
 local RemoteThrow = ReplicatedStorage:FindFirstChild("RemoteThrow")
 local RemoteRetract = ReplicatedStorage:FindFirstChild("RemoteRetract")
 local RemoteSendOwnerName = ReplicatedStorage:FindFirstChild("RemoteSendOwnerName")
-local debris = game:GetService("Debris")
-local Players = game:GetService("Players")
-local player = Players.LocalPlayer
-local onGround = false
-local dt = 2
-local InWater = false
-local Tool = script.Parent
-local Point = Tool.Pointer
-local Device = Tool.Device
-local FishEating = Tool.FishEating
+
 if not RemoteThrow then
-	RemoteThrow = Instance.new("RemoteEvent", ReplicatedStorage)
+	RemoteThrow = Instance.new("RemoteEvent")
 	RemoteThrow.Name = "RemoteThrow"
+	RemoteThrow.Parent = ReplicatedStorage
 end
 if not RemoteRetract then
-	RemoteRetract = Instance.new("RemoteEvent", ReplicatedStorage)
+	RemoteRetract = Instance.new("RemoteEvent")
 	RemoteRetract.Name = "RemoteRetract"
+	RemoteRetract.Parent = ReplicatedStorage
 end
-
 if not RemoteSendOwnerName then
-	RemoteSendOwnerName = Instance.new("RemoteEvent", ReplicatedStorage)
+	RemoteSendOwnerName = Instance.new("RemoteEvent")
 	RemoteSendOwnerName.Name = "RemoteSendOwnerName"
+	RemoteSendOwnerName.Parent = ReplicatedStorage
 end
-local Pointer = Tool.Pointer
-Point.Touched:Connect(function(Part)
-	onGround = true
-	Pointer.Touched:Connect(function(hit)
-		if Point:FindFirstChild("Effect") then return end
-		if InWater then return end
-		if hit.Name == 'Water' then
-	    InWater = true
-		local Time = math.random(3,5)
-		while InWater do
-		if Tool.Parent:FindFirstChild("Fish") then return end
-		if Tool.Parent:FindFirstChild("Fish") then return end		
-		wait(math.random(2,4))
-	    if Tool.Parent:FindFirstChild("Fish") then return end
-		 local Effect = script.Effect:Clone()
-		 if Point:FindFirstChild("Effect") then
-				if Point:FindFirstChild("Effect") then
-				        Point:FindFirstChild("Effect").Enabled = false
-						Effect:Destroy()
-						InWater = false
-					end
-					InWater = false
-              break
-			end
-			if Point:FindFirstChild("Effect") then
-				Point:FindFirstChild("Effect").Enabled = false
-				Effect:Destroy()
-					break
-				end
-			if not InWater then
-					InWater = false
-				break
-			end
-			FishEating.Value = true	
-			Effect.Parent = Point
-			Effect.Enabled = true
-			debris:AddItem(Effect,Time)
-			if not InWater then
-					InWater = false
-				break
-			end	
-			wait(Time+2)
-			if not InWater then
-					InWater = false
-				break
-			end	
-			FishEating.Value = false	
-	  end
-	 end
-	end)
-end)
 
-Point.TouchEnded:Connect(function()
-	onGround = false
-end)
+local Tool = script.Parent
+local Point = Tool.Pointer
+local Pointer = Tool.Pointer
+local Device = Tool.Device
+local FishEating = Tool.FishEating
+
+-- ─── State ───
+local InWater = false
+local onGround = false
+local biteLoopId = 0 -- increments each cast so stale bite loops exit
+
+-- ─── Pointer ↔ Device welding ───
 local function attach(source, destination, offset)
-	local weld = Instance.new("WeldConstraint", destination)
+	local weld = Instance.new("WeldConstraint")
 	weld.Name = "thing"
 	source.CFrame = destination.CFrame * offset
 	weld.Part0 = source
 	weld.Part1 = destination
+	weld.Parent = destination
 end
-attach(Pointer, Device, CFrame.new(0,0,0))
-local function onThrow(player, mouse, rootpart, Maxlength, speed, LP)
-	if player.Name == Tool.Parent.Name  then
-		if not Tool.isThrown.Value then
-			Tool.isThrown.Value = true
-			Tool.Handle.woosh.Volume = .25
-			if Point:FindFirstChild("Effect") then 
-				Point:FindFirstChild("Effect").Enabled = false
-				Point:FindFirstChild("Effect"):Destroy()
-				InWater = false
-				FishEating.Value = false
-				return
-			end
-			if not onGround then
-				Tool.Handle.woosh:Play()
-			end
-			local WeldConstraint = Device:FindFirstChild("thing")
-			if WeldConstraint then
-				WeldConstraint:Destroy()
-			end
-			local factor = 1
-			local direction = mouse.p - Pointer.Position
-			local length = direction.Magnitude
-			direction = direction.Unit
-			local result = (direction + rootpart.UpVector).Unit
-			local BodyVelocity = Instance.new("BodyVelocity", Pointer)
-			length = math.clamp(length, 1, Maxlength)
-			Pointer.RopeConstraint.Length = length
-			BodyVelocity.P = 10e10
-			BodyVelocity.MaxForce = Vector3.new(10e10, 10e10,10e10)
-			BodyVelocity.Velocity = factor * speed * result
-			wait(length / speed)
-			BodyVelocity:Destroy()
+attach(Pointer, Device, CFrame.new(0, 0, 0))
+
+-- ─── Terrain water detection ───
+-- Raycast downward onto the aim point. If the first thing the ray hits is
+-- terrain water, return the water surface Y; otherwise return the ground
+-- position so the bobber sits on the surface instead of falling through it.
+local function resolveLandingPoint(aimPos)
+	local rayParams = RaycastParams.new()
+	rayParams.IgnoreWater = false
+	rayParams.FilterType = Enum.RaycastFilterType.Exclude
+	rayParams.FilterDescendantsInstances = { Tool.Parent, Tool }
+
+	local result = workspace:Raycast(
+		aimPos + Vector3.new(0, 40, 0),
+		Vector3.new(0, -200, 0),
+		rayParams
+	)
+	if not result then
+		return aimPos, false
+	end
+
+	if result.Material == Enum.Material.Water then
+		return Vector3.new(aimPos.X, result.Position.Y, aimPos.Z), true
+	end
+	return result.Position + Vector3.new(0, 0.1, 0), false
+end
+
+-- ─── Fish bite loop ───
+-- Runs only while the bobber is sitting on water and the rod is cast. Each
+-- loop has a random delay before a fish "bites" (visual Effect particle),
+-- then a random bite duration. Retracting the rod or recasting invalidates
+-- the loop via biteLoopId.
+local function startFishBiteLoop()
+	biteLoopId = biteLoopId + 1
+	local myId = biteLoopId
+
+	task.spawn(function()
+		while InWater and Tool.isThrown.Value and biteLoopId == myId do
+			if Tool.Parent and Tool.Parent:FindFirstChild("Fish") then return end
+
+			task.wait(math.random(2, 4))
+			if not (InWater and Tool.isThrown.Value and biteLoopId == myId) then return end
+			if Tool.Parent and Tool.Parent:FindFirstChild("Fish") then return end
+
+			local Effect = script.Effect:Clone()
+			Effect.Parent = Point
+			Effect.Enabled = true
+			FishEating.Value = true
+
+			local biteTime = math.random(3, 5)
+			Debris:AddItem(Effect, biteTime)
+
+			task.wait(biteTime + 2)
+			FishEating.Value = false
 		end
+	end)
+end
+
+local function stopFishBiteLoop()
+	biteLoopId = biteLoopId + 1 -- invalidate any running loop
+	InWater = false
+	FishEating.Value = false
+	local existingEffect = Point:FindFirstChild("Effect")
+	if existingEffect then
+		existingEffect.Enabled = false
+		existingEffect:Destroy()
 	end
 end
 
-local function onRetract(player, mouse, rootpart, LP)
-	if player.Name == Tool.Parent.Name then
-		if Tool.isThrown.Value then
-			local bv = Pointer:FindFirstChild("BodyVelocity")
-			if bv then
-				bv:Destroy()
-			end
-			Tool.isThrown.Value = false
-			local length = (mouse.p - rootpart.Position).Magnitude
-			local factor = 1
-			attach(Pointer, Device, CFrame.new(0,0,0))
-			InWater = false
-			FishEating.Value = false
-			if Point:FindFirstChild("Effect") then 
-				Point:FindFirstChild("Effect").Enabled = false
-				Point:FindFirstChild("Effect"):Destroy()
-				InWater = false
-				return
-			end
-			if Point:FindFirstChild("Effect") then
-				Point:FindFirstChild("Effect").Enabled = false
-				Point:FindFirstChild("Effect"):Destroy()
-				return
-			end
-			Pointer.RopeConstraint.Length = 1
-		end
+-- ─── onGround tracking (so the woosh plays only on a real airborne cast) ───
+Point.Touched:Connect(function()
+	onGround = true
+end)
+Point.TouchEnded:Connect(function()
+	onGround = false
+end)
+
+-- ─── Cast: bobber flies to mouse target and anchors there ───
+local function onThrow(player, mouseCF, rootpart, Maxlength, speed, LP)
+	if player.Name ~= Tool.Parent.Name then return end
+	if Tool.isThrown.Value then return end
+
+	-- Cancel any leftover bite effect from the previous cast
+	if Point:FindFirstChild("Effect") then
+		stopFishBiteLoop()
+		return
 	end
+
+	Tool.isThrown.Value = true
+	Tool.Handle.woosh.Volume = 0.25
+	if not onGround then
+		Tool.Handle.woosh:Play()
+	end
+
+	-- Detach the bobber from the rod so it can travel freely
+	local existingWeld = Device:FindFirstChild("thing")
+	if existingWeld then existingWeld:Destroy() end
+
+	-- Clamp the requested target to the rod's max line length
+	local startPos = Pointer.Position
+	local aimPos = mouseCF.Position
+	local displacement = aimPos - startPos
+	local distance = displacement.Magnitude
+	if distance > Maxlength then
+		aimPos = startPos + displacement.Unit * Maxlength
+	end
+
+	-- Snap to the water surface (or ground) at the aim point
+	local landingPos, landedOnWater = resolveLandingPoint(aimPos)
+	local finalDistance = (landingPos - startPos).Magnitude
+
+	-- Make sure the rope can reach the landing point with a little slack
+	Pointer.RopeConstraint.Length = math.max(finalDistance + 2, 1)
+
+	-- Animate a parabolic arc from the rod tip to the landing point. The
+	-- Pointer is anchored during flight and kinematic-updated per Heartbeat,
+	-- so it lands EXACTLY on the target instead of drifting with physics.
+	Pointer.Anchored = true
+	local flightTime = math.clamp(finalDistance / math.max(speed, 1), 0.25, 1.5)
+	local arcHeight = math.max(finalDistance * 0.15, 3)
+	local launchTick = tick()
+
+	while Tool.isThrown.Value do
+		local elapsed = tick() - launchTick
+		local t = elapsed / flightTime
+		if t >= 1 then break end
+		local linear = startPos:Lerp(landingPos, t)
+		local arc = Vector3.new(0, arcHeight * math.sin(t * math.pi), 0)
+		Pointer.CFrame = CFrame.new(linear + arc)
+		RunService.Heartbeat:Wait()
+	end
+
+	if not Tool.isThrown.Value then return end
+
+	-- Snap exactly to the target and keep it pinned there
+	Pointer.CFrame = CFrame.new(landingPos)
+	Pointer.Anchored = true
+	Pointer.AssemblyLinearVelocity = Vector3.zero
+	Pointer.AssemblyAngularVelocity = Vector3.zero
+
+	InWater = landedOnWater
+	if landedOnWater then
+		startFishBiteLoop()
+	end
+end
+
+-- ─── Reel in: release the anchor and weld back to the rod ───
+local function onRetract(player, mouseCF, rootpart, LP)
+	if player.Name ~= Tool.Parent.Name then return end
+	if not Tool.isThrown.Value then return end
+
+	Tool.isThrown.Value = false
+	stopFishBiteLoop()
+
+	-- Clean up any stray legacy BodyVelocity
+	local bv = Pointer:FindFirstChild("BodyVelocity")
+	if bv then bv:Destroy() end
+
+	Pointer.Anchored = false
+	attach(Pointer, Device, CFrame.new(0, 0, 0))
+	Pointer.RopeConstraint.Length = 1
 end
 
 RemoteThrow.OnServerEvent:Connect(onThrow)
