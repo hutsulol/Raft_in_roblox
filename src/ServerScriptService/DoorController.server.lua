@@ -2,28 +2,34 @@
 -- Centralized setup for placed Door_Wood models.
 --
 -- Exposes _G.SetupDoor(doorModel, raft). The stock Studio door template
--- ships with a Script that tweens `hinge.CFrame` directly, but two things
--- break once the door is welded into the raft's moving assembly:
---   1. The open-goal CFrame is captured in world space at script load and
---      goes stale as the raft drifts.
---   2. Tweening a weld-constrained part forces the physics engine to
---      re-solve the whole raft every step — ~0.5s server freeze per click.
+-- ships with a Script that tweens `hinge.CFrame` directly, which breaks on
+-- our moving raft in two ways:
+--   1. The "open" goal CFrame is captured in world space at script load and
+--      goes stale as the raft drifts, so opening the door warps it back
+--      toward the original spawn spot.
+--   2. Tweening a weld-constrained part's CFrame forces the physics engine
+--      to re-solve the whole raft assembly every step — ~0.5s server freeze.
 --
--- Neither Motor6D-with-C0-tween nor HingeConstraint-with-Motor kept the
--- swinging Base attached to the raft: the joint systems' soft physics let
--- Base drift away as the raft moved. Instead, we use a kinematic follower:
---   * Doorframe (including Hinge) is rigidly WeldConstraint'd to the raft
---     and unanchored — follows the raft through normal physics.
---   * Base stays ANCHORED. Every Heartbeat we set
---       base.CFrame = hinge.CFrame * CFrame.Angles(0, angle, 0) * offset
---     where `offset` is the original closed-position transform from hinge
---     to base. The hinge's CFrame is already kept up-to-date by the weld,
---     so this formula pins Base to the raft while letting us rotate it
---     around the hinge's Y axis by any angle.
---   * A NumberValue holds the current angle; TweenService interpolates it
---     when the ProximityPrompt fires.
+-- The fix, modelled on SawmillSystem's spinning parts which already work
+-- correctly on the moving raft:
+--   * destroy the template's baked-in script
+--   * WeldConstraint Doorframe (and every BasePart inside it, including the
+--     Hinge pivot) rigidly to raft.PrimaryPart — puts the frame in the
+--     raft's rigid assembly
+--   * create a Motor6D(Part0 = raft.PrimaryPart, Part1 = Base) with C0/C1
+--     set up so the joint's pivot lies exactly at the Hinge. This is the
+--     critical bit: a Motor6D pulls Part1 into the same physics assembly
+--     as Part0, so Base inherits the raft's motion automatically — no
+--     manual CFrame follower, no joint drift.
+--   * tween motor.Transform (NOT motor.C0) to swing the door. Tweening
+--     Transform is a pose-level operation; it does not rebuild the
+--     assembly each step the way tweening C0 does.
+--
+-- Both previous attempts at Motor6D drove the swing by retargeting C0,
+-- which is what made them slow and drifty. Transform doesn't have those
+-- problems — it's exactly what Roblox's own animation system uses to
+-- drive character joints on moving platforms.
 
-local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 
 local function weldPart(part, target)
@@ -52,32 +58,60 @@ local function setupDoor(doorModel, raft)
 		return
 	end
 
-	-- Replace the template's static-world tween script.
+	local raftPart = raft.PrimaryPart
+
+	-- Kill the template's static-world tween script.
 	for _, desc in doorModel:GetDescendants() do
 		if desc:IsA("Script") or desc:IsA("LocalScript") then
 			desc:Destroy()
 		end
 	end
 
-	-- Weld the Doorframe (walls, lintel, hinge pivot) rigidly to the raft.
+	-- Weld the Doorframe (walls, lintel, Hinge pivot) rigidly to the raft.
 	if doorframe:IsA("BasePart") then
-		weldPart(doorframe, raft.PrimaryPart)
+		weldPart(doorframe, raftPart)
 	end
 	for _, desc in doorframe:GetDescendants() do
 		if desc:IsA("BasePart") then
-			weldPart(desc, raft.PrimaryPart)
+			weldPart(desc, raftPart)
 		end
 	end
 
-	-- Weld Base's children (handles, prompt parts, etc.) to Base so they
-	-- move with it — but they need to stay anchored along with Base.
+	-- Decorative children of Base (handles, prompt parts, etc.) weld to
+	-- Base so they swing with the panel.
 	for _, desc in base:GetDescendants() do
 		if desc:IsA("BasePart") then
 			weldPart(desc, base)
 		end
 	end
 
-	-- Unanchor the Doorframe so it physically follows the raft via the welds.
+	-- Motor6D joining Base into the raft assembly. The pivot sits at the
+	-- Hinge's world position:
+	--
+	--   Motor6D formula:  Part1 = Part0 * C0 * Transform * C1:Inverse()
+	--
+	-- We want Part0 * C0 to equal hinge.CFrame (so the joint's rotation
+	-- axis passes through the hinge), which means
+	--   C0 = raftPart⁻¹ · hinge
+	-- Then at Transform = Identity we want Part1 = base.CFrame, so
+	--   hinge * C1:Inverse() = base   ⇒   C1 = base⁻¹ · hinge
+	-- With these choices, setting Transform = CFrame.Angles(0, angle, 0)
+	-- swings Base around the hinge's world Y axis by `angle` radians.
+	local hingeInRaft = raftPart.CFrame:Inverse() * hinge.CFrame
+	local hingeInBase = base.CFrame:Inverse() * hinge.CFrame
+
+	local motor = Instance.new("Motor6D")
+	motor.Name = "DoorHinge"
+	motor.Part0 = raftPart
+	motor.Part1 = base
+	motor.C0 = hingeInRaft
+	motor.C1 = hingeInBase
+	motor.Transform = CFrame.new()
+	motor.Parent = raftPart
+
+	-- Unanchor every part so the whole door is simulated as part of the
+	-- raft's assembly. Pin network ownership to the server to match how
+	-- the rest of the build system handles placed parts.
 	if doorframe:IsA("BasePart") then
 		doorframe.Anchored = false
 		pcall(function() doorframe:SetNetworkOwner(nil) end)
@@ -88,61 +122,34 @@ local function setupDoor(doorModel, raft)
 			pcall(function() desc:SetNetworkOwner(nil) end)
 		end
 	end
-
-	-- Base stays anchored — we drive its CFrame kinematically each frame.
-	base.Anchored = true
+	base.Anchored = false
+	pcall(function() base:SetNetworkOwner(nil) end)
 	for _, desc in base:GetDescendants() do
 		if desc:IsA("BasePart") then
-			desc.Anchored = true
+			desc.Anchored = false
+			pcall(function() desc:SetNetworkOwner(nil) end)
 		end
 	end
 
-	-- Closed-position offset from hinge to base, captured in hinge's local
-	-- frame. Rotating the offset around Y before applying it gives us the
-	-- swung position.
-	local hingeToBaseOffset = hinge.CFrame:ToObjectSpace(base.CFrame)
-
-	-- Angle state is a NumberValue so TweenService can interpolate it.
-	local angleValue = Instance.new("NumberValue")
-	angleValue.Name = "DoorAngle"
-	angleValue.Value = 0
-	angleValue.Parent = doorModel
-
-	local conn
-	conn = RunService.Heartbeat:Connect(function()
-		if not doorModel.Parent or not hinge.Parent or not base.Parent then
-			if conn then conn:Disconnect(); conn = nil end
-			return
-		end
-		local rot = CFrame.Angles(0, angleValue.Value, 0)
-		base.CFrame = hinge.CFrame * rot * hingeToBaseOffset
-	end)
-
-	doorModel.AncestryChanged:Connect(function(_, parent)
-		if not parent and conn then
-			conn:Disconnect()
-			conn = nil
-		end
-	end)
-
-	-- Wire the ProximityPrompt. Tween the angle NumberValue; the Heartbeat
-	-- updater picks up the new value and applies it to Base.
+	-- Wire the ProximityPrompt. Tween the motor's Transform between the
+	-- closed (Identity) and open (±90° around Y) poses.
 	local prompt = base:FindFirstChildWhichIsA("ProximityPrompt")
 	if not prompt then return end
-
 	prompt.ActionText = "Open"
 	local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local closedCF = CFrame.new()
+	local openCF = CFrame.Angles(0, math.rad(90), 0)
 
 	prompt.Triggered:Connect(function()
 		local target
 		if prompt.ActionText == "Close" then
-			target = 0
+			target = closedCF
 			prompt.ActionText = "Open"
 		else
-			target = math.rad(90)
+			target = openCF
 			prompt.ActionText = "Close"
 		end
-		TweenService:Create(angleValue, tweenInfo, {Value = target}):Play()
+		TweenService:Create(motor, tweenInfo, {Transform = target}):Play()
 	end)
 end
 
