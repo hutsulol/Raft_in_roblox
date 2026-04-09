@@ -27,6 +27,9 @@ local CLAY_ICON = "rbxassetid://129473903672183"
 local WET_BRICK_ICON = "rbxassetid://77999856849195"
 local DRY_BRICK_ICON = "rbxassetid://129896663405682"
 
+-- Fish don't have dedicated icons yet — they render with empty slots until
+-- assets are uploaded. Still listed here so the inventory UI iterates over
+-- them and keeps their count in sync with the server.
 local RESOURCE_ICONS = {
 	Log = LOG_ICON,
 	Plastic = PLASTIC_ICON,
@@ -40,6 +43,14 @@ local RESOURCE_ICONS = {
 	Clay = CLAY_ICON,
 	Wet_Brick = WET_BRICK_ICON,
 	Dry_Brick = DRY_BRICK_ICON,
+	Blue_Fish = "",
+	Carp_Fish = "",
+	Fish_Bones = "",
+	Foil_Fish = "",
+	Jelly_Fish = "",
+	Legendary_Fish = "",
+	Seabass_Fish = "",
+	Tilapia_Fish = "",
 }
 
 local TOOL_ICONS = {

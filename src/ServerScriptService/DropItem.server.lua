@@ -18,6 +18,16 @@ local RESOURCE_TEMPLATES = {
 	Iron_Ingot = "box_model",
 	Plank = "plank",
 	Leaves = "leaves",
+	-- Fish (templates live in ReplicatedStorage.Fish, which the lookup
+	-- below searches recursively so the space-in-name children resolve).
+	Blue_Fish = "Blue Fish",
+	Carp_Fish = "Carp Fish",
+	Fish_Bones = "Fish Bones",
+	Foil_Fish = "Foil Fish",
+	Jelly_Fish = "Jelly Fish",
+	Legendary_Fish = "Legendary Fish",
+	Seabass_Fish = "Seabass Fish",
+	Tilapia_Fish = "Tilapia Fish",
 }
 
 -- Known resource names (items stored as counts in inventory)
@@ -29,6 +39,14 @@ local RESOURCE_ITEMS = {
 	Iron_Ingot = true,
 	Plank = true,
 	Leaves = true,
+	Blue_Fish = true,
+	Carp_Fish = true,
+	Fish_Bones = true,
+	Foil_Fish = true,
+	Jelly_Fish = true,
+	Legendary_Fish = true,
+	Seabass_Fish = true,
+	Tilapia_Fish = true,
 }
 
 -- Fallback template for any unmapped items (tools, etc.)
@@ -80,9 +98,14 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 		tool:Destroy()
 	end
 
-	-- Find the template
+	-- Find the template. Top-level lookup covers the classic resources that
+	-- sit directly under ReplicatedStorage; the recursive pass picks up
+	-- templates stored in subfolders (e.g. ReplicatedStorage.Fish.Blue Fish).
 	local templateName = RESOURCE_TEMPLATES[itemName] or FALLBACK_TEMPLATE
 	local template = ReplicatedStorage:FindFirstChild(templateName)
+	if not template then
+		template = ReplicatedStorage:FindFirstChild(templateName, true)
+	end
 	if not template then
 		template = ReplicatedStorage:FindFirstChild(FALLBACK_TEMPLATE)
 	end

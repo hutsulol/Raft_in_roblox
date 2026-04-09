@@ -70,18 +70,25 @@ local TETHER_SLACK = 5
 
 -- ─── Catch pools ───
 -- Two filtered arrays of catchable entries, one per category. Each entry is
--- { name = <ReplicatedStorage template name + inventory key>, weight = N }.
+-- { inventoryName = key used by _G.GetInventory, templateName = name of the
+-- clonable model in ReplicatedStorage (may live in a subfolder), weight = N }.
 -- Adding new catches is as simple as appending to the right list — the roll
--- below is weighted, so larger weights are drawn more often. Names must match
--- an instance directly under ReplicatedStorage for a physical prop to spawn;
--- entries whose template is missing still count as a catch (sound + grant),
--- they just don't ride the bobber back visually.
+-- below is weighted, so larger weights are drawn more often. Entries whose
+-- template is missing still count as a catch (sound + grant), they just don't
+-- ride the bobber back visually.
 local CATCH_FISH = {
-	{ name = "Fish", weight = 1 },
+	{ inventoryName = "Blue_Fish",      templateName = "Blue Fish",      weight = 3 },
+	{ inventoryName = "Carp_Fish",      templateName = "Carp Fish",      weight = 3 },
+	{ inventoryName = "Tilapia_Fish",   templateName = "Tilapia Fish",   weight = 3 },
+	{ inventoryName = "Seabass_Fish",   templateName = "Seabass Fish",   weight = 2 },
+	{ inventoryName = "Foil_Fish",      templateName = "Foil Fish",      weight = 2 },
+	{ inventoryName = "Jelly_Fish",     templateName = "Jelly Fish",     weight = 2 },
+	{ inventoryName = "Fish_Bones",     templateName = "Fish Bones",     weight = 2 },
+	{ inventoryName = "Legendary_Fish", templateName = "Legendary Fish", weight = 1 },
 }
 
 local CATCH_ITEMS = {
-	{ name = "Log", weight = 1 },
+	{ inventoryName = "Log", templateName = "Log", weight = 1 },
 }
 
 -- Probability that a given bite draws from the fish pool (vs. the item pool).
@@ -114,7 +121,11 @@ local function rollCatch()
 		category = preferFish and "item" or "fish"
 	end
 	if not pick then return nil end
-	return { name = pick.name, category = category }
+	return {
+		inventoryName = pick.inventoryName,
+		templateName = pick.templateName,
+		category = category,
+	}
 end
 
 -- ─── Pointer ↔ Device welding ───
@@ -158,8 +169,13 @@ end
 -- welds every part of it to the Pointer so the prop rides along during the
 -- return animation. Returns the clone (or nil if no template was found —
 -- in that case the catch is still valid logically, it just has no visual).
-local function spawnHookedPropFor(catchName)
-	local template = ReplicatedStorage:FindFirstChild(catchName)
+-- A recursive fallback lets templates live in subfolders like
+-- ReplicatedStorage.Fish.<species>.
+local function spawnHookedPropFor(templateName)
+	local template = ReplicatedStorage:FindFirstChild(templateName)
+	if not template then
+		template = ReplicatedStorage:FindFirstChild(templateName, true)
+	end
 	if not template then return nil end
 
 	local clone = template:Clone()
@@ -271,10 +287,11 @@ local function startFishBiteLoop()
 			-- Roll a random catch (fish or item) and spawn its physical prop.
 			local catchDef = rollCatch()
 			if catchDef then
-				local clone = spawnHookedPropFor(catchDef.name)
+				local clone = spawnHookedPropFor(catchDef.templateName)
 				hookedCatch = {
 					clone = clone,
-					name = catchDef.name,
+					inventoryName = catchDef.inventoryName,
+					templateName = catchDef.templateName,
 					category = catchDef.category,
 				}
 
@@ -460,7 +477,7 @@ local function onRetract(player, mouseCF, rootpart, LP)
 	tetherWatchdogId = tetherWatchdogId + 1
 
 	-- Was there a catch on the hook when the player pulled?
-	local caughtName = hookedCatch and hookedCatch.name or nil
+	local caughtInventoryName = hookedCatch and hookedCatch.inventoryName or nil
 
 	-- Stop the bite loop but keep hookedCatch alive so the animation can drag
 	-- it back to the rod.
@@ -470,7 +487,7 @@ local function onRetract(player, mouseCF, rootpart, LP)
 	local bv = Pointer:FindFirstChild("BodyVelocity")
 	if bv then bv:Destroy() end
 
-	if caughtName then
+	if caughtInventoryName then
 		-- The glow particle can stop; the physical catch is what matters now.
 		clearBiteEffect()
 
@@ -496,7 +513,7 @@ local function onRetract(player, mouseCF, rootpart, LP)
 
 		-- Bobber reached the player: hand over the catch and celebrate.
 		destroyHookedCatch()
-		grantCatchToPlayer(caughtName)
+		grantCatchToPlayer(caughtInventoryName)
 		playSound(PickUpSound)
 	else
 		clearBiteEffect()

@@ -66,6 +66,17 @@ _G.GetInventory = function(player)
 	if not _G_Inventories[player].Dry_Brick then
 		_G_Inventories[player].Dry_Brick = 0
 	end
+	-- Fish species (ReplicatedStorage.Fish). They're stored as stackable
+	-- resources so the player can catch, drop, and pick them back up.
+	local fishSpecies = {
+		"Blue_Fish", "Carp_Fish", "Fish_Bones", "Foil_Fish",
+		"Jelly_Fish", "Legendary_Fish", "Seabass_Fish", "Tilapia_Fish",
+	}
+	for _, species in fishSpecies do
+		if not _G_Inventories[player][species] then
+			_G_Inventories[player][species] = 0
+		end
+	end
 	return _G_Inventories[player]
 end
 
