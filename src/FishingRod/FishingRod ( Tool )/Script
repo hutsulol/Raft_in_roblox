@@ -5,10 +5,13 @@
 -- target is over terrain water, and stays there (anchored) until retracted.
 --
 -- Catch system: when the bobber is sitting on water and a bite fires, a
--- physical Log model spawns and welds itself to the bobber. If the player
--- reels in during the bite window, the bobber (with the log welded on)
--- animates back to the rod tip and the log is granted to the player's
--- inventory on arrival. Missing the bite window destroys the log silently.
+-- random entry is drawn from the fish or item pool. A physical model
+-- (cloned from ReplicatedStorage) is welded to the bobber if a template
+-- exists, and a bite sound plays — Fish Bite for fish, Item Bite for
+-- items. If the player reels in during the bite window, the bobber (with
+-- the model welded on) animates back to the rod tip, the resource is
+-- granted to the player's inventory, and PickUp plays on arrival.
+-- Missing the bite window destroys the catch silently.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -41,18 +44,78 @@ local Pointer = Tool.Pointer
 local Device = Tool.Device
 local FishEating = Tool.FishEating
 
+-- Catch sounds live directly on the Tool (see Tool tree in Studio).
+local FishBiteSound = Tool:FindFirstChild("Fish Bite")
+local ItemBiteSound = Tool:FindFirstChild("Item Bite")
+local PickUpSound = Tool:FindFirstChild("PickUp")
+
+local function playSound(sound)
+	if sound then sound:Play() end
+end
+
 -- ─── State ───
 local InWater = false
 local onGround = false
 local biteLoopId = 0       -- increments each cast so stale bite loops exit
 local tetherWatchdogId = 0 -- increments each cast so stale tether loops exit
-local hookedItem = nil     -- currently-welded catch (Model), or nil
+-- Currently hooked catch record, or nil.
+-- Shape: { clone = Instance?, name = string, category = "fish" | "item" }
+local hookedCatch = nil
 
 -- How far past Maxlength the player can stray before the line auto-releases.
 -- The rope length is set well beyond this so the RopeConstraint never goes
 -- taut first — the watchdog releases the rod before any physical tug is
 -- applied to the player's character.
 local TETHER_SLACK = 5
+
+-- ─── Catch pools ───
+-- Two filtered arrays of catchable entries, one per category. Each entry is
+-- { name = <ReplicatedStorage template name + inventory key>, weight = N }.
+-- Adding new catches is as simple as appending to the right list — the roll
+-- below is weighted, so larger weights are drawn more often. Names must match
+-- an instance directly under ReplicatedStorage for a physical prop to spawn;
+-- entries whose template is missing still count as a catch (sound + grant),
+-- they just don't ride the bobber back visually.
+local CATCH_FISH = {
+	{ name = "Fish", weight = 1 },
+}
+
+local CATCH_ITEMS = {
+	{ name = "Log", weight = 1 },
+}
+
+-- Probability that a given bite draws from the fish pool (vs. the item pool).
+local FISH_BITE_CHANCE = 0.5
+
+local function pickFromPool(pool)
+	local total = 0
+	for _, entry in pool do total = total + (entry.weight or 0) end
+	if total <= 0 then return nil end
+	local roll = math.random() * total
+	local acc = 0
+	for _, entry in pool do
+		acc = acc + (entry.weight or 0)
+		if roll <= acc then return entry end
+	end
+	return pool[#pool]
+end
+
+-- Roll a random catch. Prefers the chosen category but falls back to the
+-- other pool if the preferred one is empty, so the bite never silently
+-- fizzles just because one array was left blank.
+local function rollCatch()
+	local preferFish = math.random() < FISH_BITE_CHANCE
+	local primary = preferFish and CATCH_FISH or CATCH_ITEMS
+	local pick = pickFromPool(primary)
+	local category = preferFish and "fish" or "item"
+	if not pick then
+		local fallback = preferFish and CATCH_ITEMS or CATCH_FISH
+		pick = pickFromPool(fallback)
+		category = preferFish and "item" or "fish"
+	end
+	if not pick then return nil end
+	return { name = pick.name, category = category }
+end
 
 -- ─── Pointer ↔ Device welding ───
 local function attach(source, destination, offset)
@@ -90,26 +153,28 @@ local function resolveLandingPoint(aimPos)
 	return result.Position + Vector3.new(0, 0.1, 0), false
 end
 
--- ─── Physical catch (Log) attached to the hook ───
--- Spawns a Log model at the bobber and welds every part of it to the Pointer
--- so the catch rides along during the return animation.
-local function spawnHookedLog()
-	local logTemplate = ReplicatedStorage:FindFirstChild("Log")
-	if not logTemplate then return nil end
+-- ─── Physical catch attached to the hook ───
+-- Clones the matching ReplicatedStorage template for the picked catch and
+-- welds every part of it to the Pointer so the prop rides along during the
+-- return animation. Returns the clone (or nil if no template was found —
+-- in that case the catch is still valid logically, it just has no visual).
+local function spawnHookedPropFor(catchName)
+	local template = ReplicatedStorage:FindFirstChild(catchName)
+	if not template then return nil end
 
-	local logClone = logTemplate:Clone()
+	local clone = template:Clone()
 
 	-- Make sure the model has a PrimaryPart so we can pivot and weld to it
-	if logClone:IsA("Model") and not logClone.PrimaryPart then
-		local first = logClone:FindFirstChildWhichIsA("BasePart")
-		if first then logClone.PrimaryPart = first end
+	if clone:IsA("Model") and not clone.PrimaryPart then
+		local first = clone:FindFirstChildWhichIsA("BasePart")
+		if first then clone.PrimaryPart = first end
 	end
 
 	-- Place it right at the bobber
-	if logClone:IsA("Model") then
-		logClone:PivotTo(CFrame.new(Pointer.Position))
-	elseif logClone:IsA("BasePart") then
-		logClone.CFrame = CFrame.new(Pointer.Position)
+	if clone:IsA("Model") then
+		clone:PivotTo(CFrame.new(Pointer.Position))
+	elseif clone:IsA("BasePart") then
+		clone.CFrame = CFrame.new(Pointer.Position)
 	end
 
 	-- Strip all physics interactions so the catch never shoves the bobber,
@@ -121,16 +186,16 @@ local function spawnHookedLog()
 		part.CanQuery = false
 		part.Massless = true
 	end
-	if logClone:IsA("BasePart") then neuter(logClone) end
-	for _, part in logClone:GetDescendants() do
+	if clone:IsA("BasePart") then neuter(clone) end
+	for _, part in clone:GetDescendants() do
 		if part:IsA("BasePart") then neuter(part) end
 	end
 
-	logClone.Parent = workspace
+	clone.Parent = workspace
 
 	-- Weld every part to the Pointer. Doing this after parenting keeps the
 	-- world-space offsets correct for the WeldConstraint.
-	local primaryPart = logClone:IsA("BasePart") and logClone or logClone.PrimaryPart
+	local primaryPart = clone:IsA("BasePart") and clone or clone.PrimaryPart
 	if primaryPart then
 		local hookWeld = Instance.new("WeldConstraint")
 		hookWeld.Name = "HookWeld"
@@ -138,7 +203,7 @@ local function spawnHookedLog()
 		hookWeld.Part1 = primaryPart
 		hookWeld.Parent = primaryPart
 
-		for _, part in logClone:GetDescendants() do
+		for _, part in clone:GetDescendants() do
 			if part:IsA("BasePart") and part ~= primaryPart then
 				local w = Instance.new("WeldConstraint")
 				w.Name = "CatchWeld"
@@ -149,15 +214,18 @@ local function spawnHookedLog()
 		end
 	end
 
-	logClone:SetAttribute("HookedCatch", true)
-	return logClone
+	clone:SetAttribute("HookedCatch", true)
+	return clone
 end
 
-local function destroyHookedItem()
-	if hookedItem and hookedItem.Parent then
-		hookedItem:Destroy()
+local function destroyHookedCatch()
+	if hookedCatch then
+		local clone = hookedCatch.clone
+		if clone and clone.Parent then
+			clone:Destroy()
+		end
+		hookedCatch = nil
 	end
-	hookedItem = nil
 end
 
 local function grantCatchToPlayer(resourceName)
@@ -178,9 +246,10 @@ end
 
 -- ─── Fish bite loop ───
 -- Runs only while the bobber is sitting on water and the rod is cast. Each
--- loop has a random delay before a fish "bites" (visual Effect particle plus
--- a physical Log welded to the hook), then a random bite window. Retracting
--- the rod or recasting invalidates the loop via biteLoopId.
+-- loop has a random delay before a "bite" fires — at which point a catch is
+-- rolled from CATCH_FISH / CATCH_ITEMS, its physical prop (if any) is welded
+-- to the hook, and the appropriate bite sound plays. Retracting the rod or
+-- recasting invalidates the loop via biteLoopId.
 local function startFishBiteLoop()
 	biteLoopId = biteLoopId + 1
 	local myId = biteLoopId
@@ -199,8 +268,23 @@ local function startFishBiteLoop()
 			Effect.Enabled = true
 			FishEating.Value = true
 
-			-- Physical catch on the hook (currently always a Log)
-			hookedItem = spawnHookedLog()
+			-- Roll a random catch (fish or item) and spawn its physical prop.
+			local catchDef = rollCatch()
+			if catchDef then
+				local clone = spawnHookedPropFor(catchDef.name)
+				hookedCatch = {
+					clone = clone,
+					name = catchDef.name,
+					category = catchDef.category,
+				}
+
+				-- Bite sound is category-specific.
+				if catchDef.category == "fish" then
+					playSound(FishBiteSound)
+				else
+					playSound(ItemBiteSound)
+				end
+			end
 
 			local biteTime = math.random(3, 5)
 			Debris:AddItem(Effect, biteTime)
@@ -211,7 +295,7 @@ local function startFishBiteLoop()
 			-- If onRetract already grabbed it, biteLoopId was bumped so this
 			-- branch is skipped.
 			if biteLoopId == myId and Tool.isThrown.Value then
-				destroyHookedItem()
+				destroyHookedCatch()
 				FishEating.Value = false
 			end
 		end
@@ -220,7 +304,7 @@ end
 
 local function cancelBiteLoopPreservingCatch()
 	-- Bump the generation counter so the sleeping bite-loop coroutine no
-	-- longer owns hookedItem, but don't destroy it here — the retract
+	-- longer owns hookedCatch, but don't destroy it here — the retract
 	-- animation needs to drag it back to the player first.
 	biteLoopId = biteLoopId + 1
 	InWater = false
@@ -245,7 +329,7 @@ local function forceReleaseRod()
 
 	tetherWatchdogId = tetherWatchdogId + 1
 	cancelBiteLoopPreservingCatch()
-	destroyHookedItem()
+	destroyHookedCatch()
 	clearBiteEffect()
 
 	local bv = Pointer:FindFirstChild("BodyVelocity")
@@ -296,7 +380,7 @@ local function onThrow(player, mouseCF, rootpart, Maxlength, speed, LP)
 	-- Cancel any leftover bite effect from the previous cast
 	if Point:FindFirstChild("Effect") then
 		cancelBiteLoopPreservingCatch()
-		destroyHookedItem()
+		destroyHookedCatch()
 		clearBiteEffect()
 		return
 	end
@@ -376,9 +460,9 @@ local function onRetract(player, mouseCF, rootpart, LP)
 	tetherWatchdogId = tetherWatchdogId + 1
 
 	-- Was there a catch on the hook when the player pulled?
-	local hadCatch = hookedItem ~= nil
+	local caughtName = hookedCatch and hookedCatch.name or nil
 
-	-- Stop the bite loop but keep hookedItem alive so the animation can drag
+	-- Stop the bite loop but keep hookedCatch alive so the animation can drag
 	-- it back to the rod.
 	cancelBiteLoopPreservingCatch()
 
@@ -386,7 +470,7 @@ local function onRetract(player, mouseCF, rootpart, LP)
 	local bv = Pointer:FindFirstChild("BodyVelocity")
 	if bv then bv:Destroy() end
 
-	if hadCatch then
+	if caughtName then
 		-- The glow particle can stop; the physical catch is what matters now.
 		clearBiteEffect()
 
@@ -410,9 +494,10 @@ local function onRetract(player, mouseCF, rootpart, LP)
 			RunService.Heartbeat:Wait()
 		end
 
-		-- Bobber reached the player: hand over the catch
-		destroyHookedItem()
-		grantCatchToPlayer("Log")
+		-- Bobber reached the player: hand over the catch and celebrate.
+		destroyHookedCatch()
+		grantCatchToPlayer(caughtName)
+		playSound(PickUpSound)
 	else
 		clearBiteEffect()
 	end
