@@ -1,4 +1,5 @@
 local CollectionService = game:GetService("CollectionService")
+local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
 local rs = game:GetService("ReplicatedStorage")
 
@@ -156,6 +157,20 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 		inv[resType] = (inv[resType] or 0) + resAmount
 		collectNotify:FireClient(player, "collected", resource, resType, resAmount)
 		_G.SendInventory(player)
+
+		-- Play the leaves-breaking SFX. The Sound is packed inside the
+		-- Leaves template, so we yank it out to workspace before destroying
+		-- the resource model — otherwise the Destroy below would take the
+		-- Sound with it and you'd hear nothing.
+		if resType == "Leaves" then
+			local ruinSound = resource:FindFirstChild("Ruin_Leaves", true)
+			if ruinSound and ruinSound:IsA("Sound") then
+				ruinSound.Parent = workspace
+				ruinSound:Play()
+				Debris:AddItem(ruinSound, 5)
+			end
+		end
+
 		resource:Destroy()
 	end
 end)
