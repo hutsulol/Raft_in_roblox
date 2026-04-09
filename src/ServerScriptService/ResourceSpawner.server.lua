@@ -1,6 +1,7 @@
 local CollectionService = game:GetService("CollectionService")
 local Debris = game:GetService("Debris")
 local Players = game:GetService("Players")
+local SoundService = game:GetService("SoundService")
 local rs = game:GetService("ReplicatedStorage")
 
 local CLICKS_TO_COLLECT = 5
@@ -158,16 +159,37 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 		collectNotify:FireClient(player, "collected", resource, resType, resAmount)
 		_G.SendInventory(player)
 
-		-- Play the leaves-breaking SFX. The Sound is packed inside the
-		-- Leaves template, so we yank it out to workspace before destroying
-		-- the resource model — otherwise the Destroy below would take the
-		-- Sound with it and you'd hear nothing.
+		-- Play the breaking SFX for the collected resource.
+		--
+		-- Leaves and Log pack their Sound inside the resource template
+		-- (Ruin_Leaves, Wood Break), so we yank the Sound out to workspace
+		-- before destroying the resource — otherwise the Destroy below would
+		-- take the Sound with it and you'd hear nothing.
+		--
+		-- The Plastic Break sound lives in SoundService (global, not stored
+		-- inside any resource model), so we clone it and play the clone so
+		-- rapid-fire collections don't restart a single shared instance.
 		if resType == "Leaves" then
 			local ruinSound = resource:FindFirstChild("Ruin_Leaves", true)
 			if ruinSound and ruinSound:IsA("Sound") then
 				ruinSound.Parent = workspace
 				ruinSound:Play()
 				Debris:AddItem(ruinSound, 5)
+			end
+		elseif resType == "Log" then
+			local woodBreak = resource:FindFirstChild("Wood Break", true)
+			if woodBreak and woodBreak:IsA("Sound") then
+				woodBreak.Parent = workspace
+				woodBreak:Play()
+				Debris:AddItem(woodBreak, 5)
+			end
+		elseif resType == "Plastic" then
+			local plasticBreak = SoundService:FindFirstChild("Plastic Break")
+			if plasticBreak and plasticBreak:IsA("Sound") then
+				local clone = plasticBreak:Clone()
+				clone.Parent = SoundService
+				clone:Play()
+				Debris:AddItem(clone, 5)
 			end
 		end
 
