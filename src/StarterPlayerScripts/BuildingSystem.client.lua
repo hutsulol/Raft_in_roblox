@@ -262,6 +262,22 @@ end
 -- regardless of current wave-induced pitch/roll. localToWorld returns the
 -- raft's ACTUAL physical yaw for rotation so beams/walls face the right
 -- direction during a wind turn.
+--
+-- Cursor projection works in two stages:
+--   1. Direct workspace raycast against the raft itself. When the cursor
+--      is over an existing deck part, this gives us the exact world point
+--      under the pointer with zero parallax.
+--   2. Plane fallback for when the cursor is over water (extending the
+--      raft). The plane is placed at the TOP of the PrimaryPart's world-Y
+--      bounding box, not at its centre. The PrimaryPart is a sideways log
+--      whose centre Y sits well below the walkable deck surface, so using
+--      the raw centre causes an oblique camera to parallax-skew the cursor
+--      hit away from the camera — a strip of cells in front of the player
+--      would project backward onto the existing raft and hide the preview.
+local raftRaycastParams = RaycastParams.new()
+raftRaycastParams.FilterType = Enum.RaycastFilterType.Include
+raftRaycastParams.IgnoreWater = true
+
 local function raycastToRaftPlane()
 	local raft = getRaft()
 	if not raft or not raft.PrimaryPart then return nil end
@@ -269,22 +285,46 @@ local function raycastToRaftPlane()
 	local cf = raft.PrimaryPart.CFrame
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or cf
 	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
-	local stableY = restCF.Position.Y
-	local planePoint = Vector3.new(cf.Position.X, stableY, cf.Position.Z)
-	local flatCF = CFrame.new(planePoint) * CFrame.Angles(0, restYaw, 0)
 
 	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
-	local planeNormal = Vector3.new(0, 1, 0)
 
-	local denom = ray.Direction:Dot(planeNormal)
-	if math.abs(denom) < 0.001 then return nil end
+	local hitWorld = nil
 
-	local t = (planePoint - ray.Origin):Dot(planeNormal) / denom
-	if t < 0 then return nil end
+	-- Stage 1: direct raycast against the raft.
+	raftRaycastParams.FilterDescendantsInstances = {raft}
+	local result = workspace:Raycast(ray.Origin, ray.Direction * 2000, raftRaycastParams)
+	if result then
+		hitWorld = result.Position
+	else
+		-- Stage 2: plane fallback at the top of the PrimaryPart. Use the
+		-- rest rotation so the plane Y doesn't wobble with waves.
+		local size = raft.PrimaryPart.Size
+		local restRotCF = restCF - restCF.Position
+		local topOffset = -math.huge
+		for xi = -1, 1, 2 do
+			for yi = -1, 1, 2 do
+				for zi = -1, 1, 2 do
+					local corner = restRotCF * Vector3.new(xi * size.X / 2, yi * size.Y / 2, zi * size.Z / 2)
+					if corner.Y > topOffset then
+						topOffset = corner.Y
+					end
+				end
+			end
+		end
+		local stableY = restCF.Position.Y + topOffset
 
-	local hitWorld = ray.Origin + ray.Direction * t
-	local localHit = flatCF:PointToObjectSpace(hitWorld)
-	return localHit
+		local denom = ray.Direction.Y
+		if math.abs(denom) < 0.001 then return nil end
+		local t = (stableY - ray.Origin.Y) / denom
+		if t < 0 then return nil end
+		hitWorld = ray.Origin + ray.Direction * t
+	end
+
+	-- Convert the world hit into the raft's yaw-aligned local frame. Only
+	-- X and Z matter for grid snapping — the plane frame is rotated around
+	-- the world Y axis, so the local XZ is independent of the frame's Y.
+	local flatCF = CFrame.new(cf.Position.X, hitWorld.Y, cf.Position.Z) * CFrame.Angles(0, restYaw, 0)
+	return flatCF:PointToObjectSpace(hitWorld)
 end
 
 local function localToWorld(studX, studZ)
