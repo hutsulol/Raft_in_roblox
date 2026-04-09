@@ -1,0 +1,157 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RemoteThrow = ReplicatedStorage:FindFirstChild("RemoteThrow")
+local RemoteRetract = ReplicatedStorage:FindFirstChild("RemoteRetract")
+local RemoteSendOwnerName = ReplicatedStorage:FindFirstChild("RemoteSendOwnerName")
+local debris = game:GetService("Debris")
+local Players = game:GetService("Players")
+local player = Players.LocalPlayer
+local onGround = false
+local dt = 2
+local InWater = false
+local Tool = script.Parent
+local Point = Tool.Pointer
+local Device = Tool.Device
+local FishEating = Tool.FishEating
+if not RemoteThrow then
+	RemoteThrow = Instance.new("RemoteEvent", ReplicatedStorage)
+	RemoteThrow.Name = "RemoteThrow"
+end
+if not RemoteRetract then
+	RemoteRetract = Instance.new("RemoteEvent", ReplicatedStorage)
+	RemoteRetract.Name = "RemoteRetract"
+end
+
+if not RemoteSendOwnerName then
+	RemoteSendOwnerName = Instance.new("RemoteEvent", ReplicatedStorage)
+	RemoteSendOwnerName.Name = "RemoteSendOwnerName"
+end
+local Pointer = Tool.Pointer
+Point.Touched:Connect(function(Part)
+	onGround = true
+	Pointer.Touched:Connect(function(hit)
+		if Point:FindFirstChild("Effect") then return end
+		if InWater then return end
+		if hit.Name == 'Water' then
+	    InWater = true
+		local Time = math.random(3,5)
+		while InWater do
+		if Tool.Parent:FindFirstChild("Fish") then return end
+		if Tool.Parent:FindFirstChild("Fish") then return end		
+		wait(math.random(2,4))
+	    if Tool.Parent:FindFirstChild("Fish") then return end
+		 local Effect = script.Effect:Clone()
+		 if Point:FindFirstChild("Effect") then
+				if Point:FindFirstChild("Effect") then
+				        Point:FindFirstChild("Effect").Enabled = false
+						Effect:Destroy()
+						InWater = false
+					end
+					InWater = false
+              break
+			end
+			if Point:FindFirstChild("Effect") then
+				Point:FindFirstChild("Effect").Enabled = false
+				Effect:Destroy()
+					break
+				end
+			if not InWater then
+					InWater = false
+				break
+			end
+			FishEating.Value = true	
+			Effect.Parent = Point
+			Effect.Enabled = true
+			debris:AddItem(Effect,Time)
+			if not InWater then
+					InWater = false
+				break
+			end	
+			wait(Time+2)
+			if not InWater then
+					InWater = false
+				break
+			end	
+			FishEating.Value = false	
+	  end
+	 end
+	end)
+end)
+
+Point.TouchEnded:Connect(function()
+	onGround = false
+end)
+local function attach(source, destination, offset)
+	local weld = Instance.new("WeldConstraint", destination)
+	weld.Name = "thing"
+	source.CFrame = destination.CFrame * offset
+	weld.Part0 = source
+	weld.Part1 = destination
+end
+attach(Pointer, Device, CFrame.new(0,0,0))
+local function onThrow(player, mouse, rootpart, Maxlength, speed, LP)
+	if player.Name == Tool.Parent.Name  then
+		if not Tool.isThrown.Value then
+			Tool.isThrown.Value = true
+			Tool.Handle.woosh.Volume = .25
+			if Point:FindFirstChild("Effect") then 
+				Point:FindFirstChild("Effect").Enabled = false
+				Point:FindFirstChild("Effect"):Destroy()
+				InWater = false
+				FishEating.Value = false
+				return
+			end
+			if not onGround then
+				Tool.Handle.woosh:Play()
+			end
+			local WeldConstraint = Device:FindFirstChild("thing")
+			if WeldConstraint then
+				WeldConstraint:Destroy()
+			end
+			local factor = 1
+			local direction = mouse.p - Pointer.Position
+			local length = direction.Magnitude
+			direction = direction.Unit
+			local result = (direction + rootpart.UpVector).Unit
+			local BodyVelocity = Instance.new("BodyVelocity", Pointer)
+			length = math.clamp(length, 1, Maxlength)
+			Pointer.RopeConstraint.Length = length
+			BodyVelocity.P = 10e10
+			BodyVelocity.MaxForce = Vector3.new(10e10, 10e10,10e10)
+			BodyVelocity.Velocity = factor * speed * result
+			wait(length / speed)
+			BodyVelocity:Destroy()
+		end
+	end
+end
+
+local function onRetract(player, mouse, rootpart, LP)
+	if player.Name == Tool.Parent.Name then
+		if Tool.isThrown.Value then
+			local bv = Pointer:FindFirstChild("BodyVelocity")
+			if bv then
+				bv:Destroy()
+			end
+			Tool.isThrown.Value = false
+			local length = (mouse.p - rootpart.Position).Magnitude
+			local factor = 1
+			attach(Pointer, Device, CFrame.new(0,0,0))
+			InWater = false
+			FishEating.Value = false
+			if Point:FindFirstChild("Effect") then 
+				Point:FindFirstChild("Effect").Enabled = false
+				Point:FindFirstChild("Effect"):Destroy()
+				InWater = false
+				return
+			end
+			if Point:FindFirstChild("Effect") then
+				Point:FindFirstChild("Effect").Enabled = false
+				Point:FindFirstChild("Effect"):Destroy()
+				return
+			end
+			Pointer.RopeConstraint.Length = 1
+		end
+	end
+end
+
+RemoteThrow.OnServerEvent:Connect(onThrow)
+RemoteRetract.OnServerEvent:Connect(onRetract)
