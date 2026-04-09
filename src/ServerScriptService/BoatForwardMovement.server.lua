@@ -44,8 +44,14 @@ end)
 local initialPitch, initialYaw, initialRoll = primaryPart.CFrame:ToEulerAnglesYXZ()
 local lockedYaw = initialYaw
 
--- Store the rest CFrame (used by BuildingSystem for stable placement)
-local restY = primaryPart.Position.Y
+-- Store the rest CFrame (used by BuildingSystem for stable placement).
+-- The Y component is updated every heartbeat to the raft's actual current Y;
+-- we do NOT cache the initial Y, because if the raft happens to spawn above
+-- the water surface it still has to fall and settle, and a cached boot-time
+-- Y would pin RestCFrame.Y to that stale (non-settled) position forever.
+-- BuildingSystem uses RestCFrame.Y to place the cursor projection plane, so
+-- a stale Y makes the client think the raft is at a coordinate different
+-- from where it actually is, creating a dead strip for the build cursor.
 primaryPart:SetAttribute("RestCFrame", primaryPart.CFrame)
 primaryPart:SetAttribute("RestYaw", lockedYaw)
 
@@ -320,9 +326,12 @@ RunService.Heartbeat:Connect(function(dt)
 	alignOrientation.MaxTorque = totalMass * 500
 	alignOrientation.CFrame = CFrame.fromEulerAnglesYXZ(initialPitch, lockedYaw, initialRoll)
 
-	-- Update RestCFrame so building systems use the current yaw
+	-- Update RestCFrame so building systems use the current yaw. Use the
+	-- live pos.Y (not a captured init-time value) so the rest frame always
+	-- tracks the raft's real vertical position, even if the raft spawned
+	-- above or below its settled water-level Y.
 	local pos = primaryPart.Position
-	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos.X, restY, pos.Z) * CFrame.fromEulerAnglesYXZ(initialPitch, lockedYaw, initialRoll))
+	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos) * CFrame.fromEulerAnglesYXZ(initialPitch, lockedYaw, initialRoll))
 	primaryPart:SetAttribute("RestYaw", lockedYaw)
 
 	-- ─── Wind event: apply a horizontal force to players standing on the raft ───
