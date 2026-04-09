@@ -813,14 +813,97 @@ local function hasEquippedHammer(character)
 	return equippedTool and equippedTool.Name == "Hammer"
 end
 
-local function syncBuildMode(character)
-	local equipped = hasEquippedHammer(character)
-	if equipped and not isBuilding then
-		startBuildMode()
-	elseif not equipped and isBuilding then
-		closeBuildMode()
+-- ─── Wind warning UI ─────────────────────────────────────────────────────────
+-- When wind is active we block the building GUI entirely and instead show a
+-- warning label just above the hotbar. The hotbar lives at the bottom-centre
+-- of the screen (see InventoryUI.client.lua); these offsets match its top
+-- edge so the warning sits 10px above it.
+local HOTBAR_TOP_OFFSET = -82    -- -(SLOT_SIZE + SLOT_PAD*2) - 10 from InventoryUI
+local WARNING_GAP = 10           -- vertical gap above the hotbar
+local WARNING_HEIGHT = 36
+
+local windWarningGui = nil
+local windWarningLabel = nil
+
+local function ensureWindWarningGui()
+	if windWarningGui and windWarningGui.Parent then return end
+
+	windWarningGui = Instance.new("ScreenGui")
+	windWarningGui.Name = "BuildWindWarning"
+	windWarningGui.ResetOnSpawn = false
+	windWarningGui.DisplayOrder = 25 -- above hotbar (5) and build UI (20)
+	windWarningGui.IgnoreGuiInset = true
+	windWarningGui.Enabled = false
+	windWarningGui.Parent = playerGui
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Warning"
+	label.AnchorPoint = Vector2.new(0.5, 1)
+	label.Position = UDim2.new(0.5, 0, 1, HOTBAR_TOP_OFFSET - WARNING_GAP)
+	label.Size = UDim2.new(0, 460, 0, WARNING_HEIGHT)
+	label.BackgroundColor3 = Color3.fromRGB(40, 20, 20)
+	label.BackgroundTransparency = 0.2
+	label.BorderSizePixel = 0
+	label.Text = "Building during wind is dangerous"
+	label.TextColor3 = Color3.fromRGB(255, 200, 120)
+	label.TextStrokeTransparency = 0.4
+	label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 20
+	label.Parent = windWarningGui
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = label
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(180, 120, 60)
+	stroke.Thickness = 1.5
+	stroke.Parent = label
+
+	windWarningLabel = label
+end
+
+local function showWindWarning()
+	ensureWindWarningGui()
+	windWarningGui.Enabled = true
+end
+
+local function hideWindWarning()
+	if windWarningGui then
+		windWarningGui.Enabled = false
 	end
 end
+
+-- ─── Wind state tracking ─────────────────────────────────────────────────────
+local function isWindActive()
+	return player:GetAttribute("WindActive") == true
+end
+
+local function syncBuildMode(character)
+	local equipped = hasEquippedHammer(character)
+	local windActive = isWindActive()
+
+	if equipped and windActive then
+		-- Hammer out during wind: block the build UI, show warning.
+		if isBuilding then closeBuildMode() end
+		showWindWarning()
+	elseif equipped and not windActive then
+		-- Safe to build.
+		hideWindWarning()
+		if not isBuilding then startBuildMode() end
+	else
+		-- Hammer not equipped: nothing to show.
+		hideWindWarning()
+		if isBuilding then closeBuildMode() end
+	end
+end
+
+-- Re-sync whenever wind turns on/off so the warning appears/disappears
+-- without the player having to re-equip the hammer.
+player:GetAttributeChangedSignal("WindActive"):Connect(function()
+	syncBuildMode(player.Character)
+end)
 
 local function onCharacterAdded(character)
 	character.ChildAdded:Connect(function(child)
@@ -852,6 +935,7 @@ local function onCharacterAdded(character)
 				hammerWatchConnection = nil
 			end
 			closeBuildMode()
+			hideWindWarning()
 		end
 	end)
 end
