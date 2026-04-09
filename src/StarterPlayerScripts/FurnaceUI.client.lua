@@ -148,9 +148,12 @@ local function rebuildInventory()
 		s.Thickness = 1
 		s.Parent = btn
 
+		-- Button is 64 tall with a 14px count label at the bottom (y=48-62),
+		-- so the icon is centered within the 48px area above the label.
 		local icon = Instance.new("ImageLabel")
+		icon.AnchorPoint = Vector2.new(0.5, 0.5)
 		icon.Size = UDim2.new(0, 40, 0, 40)
-		icon.Position = UDim2.new(0.5, -20, 0, 2)
+		icon.Position = UDim2.new(0.5, 0, 0, 24)
 		icon.BackgroundTransparency = 1
 		icon.Image = RESOURCE_ICONS[stack.name] or ""
 		icon.ScaleType = Enum.ScaleType.Fit
@@ -293,10 +296,13 @@ local function createSlot(parent, pos, size)
 	s.Thickness = 2
 	s.Parent = slot
 
+	-- Slots are 70 tall with a 14px label at the bottom (y=52-66), so the
+	-- icon is centered within the 52px area above the label.
 	local icon = Instance.new("ImageLabel")
 	icon.Name = "SlotIcon"
+	icon.AnchorPoint = Vector2.new(0.5, 0.5)
 	icon.Size = UDim2.new(0, 44, 0, 44)
-	icon.Position = UDim2.new(0.5, -22, 0, 4)
+	icon.Position = UDim2.new(0.5, 0, 0, 26)
 	icon.BackgroundTransparency = 1
 	icon.Image = ""
 	icon.ImageTransparency = 1

@@ -436,8 +436,9 @@ local function renderSlot(slot, data)
 
 	local img = Instance.new("ImageLabel")
 	img.Name = "ItemIcon"
+	img.AnchorPoint = Vector2.new(0.5, 0.5)
 	img.Size = UDim2.new(0.7, 0, 0.7, 0)
-	img.Position = UDim2.new(0.15, 0, 0.05, 0)
+	img.Position = UDim2.new(0.5, 0, 0.5, 0)
 	img.BackgroundTransparency = 1
 	img.Image = data.icon or ""
 	img.ScaleType = Enum.ScaleType.Fit
@@ -531,8 +532,9 @@ local function activateDrag(mousePos)
 	ghostGui.Parent = playerGui
 
 	local ghost = Instance.new("ImageLabel")
+	ghost.AnchorPoint = Vector2.new(0.5, 0.5)
 	ghost.Size = UDim2.new(0, SLOT_SIZE - 8, 0, SLOT_SIZE - 8)
-	ghost.Position = UDim2.new(0, mousePos.X - (SLOT_SIZE - 8) / 2, 0, mousePos.Y - (SLOT_SIZE - 8) / 2)
+	ghost.Position = UDim2.new(0, mousePos.X, 0, mousePos.Y)
 	ghost.BackgroundTransparency = 1
 	ghost.Image = data.icon or ""
 	ghost.ScaleType = Enum.ScaleType.Fit
@@ -568,7 +570,7 @@ local function updateDragPosition(mousePos)
 		end
 	end
 	if dragState.active and dragState.ghost then
-		dragState.ghost.Position = UDim2.new(0, mousePos.X - (SLOT_SIZE - 8) / 2, 0, mousePos.Y - (SLOT_SIZE - 8) / 2)
+		dragState.ghost.Position = UDim2.new(0, mousePos.X, 0, mousePos.Y)
 	end
 end
 
