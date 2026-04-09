@@ -1,6 +1,8 @@
 local CollectionService = game:GetService("CollectionService")
+local Debris = game:GetService("Debris")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local SoundService = game:GetService("SoundService")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
@@ -182,10 +184,59 @@ end
 
 local lastResourcePositions = {}
 
+-- ─── Break-sound playback (client-side) ──────────────────────────────────────
+-- Sounds are played on the client (not the server) so the local player gets
+-- zero-latency feedback on the final hit. The server tells every client when
+-- a resource breaks ("broke" notify) and the local player additionally
+-- predicts the last hit on the click itself, so the sound plays the instant
+-- the player presses the mouse instead of after a server round-trip.
+
+local function playBreakSound(resType, resource)
+	if resType == "Leaves" then
+		if resource and resource.Parent then
+			local ruinSound = resource:FindFirstChild("Ruin_Leaves", true)
+			if ruinSound and ruinSound:IsA("Sound") then
+				local clone = ruinSound:Clone()
+				clone.Parent = workspace
+				clone:Play()
+				Debris:AddItem(clone, 5)
+			end
+		end
+	elseif resType == "Log" then
+		if resource and resource.Parent then
+			local woodBreak = resource:FindFirstChild("Wood Break", true)
+			if woodBreak and woodBreak:IsA("Sound") then
+				local clone = woodBreak:Clone()
+				clone.Parent = workspace
+				clone:Play()
+				Debris:AddItem(clone, 5)
+			end
+		end
+	elseif resType == "Plastic" then
+		local plasticBreak = SoundService:FindFirstChild("Plastic Break")
+		if plasticBreak and plasticBreak:IsA("Sound") then
+			local clone = plasticBreak:Clone()
+			clone.Parent = SoundService
+			clone:Play()
+			Debris:AddItem(clone, 5)
+		end
+	end
+end
+
+-- Weak tables so destroyed resources are GC'd out automatically.
+local localClicksSent = setmetatable({}, {__mode = "k"})
+local clicksNeeded = setmetatable({}, {__mode = "k"})
+local predictedBreaks = setmetatable({}, {__mode = "k"})
+
 collectNotify.OnClientEvent:Connect(function(action, resource, arg3, arg4)
 	if action == "progress" then
 		-- arg3 = clicks, arg4 = maxClicks
 		updateProgress(resource, arg3, arg4)
+		-- Sync local prediction state with the server's authoritative count.
+		-- Use max() so an in-flight optimistic increment from a recent click
+		-- doesn't get overwritten by a slightly older "progress" reply.
+		localClicksSent[resource] = math.max(localClicksSent[resource] or 0, arg3)
+		clicksNeeded[resource] = arg4
 		local adornee = getAdornee(resource)
 		if adornee and adornee:IsA("BasePart") then
 			lastResourcePositions[resource] = adornee.Position
@@ -204,6 +255,14 @@ collectNotify.OnClientEvent:Connect(function(action, resource, arg3, arg4)
 		lastResourcePositions[resource] = nil
 		if worldPos then
 			showCollectedPopup(worldPos, arg3, arg4)
+		end
+	elseif action == "broke" then
+		-- arg3 = resType. The clicker pre-played this on prediction, so we
+		-- consume the flag and skip; everyone else plays the sound now.
+		if predictedBreaks[resource] then
+			predictedBreaks[resource] = nil
+		else
+			playBreakSound(arg3, resource)
 		end
 	end
 end)
@@ -235,6 +294,22 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 	if input.UserInputType == Enum.UserInputType.MouseButton1 then
 		if currentTarget and hitPart then
+			-- Client-side prediction: if this click will be the last one
+			-- (based on the server's last reported click count), play the
+			-- break sound immediately so the local player gets zero-latency
+			-- audio feedback instead of waiting ~400ms for the server
+			-- round-trip. The "broke" notify from the server will arrive
+			-- shortly after and be skipped via the predictedBreaks flag.
+			local resource = currentTarget
+			local prev = localClicksSent[resource] or 0
+			local needed = clicksNeeded[resource] or math.huge
+			local nextCount = prev + 1
+			localClicksSent[resource] = nextCount
+			if nextCount >= needed and not predictedBreaks[resource] then
+				local resType = resource:GetAttribute("ResourceType") or "Log"
+				playBreakSound(resType, resource)
+				predictedBreaks[resource] = true
+			end
 			collectEvent:FireServer(hitPart)
 		end
 	end
