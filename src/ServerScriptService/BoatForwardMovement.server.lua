@@ -8,9 +8,12 @@ local PADDLE_COURSE_NUDGE = math.rad(3) -- max course rotation per paddle stroke
 local VELOCITY_GAIN = 6
 
 -- ─── Wind event ───
-local WIND_INTERVAL_MIN = 10 -- seconds, min delay between wind events (TEMP: testing)
-local WIND_INTERVAL_MAX = 10 -- seconds, max delay between wind events (TEMP: testing)
-local WIND_DURATION = 6 -- seconds the wind blows
+-- Wind only starts once the players have survived past the 5th day, then
+-- fires once every 2 in-game days. One full day cycle in DayNightCycle.lua
+-- is 300s (day) + 120s (night) = 420s, so "every 2 days" = 840s.
+local WIND_START_DAY = 6 -- wind is unlocked at the start of this day
+local WIND_INTERVAL = 2 * (300 + 120) -- seconds between wind events
+local WIND_DURATION = 15 -- seconds the wind blows
 local WIND_PLAYER_ACCEL = 400 -- studs/s² horizontal force applied to players standing on the raft
 local WIND_AIRBORNE_ACCEL = 30 -- much smaller force while the player is in the air, so a jump doesn't launch them
 local WIND_SHELTER_DISTANCE = 50 -- studs; max distance the upwind shelter probe checks
@@ -211,10 +214,16 @@ local function endWindEvent()
 end
 
 task.spawn(function()
+	-- Don't blow any wind until the players have lived through the first five
+	-- days. DayCount is populated by DayNightCycle.server.lua.
+	local dayCount = ReplicatedStorage:WaitForChild("DayCount")
+	while dayCount.Value < WIND_START_DAY do
+		dayCount:GetPropertyChangedSignal("Value"):Wait()
+	end
+
 	while true do
-		local delay = math.random(WIND_INTERVAL_MIN, WIND_INTERVAL_MAX)
-		task.wait(delay)
 		startWindEvent()
+		task.wait(WIND_INTERVAL)
 	end
 end)
 
