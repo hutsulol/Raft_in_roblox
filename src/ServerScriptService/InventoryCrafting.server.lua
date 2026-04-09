@@ -117,6 +117,15 @@ local recipes = {
 		category = "Tools",
 		description = "A shovel for digging sand and clay on islands.",
 	},
+	{
+		name = "FishingRod",
+		displayName = "Fishing Rod",
+		icon = "",
+		costs = {Log = 3, Rope = 2},
+		craftType = "tool",
+		category = "Tools",
+		description = "Cast your line into the ocean to catch fish for food.",
+	},
 }
 
 inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
@@ -152,7 +161,13 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 		inv[item] = inv[item] - amount
 	end
 
+	-- Templates normally live directly under ReplicatedStorage, but a few
+	-- (e.g. FishingRod) are packaged inside ReplicatedStorage.MainModule.
+	-- Fall back to a recursive search so recipes don't need to know the path.
 	local template = rs:FindFirstChild(recipe.name)
+	if not template then
+		template = rs:FindFirstChild(recipe.name, true)
+	end
 
 	if recipe.craftType == "tool" then
 		if template then
