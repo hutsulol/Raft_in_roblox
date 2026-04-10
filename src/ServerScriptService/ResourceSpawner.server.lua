@@ -89,8 +89,6 @@ _G.SendInventory = function(player)
 	inventoryEvent:FireClient(player, _G.GetInventory(player))
 end
 
-local clickCounts = {}
-
 -- Spawn cycle counter for different spawn rates
 local spawnCycle = 0
 
@@ -115,6 +113,26 @@ Players.PlayerRemoving:Connect(function(player)
 	_G_Inventories[player] = nil
 end)
 
+-- ═══════════════════════════════════════════════════════════════════════
+-- Unified HP system: both clicks and raft collisions reduce the same HP
+-- pool. The progress bar updates for all clients from either source.
+-- ═══════════════════════════════════════════════════════════════════════
+
+local function damageResource(resource, amount)
+	local hp = resource:GetAttribute("ResourceHP")
+	local maxHP = resource:GetAttribute("ResourceMaxHP")
+	if not hp or not maxHP or hp <= 0 then return 0 end
+
+	hp = math.max(0, hp - amount)
+	resource:SetAttribute("ResourceHP", hp)
+
+	-- Notify all clients so everyone's progress bar updates
+	local totalDamage = maxHP - hp
+	collectNotify:FireAllClients("progress", resource, totalDamage, maxHP)
+
+	return hp
+end
+
 collectEvent.OnServerEvent:Connect(function(player, targetPart)
 	if typeof(targetPart) ~= "Instance" then return end
 	if not targetPart:IsDescendantOf(workspace) then return end
@@ -135,27 +153,10 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 	local dist = (char.HumanoidRootPart.Position - resourcePos).Magnitude
 	if dist > 50 then return end
 
-	if not clickCounts[resource] then
-		clickCounts[resource] = {}
-	end
+	local hp = damageResource(resource, 1)
 
-	if not clickCounts[resource][player] then
-		clickCounts[resource][player] = 0
-	end
-
-	clickCounts[resource][player] = clickCounts[resource][player] + 1
-	local clicks = clickCounts[resource][player]
-
-	-- If the resource was damaged by raft collision, its remaining HP
-	-- determines clicks needed (fewer clicks for damaged resources).
-	local resTypeForClicks = resource:GetAttribute("ResourceType") or "Log"
-	local defaultClicks = CLICKS_BY_TYPE[resTypeForClicks] or CLICKS_TO_COLLECT
-	local clicksNeeded = resource:GetAttribute("ResourceHP") or defaultClicks
-
-	collectNotify:FireClient(player, "progress", resource, clicks, clicksNeeded)
-
-	if clicks >= clicksNeeded then
-		clickCounts[resource] = nil
+	if hp <= 0 then
+		-- Collected by player click: give reward
 		local inv = _G.GetInventory(player)
 
 		local resType = resource:GetAttribute("ResourceType") or "Log"
@@ -163,13 +164,6 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 
 		inv[resType] = (inv[resType] or 0) + resAmount
 		collectNotify:FireClient(player, "collected", resource, resType, resAmount)
-		-- Tell every client the resource just broke so they can play the
-		-- break SFX locally. We fire BEFORE destroying the resource so each
-		-- client can still find any Sound that lives inside the resource
-		-- model (e.g. Wood Break inside Log, Ruin_Leaves inside Leaves).
-		-- The clicker is also notified, but it uses client-side prediction
-		-- to play the sound on the last click with zero latency and will
-		-- ignore this event as a duplicate.
 		collectNotify:FireAllClients("broke", resource, resType)
 		_G.SendInventory(player)
 
@@ -186,6 +180,7 @@ local collisionCooldowns = setmetatable({}, {__mode = "k"})
 
 local function setupResourceCollision(resource, maxHP)
 	resource:SetAttribute("ResourceHP", maxHP)
+	resource:SetAttribute("ResourceMaxHP", maxHP)
 
 	local function onTouched(resPart, otherPart)
 		-- Only take damage from the Raft model
@@ -205,15 +200,13 @@ local function setupResourceCollision(resource, maxHP)
 		local damage = math.max(1, math.floor(relVel / COLLISION_DAMAGE_DIVISOR))
 		collisionCooldowns[resource] = now
 
-		local hp = resource:GetAttribute("ResourceHP") or maxHP
-		hp = hp - damage
+		local hp = damageResource(resource, damage)
 
 		if hp <= 0 then
-			-- Fatal: destroy without reward
-			clickCounts[resource] = nil
+			-- Fatal collision: destroy without reward, play break sound
+			local resType = resource:GetAttribute("ResourceType") or "Log"
+			collectNotify:FireAllClients("broke", resource, resType)
 			resource:Destroy()
-		else
-			resource:SetAttribute("ResourceHP", hp)
 		end
 	end
 
@@ -348,7 +341,6 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 
 	task.delay(LIFETIME, function()
 		if clone and clone.Parent then
-			clickCounts[clone] = nil
 			clone:Destroy()
 		end
 	end)
