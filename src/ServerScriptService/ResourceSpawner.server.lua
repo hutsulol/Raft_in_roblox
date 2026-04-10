@@ -203,9 +203,7 @@ local function setupResourceCollision(resource, maxHP)
 		local hp = damageResource(resource, damage)
 
 		if hp <= 0 then
-			-- Fatal collision: destroy without reward, play break sound
-			local resType = resource:GetAttribute("ResourceType") or "Log"
-			collectNotify:FireAllClients("broke", resource, resType)
+			-- Fatal collision: destroy without reward, no break sound
 			resource:Destroy()
 		end
 	end
