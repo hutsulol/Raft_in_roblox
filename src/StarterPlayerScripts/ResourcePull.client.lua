@@ -220,6 +220,14 @@ local function playBreakSound(resType, resource)
 			clone:Play()
 			Debris:AddItem(clone, 5)
 		end
+	elseif resType == "Rock" then
+		local rockCrush = SoundService:FindFirstChild("Rock_Crush")
+		if rockCrush and rockCrush:IsA("Sound") then
+			local clone = rockCrush:Clone()
+			clone.Parent = SoundService
+			clone:Play()
+			Debris:AddItem(clone, 5)
+		end
 	end
 end
 
