@@ -31,6 +31,16 @@ end
 
 local primaryPart = boat.PrimaryPart
 
+-- Ensure all raft parts are unanchored so physics (buoyancy, movement) work.
+-- SpawnLocations are anchored by default in Studio; if any part in a welded
+-- assembly is anchored the entire raft is frozen in place.
+for _, desc in boat:GetDescendants() do
+	if desc:IsA("BasePart") then
+		desc.Anchored = false
+	end
+end
+primaryPart.Anchored = false
+
 -- Lock the raft as server-controlled. Without this, Roblox auto-assigns
 -- network ownership to the nearest player, and any time a new part is
 -- welded into the raft assembly the ownership gets recomputed — that
