@@ -7,6 +7,12 @@ local PADDLE_COURSE_NUDGE = math.rad(3) -- max course rotation per paddle stroke
 -- bow-aligned target velocity faster (kills sideways drift more aggressively).
 local VELOCITY_GAIN = 6
 
+-- Custom buoyancy spring: keeps the raft at water level regardless of mass.
+-- Roblox's built-in Terrain buoyancy may be insufficient when the raft has
+-- many parts (9x mass compared to the original single-tile raft).
+local BUOYANCY_STIFFNESS = 8 -- spring constant (higher = snaps to water faster)
+local BUOYANCY_DAMPING = 4   -- damping (higher = less vertical oscillation)
+
 -- ─── Wind event ───
 -- Wind only starts once the players have survived past the 5th day, then
 -- fires once every 2 in-game days. One full day cycle in DayNightCycle.lua
@@ -30,6 +36,10 @@ while not boat.PrimaryPart do
 end
 
 local primaryPart = boat.PrimaryPart
+
+-- Capture water surface Y while the raft is still anchored at its placed
+-- position. This is the target height for the buoyancy spring.
+local waterY = primaryPart.Position.Y
 
 -- Ensure all raft parts are unanchored so physics (buoyancy, movement) work.
 -- SpawnLocations are anchored by default in Studio; if any part in a welded
@@ -340,7 +350,16 @@ RunService.Heartbeat:Connect(function(dt)
 	--   • kills any backwards velocity
 	--   • holds forward speed constant at SPEED regardless of turning
 	local velocityError = desiredVelocity - flatVelocity
-	vectorForce.Force = velocityError * totalMass * VELOCITY_GAIN
+	local horizontalForce = velocityError * totalMass * VELOCITY_GAIN
+
+	-- Custom buoyancy spring: a spring-damper system that keeps the raft at
+	-- waterY regardless of total mass. Without this, a large raft (many tiles)
+	-- sinks because Roblox Terrain buoyancy can't support the weight.
+	local yError = waterY - primaryPart.Position.Y
+	local yVelocity = currentVelocity.Y
+	local buoyancyForce = (yError * BUOYANCY_STIFFNESS - yVelocity * BUOYANCY_DAMPING) * totalMass
+
+	vectorForce.Force = Vector3.new(horizontalForce.X, buoyancyForce, horizontalForce.Z)
 
 	-- Scale torque with raft mass so it always rotates, even with many tiles
 	alignOrientation.MaxTorque = totalMass * 500
