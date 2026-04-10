@@ -443,8 +443,8 @@ end
 task.wait(10)
 spawnPirateRaft()
 
--- Then every 60 seconds with 100% chance (testing)
+-- Then every 180 seconds (3 minutes)
 while true do
-	task.wait(60)
+	task.wait(180)
 	spawnPirateRaft()
 end
