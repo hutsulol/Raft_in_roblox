@@ -367,12 +367,14 @@ local function runMinigame(chance)
 				resultLabel.TextColor3 = Color3.fromRGB(80, 255, 80)
 				ball.BackgroundColor3 = Color3.fromRGB(80, 255, 80)
 				if currentPirate then
+					currentPirate:SetAttribute("Claimed", true)
 					recruitEvent:FireServer("recruit", currentPirate)
 				end
 			else
 				resultLabel.Text = "FAILED..."
 				resultLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
 				if currentPirate then
+					currentPirate:SetAttribute("Claimed", true)
 					recruitEvent:FireServer("fail", currentPirate)
 				end
 			end
@@ -396,6 +398,7 @@ end)
 
 keepBtn.MouseButton1Click:Connect(function()
 	if not currentPirate or minigameRunning then return end
+	currentPirate:SetAttribute("Claimed", true)
 	recruitEvent:FireServer("keep", currentPirate)
 	closeUI()
 end)
