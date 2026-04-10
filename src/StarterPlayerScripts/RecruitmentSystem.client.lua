@@ -275,7 +275,8 @@ local function findDownedPirateNearby()
 	local closest, closestDist = nil, 15
 	for _, child in workspace:GetChildren() do
 		if child:IsA("Model")
-			and child:FindFirstChildWhichIsA("Humanoid") -- must be an NPC
+			and child:FindFirstChild("HumanoidRootPart") -- real character, not a dropped accessory
+			and child:FindFirstChildWhichIsA("Humanoid")
 			and child ~= char -- not the player
 			and isModelDowned(child)
 			and not child:GetAttribute("Claimed")
@@ -364,26 +365,21 @@ local function runMinigame(chance)
 			local successZone = (chance or 70) / 100
 			local success = x <= successZone
 
+			if currentPirate then
+				claimedLocally[currentPirate] = true
+			end
+
 			if success then
-				resultLabel.Text = "SUCCESS! Pirate Recruited!"
-				resultLabel.TextColor3 = Color3.fromRGB(80, 255, 80)
-				ball.BackgroundColor3 = Color3.fromRGB(80, 255, 80)
 				if currentPirate then
-					claimedLocally[currentPirate] = true
 					recruitEvent:FireServer("recruit", currentPirate)
 				end
 			else
-				resultLabel.Text = "FAILED..."
-				resultLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
 				if currentPirate then
-					claimedLocally[currentPirate] = true
 					recruitEvent:FireServer("fail", currentPirate)
 				end
 			end
 
-			task.delay(2.5, function()
-				closeUI()
-			end)
+			closeUI()
 		end
 	end)
 end
