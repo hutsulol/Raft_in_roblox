@@ -3,6 +3,8 @@
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
+local Debris = game:GetService("Debris")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 
@@ -224,6 +226,15 @@ mineRockEvent.OnClientEvent:Connect(function(action, value)
 		feedbackLabel.Visible = true
 		feedbackLabel.TextTransparency = 0
 		clearHighlight()
+
+		-- Play Rock_Crush sound
+		local rockCrush = SoundService:FindFirstChild("Rock_Crush")
+		if rockCrush and rockCrush:IsA("Sound") then
+			local clone = rockCrush:Clone()
+			clone.Parent = SoundService
+			clone:Play()
+			Debris:AddItem(clone, 5)
+		end
 
 		-- Fade out
 		task.spawn(function()
