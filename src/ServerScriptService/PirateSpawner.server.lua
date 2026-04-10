@@ -260,12 +260,14 @@ local function spawnPirateRaft()
 						local worldPos = flatCF:PointToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
 						table.insert(tilePositions, worldPos)
 					elseif child.Name == "Raft_part" or child == raftPrimary then
-						local part = child
+						local pos
 						if child:IsA("Model") then
-							part = child.PrimaryPart or child:FindFirstChildWhichIsA("BasePart", true)
+							pos = child:GetPivot().Position
+						elseif child:IsA("BasePart") then
+							pos = child.Position
 						end
-						if part and part:IsA("BasePart") then
-							local localPos = raftPrimary.CFrame:PointToObjectSpace(part.Position)
+						if pos then
+							local localPos = flatCF:PointToObjectSpace(pos)
 							local gridX = math.round(localPos.X / GRID_SIZE)
 							local gridZ = math.round(localPos.Z / GRID_SIZE)
 							local worldPos = flatCF:PointToWorldSpace(Vector3.new(gridX * GRID_SIZE, 0, gridZ * GRID_SIZE))

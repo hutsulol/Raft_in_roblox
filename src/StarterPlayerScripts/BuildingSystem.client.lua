@@ -122,6 +122,17 @@ local function getFloorOffsets()
 	local seen = {}
 	local primary = raft.PrimaryPart
 
+	-- Use a yaw-only CFrame for grid coordinate detection, matching the
+	-- placement system (which uses restYaw). Using primary.CFrame directly
+	-- would include pitch/roll that can mix world-Y into local X/Z and
+	-- collapse multiple tiles to the same grid coordinate.
+	local restYaw = primary:GetAttribute("RestYaw")
+	if not restYaw then
+		local _, yaw, _ = primary.CFrame:ToEulerAnglesYXZ()
+		restYaw = yaw
+	end
+	local flatCF = CFrame.new(primary.Position) * CFrame.Angles(0, restYaw, 0)
+
 	for _, child in raft:GetChildren() do
 		local gx = child:GetAttribute("GridX")
 		local gz = child:GetAttribute("GridZ")
@@ -132,12 +143,15 @@ local function getFloorOffsets()
 				table.insert(offsets, {x = gx, z = gz})
 			end
 		elseif child.Name == "Raft_part" or child == primary then
-			local part = child
+			-- Use GetPivot() for Models (what PivotTo aligns) for accuracy.
+			local pos
 			if child:IsA("Model") then
-				part = child.PrimaryPart or child:FindFirstChildWhichIsA("BasePart", true)
+				pos = child:GetPivot().Position
+			elseif child:IsA("BasePart") then
+				pos = child.Position
 			end
-			if part and part:IsA("BasePart") then
-				local localPos = primary.CFrame:PointToObjectSpace(part.Position)
+			if pos then
+				local localPos = flatCF:PointToObjectSpace(pos)
 				local gridX = math.round(localPos.X / GRID_SIZE)
 				local gridZ = math.round(localPos.Z / GRID_SIZE)
 				local key = gridX .. "_" .. gridZ
@@ -164,12 +178,16 @@ local function getTileRotationCorrection(raft)
 	if not primary then return CFrame.new() end
 	for _, child in raft:GetChildren() do
 		if child.Name == "Raft_part" and child ~= primary then
-			local part = child
+			-- Use GetPivot() for Models since PivotTo() aligns to the pivot,
+			-- not to any specific internal BasePart.
+			local tileCF
 			if child:IsA("Model") then
-				part = child.PrimaryPart or child:FindFirstChildWhichIsA("BasePart", true)
+				tileCF = child:GetPivot()
+			elseif child:IsA("BasePart") then
+				tileCF = child.CFrame
 			end
-			if part and part:IsA("BasePart") then
-				return primary.CFrame:ToObjectSpace(part.CFrame).Rotation
+			if tileCF then
+				return primary.CFrame:ToObjectSpace(tileCF).Rotation
 			end
 		end
 	end
