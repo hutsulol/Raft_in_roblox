@@ -357,11 +357,6 @@ while true do
 	-- Log: every cycle
 	spawnResource("Log", "Log", 1, boat)
 
-	-- plastic_bottle: every 2nd cycle (half as often)
-	if spawnCycle % 2 == 0 then
-		spawnResource("plastic_bottle", "Plastic", 1, boat)
-	end
-
 	-- plastic_canister: every 4th cycle (quarter as often)
 	if spawnCycle % 4 == 0 then
 		spawnResource("plastic_canister", "Plastic", 3, boat)
