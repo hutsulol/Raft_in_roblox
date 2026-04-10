@@ -22,6 +22,7 @@ local recruitEvent = ReplicatedStorage:WaitForChild("RecruitPirate")
 local currentPirate = nil
 local uiOpen = false
 local minigameRunning = false
+local claimedLocally = {} -- client-side set; immune to server replication overwriting
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- UI construction
@@ -278,6 +279,7 @@ local function findDownedPirateNearby()
 			and child ~= char -- not the player
 			and isModelDowned(child)
 			and not child:GetAttribute("Claimed")
+			and not claimedLocally[child]
 		then
 			-- Use Torso or Head first — HumanoidRootPart can end up at a
 			-- weird position after ragdoll.
@@ -367,14 +369,14 @@ local function runMinigame(chance)
 				resultLabel.TextColor3 = Color3.fromRGB(80, 255, 80)
 				ball.BackgroundColor3 = Color3.fromRGB(80, 255, 80)
 				if currentPirate then
-					currentPirate:SetAttribute("Claimed", true)
+					claimedLocally[currentPirate] = true
 					recruitEvent:FireServer("recruit", currentPirate)
 				end
 			else
 				resultLabel.Text = "FAILED..."
 				resultLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
 				if currentPirate then
-					currentPirate:SetAttribute("Claimed", true)
+					claimedLocally[currentPirate] = true
 					recruitEvent:FireServer("fail", currentPirate)
 				end
 			end
@@ -398,7 +400,7 @@ end)
 
 keepBtn.MouseButton1Click:Connect(function()
 	if not currentPirate or minigameRunning then return end
-	currentPirate:SetAttribute("Claimed", true)
+	claimedLocally[currentPirate] = true
 	recruitEvent:FireServer("keep", currentPirate)
 	closeUI()
 end)
