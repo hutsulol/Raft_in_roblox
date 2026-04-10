@@ -126,6 +126,15 @@ local recipes = {
 		category = "Tools",
 		description = "Cast your line into the ocean to catch fish for food.",
 	},
+	{
+		name = "Phone",
+		displayName = "Phone",
+		icon = "",
+		costs = {Log = 1},
+		craftType = "tool",
+		category = "Tools",
+		description = "A phone for communication.",
+	},
 }
 
 inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
