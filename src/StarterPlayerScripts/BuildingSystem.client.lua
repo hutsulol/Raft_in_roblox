@@ -156,6 +156,26 @@ local function getFloorOffsets()
 	return offsets
 end
 
+-- When PrimaryPart is not a Raft_part (e.g. a SpawnLocation), its orientation
+-- differs from tile orientation. Returns a rotation correction so new tiles
+-- match existing Raft_part orientation instead of PrimaryPart's.
+local function getTileRotationCorrection(raft)
+	local primary = raft.PrimaryPart
+	if not primary then return CFrame.new() end
+	for _, child in raft:GetChildren() do
+		if child.Name == "Raft_part" and child ~= primary then
+			local part = child
+			if child:IsA("Model") then
+				part = child.PrimaryPart or child:FindFirstChildWhichIsA("BasePart", true)
+			end
+			if part and part:IsA("BasePart") then
+				return primary.CFrame:ToObjectSpace(part.CFrame).Rotation
+			end
+		end
+	end
+	return CFrame.new()
+end
+
 local function isFloorOccupied(offsets, gx, gz)
 	for _, o in offsets do
 		if o.x == gx and o.z == gz then return true end
@@ -384,7 +404,7 @@ local function getFloorGridFromMouse()
 
 	local gx = math.round(localHit.X / GRID_SIZE)
 	local gz = math.round(localHit.Z / GRID_SIZE)
-	local worldCF = primaryCF * CFrame.new(localOffset)
+	local worldCF = primaryCF * CFrame.new(localOffset) * getTileRotationCorrection(raft)
 
 	return gx, gz, worldCF
 end
