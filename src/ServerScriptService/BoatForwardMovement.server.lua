@@ -7,11 +7,12 @@ local PADDLE_COURSE_NUDGE = math.rad(3) -- max course rotation per paddle stroke
 -- bow-aligned target velocity faster (kills sideways drift more aggressively).
 local VELOCITY_GAIN = 6
 
--- Custom buoyancy spring: keeps the raft at water level regardless of mass.
--- Roblox's built-in Terrain buoyancy may be insufficient when the raft has
--- many parts (9x mass compared to the original single-tile raft).
-local BUOYANCY_STIFFNESS = 8 -- spring constant (higher = snaps to water faster)
-local BUOYANCY_DAMPING = 4   -- damping (higher = less vertical oscillation)
+-- Custom buoyancy: fully counteracts gravity so the raft hovers at waterY,
+-- then a spring-damper corrects any displacement. Without gravity
+-- compensation, the spring alone would need enormous stiffness to fight
+-- the 196.2 studs/s² gravity — at stiffness 8 the raft sinks ~25 studs.
+local BUOYANCY_STIFFNESS = 10 -- spring correction for displacement from waterY
+local BUOYANCY_DAMPING = 6    -- damping to prevent vertical oscillation
 
 -- ─── Wind event ───
 -- Wind only starts once the players have survived past the 5th day, then
@@ -352,12 +353,15 @@ RunService.Heartbeat:Connect(function(dt)
 	local velocityError = desiredVelocity - flatVelocity
 	local horizontalForce = velocityError * totalMass * VELOCITY_GAIN
 
-	-- Custom buoyancy spring: a spring-damper system that keeps the raft at
-	-- waterY regardless of total mass. Without this, a large raft (many tiles)
-	-- sinks because Roblox Terrain buoyancy can't support the weight.
+	-- Custom buoyancy: first counteract gravity entirely so the raft is
+	-- weightless, then apply a spring-damper to lock it at waterY.
+	-- gravityCompensation alone makes the raft hover; the spring corrects
+	-- any drift above or below the water surface.
+	local gravityCompensation = totalMass * workspace.Gravity
 	local yError = waterY - primaryPart.Position.Y
 	local yVelocity = currentVelocity.Y
-	local buoyancyForce = (yError * BUOYANCY_STIFFNESS - yVelocity * BUOYANCY_DAMPING) * totalMass
+	local springForce = (yError * BUOYANCY_STIFFNESS - yVelocity * BUOYANCY_DAMPING) * totalMass
+	local buoyancyForce = gravityCompensation + springForce
 
 	vectorForce.Force = Vector3.new(horizontalForce.X, buoyancyForce, horizontalForce.Z)
 
