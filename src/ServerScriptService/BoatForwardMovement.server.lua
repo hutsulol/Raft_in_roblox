@@ -37,6 +37,9 @@ local primaryPart = boat.PrimaryPart
 for _, desc in boat:GetDescendants() do
 	if desc:IsA("BasePart") then
 		desc.Anchored = false
+		pcall(function()
+			desc:SetNetworkOwner(nil)
+		end)
 	end
 end
 primaryPart.Anchored = false
@@ -50,8 +53,15 @@ pcall(function()
 	primaryPart:SetNetworkOwner(nil)
 end)
 
--- Preserve initial pitch/roll (from the sideways-log PrimaryPart orientation)
-local initialPitch, initialYaw, initialRoll = primaryPart.CFrame:ToEulerAnglesYXZ()
+-- Store the initial rotation as a full CFrame to avoid gimbal lock.
+-- With a PrimaryPart oriented at 90° pitch (e.g. SpawnLocation with
+-- Orientation 90,0,0), Euler decomposition via ToEulerAnglesYXZ hits
+-- a singularity where yaw and roll become indistinguishable. By keeping
+-- the initial rotation as a CFrame and applying yaw changes via direct
+-- rotation composition (pre-multiplying a world-Y rotation), the
+-- AlignOrientation stays stable at any pitch angle.
+local initialRotation = primaryPart.CFrame.Rotation
+local _, initialYaw, _ = primaryPart.CFrame:ToEulerAnglesYXZ()
 local lockedYaw = initialYaw
 
 -- Store the rest CFrame (used by BuildingSystem for stable placement).
@@ -334,14 +344,19 @@ RunService.Heartbeat:Connect(function(dt)
 
 	-- Scale torque with raft mass so it always rotates, even with many tiles
 	alignOrientation.MaxTorque = totalMass * 500
-	alignOrientation.CFrame = CFrame.fromEulerAnglesYXZ(initialPitch, lockedYaw, initialRoll)
+	-- Compose the target rotation from the initial rotation + a world-Y yaw
+	-- change. This avoids the Euler gimbal lock at 90° pitch that made
+	-- CFrame.fromEulerAnglesYXZ(π/2, yaw, 0) unstable.
+	local yawDelta = lockedYaw - initialYaw
+	local targetRotation = CFrame.Angles(0, yawDelta, 0) * initialRotation
+	alignOrientation.CFrame = targetRotation
 
 	-- Update RestCFrame so building systems use the current yaw. Use the
 	-- live pos.Y (not a captured init-time value) so the rest frame always
 	-- tracks the raft's real vertical position, even if the raft spawned
 	-- above or below its settled water-level Y.
 	local pos = primaryPart.Position
-	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos) * CFrame.fromEulerAnglesYXZ(initialPitch, lockedYaw, initialRoll))
+	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos) * targetRotation)
 	primaryPart:SetAttribute("RestYaw", lockedYaw)
 
 	-- ─── Wind event: apply a horizontal force to players standing on the raft ───
