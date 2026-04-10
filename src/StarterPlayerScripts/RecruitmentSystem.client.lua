@@ -234,6 +234,16 @@ local function closeUI()
 	_G.SuppressInventoryToggle = false
 end
 
+-- A pirate model counts as "downed" if it has the server-set Downed
+-- attribute OR if its Humanoid is dead (fallback for baked NPC scripts
+-- that may handle death without standard Humanoid.Died firing).
+local function isModelDowned(model)
+	if model:GetAttribute("Downed") then return true end
+	local hum = model:FindFirstChildWhichIsA("Humanoid")
+	if hum and hum.Health <= 0 then return true end
+	return false
+end
+
 local function findDownedPirateNearby()
 	local char = player.Character
 	if not char then return nil end
@@ -244,14 +254,19 @@ local function findDownedPirateNearby()
 	local closest, closestDist = nil, 15
 	for _, child in workspace:GetChildren() do
 		if child:IsA("Model")
-			and child:GetAttribute("Downed")
+			and child:FindFirstChildWhichIsA("Humanoid") -- must be an NPC
+			and child ~= char -- not the player
+			and isModelDowned(child)
 			and not child:GetAttribute("Claimed")
 		then
-			local pHRP = child:FindFirstChild("HumanoidRootPart")
-				or child:FindFirstChild("Torso")
+			-- Use Torso or Head first — HumanoidRootPart can end up at a
+			-- weird position after ragdoll.
+			local part = child:FindFirstChild("Torso")
+				or child:FindFirstChild("Head")
+				or child:FindFirstChild("HumanoidRootPart")
 				or child:FindFirstChildWhichIsA("BasePart", true)
-			if pHRP then
-				local d = (playerPos - pHRP.Position).Magnitude
+			if part then
+				local d = (playerPos - part.Position).Magnitude
 				if d < closestDist then
 					closest = child
 					closestDist = d
@@ -260,23 +275,6 @@ local function findDownedPirateNearby()
 		end
 	end
 	return closest
-end
-
--- Check if the player is looking roughly toward the pirate
-local function isLookingAtPirate(pirate)
-	local char = player.Character
-	if not char then return false end
-	local hrp = char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return false end
-
-	local pHRP = pirate:FindFirstChild("HumanoidRootPart")
-		or pirate:FindFirstChild("Torso")
-		or pirate:FindFirstChildWhichIsA("BasePart", true)
-	if not pHRP then return false end
-
-	local look = camera.CFrame.LookVector
-	local toTarget = (pHRP.Position - camera.CFrame.Position).Unit
-	return look:Dot(toTarget) > 0.5 -- roughly within ±60° cone
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
@@ -398,7 +396,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if uiOpen then return end
 
 	local pirate = findDownedPirateNearby()
-	if pirate and isLookingAtPirate(pirate) then
+	if pirate then
 		currentPirate = pirate
 		uiOpen = true
 
@@ -427,7 +425,7 @@ RunService.RenderStepped:Connect(function()
 	-- the recruitment UI is open so the two systems don't fight.
 	if not uiOpen then
 		local pirate = findDownedPirateNearby()
-		if pirate and isLookingAtPirate(pirate) then
+		if pirate then
 			hintLabel.Visible = true
 			_G.SuppressInventoryToggle = true
 		else

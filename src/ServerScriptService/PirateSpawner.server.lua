@@ -154,6 +154,25 @@ local function spawnPirateRaft()
 		warn("PirateSpawner: Pirate lvl1 not found in ReplicatedStorage")
 	end
 
+	-- Backup health polling: the baked ZombieScript / Ragdoller may manage
+	-- death without Humanoid.Health reaching 0 in the normal way, so
+	-- Humanoid.Died might never fire. Poll every 0.5s and mark any pirate
+	-- whose Humanoid is dead or whose health has reached 0.
+	task.spawn(function()
+		while floor and floor.Parent do
+			for _, pirate in pirates do
+				if pirate and pirate.Parent and not pirate:GetAttribute("Downed") then
+					local hum = pirate:FindFirstChildWhichIsA("Humanoid")
+					if hum and (hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead) then
+						pirate:SetAttribute("Downed", true)
+						pirate:SetAttribute("RecruitChance", 70)
+					end
+				end
+			end
+			task.wait(0.5)
+		end
+	end)
+
 	-- Approach using AlignPosition
 	local attachment = Instance.new("Attachment")
 	attachment.Parent = rootPart
