@@ -154,18 +154,43 @@ local function spawnPirateRaft()
 		warn("PirateSpawner: Pirate lvl1 not found in ReplicatedStorage")
 	end
 
-	-- Backup health polling: the baked ZombieScript / Ragdoller may manage
-	-- death without Humanoid.Health reaching 0 in the normal way, so
-	-- Humanoid.Died might never fire. Poll every 0.5s and mark any pirate
-	-- whose Humanoid is dead or whose health has reached 0.
+	-- Backup ragdoll polling: the baked ZombieScript / Ragdoller may knock
+	-- out the pirate without setting Humanoid.Health to 0, so Humanoid.Died
+	-- never fires. Poll every 0.5s and detect the ragdoll state through
+	-- multiple indicators.
 	task.spawn(function()
 		while floor and floor.Parent do
 			for _, pirate in pirates do
 				if pirate and pirate.Parent and not pirate:GetAttribute("Downed") then
 					local hum = pirate:FindFirstChildWhichIsA("Humanoid")
-					if hum and (hum.Health <= 0 or hum:GetState() == Enum.HumanoidStateType.Dead) then
-						pirate:SetAttribute("Downed", true)
-						pirate:SetAttribute("RecruitChance", 70)
+					if hum then
+						local downed = false
+						-- Standard death
+						if hum.Health <= 0 then downed = true end
+						-- Humanoid state
+						local state = hum:GetState()
+						if state == Enum.HumanoidStateType.Dead
+							or state == Enum.HumanoidStateType.Physics then
+							downed = true
+						end
+						-- PlatformStand (common ragdoll method)
+						if hum.PlatformStand then downed = true end
+						-- Motor6D absence: a ragdolled R6 character has its
+						-- Motor6Ds replaced with constraints
+						if not downed then
+							local hasMotor = false
+							for _, desc in pirate:GetDescendants() do
+								if desc:IsA("Motor6D") and desc.Name ~= "DoorHinge" then
+									hasMotor = true
+									break
+								end
+							end
+							if not hasMotor then downed = true end
+						end
+						if downed then
+							pirate:SetAttribute("Downed", true)
+							pirate:SetAttribute("RecruitChance", 70)
+						end
 					end
 				end
 			end

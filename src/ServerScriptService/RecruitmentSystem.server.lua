@@ -44,7 +44,18 @@ end
 recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 	if typeof(pirate) ~= "Instance" then return end
 	if not pirate:IsDescendantOf(workspace) then return end
-	if not pirate:GetAttribute("Downed") then return end
+	-- Accept if Downed attribute is set, OR if the Humanoid is ragdolled
+	if not pirate:GetAttribute("Downed") then
+		local hum = pirate:FindFirstChildWhichIsA("Humanoid")
+		if not hum then return end
+		local isDowned = hum.Health <= 0
+			or hum:GetState() == Enum.HumanoidStateType.Dead
+			or hum:GetState() == Enum.HumanoidStateType.Physics
+			or hum.PlatformStand
+		if not isDowned then return end
+		pirate:SetAttribute("Downed", true)
+		pirate:SetAttribute("RecruitChance", 70)
+	end
 	if claimedPirates[pirate] then return end
 
 	-- Distance check

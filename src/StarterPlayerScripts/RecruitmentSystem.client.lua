@@ -235,12 +235,32 @@ local function closeUI()
 end
 
 -- A pirate model counts as "downed" if it has the server-set Downed
--- attribute OR if its Humanoid is dead (fallback for baked NPC scripts
--- that may handle death without standard Humanoid.Died firing).
+-- attribute OR if its Humanoid shows ragdoll indicators. The baked
+-- ZombieScript/Ragdoller may knock out the pirate without zeroing
+-- Humanoid.Health, so we check multiple signals.
 local function isModelDowned(model)
 	if model:GetAttribute("Downed") then return true end
 	local hum = model:FindFirstChildWhichIsA("Humanoid")
-	if hum and hum.Health <= 0 then return true end
+	if not hum then return false end
+	if hum.Health <= 0 then return true end
+	-- Humanoid state (Dead or Physics = ragdoll)
+	local state = hum:GetState()
+	if state == Enum.HumanoidStateType.Dead
+		or state == Enum.HumanoidStateType.Physics then
+		return true
+	end
+	-- PlatformStand is a common ragdoll flag
+	if hum.PlatformStand then return true end
+	-- Motor6D absence: a ragdolled R6 character has its joints replaced
+	-- with BallSocketConstraints, leaving zero Motor6Ds.
+	local hasMotor = false
+	for _, desc in model:GetDescendants() do
+		if desc:IsA("Motor6D") then
+			hasMotor = true
+			break
+		end
+	end
+	if not hasMotor then return true end
 	return false
 end
 
