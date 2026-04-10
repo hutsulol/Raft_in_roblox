@@ -88,6 +88,12 @@ local selectedCategory = nil
 local detailOverlay = nil
 local categoryOverlay = nil
 local CATEGORIES = {"Tools", "Technology", "Misc", "Resources"}
+local CATEGORY_ICONS = {
+	Tools = "rbxassetid://134299753320707",
+	Technology = "rbxassetid://105024067653272",
+	Misc = "rbxassetid://122082071100473",
+	Resources = "rbxassetid://122082071100473",
+}
 local isOpen = false
 local screenGui = nil
 local hotbarGui = nil
@@ -1189,12 +1195,18 @@ local function updateCategoryTabs()
 	for _, tab in tabFrame:GetChildren() do
 		if tab:IsA("TextButton") then
 			local cat = tab:GetAttribute("Category")
+			local color
 			if cat == selectedCategory then
 				tab.BackgroundColor3 = COLORS.panelBg
-				tab.TextColor3 = COLORS.lightText
+				color = COLORS.lightText
 			else
 				tab.BackgroundColor3 = COLORS.craftItemBg
-				tab.TextColor3 = COLORS.titleText
+				color = COLORS.titleText
+			end
+			tab.TextColor3 = color
+			local label = tab:FindFirstChild("Label")
+			if label then
+				label.TextColor3 = color
 			end
 		end
 	end
@@ -1608,13 +1620,39 @@ local function buildUI()
 		tab.LayoutOrder = i
 		tab.BackgroundColor3 = COLORS.craftItemBg
 		tab.TextColor3 = COLORS.titleText
-		tab.Text = cat
+		tab.Text = ""
 		tab.Font = Enum.Font.GothamMedium
 		tab.TextSize = 14
 		tab.BorderSizePixel = 0
 		tab.AutoButtonColor = false
 		tab.Parent = tabFrame
 		tab:SetAttribute("Category", cat)
+
+		-- Icon on the left
+		local iconId = CATEGORY_ICONS[cat]
+		if iconId then
+			local icon = Instance.new("ImageLabel")
+			icon.Name = "Icon"
+			icon.Size = UDim2.new(0, 24, 0, 24)
+			icon.Position = UDim2.new(0, 8, 0.5, -12)
+			icon.BackgroundTransparency = 1
+			icon.Image = iconId
+			icon.ScaleType = Enum.ScaleType.Fit
+			icon.Parent = tab
+		end
+
+		-- Text label to the right of the icon
+		local label = Instance.new("TextLabel")
+		label.Name = "Label"
+		label.Size = UDim2.new(1, -42, 1, 0)
+		label.Position = UDim2.new(0, 38, 0, 0)
+		label.BackgroundTransparency = 1
+		label.Text = cat
+		label.TextColor3 = COLORS.titleText
+		label.Font = Enum.Font.GothamMedium
+		label.TextSize = 14
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.Parent = tab
 
 		local tabCorner = Instance.new("UICorner")
 		tabCorner.CornerRadius = UDim.new(0, 6)
