@@ -231,6 +231,7 @@ local function closeUI()
 	uiOpen = false
 	minigameRunning = false
 	currentPirate = nil
+	_G.SuppressInventoryToggle = false
 end
 
 local function findDownedPirateNearby()
@@ -421,16 +422,21 @@ end)
 -- ═══════════════════════════════════════════════════════════════════════
 
 RunService.RenderStepped:Connect(function()
-	-- Show "[E] Recruit" hint when looking at a downed pirate nearby
+	-- Show "[E] Recruit" hint when looking at a downed pirate nearby.
+	-- Suppress the inventory E-key toggle while the hint is visible or
+	-- the recruitment UI is open so the two systems don't fight.
 	if not uiOpen then
 		local pirate = findDownedPirateNearby()
 		if pirate and isLookingAtPirate(pirate) then
 			hintLabel.Visible = true
+			_G.SuppressInventoryToggle = true
 		else
 			hintLabel.Visible = false
+			_G.SuppressInventoryToggle = false
 		end
 	else
 		hintLabel.Visible = false
+		_G.SuppressInventoryToggle = true
 	end
 
 	-- Close UI if pirate destroyed or player moved too far
