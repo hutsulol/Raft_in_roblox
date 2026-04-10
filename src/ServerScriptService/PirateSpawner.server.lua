@@ -120,7 +120,10 @@ local function spawnPirateRaft()
 
 			pirate.Parent = workspace
 
-			-- Weld HumanoidRootPart to pirate raft so they move smoothly with it
+			-- Weld HumanoidRootPart to pirate raft so they move smoothly with it.
+			-- The weld physically prevents movement, so we do NOT set WalkSpeed = 0.
+			-- Setting WalkSpeed before the baked ZombieScript initializes causes
+			-- the script to cache 0 as its base speed and never move again.
 			local hrp = pirate:FindFirstChild("HumanoidRootPart")
 			if hrp then
 				local weld = Instance.new("WeldConstraint")
@@ -130,12 +133,7 @@ local function spawnPirateRaft()
 				table.insert(transitWelds, weld)
 			end
 
-			-- Disable walking during transit
 			local hum = pirate:FindFirstChildWhichIsA("Humanoid")
-			if hum then
-				hum.WalkSpeed = 0
-				hum.JumpPower = 0
-			end
 
 			table.insert(pirates, pirate)
 
@@ -333,8 +331,9 @@ local function spawnPirateRaft()
 					if pirate and pirate.Parent then
 						local hum = pirate:FindFirstChildWhichIsA("Humanoid")
 						if hum then
-							hum.WalkSpeed = 16
-							hum.JumpPower = 0  -- No jumping so they stay on the raft
+							-- Don't touch WalkSpeed — the ZombieScript manages it.
+							-- Only disable jumping so pirates stay on the raft.
+							hum.JumpPower = 0
 							hum.JumpHeight = 0
 						end
 						-- Disable respawn in their AI config
