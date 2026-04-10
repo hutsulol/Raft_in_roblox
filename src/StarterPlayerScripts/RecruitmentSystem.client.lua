@@ -277,7 +277,7 @@ local function findDownedPirateNearby()
 		if child:IsA("Model")
 			and child:FindFirstChild("HumanoidRootPart") -- real character, not a dropped accessory
 			and child:FindFirstChildWhichIsA("Humanoid")
-			and child ~= char -- not the player
+			and not Players:GetPlayerFromCharacter(child) -- skip all player characters
 			and isModelDowned(child)
 			and not child:GetAttribute("Claimed")
 			and not claimedLocally[child]
