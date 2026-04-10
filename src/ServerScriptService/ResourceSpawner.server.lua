@@ -248,14 +248,37 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 	clone:SetAttribute("ResourceType", resourceType)
 	clone:SetAttribute("ResourceAmount", resourceAmount)
 
-	clone:PivotTo(CFrame.new(spawnPos))
+	-- Lay logs flat (rotate 90° around Z) with a random spin so they look natural
+	if resourceType == "Log" then
+		local yaw = math.random() * math.pi * 2
+		clone:PivotTo(CFrame.new(spawnPos) * CFrame.Angles(0, yaw, math.rad(90)))
+	else
+		clone:PivotTo(CFrame.new(spawnPos))
+	end
+
 	clone.Parent = workspace
+
+	-- Unanchor the clone itself if it's a BasePart (GetDescendants doesn't
+	-- include the instance itself, so single-part resources stayed anchored).
+	if clone:IsA("BasePart") then
+		clone.Anchored = false
+		clone:SetNetworkOwner(nil)
+	end
 
 	for _, part in clone:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
 			part:SetNetworkOwner(nil)
 		end
+	end
+
+	-- Give resources a small random drift so they move visibly on the water
+	local driftAngle = math.random() * math.pi * 2
+	local driftSpeed = math.random(2, 5)
+	local driftVel = Vector3.new(math.cos(driftAngle) * driftSpeed, 0, math.sin(driftAngle) * driftSpeed)
+	local rootPart = clone:IsA("BasePart") and clone or clone.PrimaryPart
+	if rootPart then
+		rootPart.AssemblyLinearVelocity = driftVel
 	end
 
 	CollectionService:AddTag(clone, "Resource")
