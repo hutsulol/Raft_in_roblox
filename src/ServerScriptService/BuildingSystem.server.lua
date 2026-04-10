@@ -90,14 +90,47 @@ end
 
 local function getFloorOffsets(raft)
 	local offsets = {}
-	table.insert(offsets, {x = 0, z = 0})
+	local seen = {}
+
+	-- Scan all children of the raft for initial Raft_part tiles (no GridX/GridZ)
+	-- and player-built tiles (with GridX/GridZ + BuildType == "raft").
+	local primary = raft.PrimaryPart
+	if not primary then return offsets end
+
 	for _, child in raft:GetChildren() do
 		local gx = child:GetAttribute("GridX")
 		local gz = child:GetAttribute("GridZ")
 		if gx and gz and child:GetAttribute("BuildType") == "raft" then
-			table.insert(offsets, {x = gx, z = gz})
+			-- Player-built tile
+			local key = gx .. "_" .. gz
+			if not seen[key] then
+				seen[key] = true
+				table.insert(offsets, {x = gx, z = gz})
+			end
+		elseif child.Name == "Raft_part" or child == primary then
+			-- Initial raft tile: compute grid coords from position
+			local part = child
+			if child:IsA("Model") then
+				part = child.PrimaryPart or child:FindFirstChildWhichIsA("BasePart", true)
+			end
+			if part and part:IsA("BasePart") then
+				local localPos = primary.CFrame:PointToObjectSpace(part.Position)
+				local gridX = math.round(localPos.X / GRID_SIZE)
+				local gridZ = math.round(localPos.Z / GRID_SIZE)
+				local key = gridX .. "_" .. gridZ
+				if not seen[key] then
+					seen[key] = true
+					table.insert(offsets, {x = gridX, z = gridZ})
+				end
+			end
 		end
 	end
+
+	-- Guarantee (0,0) is always present
+	if not seen["0_0"] then
+		table.insert(offsets, {x = 0, z = 0})
+	end
+
 	return offsets
 end
 

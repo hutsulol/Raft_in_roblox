@@ -250,17 +250,27 @@ local function spawnPirateRaft()
 				local _, raftYaw, _ = raftPrimary.CFrame:ToEulerAnglesYXZ()
 				local flatCF = CFrame.new(raftPrimary.Position) * CFrame.Angles(0, raftYaw, 0)
 
-				-- Collect all floor tile world positions (origin + placed tiles)
+				-- Collect all floor tile world positions (initial + placed tiles)
 				local tilePositions = {}
-				-- The original raft tile is at grid (0,0)
-				table.insert(tilePositions, flatCF:PointToWorldSpace(Vector3.new(0, 0, 0)))
-				-- Player-built tiles have GridX/GridZ attributes
+				-- Initial raft tiles: compute grid coords from position
 				for _, child in b:GetChildren() do
 					local gx = child:GetAttribute("GridX")
 					local gz = child:GetAttribute("GridZ")
 					if gx and gz and child:GetAttribute("BuildType") == "raft" then
 						local worldPos = flatCF:PointToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
 						table.insert(tilePositions, worldPos)
+					elseif child.Name == "Raft_part" or child == raftPrimary then
+						local part = child
+						if child:IsA("Model") then
+							part = child.PrimaryPart or child:FindFirstChildWhichIsA("BasePart", true)
+						end
+						if part and part:IsA("BasePart") then
+							local localPos = raftPrimary.CFrame:PointToObjectSpace(part.Position)
+							local gridX = math.round(localPos.X / GRID_SIZE)
+							local gridZ = math.round(localPos.Z / GRID_SIZE)
+							local worldPos = flatCF:PointToWorldSpace(Vector3.new(gridX * GRID_SIZE, 0, gridZ * GRID_SIZE))
+							table.insert(tilePositions, worldPos)
+						end
 					end
 				end
 

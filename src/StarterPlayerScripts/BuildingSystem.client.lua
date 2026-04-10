@@ -119,14 +119,40 @@ local function getFloorOffsets()
 	if not raft or not raft.PrimaryPart then return {} end
 
 	local offsets = {}
-	table.insert(offsets, {x = 0, z = 0})
+	local seen = {}
+	local primary = raft.PrimaryPart
+
 	for _, child in raft:GetChildren() do
 		local gx = child:GetAttribute("GridX")
 		local gz = child:GetAttribute("GridZ")
 		if gx and gz and child:GetAttribute("BuildType") == "raft" then
-			table.insert(offsets, {x = gx, z = gz})
+			local key = gx .. "_" .. gz
+			if not seen[key] then
+				seen[key] = true
+				table.insert(offsets, {x = gx, z = gz})
+			end
+		elseif child.Name == "Raft_part" or child == primary then
+			local part = child
+			if child:IsA("Model") then
+				part = child.PrimaryPart or child:FindFirstChildWhichIsA("BasePart", true)
+			end
+			if part and part:IsA("BasePart") then
+				local localPos = primary.CFrame:PointToObjectSpace(part.Position)
+				local gridX = math.round(localPos.X / GRID_SIZE)
+				local gridZ = math.round(localPos.Z / GRID_SIZE)
+				local key = gridX .. "_" .. gridZ
+				if not seen[key] then
+					seen[key] = true
+					table.insert(offsets, {x = gridX, z = gridZ})
+				end
+			end
 		end
 	end
+
+	if not seen["0_0"] then
+		table.insert(offsets, {x = 0, z = 0})
+	end
+
 	return offsets
 end
 
