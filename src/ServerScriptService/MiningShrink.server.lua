@@ -8,7 +8,7 @@ local Debris = game:GetService("Debris")
 
 -- ─── Config ───
 local ROCK_MAX_HITS = 5
-local ROCK_MIN_SCALE = 0.7
+local ROCK_MIN_SCALE = 0.5
 
 local IRON_HITS = 20
 local IRON_MIN_SCALE = 0.75
@@ -111,29 +111,30 @@ local function checkAndWatchRock(part)
 	end
 end
 
--- Scan existing
-for _, desc in workspace:GetDescendants() do
-	checkAndWatchRock(desc)
+-- Connect a Mineable attribute watcher so that whenever PickAxeSystem tags
+-- a rock (possibly after this script's initial scan), we pick it up.
+local function connectMineableWatcher(part)
+	if not part:IsA("BasePart") then return end
+	-- If already tagged, start watching immediately
+	if part:GetAttribute("Mineable") and not part:GetAttribute("OreType") then
+		watchRockHealth(part)
+	end
+	-- Also watch for future tagging (covers race with PickAxeSystem)
+	part:GetAttributeChangedSignal("Mineable"):Connect(function()
+		if part:GetAttribute("Mineable") and not part:GetAttribute("OreType") then
+			watchRockHealth(part)
+		end
+	end)
 end
 
--- Watch new parts and attribute changes
-workspace.DescendantAdded:Connect(function(desc)
-	if desc:IsA("BasePart") then
-		-- Wait a moment for PickAxeSystem to tag it
-		task.wait(0.2)
-		checkAndWatchRock(desc)
-	end
-end)
+-- Scan existing parts
+for _, desc in workspace:GetDescendants() do
+	connectMineableWatcher(desc)
+end
 
--- Also watch attribute additions on existing parts
+-- Watch new parts
 workspace.DescendantAdded:Connect(function(desc)
-	if desc:IsA("BasePart") then
-		desc:GetAttributeChangedSignal("Mineable"):Connect(function()
-			if desc:GetAttribute("Mineable") and not desc:GetAttribute("OreType") then
-				watchRockHealth(desc)
-			end
-		end)
-	end
+	connectMineableWatcher(desc)
 end)
 
 -- ═══════════════════════════════════════════
