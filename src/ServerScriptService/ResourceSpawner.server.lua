@@ -12,6 +12,11 @@ local CLICKS_BY_TYPE = {
 	Leaves = 3,
 }
 
+-- ─── Raft collision damage config ───
+local COLLISION_VEL_THRESHOLD = 3  -- minimum relative velocity for damage
+local COLLISION_DAMAGE_DIVISOR = 5 -- damage = floor(velocity / divisor)
+local COLLISION_COOLDOWN = 0.5     -- seconds between damage events per resource
+
 local collectEvent = rs:FindFirstChild("CollectResource")
 if not collectEvent then
 	collectEvent = Instance.new("RemoteEvent")
@@ -141,8 +146,11 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 	clickCounts[resource][player] = clickCounts[resource][player] + 1
 	local clicks = clickCounts[resource][player]
 
+	-- If the resource was damaged by raft collision, its remaining HP
+	-- determines clicks needed (fewer clicks for damaged resources).
 	local resTypeForClicks = resource:GetAttribute("ResourceType") or "Log"
-	local clicksNeeded = CLICKS_BY_TYPE[resTypeForClicks] or CLICKS_TO_COLLECT
+	local defaultClicks = CLICKS_BY_TYPE[resTypeForClicks] or CLICKS_TO_COLLECT
+	local clicksNeeded = resource:GetAttribute("ResourceHP") or defaultClicks
 
 	collectNotify:FireClient(player, "progress", resource, clicks, clicksNeeded)
 
@@ -168,6 +176,57 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 		resource:Destroy()
 	end
 end)
+
+-- ═══════════════════════════════════════════════════════════════════════
+-- Raft collision damage: resources lose HP when the raft runs into them.
+-- A fatal collision destroys the resource without giving any reward.
+-- ═══════════════════════════════════════════════════════════════════════
+
+local collisionCooldowns = setmetatable({}, {__mode = "k"})
+
+local function setupResourceCollision(resource, maxHP)
+	resource:SetAttribute("ResourceHP", maxHP)
+
+	local function onTouched(resPart, otherPart)
+		-- Only take damage from the Raft model
+		local raft = getBoat()
+		if not raft then return end
+		if not otherPart:IsDescendantOf(raft) then return end
+
+		-- Per-resource cooldown so Touched spam doesn't shred HP in one frame
+		local now = tick()
+		local lastHit = collisionCooldowns[resource]
+		if lastHit and (now - lastHit) < COLLISION_COOLDOWN then return end
+
+		-- Relative velocity between resource part and raft part
+		local relVel = (resPart.AssemblyLinearVelocity - otherPart.AssemblyLinearVelocity).Magnitude
+		if relVel < COLLISION_VEL_THRESHOLD then return end
+
+		local damage = math.max(1, math.floor(relVel / COLLISION_DAMAGE_DIVISOR))
+		collisionCooldowns[resource] = now
+
+		local hp = resource:GetAttribute("ResourceHP") or maxHP
+		hp = hp - damage
+
+		if hp <= 0 then
+			-- Fatal: destroy without reward
+			clickCounts[resource] = nil
+			resource:Destroy()
+		else
+			resource:SetAttribute("ResourceHP", hp)
+		end
+	end
+
+	-- Connect Touched on every BasePart in the resource
+	if resource:IsA("BasePart") then
+		resource.Touched:Connect(function(other) onTouched(resource, other) end)
+	end
+	for _, part in resource:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Touched:Connect(function(other) onTouched(part, other) end)
+		end
+	end
+end
 
 local function spawnResource(templateName, resourceType, resourceAmount, boat)
 	local root = boat.PrimaryPart
@@ -282,6 +341,10 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 	end
 
 	CollectionService:AddTag(clone, "Resource")
+
+	-- Set up collision damage so the raft can crush resources
+	local maxHP = CLICKS_BY_TYPE[resourceType] or CLICKS_TO_COLLECT
+	setupResourceCollision(clone, maxHP)
 
 	task.delay(LIFETIME, function()
 		if clone and clone.Parent then
