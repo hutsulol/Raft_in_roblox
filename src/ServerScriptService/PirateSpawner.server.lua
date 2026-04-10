@@ -63,10 +63,17 @@ local function spawnPirateRaft()
 		end
 	end
 
+	-- Match the player raft's pitch/roll so the tile lies flat.
+	-- The raft model's PrimaryPart is oriented with a specific pitch/roll
+	-- that defines "flat on water"; CFrame.new(pos) alone gives identity
+	-- rotation, which stands the tile upright after the model was redesigned.
+	local pitch, _, roll = root.CFrame:ToEulerAnglesYXZ()
+	local flatCF = CFrame.new(spawnPos) * CFrame.fromEulerAnglesYXZ(pitch, 0, roll)
+
 	if floor:IsA("Model") then
-		floor:PivotTo(CFrame.new(spawnPos))
+		floor:PivotTo(flatCF)
 	elseif floor:IsA("BasePart") then
-		floor.CFrame = CFrame.new(spawnPos)
+		floor.CFrame = flatCF
 	end
 
 	floor.Parent = workspace
@@ -249,9 +256,10 @@ local function spawnPirateRaft()
 					end
 				end
 
-				-- Snap pirate raft flush to the edge, matching raft rotation
+				-- Snap pirate raft flush to the edge, matching raft orientation
 				local dockWorld = tileCF:PointToWorldSpace(dockOffset)
-				rootPart.CFrame = CFrame.new(dockWorld.X, raftPrimary.Position.Y, dockWorld.Z) * CFrame.Angles(0, raftYaw, 0)
+				local raftPitch, _, raftRoll = raftPrimary.CFrame:ToEulerAnglesYXZ()
+				rootPart.CFrame = CFrame.new(dockWorld.X, raftPrimary.Position.Y, dockWorld.Z) * CFrame.fromEulerAnglesYXZ(raftPitch, raftYaw, raftRoll)
 
 				-- Weld all pirate raft parts to the player raft
 				for _, part in floor:GetDescendants() do
