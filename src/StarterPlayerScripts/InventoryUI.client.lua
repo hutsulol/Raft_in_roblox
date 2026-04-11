@@ -1920,17 +1920,30 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if equipped and equipped.Name == "Phone" then
 			return
 		end
-		-- Timestamp guard: DropItem.client.lua stamps `_G.LastPickupTime`
-		-- the moment it fires a pickup, so any E that was the trigger
-		-- for the pickup (or was pressed in the same frame) falls
-		-- inside this window and is rejected. This is immune to the
-		-- InputBegan handler order between the two scripts.
-		if (os.clock() - (_G.LastPickupTime or 0)) < 0.2 then
-			return
-		end
-		if not _G.SuppressInventoryToggle then
+		-- Defer the toggle decision until the end of the current
+		-- resumption cycle. Roblox does not guarantee InputBegan handler
+		-- order between scripts, so DropItem.client.lua's E handler may
+		-- run either before or after this one. By deferring, we're
+		-- guaranteed that any pickup-in-the-same-frame has already
+		-- stamped `_G.LastPickupTime` by the time we re-check — and we
+		-- can reject the toggle cleanly without fighting over ordering.
+		task.defer(function()
+			if (os.clock() - (_G.LastPickupTime or 0)) < 0.2 then
+				return
+			end
+			if _G.SuppressInventoryToggle then
+				return
+			end
+			-- Re-check the Phone guard: the player could have equipped
+			-- the Phone between the original press and this deferred
+			-- evaluation (unlikely, but cheap to verify).
+			local char2 = player.Character
+			local equipped2 = char2 and char2:FindFirstChildOfClass("Tool")
+			if equipped2 and equipped2.Name == "Phone" then
+				return
+			end
 			toggleInventory()
-		end
+		end)
 	end
 	local slotNum = numberKeys[input.KeyCode]
 	if slotNum then
