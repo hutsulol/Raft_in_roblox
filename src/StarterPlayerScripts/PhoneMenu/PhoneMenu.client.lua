@@ -528,16 +528,17 @@ local function buildMenu()
 	makeSideButton("MERCENARIES", 74)
 
 	-- ── Bottom: XP counter ─────────────────────────────────────────────
-	-- Lifted above the in-game hotbar. The hotbar sits ~82 px above the
-	-- bottom of the screen (see SLOT_SIZE/SLOT_PAD in InventoryUI.client.lua)
-	-- and we want a little breathing room above that. Root already has a
-	-- 30 px bottom inset, so an additional -70 px anchor offset puts the
-	-- XP panel ~100 px above the screen bottom — clears the hotbar on any
-	-- resolution (PC and mobile).
+	-- Anchored to the bottom edge of the ViewportFrame so that the XP bar
+	-- always sits directly under the character no matter the screen size.
+	-- The ViewportFrame is centered at (0.5, 0.45) with Size (360, 500),
+	-- so its bottom edge = (0.5 scale, 0.45 scale + 250 offset). Place the
+	-- XP panel's top edge 10 px below that via AnchorPoint (0.5, 0) and
+	-- Position (0.5, 0, 0.45, 260). Fixed-offset width keeps the bar the
+	-- same visual size across resolutions (desktop and mobile alike).
 	local xpPanel = makePanel("XPPanel", root)
-	xpPanel.AnchorPoint = Vector2.new(0.5, 1)
-	xpPanel.Position = UDim2.new(0.5, 0, 1, -70)
-	xpPanel.Size = UDim2.new(0.6, 0, 0, 48)
+	xpPanel.AnchorPoint = Vector2.new(0.5, 0)
+	xpPanel.Position = UDim2.new(0.5, 0, 0.45, 260)
+	xpPanel.Size = UDim2.fromOffset(600, 48)
 	padding(xpPanel, 10)
 
 	local xpTag = makeLabel(xpPanel, "XP", FONT_TITLE, 18, COLOR_TEXT)
