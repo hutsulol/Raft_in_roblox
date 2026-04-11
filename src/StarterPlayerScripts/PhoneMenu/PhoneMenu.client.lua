@@ -15,6 +15,11 @@ local UserInputService  = game:GetService("UserInputService")
 local GuiService        = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+-- Holographic glitch-in animation. Plays on every open; requires a
+-- LoadBar (Frame) and LoadText (TextLabel) as direct children of the
+-- frame we pass in — both are created in buildMenu() below.
+local HoloOpenAnimation = require(script.Parent:WaitForChild("HoloOpenAnimation"))
+
 -- Pose used for the viewport character. Custom looping idle that keeps the
 -- rig in a clean standing stance for the UI preview.
 local IDLE_ANIMATION_ID = "rbxassetid://78578604994580"
@@ -40,6 +45,15 @@ local FONT_BODY  = Enum.Font.Gotham
 local menuOpen              = false
 local phoneEquipped         = false
 local screenGui             = nil
+-- Refs used by the holo-open animation. `holoRootFrame` is the frame
+-- we scale/fade on every open, and holoLoadBar / holoLoadText are
+-- the per-open LOAD… progress pair the HoloOpenAnimation module drives.
+-- `holoPulseStop` is the stop handle for the idle heartbeat the module
+-- returns — we call it on close so the pulse doesn't leak across opens.
+local holoRootFrame         = nil
+local holoLoadBar           = nil
+local holoLoadText          = nil
+local holoPulseStop         = nil
 -- Set to true after `refreshCharacterViewport()` has built the rig for the
 -- current life. Gates the refresh so subsequent menu opens are instant and
 -- reuse the same viewport contents. Reset to false when the player respawns
@@ -635,6 +649,40 @@ local function buildMenu()
 	xpFill.Parent = xpTrack
 	corner(xpFill, 7)
 	xpFillFrame = xpFill
+
+	-- ── Holo-open LOAD… overlay ────────────────────────────────────────
+	-- LoadText / LoadBar are direct children of `root` so the
+	-- HoloOpenAnimation module can find them by name. They sit in the
+	-- empty space above the character viewport, centered horizontally,
+	-- and are hidden once the open animation finishes.
+	local loadText = makeLabel(root, "LOAD...", FONT_TITLE, 22, COLOR_TEXT, Enum.TextXAlignment.Center)
+	loadText.Name = "LoadText"
+	loadText.AnchorPoint = Vector2.new(0.5, 0.5)
+	loadText.Position = UDim2.new(0.5, 0, 0.45, -180)
+	loadText.Size = UDim2.fromOffset(240, 28)
+	loadText.Visible = false
+
+	local loadBar = Instance.new("Frame")
+	loadBar.Name = "LoadBar"
+	loadBar.BackgroundColor3 = COLOR_XP_FILL
+	loadBar.BorderSizePixel = 0
+	loadBar.AnchorPoint = Vector2.new(0, 0.5)
+	loadBar.Position = UDim2.new(0.5, -120, 0.45, -150)
+	loadBar.Size = UDim2.fromOffset(240, 8)
+	loadBar.Visible = false
+	loadBar.Parent = root
+	corner(loadBar, 4)
+	-- Cyan glow stroke so the bar has the "holo" feel called for in the
+	-- animation spec.
+	local loadGlow = Instance.new("UIStroke")
+	loadGlow.Color = COLOR_XP_FILL
+	loadGlow.Thickness = 2
+	loadGlow.Transparency = 0.3
+	loadGlow.Parent = loadBar
+
+	holoRootFrame = root
+	holoLoadBar   = loadBar
+	holoLoadText  = loadText
 end
 
 -- ─── Show / hide ──────────────────────────────────────────────────────────
@@ -642,6 +690,14 @@ local function setMenuOpen(open)
 	if not screenGui then buildMenu() end
 	menuOpen = open
 	screenGui.Enabled = open
+
+	-- Always stop any idle pulse from the previous open so a rapid
+	-- close→open doesn't leak a pulse coroutine into the new session.
+	if holoPulseStop then
+		holoPulseStop()
+		holoPulseStop = nil
+	end
+
 	if open then
 		if typeof(_G.CloseInventory) == "function" then
 			_G.CloseInventory()
@@ -652,6 +708,26 @@ local function setMenuOpen(open)
 		if not viewportInitialized then
 			refreshCharacterViewport()
 			viewportInitialized = true
+		end
+
+		-- Play the holographic glitch-in animation. LoadBar / LoadText
+		-- live inside `root` only to drive the opener — reveal them for
+		-- the duration of the animation and hide them again afterward.
+		if holoRootFrame and holoLoadBar and holoLoadText then
+			holoLoadBar.Visible  = true
+			holoLoadText.Visible = true
+			task.spawn(function()
+				local stop = HoloOpenAnimation.PlayOpenAnimation(holoRootFrame)
+				holoLoadBar.Visible  = false
+				holoLoadText.Visible = false
+				-- Only keep the pulse handle if the menu is still open;
+				-- the user may have closed mid-animation.
+				if menuOpen then
+					holoPulseStop = stop
+				else
+					stop()
+				end
+			end)
 		end
 	end
 end
