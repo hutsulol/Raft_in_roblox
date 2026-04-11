@@ -10,9 +10,10 @@
 --   * Each in-game day lived grants 10 XP.
 --   * Levelling up costs 50 XP (flat for now).
 --   * Each level-up grants 1 upgrade point.
---   * Upgrade points can be spent on attributes. Strength is the only
---     attribute wired up right now; Mana / Mutation will be added later
---     using the same phoneMenuEvent dispatch pattern.
+--   * Upgrade points can be spent on attributes. Strength, Mana and
+--     Mutation are the three attributes surfaced on the phone menu; each
+--     one consumes one upgrade point per level via its own
+--     phoneMenuEvent action string.
 --   * Dev defaults: players start at Level 3 with 20 unspent points so
 --     the UI is exercisable end-to-end without grinding.
 
@@ -56,6 +57,8 @@ local function setupPlayer(player)
 	intValue("XPRequired",    XP_PER_LEVEL,             folder)
 	intValue("UpgradePoints", DEV_START_UPGRADE_POINTS, folder)
 	intValue("Strength",      0,                        folder)
+	intValue("Mana",          0,                        folder)
+	intValue("Mutation",      0,                        folder)
 end
 
 for _, p in Players:GetPlayers() do
@@ -100,22 +103,29 @@ dayCount:GetPropertyChangedSignal("Value"):Connect(function()
 end)
 
 -- ─── Upgrade dispatch ───────────────────────────────────────────────────
--- The Phone menu fires PhoneMenuAction with an action string. We only
--- react to the handful this module owns (just "upgradeStrength" for
--- now) and silently ignore everything else so other handlers on the
--- same event keep working.
+-- The Phone menu fires PhoneMenuAction with an action string. We map each
+-- supported action to the attribute IntValue it should bump and silently
+-- ignore everything else so other handlers on the same event (daily-quest
+-- claim, etc.) keep working.
+local UPGRADE_ACTIONS = {
+	upgradeStrength = "Strength",
+	upgradeMana     = "Mana",
+	upgradeMutation = "Mutation",
+}
+
 phoneMenuEvent.OnServerEvent:Connect(function(player, action)
-	if action ~= "upgradeStrength" then return end
+	local statName = UPGRADE_ACTIONS[action]
+	if not statName then return end
 
 	local folder = player:FindFirstChild("Characteristics")
 	if not folder then return end
 
 	local upgradePoints = folder:FindFirstChild("UpgradePoints")
-	local strength      = folder:FindFirstChild("Strength")
-	if not (upgradePoints and strength) then return end
+	local stat          = folder:FindFirstChild(statName)
+	if not (upgradePoints and stat) then return end
 
 	if upgradePoints.Value > 0 then
 		upgradePoints.Value = upgradePoints.Value - 1
-		strength.Value = strength.Value + 1
+		stat.Value = stat.Value + 1
 	end
 end)

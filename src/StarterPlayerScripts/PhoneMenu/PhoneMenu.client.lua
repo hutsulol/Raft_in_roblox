@@ -5,7 +5,7 @@
 --
 -- Layout (matches the reference mockup):
 --   top-left     : level badge + upgrade points counter
---   left column  : attribute bars (HP / Stamina / Strength / Agility)
+--   left column  : attribute bars (Strength / Mana / Mutation)
 --   bottom       : XP bar
 --   top-right    : daily tasks + reward
 --   bottom-right : Arsenal / Mercenaries buttons
@@ -133,21 +133,6 @@ local function makeBar(parent, fill01, label)
 	return row, fill, lvl
 end
 
-local function makeIconBox(parent, glyph)
-	-- Simple square "icon slot" placeholder (single letter stand-in so the
-	-- file has zero asset dependencies).
-	local box = Instance.new("Frame")
-	box.BackgroundColor3 = COLOR_BAR_BG
-	box.BorderSizePixel = 0
-	box.Size = UDim2.fromOffset(26, 26)
-	box.Parent = parent
-	corner(box, 6)
-	stroke(box, 1, COLOR_PANEL_EDGE)
-	local g = makeLabel(box, glyph or "", FONT_TITLE, 16, COLOR_ACCENT, Enum.TextXAlignment.Center)
-	g.Size = UDim2.fromScale(1, 1)
-	return box
-end
-
 -- ─── Menu construction ────────────────────────────────────────────────────
 local viewportFrame = nil
 local viewportWorld = nil
@@ -159,9 +144,14 @@ local viewportCharModel = nil
 -- replicated IntValue changes.
 local levelBadgeLabel    = nil
 local upgradePointsLabel = nil
-local strengthFill       = nil
-local strengthLvlLabel   = nil
-local strengthButton     = nil
+-- Upgradable attribute rows. Each entry is populated by buildMenu() and
+-- consumed by refreshCharacteristics() to drive the bar, level label and
+-- "+" button state from the replicated Characteristics folder.
+local statRows = {
+	Strength = { fill = nil, lvl = nil, button = nil, action = "upgradeStrength" },
+	Mana     = { fill = nil, lvl = nil, button = nil, action = "upgradeMana"     },
+	Mutation = { fill = nil, lvl = nil, button = nil, action = "upgradeMutation" },
+}
 local xpAmountLabel      = nil
 local xpFillFrame        = nil
 
@@ -453,7 +443,7 @@ local function buildMenu()
 	local statsPanel = makePanel("StatsPanel", root)
 	statsPanel.AnchorPoint = Vector2.new(0, 0)
 	statsPanel.Position = UDim2.fromOffset(0, 145)
-	statsPanel.Size = UDim2.fromOffset(340, 230)
+	statsPanel.Size = UDim2.fromOffset(340, 190)
 	padding(statsPanel, 12)
 
 	local statsTitle = makeLabel(statsPanel, "Player stats", FONT_TITLE, 18, COLOR_TEXT)
@@ -471,51 +461,40 @@ local function buildMenu()
 	list.Padding = UDim.new(0, 10)
 	list.Parent = rowHolder
 
-	-- Attribute rows. Only Strength is wired to live data right now; the
-	-- other three stay as visual placeholders so the mockup matches. The
-	-- live attribute references are captured into module-level variables
-	-- so refreshCharacteristics() can update them later.
+	-- Attribute rows — Strength / Mana / Mutation. All three are
+	-- upgradable: each has a "+" button that fires its action string on
+	-- PhoneMenuAction, and Characteristics.server.lua bumps the matching
+	-- IntValue back down into refreshCharacteristics().
 	local stats = {
-		{ name = "HP",        fill = 0.8, lvl = "lvl 5", glyph = "+",  key = nil        },
-		{ name = "Stamina",   fill = 0.2, lvl = "lvl 1", glyph = "S",  key = nil        },
-		{ name = "Strength",  fill = 0.0, lvl = "lvl 0", glyph = "ST", key = "Strength" },
-		{ name = "Agility",   fill = 0.2, lvl = "lvl 1", glyph = "A",  key = nil        },
+		{ name = "Strength", key = "Strength" },
+		{ name = "Mana",     key = "Mana"     },
+		{ name = "Mutation", key = "Mutation" },
 	}
 	for i, s in ipairs(stats) do
-		local row, fill, lvlLabel = makeBar(rowHolder, s.fill, s.name)
+		local row, fill, lvlLabel = makeBar(rowHolder, 0, s.name)
 		row.LayoutOrder = i
-		lvlLabel.Text = s.lvl
+		lvlLabel.Text = "lvl 0"
 
-		if s.key == "Strength" then
-			-- Clickable upgrade button for Strength. Fires the
-			-- PhoneMenuAction RemoteEvent with "upgradeStrength" —
-			-- Characteristics.server.lua consumes it and decrements
-			-- UpgradePoints / increments Strength server-side, which
-			-- replicates straight back into refreshCharacteristics().
-			local btn = Instance.new("TextButton")
-			btn.Name = "StrengthUpgrade"
-			btn.BackgroundColor3 = COLOR_BAR_BG
-			btn.BorderSizePixel = 0
-			btn.AutoButtonColor = true
-			btn.Size = UDim2.fromOffset(26, 26)
-			btn.AnchorPoint = Vector2.new(1, 0.5)
-			btn.Position = UDim2.new(1, -46, 0.5, 0)
-			btn.Font = FONT_TITLE
-			btn.TextSize = 18
-			btn.TextColor3 = COLOR_ACCENT
-			btn.Text = "+"
-			btn.Parent = row
-			corner(btn, 6)
-			stroke(btn, 1, COLOR_PANEL_EDGE)
+		local btn = Instance.new("TextButton")
+		btn.Name = s.key .. "Upgrade"
+		btn.BackgroundColor3 = COLOR_BAR_BG
+		btn.BorderSizePixel = 0
+		btn.AutoButtonColor = true
+		btn.Size = UDim2.fromOffset(26, 26)
+		btn.AnchorPoint = Vector2.new(1, 0.5)
+		btn.Position = UDim2.new(1, -46, 0.5, 0)
+		btn.Font = FONT_TITLE
+		btn.TextSize = 18
+		btn.TextColor3 = COLOR_ACCENT
+		btn.Text = "+"
+		btn.Parent = row
+		corner(btn, 6)
+		stroke(btn, 1, COLOR_PANEL_EDGE)
 
-			strengthFill     = fill
-			strengthLvlLabel = lvlLabel
-			strengthButton   = btn
-		else
-			local icon = makeIconBox(row, s.glyph)
-			icon.AnchorPoint = Vector2.new(1, 0.5)
-			icon.Position = UDim2.new(1, -46, 0.5, 0)
-		end
+		local rec = statRows[s.key]
+		rec.fill   = fill
+		rec.lvl    = lvlLabel
+		rec.button = btn
 	end
 
 	-- ── Top-right: daily tasks ─────────────────────────────────────────
@@ -741,6 +720,9 @@ buildMenu()
 -- the Strength "+" button up to the shared PhoneMenuAction RemoteEvent.
 local phoneMenuEvent = ReplicatedStorage:WaitForChild("PhoneMenuAction")
 
+-- Dev-phase: treat 10 levels in any attribute as a full bar.
+local STAT_BAR_MAX = 10
+
 local function refreshCharacteristics()
 	local folder = player:FindFirstChild("Characteristics")
 	if not folder then return end
@@ -749,7 +731,6 @@ local function refreshCharacteristics()
 	local xp            = folder:FindFirstChild("XP")
 	local xpRequired    = folder:FindFirstChild("XPRequired")
 	local upgradePoints = folder:FindFirstChild("UpgradePoints")
-	local strength      = folder:FindFirstChild("Strength")
 
 	if levelBadgeLabel and level then
 		levelBadgeLabel.Text = tostring(level.Value)
@@ -759,18 +740,22 @@ local function refreshCharacteristics()
 		upgradePointsLabel.Text = "Upgrade points: " .. upgradePoints.Value
 	end
 
-	if strengthLvlLabel and strength then
-		strengthLvlLabel.Text = "lvl " .. strength.Value
-	end
-	if strengthFill and strength then
-		-- Dev-phase: treat 10 strength as a full bar.
-		local ratio = math.clamp(strength.Value / 10, 0, 1)
-		strengthFill.Size = UDim2.new(ratio, 0, 1, 0)
-	end
-	if strengthButton and upgradePoints then
-		local hasPoints = upgradePoints.Value > 0
-		strengthButton.AutoButtonColor = hasPoints
-		strengthButton.TextTransparency = hasPoints and 0 or 0.5
+	local hasPoints = upgradePoints and upgradePoints.Value > 0
+	for key, rec in statRows do
+		local stat = folder:FindFirstChild(key)
+		if stat then
+			if rec.lvl then
+				rec.lvl.Text = "lvl " .. stat.Value
+			end
+			if rec.fill then
+				local ratio = math.clamp(stat.Value / STAT_BAR_MAX, 0, 1)
+				rec.fill.Size = UDim2.new(ratio, 0, 1, 0)
+			end
+		end
+		if rec.button then
+			rec.button.AutoButtonColor = hasPoints or false
+			rec.button.TextTransparency = hasPoints and 0 or 0.5
+		end
 	end
 
 	if xpAmountLabel and xp and xpRequired then
@@ -798,10 +783,13 @@ task.spawn(function()
 	refreshCharacteristics()
 end)
 
-if strengthButton then
-	strengthButton.MouseButton1Click:Connect(function()
-		phoneMenuEvent:FireServer("upgradeStrength")
-	end)
+for _, rec in statRows do
+	if rec.button then
+		local action = rec.action
+		rec.button.MouseButton1Click:Connect(function()
+			phoneMenuEvent:FireServer(action)
+		end)
+	end
 end
 
 -- ─── Daily quests binding ────────────────────────────────────────────────
