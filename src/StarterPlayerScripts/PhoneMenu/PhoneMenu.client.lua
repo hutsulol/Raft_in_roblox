@@ -237,10 +237,28 @@ local function refreshCharacterViewport()
 		end
 	end
 
+	-- PrimaryPart must be set before PivotTo actually does anything.
+	clone.PrimaryPart = clone:FindFirstChild("HumanoidRootPart") or clone.PrimaryPart
+
+	-- Parent the rig into the WorldModel BEFORE playing the idle.
+	-- Animator:LoadAnimation / :Play only drive Motor6D transforms while
+	-- the rig is actually in the DataModel tree — an orphaned clone will
+	-- load the track successfully but no joints will ever move, which was
+	-- exactly why the idle looked frozen.
+	clone.Parent = viewportWorld
+
 	-- Place the clone at a slightly raised origin, rotated 180° around Y so
 	-- its front faces the +Z axis — that's where the camera sits. The small
 	-- +Y lift keeps the feet from sinking against the bottom of the frame.
 	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
+
+	-- Make sure the humanoid has an Animator. CreateHumanoidModelFromDescription
+	-- sometimes produces a rig without one, and without it LoadAnimation would
+	-- silently fail.
+	if humanoid and not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = humanoid
+	end
 
 	-- Load the custom idle animation and loop it. Stop anything else the
 	-- animator may already be playing first so nothing blends with it.
@@ -307,7 +325,8 @@ local function refreshCharacterViewport()
 		fillLight.Parent = fillAtt
 	end
 
-	clone.Parent = viewportWorld
+	-- clone was already parented to viewportWorld above (before the idle
+	-- load) so the Animator could actually drive Motor6D transforms.
 	viewportCharModel = clone
 
 	if viewportCamera then
