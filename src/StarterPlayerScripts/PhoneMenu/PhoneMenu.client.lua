@@ -138,6 +138,59 @@ local function makeIconBox(parent, glyph)
 end
 
 -- ─── Menu construction ────────────────────────────────────────────────────
+local viewportFrame = nil
+local viewportCamera = nil
+local viewportCharModel = nil
+
+-- Clone the player's current character into the ViewportFrame, positioned so
+-- the camera frames it nicely. Called whenever the menu opens so the model
+-- always reflects the latest appearance/outfit.
+local function refreshCharacterViewport()
+	if not viewportFrame then return end
+
+	if viewportCharModel then
+		viewportCharModel:Destroy()
+		viewportCharModel = nil
+	end
+
+	local char = player.Character
+	if not char then return end
+
+	-- Archivable must be true for Clone() to succeed on the live character.
+	local wasArchivable = char.Archivable
+	char.Archivable = true
+	local clone = char:Clone()
+	char.Archivable = wasArchivable
+
+	-- Strip scripts and freeze parts so the clone is a static display model.
+	for _, d in clone:GetDescendants() do
+		if d:IsA("Script") or d:IsA("LocalScript") then
+			d:Destroy()
+		elseif d:IsA("BasePart") then
+			d.Anchored = true
+			d.CanCollide = false
+		end
+	end
+	local humanoid = clone:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	end
+
+	-- Center the model at the origin so the fixed camera frames it.
+	local primary = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
+	if primary then
+		clone:PivotTo(CFrame.new(0, 0, 0))
+	end
+
+	clone.Parent = viewportFrame
+	viewportCharModel = clone
+
+	if viewportCamera and primary then
+		-- Camera sits in front of the model, slightly raised, looking at chest.
+		viewportCamera.CFrame = CFrame.new(Vector3.new(0, 0.5, 6), Vector3.new(0, 0.5, 0))
+	end
+end
+
 local function buildMenu()
 	screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "PhoneMenu"
@@ -164,6 +217,25 @@ local function buildMenu()
 	root.Position = UDim2.fromScale(0.5, 0.5)
 	root.Size = UDim2.new(1, -60, 1, -60)
 	root.Parent = screenGui
+
+	-- ── Center: character viewport ───────────────────────────────────────
+	viewportFrame = Instance.new("ViewportFrame")
+	viewportFrame.Name = "CharacterViewport"
+	viewportFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+	viewportFrame.Position = UDim2.fromScale(0.5, 0.45)
+	viewportFrame.Size = UDim2.fromOffset(360, 500)
+	viewportFrame.BackgroundTransparency = 1
+	viewportFrame.BorderSizePixel = 0
+	viewportFrame.LightColor = Color3.fromRGB(255, 255, 255)
+	viewportFrame.LightDirection = Vector3.new(-0.3, -1, -0.5)
+	viewportFrame.Ambient = Color3.fromRGB(180, 200, 230)
+	viewportFrame.Parent = root
+
+	viewportCamera = Instance.new("Camera")
+	viewportCamera.FieldOfView = 40
+	viewportCamera.CFrame = CFrame.new(Vector3.new(0, 0.5, 6), Vector3.new(0, 0.5, 0))
+	viewportCamera.Parent = viewportFrame
+	viewportFrame.CurrentCamera = viewportCamera
 
 	-- ── Top-left: level + upgrade points ─────────────────────────────────
 	local levelPanel = makePanel("LevelPanel", root)
@@ -357,25 +429,37 @@ local function setMenuOpen(open)
 	if not screenGui then buildMenu() end
 	menuOpen = open
 	screenGui.Enabled = open
+	if open then
+		refreshCharacterViewport()
+	end
 end
 
 -- ─── Tool equip tracking (Phone) ──────────────────────────────────────────
+-- While the Phone is equipped we block InventoryUI's own E handler via the
+-- `_G.SuppressInventoryToggle` hook it already exposes — otherwise pressing E
+-- would open both the phone menu AND the inventory at the same time.
+local function setPhoneEquipped(eq)
+	phoneEquipped = eq
+	_G.SuppressInventoryToggle = eq or nil
+end
+
 local function onToolEquipped(tool)
 	if tool.Name == "Phone" then
-		phoneEquipped = true
+		setPhoneEquipped(true)
 	end
 end
 
 local function onToolUnequipped(tool)
 	if tool.Name == "Phone" then
-		phoneEquipped = false
+		setPhoneEquipped(false)
 		if menuOpen then setMenuOpen(false) end
 	end
 end
 
 local function setupCharacter(char)
 	if not char then return end
-	phoneEquipped = false
+	setPhoneEquipped(false)
+	if menuOpen then setMenuOpen(false) end
 
 	char.ChildAdded:Connect(function(child)
 		if child:IsA("Tool") then onToolEquipped(child) end
