@@ -1731,6 +1731,15 @@ local numberKeys = {
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode == Enum.KeyCode.E then
+		-- Hard guard: if the player is currently holding the Phone tool the
+		-- inventory must NEVER toggle on E, even if PhoneMenu's
+		-- `_G.SuppressInventoryToggle` hook hasn't caught up yet. We check
+		-- the live character directly so the two UIs can't race.
+		local char = player.Character
+		local equipped = char and char:FindFirstChildOfClass("Tool")
+		if equipped and equipped.Name == "Phone" then
+			return
+		end
 		if not _G.SuppressInventoryToggle then
 			toggleInventory()
 		end
