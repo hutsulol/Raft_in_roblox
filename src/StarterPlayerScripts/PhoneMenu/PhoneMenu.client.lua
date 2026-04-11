@@ -12,6 +12,7 @@
 
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
+local GuiService       = game:GetService("GuiService")
 
 -- Pose used for the viewport character. Custom looping idle that keeps the
 -- rig in a clean standing stance for the UI preview.
@@ -323,12 +324,17 @@ local function buildMenu()
 	screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "PhoneMenu"
 	screenGui.ResetOnSpawn = false
-	screenGui.IgnoreGuiInset = false
+	-- IgnoreGuiInset = true so the backdrop covers the ENTIRE screen
+	-- (including the strip behind the Roblox topbar). The Root frame
+	-- below is manually pushed down past the topbar so the interactive
+	-- panels still stay clear of the Roblox chrome.
+	screenGui.IgnoreGuiInset = true
 	screenGui.Enabled = false
 	screenGui.DisplayOrder = 50
 	screenGui.Parent = playerGui
 
-	-- Dimming backdrop
+	-- Dimming backdrop — full-screen because the ScreenGui ignores the
+	-- topbar inset. No visible strip of world behind the topbar anymore.
 	local backdrop = Instance.new("Frame")
 	backdrop.Name = "Backdrop"
 	backdrop.BackgroundColor3 = COLOR_BG
@@ -337,13 +343,16 @@ local function buildMenu()
 	backdrop.Size = UDim2.fromScale(1, 1)
 	backdrop.Parent = screenGui
 
-	-- Root frame (full screen minus a small inset)
+	-- Root frame hosts the interactive UI. Inset by the Roblox topbar
+	-- height at the top (plus a small margin) so the level / tasks
+	-- panels never slide under the Roblox chrome on any device.
+	local topInset = GuiService:GetGuiInset().Y
 	local root = Instance.new("Frame")
 	root.Name = "Root"
 	root.BackgroundTransparency = 1
-	root.AnchorPoint = Vector2.new(0.5, 0.5)
-	root.Position = UDim2.fromScale(0.5, 0.5)
-	root.Size = UDim2.new(1, -60, 1, -60)
+	root.AnchorPoint = Vector2.new(0, 0)
+	root.Position = UDim2.new(0, 30, 0, topInset + 20)
+	root.Size = UDim2.new(1, -60, 1, -(topInset + 50))
 	root.Parent = screenGui
 
 	-- ── Center: character viewport ───────────────────────────────────────
@@ -537,7 +546,7 @@ local function buildMenu()
 	-- same visual size across resolutions (desktop and mobile alike).
 	local xpPanel = makePanel("XPPanel", root)
 	xpPanel.AnchorPoint = Vector2.new(0.5, 0)
-	xpPanel.Position = UDim2.new(0.5, 0, 0.45, 260)
+	xpPanel.Position = UDim2.new(0.5, 0, 0.45, 180)
 	xpPanel.Size = UDim2.fromOffset(600, 48)
 	padding(xpPanel, 10)
 
