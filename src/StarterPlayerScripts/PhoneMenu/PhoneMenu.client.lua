@@ -143,52 +143,49 @@ local viewportWorld = nil
 local viewportCamera = nil
 local viewportCharModel = nil
 
--- Build a static preview rig from the player's HumanoidDescription.
--- This is the ONLY supported path — we never clone LocalPlayer.Character,
--- because cloning the live character races with appearance/accessory
--- streaming and can leave the rig without a head or with missing parts.
+-- Build a static preview rig by cloning the player's live character.
+-- Clone is synchronous (no network round-trip) so it is effectively
+-- free — the delay players saw with the HumanoidDescription pipeline
+-- came from GetHumanoidDescriptionFromUserId yielding on the web
+-- catalog. Character:Clone() is instant.
 --
--- GetHumanoidDescriptionFromUserId fetches the player's avatar straight
--- from the web catalog, and CreateHumanoidModelFromDescription builds a
--- fully-assembled R15 rig from that description — the same pipeline the
--- Avatar Editor uses, so the result is always complete and consistent.
+-- To avoid cloning a half-streamed character (missing head, missing
+-- accessories, etc.) we wait for:
+--   * the essential parts (HumanoidRootPart / Head / Humanoid), and
+--   * CharacterAppearanceLoaded, which fires once accessories, body
+--     colours and clothing have finished replicating.
 --
--- Both API calls yield on network, so this function must be run from a
--- task. On failure we retry with exponential backoff until it succeeds;
--- there is deliberately no Character:Clone() fallback.
+-- All of that waiting happens in the background task that caches the
+-- rig at startup / on respawn — NOT on menu open — so `setMenuOpen`
+-- stays an instant visibility toggle.
 local function buildPreviewRig()
-	local attempt = 0
-	while true do
-		attempt += 1
-		local ok, result = pcall(function()
-			local desc = Players:GetHumanoidDescriptionFromUserId(player.UserId)
-			local rig = Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+	local char = player.Character or player.CharacterAdded:Wait()
 
-			-- Re-apply the description directly on the rig as an extra
-			-- guarantee that every piece of the avatar (head, face,
-			-- accessories, layered clothing) is present, matching the
-			-- Avatar Editor flow.
-			local humanoid = rig:FindFirstChildOfClass("Humanoid")
-			if humanoid then
-				humanoid:ApplyDescription(desc)
-			end
-			return rig
-		end)
+	-- Wait for the pieces we need before snapshotting the rig.
+	char:WaitForChild("HumanoidRootPart", 10)
+	char:WaitForChild("Head", 10)
+	char:WaitForChild("Humanoid", 10)
 
-		if ok and result and result:FindFirstChild("Head") then
-			return result
-		end
-
-		if result then result:Destroy() end
-		-- Exponential backoff, capped, so we keep retrying without
-		-- hammering the API if the first call raced or failed.
-		task.wait(math.min(0.5 * attempt, 3))
+	-- Wait for appearance (accessories / clothing / body colours) to
+	-- finish loading so the clone is a complete avatar.
+	if not player:HasAppearanceLoaded() then
+		player.CharacterAppearanceLoaded:Wait()
 	end
+
+	-- Re-fetch char in case a respawn happened during the yields above.
+	char = player.Character
+	if not char then return nil end
+
+	local wasArchivable = char.Archivable
+	char.Archivable = true
+	local clone = char:Clone()
+	char.Archivable = wasArchivable
+	return clone
 end
 
--- Rebuild the cached character display inside the ViewportFrame. Builds a
--- fresh preview rig from the player's HumanoidDescription, then follows the
--- exact ordering the rig needs to actually render:
+-- Rebuild the cached character display inside the ViewportFrame. Clones
+-- the live character via buildPreviewRig(), then follows the exact
+-- ordering the rig needs to actually render inside a ViewportFrame:
 --
 --   1. strip scripts,
 --   2. set PrimaryPart,
