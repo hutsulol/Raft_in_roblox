@@ -13,11 +13,9 @@
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
--- Pose used for the viewport character. This is a standard Roblox R15 idle
--- animation — loading and playing it guarantees the clone always stands in a
--- clean neutral pose instead of copying whatever animation the live
--- character happens to be running (walk, jump, swim, tool hold, …).
-local IDLE_ANIMATION_ID = "rbxassetid://507766666"
+-- Pose used for the viewport character. Custom looping idle that keeps the
+-- rig in a clean standing stance for the UI preview.
+local IDLE_ANIMATION_ID = "rbxassetid://98569847195083"
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -244,35 +242,18 @@ local function refreshCharacterViewport()
 	-- +Y lift keeps the feet from sinking against the bottom of the frame.
 	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
 
-	-- Load the idle animation but do NOT start it. The rig should sit in
-	-- its neutral Motor6D pose most of the time and only play the idle
-	-- occasionally so there's no constant head sway in the UI preview.
-	-- A background task plays the track once every ~30 seconds while the
-	-- model is alive.
+	-- Load the custom idle animation and loop it. Stop anything else the
+	-- animator may already be playing first so nothing blends with it.
 	if animator then
+		for _, t in animator:GetPlayingAnimationTracks() do
+			t:Stop(0)
+		end
 		local anim = Instance.new("Animation")
 		anim.AnimationId = IDLE_ANIMATION_ID
 		local track = animator:LoadAnimation(anim)
-		track.Looped = false
+		track.Looped = true
 		track.Priority = Enum.AnimationPriority.Action
-
-		local thisModel = clone
-		task.spawn(function()
-			while thisModel.Parent do
-				task.wait(30)
-				-- Bail out if the rig was rebuilt (respawn) in the
-				-- meantime — the new rig has its own ticker.
-				if not thisModel.Parent or thisModel ~= viewportCharModel then
-					return
-				end
-				-- Make sure nothing else is playing before we trigger
-				-- the one-shot idle.
-				for _, t in animator:GetPlayingAnimationTracks() do
-					t:Stop(0)
-				end
-				track:Play()
-			end
-		end)
+		track:Play()
 	end
 
 	-- Multi-light setup to give the clone depth and shape. A single light
