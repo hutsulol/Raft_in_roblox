@@ -121,6 +121,70 @@ local TOTAL_SLOTS = HOTBAR_SLOTS + GRID_SLOTS
 local SLOT_SIZE = 60
 local SLOT_PAD = 6
 local COLS = 5
+local BASE_UNLOCKED_SLOTS = HOTBAR_SLOTS + 5 -- hotbar + first grid row until Strength unlocks more
+
+-- How many total slots (hotbar + grid) the player currently has unlocked.
+-- Driven by `Characteristics.UnlockedInventorySlots` which is computed from
+-- the player's Strength stat by Strength.server.lua. Defaults to the
+-- base 13 so the UI is usable before the value replicates.
+local unlockedSlots = BASE_UNLOCKED_SLOTS
+
+-- Populated while the inventory window is built. Each entry is a
+-- { button = TextButton, stroke = UIStroke } record for the grid slot
+-- at `HOTBAR_SLOTS + i`. Used by applyUnlockedSlots() to repaint the
+-- locked / unlocked visuals whenever the unlocked-count changes.
+local gridSlotVisuals = {}
+local lockedOverlayLabel = nil
+
+local function isSlotLocked(globalIdx)
+	return globalIdx > unlockedSlots
+end
+
+-- Highest grid slot index (global) that writes are allowed to touch.
+-- Used to clamp `findEmptySlot` / distribution ranges so that new items
+-- never land in a locked slot.
+local function maxWritableSlot()
+	return math.min(TOTAL_SLOTS, unlockedSlots)
+end
+
+-- Repaints every grid slot for the current `unlockedSlots` count and
+-- positions the big "NEED STRENGTH" overlay over the locked region.
+-- Called whenever `Characteristics.UnlockedInventorySlots` changes and
+-- once after the inventory UI is built.
+local function applyUnlockedSlots()
+	if #gridSlotVisuals == 0 then return end
+
+	local firstLockedLocalIdx = nil
+	for i, rec in ipairs(gridSlotVisuals) do
+		local globalIdx = HOTBAR_SLOTS + i
+		local locked    = globalIdx > unlockedSlots
+		if rec.button then
+			rec.button.BackgroundTransparency = locked and 0.55 or 0.05
+			rec.button.AutoButtonColor        = false
+			rec.button.Active                 = not locked
+		end
+		if rec.stroke then
+			rec.stroke.Transparency = locked and 0.7 or 0
+		end
+		if locked and not firstLockedLocalIdx then
+			firstLockedLocalIdx = i
+		end
+	end
+
+	if lockedOverlayLabel then
+		if firstLockedLocalIdx then
+			local firstRow = math.floor((firstLockedLocalIdx - 1) / COLS)
+			local rows = 4 - firstRow
+			local y = SLOT_PAD + firstRow * (SLOT_SIZE + SLOT_PAD)
+			local h = rows * (SLOT_SIZE + SLOT_PAD) - SLOT_PAD
+			lockedOverlayLabel.Position = UDim2.new(0, SLOT_PAD, 0, y)
+			lockedOverlayLabel.Size     = UDim2.new(1, -SLOT_PAD * 2, 0, h)
+			lockedOverlayLabel.Visible  = true
+		else
+			lockedOverlayLabel.Visible = false
+		end
+	end
+end
 
 -- ─── Unified Slot Data ───
 -- Slots 1..8 = hotbar, slots 9..28 = inventory grid
@@ -316,7 +380,7 @@ local function distributeResource(name, totalCount, icon)
 
 		-- Still need more? Create new slots
 		while added < diff do
-			local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, TOTAL_SLOTS)
+			local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, maxWritableSlot())
 			if not empty then break end
 			local amount = math.min(diff - added, MAX_STACK)
 			slotData[empty] = {type = "resource", name = name, count = amount, icon = icon}
@@ -420,7 +484,7 @@ local function rebuildSlotData()
 		else
 			local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
 			local entry = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon, count = toolCounts[tool.Name]}
-			local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, TOTAL_SLOTS)
+			local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, maxWritableSlot())
 			if empty then slotData[empty] = entry end
 		end
 	end
@@ -643,6 +707,12 @@ local function endDrag(mousePos)
 	local srcSlot = dragState.sourceSlot
 	local isSplit = dragState.splitMode
 
+	-- Drops onto locked grid slots are ignored — treat them as "empty
+	-- air" so the drag just snaps back instead of overwriting data.
+	if targetSlot and isSlotLocked(targetSlot) then
+		targetSlot = nil
+	end
+
 	if targetSlot and targetSlot ~= srcSlot then
 		local srcData = slotData[srcSlot]
 		local dstData = slotData[targetSlot]
@@ -735,7 +805,7 @@ local function quickTransfer(slotIndex)
 		-- From hotbar → inventory grid
 		if not isOpen then return end -- grid must be open
 		targetStart = HOTBAR_SLOTS + 1
-		targetEnd = TOTAL_SLOTS
+		targetEnd = maxWritableSlot()
 	else
 		-- From inventory grid → hotbar
 		targetStart = 1
@@ -1286,6 +1356,9 @@ local function closeUI()
 		screenGui:Destroy()
 		screenGui = nil
 	end
+	-- Drop stale grid slot refs; buildUI() re-populates them next open.
+	table.clear(gridSlotVisuals)
+	lockedOverlayLabel = nil
 	hideTooltip()
 	isOpen = false
 	selectedRecipe = nil
@@ -1502,6 +1575,9 @@ local function buildUI()
 	gridFrame.BackgroundTransparency = 1
 	gridFrame.Parent = centerPanel
 
+	-- Clear any stale refs from a previous rebuild.
+	table.clear(gridSlotVisuals)
+
 	for i = 1, GRID_SLOTS do
 		local row = math.floor((i - 1) / COLS)
 		local col = (i - 1) % COLS
@@ -1526,9 +1602,12 @@ local function buildUI()
 		slotStroke.Thickness = 1.5
 		slotStroke.Parent = slot
 
+		gridSlotVisuals[i] = { button = slot, stroke = slotStroke }
+
 		local globalIdx = HOTBAR_SLOTS + i
 
 		slot.MouseEnter:Connect(function()
+			if isSlotLocked(globalIdx) then return end
 			showTooltipForSlot(globalIdx)
 		end)
 		slot.MouseLeave:Connect(function()
@@ -1536,6 +1615,7 @@ local function buildUI()
 		end)
 
 		slot.MouseButton1Down:Connect(function()
+			if isSlotLocked(globalIdx) then return end
 			local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
 				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 			if shiftHeld then
@@ -1552,6 +1632,7 @@ local function buildUI()
 		end)
 
 		slot.MouseButton2Down:Connect(function()
+			if isSlotLocked(globalIdx) then return end
 			local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
 				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 			if shiftHeld then
@@ -1567,6 +1648,24 @@ local function buildUI()
 			end
 		end)
 	end
+
+	-- Big "NEED STRENGTH" overlay that covers the locked portion of the
+	-- grid. applyUnlockedSlots() repositions/hides it based on the
+	-- current unlocked-count.
+	lockedOverlayLabel = Instance.new("TextLabel")
+	lockedOverlayLabel.Name = "LockedOverlay"
+	lockedOverlayLabel.BackgroundTransparency = 1
+	lockedOverlayLabel.Text = "NEED STRENGTH"
+	lockedOverlayLabel.Font = Enum.Font.GothamBold
+	lockedOverlayLabel.TextScaled = true
+	lockedOverlayLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
+	lockedOverlayLabel.TextTransparency = 0.25
+	lockedOverlayLabel.TextStrokeTransparency = 0.4
+	lockedOverlayLabel.TextStrokeColor3 = Color3.fromRGB(20, 20, 20)
+	lockedOverlayLabel.ZIndex = 10
+	lockedOverlayLabel.Parent = gridFrame
+
+	applyUnlockedSlots()
 
 	-- ─── Left Crafting Panel (vertical category list) ───
 	local craftPanelWidth = 160
@@ -1839,6 +1938,22 @@ end)
 rebuildSlotData()
 buildHotbar()
 renderAllSlots()
+
+-- Track the replicated `Characteristics.UnlockedInventorySlots` value
+-- (written by Strength.server.lua based on the player's Strength stat)
+-- and repaint the grid whenever it changes.
+task.spawn(function()
+	local folder = player:WaitForChild("Characteristics")
+	local value  = folder:WaitForChild("UnlockedInventorySlots")
+
+	local function refresh()
+		unlockedSlots = math.clamp(value.Value, BASE_UNLOCKED_SLOTS, TOTAL_SLOTS)
+		applyUnlockedSlots()
+	end
+
+	refresh()
+	value:GetPropertyChangedSignal("Value"):Connect(refresh)
+end)
 
 local backpack = player:WaitForChild("Backpack")
 backpack.ChildAdded:Connect(function() task.wait(0.1) updateUI() end)
