@@ -36,6 +36,7 @@
 --   "Claim" button when every quest is complete.
 
 local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DataStoreService  = game:GetService("DataStoreService")
 
 -- ─── DataStore ─────────────────────────────────────────────────────────
@@ -436,4 +437,70 @@ task.spawn(function()
 			end
 		end
 	end
+end)
+
+-- ─── Claim reward ──────────────────────────────────────────────────────
+-- Listens on the shared PhoneMenuAction RemoteEvent for the
+-- "claimDailyReward" action. Grants the player their XP (via the
+-- Characteristics.XP IntValue, which Characteristics.server.lua
+-- re-uses to level the player) and stacks the iron-ingot reward into
+-- the gameplay inventory through _G.GetInventory / _G.SendInventory.
+local phoneMenuEvent = ReplicatedStorage:WaitForChild("PhoneMenuAction")
+
+local function allQuestsComplete(save)
+	for _, id in save.questIds do
+		local def = QUEST_BY_ID[id]
+		if not def then return false end
+		if (save.progress[id] or 0) < def.target then
+			return false
+		end
+	end
+	return #save.questIds > 0
+end
+
+local function grantRewards(player, save)
+	-- XP goes through the Characteristics folder's XP IntValue so
+	-- Characteristics.server.lua's level-up loop handles any level
+	-- gains automatically.
+	local chFolder = player:FindFirstChild("Characteristics")
+	if chFolder then
+		local xp = chFolder:FindFirstChild("XP")
+		if xp and save.rewardXP and save.rewardXP > 0 then
+			xp.Value = xp.Value + save.rewardXP
+		end
+	end
+
+	-- Iron ingots go into the gameplay inventory via the existing
+	-- _G.GetInventory / _G.SendInventory hooks (same path Furnace
+	-- smelting uses).
+	if save.rewardIronIngots and save.rewardIronIngots > 0 then
+		local getInv = _G.GetInventory
+		local sendInv = _G.SendInventory
+		if getInv then
+			local inv = getInv(player)
+			if inv then
+				inv.Iron_Ingot = (inv.Iron_Ingot or 0) + save.rewardIronIngots
+				if sendInv then sendInv(player) end
+			end
+		end
+	end
+end
+
+phoneMenuEvent.OnServerEvent:Connect(function(player, action)
+	if action ~= "claimDailyReward" then return end
+
+	local s = state[player]
+	if not s then return end
+	if s.save.claimed then return end
+	if not allQuestsComplete(s.save) then return end
+
+	s.save.claimed = true
+	grantRewards(player, s.save)
+	syncFolder(player)
+
+	-- Claiming is a meaningful milestone — flush it to the DataStore
+	-- immediately so a crash or rejoin can't un-claim the reward.
+	s.saveDirty  = false
+	s.lastSaveAt = tick()
+	task.spawn(writeSave, player.UserId, s.date, s.save)
 end)

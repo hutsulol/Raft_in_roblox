@@ -165,6 +165,18 @@ local strengthButton     = nil
 local xpAmountLabel      = nil
 local xpFillFrame        = nil
 
+-- Tasks panel refs. `dailyQuestRows` is rebuilt every time the
+-- replicated DailyQuests folder changes shape (new day, different
+-- quest count) — each entry is keyed by quest id and holds the row
+-- frame plus the check-box / label elements we repaint on progress
+-- updates. `dailyClaimButton` becomes clickable once every quest is
+-- complete, and goes away once the reward is claimed.
+local dailyQuestsHolder  = nil
+local dailyRewardLabel   = nil
+local dailyClaimButton   = nil
+local dailyQuestRows     = {}
+local dailyQuestConnections = {}
+
 -- Build a static preview rig from the player's HumanoidDescription. This
 -- gives us a fresh R15 model in a clean neutral pose (like the Avatar
 -- Editor) that matches the player's appearance, instead of a snapshot of
@@ -505,19 +517,23 @@ local function buildMenu()
 	end
 
 	-- ── Top-right: daily tasks ─────────────────────────────────────────
+	-- Structure only — the quest rows, reward label and claim button
+	-- are all (re)populated by refreshDailyQuests() from the replicated
+	-- DailyQuests folder.
 	local tasksPanel = makePanel("TasksPanel", root)
 	tasksPanel.AnchorPoint = Vector2.new(1, 0)
 	tasksPanel.Position = UDim2.new(1, 0, 0, 0)
-	tasksPanel.Size = UDim2.fromOffset(320, 180)
+	tasksPanel.Size = UDim2.fromOffset(320, 230)
 	padding(tasksPanel, 12)
 
 	local tasksTitle = makeLabel(tasksPanel, "Tasks for today:", FONT_TITLE, 18, COLOR_TEXT)
 	tasksTitle.Size = UDim2.new(1, 0, 0, 22)
 
 	local tasksHolder = Instance.new("Frame")
+	tasksHolder.Name = "TasksHolder"
 	tasksHolder.BackgroundTransparency = 1
 	tasksHolder.Position = UDim2.fromOffset(0, 30)
-	tasksHolder.Size = UDim2.new(1, 0, 0, 70)
+	tasksHolder.Size = UDim2.new(1, 0, 0, 110)
 	tasksHolder.Parent = tasksPanel
 
 	local tList = Instance.new("UIListLayout")
@@ -525,43 +541,33 @@ local function buildMenu()
 	tList.Padding = UDim.new(0, 8)
 	tList.Parent = tasksHolder
 
-	local tasks = {
-		{ text = "Collect 10 logs",  done = false },
-		{ text = "Kill 10 enemies",  done = true  },
-	}
-	for i, t in ipairs(tasks) do
-		local row = Instance.new("Frame")
-		row.BackgroundTransparency = 1
-		row.Size = UDim2.new(1, 0, 0, 26)
-		row.LayoutOrder = i
-		row.Parent = tasksHolder
-
-		local box = Instance.new("Frame")
-		box.BackgroundColor3 = COLOR_BAR_BG
-		box.BorderSizePixel = 0
-		box.Size = UDim2.fromOffset(22, 22)
-		box.Position = UDim2.fromOffset(0, 2)
-		box.Parent = row
-		corner(box, 4)
-		stroke(box, 1.5, COLOR_PANEL_EDGE)
-
-		if t.done then
-			local check = makeLabel(box, "X", FONT_TITLE, 18, COLOR_ACCENT, Enum.TextXAlignment.Center)
-			check.Size = UDim2.fromScale(1, 1)
-		end
-
-		local label = makeLabel(row, t.text, FONT_BODY, 16, COLOR_TEXT)
-		label.Position = UDim2.fromOffset(32, 0)
-		label.Size = UDim2.new(1, -32, 1, 0)
-	end
-
 	local rewardLbl = makeLabel(tasksPanel, "Reward:", FONT_TITLE, 16, COLOR_TEXT)
-	rewardLbl.Position = UDim2.fromOffset(0, 110)
+	rewardLbl.Position = UDim2.fromOffset(0, 146)
 	rewardLbl.Size = UDim2.fromOffset(80, 22)
 
-	local rewardValue = makeLabel(tasksPanel, "+100 XP", FONT_TITLE, 18, COLOR_ACCENT)
-	rewardValue.Position = UDim2.fromOffset(82, 110)
+	local rewardValue = makeLabel(tasksPanel, "", FONT_TITLE, 16, COLOR_ACCENT)
+	rewardValue.Position = UDim2.fromOffset(82, 146)
 	rewardValue.Size = UDim2.new(1, -82, 0, 22)
+
+	local claimBtn = Instance.new("TextButton")
+	claimBtn.Name = "ClaimButton"
+	claimBtn.BackgroundColor3 = COLOR_BAR_BG
+	claimBtn.BorderSizePixel = 0
+	claimBtn.Position = UDim2.fromOffset(0, 175)
+	claimBtn.Size = UDim2.new(1, 0, 0, 32)
+	claimBtn.Font = FONT_TITLE
+	claimBtn.TextSize = 16
+	claimBtn.TextColor3 = COLOR_TEXT_DIM
+	claimBtn.AutoButtonColor = false
+	claimBtn.Text = "Claim reward"
+	claimBtn.Active = false
+	claimBtn.Parent = tasksPanel
+	corner(claimBtn, 8)
+	stroke(claimBtn, 1.5, COLOR_PANEL_EDGE)
+
+	dailyQuestsHolder = tasksHolder
+	dailyRewardLabel  = rewardValue
+	dailyClaimButton  = claimBtn
 
 	-- ── Bottom-right: Arsenal / Mercenaries ────────────────────────────
 	local sidePanel = makePanel("SidePanel", root)
@@ -776,6 +782,237 @@ end)
 if strengthButton then
 	strengthButton.MouseButton1Click:Connect(function()
 		phoneMenuEvent:FireServer("upgradeStrength")
+	end)
+end
+
+-- ─── Daily quests binding ────────────────────────────────────────────────
+-- Mirror the replicated `DailyQuests` folder (produced by
+-- DailyQuests.server.lua) into the phone-menu tasks panel: one row per
+-- quest with a live progress label and a checkbox that lights up when
+-- the quest is complete, plus the reward line and the claim button.
+
+local function clearDailyQuestRows()
+	for _, conn in dailyQuestConnections do
+		conn:Disconnect()
+	end
+	table.clear(dailyQuestConnections)
+	if dailyQuestsHolder then
+		for _, child in dailyQuestsHolder:GetChildren() do
+			if child:IsA("Frame") then
+				child:Destroy()
+			end
+		end
+	end
+	table.clear(dailyQuestRows)
+end
+
+local function formatQuestLabel(questFolder)
+	local label    = questFolder:FindFirstChild("Label")
+	local progress = questFolder:FindFirstChild("Progress")
+	local target   = questFolder:FindFirstChild("Target")
+	local base     = (label and label.Value) or questFolder.Name
+	if progress and target and target.Value > 0 then
+		return string.format("%s (%d/%d)", base, progress.Value, target.Value)
+	end
+	return base
+end
+
+local function repaintQuestRow(id)
+	local rec = dailyQuestRows[id]
+	if not rec then return end
+	local quest = rec.folder
+	if not quest or not quest.Parent then return end
+
+	local progress  = quest:FindFirstChild("Progress")
+	local target    = quest:FindFirstChild("Target")
+	local completed = quest:FindFirstChild("Completed")
+	local done      = completed and completed.Value
+
+	rec.label.Text = formatQuestLabel(quest)
+	rec.label.TextColor3 = done and COLOR_ACCENT or COLOR_TEXT
+
+	if done then
+		if not rec.check then
+			local check = makeLabel(rec.box, "X", FONT_TITLE, 18, COLOR_ACCENT, Enum.TextXAlignment.Center)
+			check.Size = UDim2.fromScale(1, 1)
+			rec.check = check
+		end
+	else
+		if rec.check then
+			rec.check:Destroy()
+			rec.check = nil
+		end
+	end
+end
+
+local function updateDailyRewardAndButton(folder)
+	local claimedVal = folder:FindFirstChild("Claimed")
+	local rewardXP   = folder:FindFirstChild("RewardXP")
+	local rewardIron = folder:FindFirstChild("RewardIronIngots")
+
+	if dailyRewardLabel then
+		local xp   = rewardXP and rewardXP.Value or 0
+		local iron = rewardIron and rewardIron.Value or 0
+		if iron > 0 then
+			dailyRewardLabel.Text = string.format("+%d XP   +%d Iron", xp, iron)
+		else
+			dailyRewardLabel.Text = string.format("+%d XP", xp)
+		end
+	end
+
+	if not dailyClaimButton then return end
+
+	-- The button lights up only when every quest is complete and the
+	-- reward hasn't been claimed yet.
+	local allDone = true
+	local questCount = 0
+	for _, child in folder:GetChildren() do
+		if child:IsA("Folder") and child.Name:sub(1, 6) == "Quest_" then
+			questCount = questCount + 1
+			local c = child:FindFirstChild("Completed")
+			if not (c and c.Value) then
+				allDone = false
+			end
+		end
+	end
+	if questCount == 0 then allDone = false end
+
+	local claimed = claimedVal and claimedVal.Value or false
+
+	if claimed then
+		dailyClaimButton.Text        = "Reward claimed"
+		dailyClaimButton.TextColor3  = COLOR_TEXT_DIM
+		dailyClaimButton.Active      = false
+		dailyClaimButton.AutoButtonColor = false
+	elseif allDone then
+		dailyClaimButton.Text        = "Claim reward"
+		dailyClaimButton.TextColor3  = COLOR_ACCENT
+		dailyClaimButton.Active      = true
+		dailyClaimButton.AutoButtonColor = true
+	else
+		dailyClaimButton.Text        = "Claim reward"
+		dailyClaimButton.TextColor3  = COLOR_TEXT_DIM
+		dailyClaimButton.Active      = false
+		dailyClaimButton.AutoButtonColor = false
+	end
+end
+
+local function rebuildDailyQuests(folder)
+	clearDailyQuestRows()
+	if not dailyQuestsHolder or not folder then return end
+
+	-- Gather the quest folders, sort by their `Order` IntValue so the
+	-- phone menu always displays them in the same sequence.
+	local questFolders = {}
+	for _, child in folder:GetChildren() do
+		if child:IsA("Folder") and child.Name:sub(1, 6) == "Quest_" then
+			table.insert(questFolders, child)
+		end
+	end
+	table.sort(questFolders, function(a, b)
+		local ao = a:FindFirstChild("Order")
+		local bo = b:FindFirstChild("Order")
+		return (ao and ao.Value or 0) < (bo and bo.Value or 0)
+	end)
+
+	for i, quest in questFolders do
+		local idVal = quest:FindFirstChild("Id")
+		local id    = (idVal and idVal.Value) or quest.Name
+
+		local row = Instance.new("Frame")
+		row.Name = "Row_" .. id
+		row.BackgroundTransparency = 1
+		row.Size = UDim2.new(1, 0, 0, 26)
+		row.LayoutOrder = i
+		row.Parent = dailyQuestsHolder
+
+		local box = Instance.new("Frame")
+		box.BackgroundColor3 = COLOR_BAR_BG
+		box.BorderSizePixel = 0
+		box.Size = UDim2.fromOffset(22, 22)
+		box.Position = UDim2.fromOffset(0, 2)
+		box.Parent = row
+		corner(box, 4)
+		stroke(box, 1.5, COLOR_PANEL_EDGE)
+
+		local label = makeLabel(row, quest.Name, FONT_BODY, 15, COLOR_TEXT)
+		label.Position = UDim2.fromOffset(32, 0)
+		label.Size = UDim2.new(1, -32, 1, 0)
+
+		dailyQuestRows[id] = { folder = quest, row = row, box = box, label = label, check = nil }
+
+		-- Watch Progress and Completed for changes so the row repaints
+		-- immediately as the player earns resources.
+		local progress  = quest:FindFirstChild("Progress")
+		local completed = quest:FindFirstChild("Completed")
+		if progress then
+			table.insert(dailyQuestConnections,
+				progress:GetPropertyChangedSignal("Value"):Connect(function()
+					repaintQuestRow(id)
+					updateDailyRewardAndButton(folder)
+				end))
+		end
+		if completed then
+			table.insert(dailyQuestConnections,
+				completed:GetPropertyChangedSignal("Value"):Connect(function()
+					repaintQuestRow(id)
+					updateDailyRewardAndButton(folder)
+				end))
+		end
+
+		repaintQuestRow(id)
+	end
+
+	updateDailyRewardAndButton(folder)
+end
+
+task.spawn(function()
+	-- The folder may arrive before or after the menu GUI is built, so
+	-- wait for it and then rebuild on every change. We also rebuild on
+	-- Date change (new day → reroll) by watching the folder's
+	-- ChildRemoved/ChildAdded — simpler is to watch the Player for a
+	-- new DailyQuests folder entirely.
+	local function bind(folder)
+		rebuildDailyQuests(folder)
+
+		-- Reward / claimed state updates also repaint the button.
+		local claimed  = folder:FindFirstChild("Claimed")
+		local rewardXP = folder:FindFirstChild("RewardXP")
+		local rewardIr = folder:FindFirstChild("RewardIronIngots")
+		if claimed then
+			table.insert(dailyQuestConnections,
+				claimed:GetPropertyChangedSignal("Value"):Connect(function()
+					updateDailyRewardAndButton(folder)
+				end))
+		end
+		if rewardXP then
+			table.insert(dailyQuestConnections,
+				rewardXP:GetPropertyChangedSignal("Value"):Connect(function()
+					updateDailyRewardAndButton(folder)
+				end))
+		end
+		if rewardIr then
+			table.insert(dailyQuestConnections,
+				rewardIr:GetPropertyChangedSignal("Value"):Connect(function()
+					updateDailyRewardAndButton(folder)
+				end))
+		end
+	end
+
+	local folder = player:WaitForChild("DailyQuests")
+	bind(folder)
+
+	player.ChildAdded:Connect(function(child)
+		if child.Name == "DailyQuests" and child:IsA("Folder") then
+			bind(child)
+		end
+	end)
+end)
+
+if dailyClaimButton then
+	dailyClaimButton.MouseButton1Click:Connect(function()
+		if not dailyClaimButton.Active then return end
+		phoneMenuEvent:FireServer("claimDailyReward")
 	end)
 end
 
