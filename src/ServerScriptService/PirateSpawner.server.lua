@@ -20,6 +20,28 @@ local function getBoat()
 	return workspace:FindFirstChild("Raft")
 end
 
+-- When PrimaryPart is not a Raft_part (e.g. a SpawnLocation), its orientation
+-- differs from tile orientation. Returns a rotation correction so new tiles
+-- match existing Raft_part orientation instead of PrimaryPart's.
+local function getTileRotationCorrection(raft)
+	local primary = raft.PrimaryPart
+	if not primary then return CFrame.new() end
+	for _, child in raft:GetChildren() do
+		if child.Name == "Raft_part" and child ~= primary then
+			local tileCF
+			if child:IsA("Model") then
+				tileCF = child:GetPivot()
+			elseif child:IsA("BasePart") then
+				tileCF = child.CFrame
+			end
+			if tileCF then
+				return primary.CFrame:ToObjectSpace(tileCF).Rotation
+			end
+		end
+	end
+	return CFrame.new()
+end
+
 -- Wait for raft to exist
 local boat = getBoat()
 while not boat do
@@ -63,12 +85,12 @@ local function spawnPirateRaft()
 		end
 	end
 
-	-- Match the player raft's pitch/roll so the tile lies flat.
-	-- The raft model's PrimaryPart is oriented with a specific pitch/roll
-	-- that defines "flat on water"; CFrame.new(pos) alone gives identity
-	-- rotation, which stands the tile upright after the model was redesigned.
-	local pitch, _, roll = root.CFrame:ToEulerAnglesYXZ()
-	local flatCF = CFrame.new(spawnPos) * CFrame.fromEulerAnglesYXZ(pitch, 0, roll)
+	-- Match the player raft's Raft_part orientation so the pirate tile lies
+	-- flat. The player raft's PrimaryPart may be a SpawnLocation with a
+	-- different orientation than its Raft_parts; use the same rotation
+	-- correction as BuildingSystem so the pirate tile matches existing tiles.
+	local tileCorrection = getTileRotationCorrection(boat)
+	local flatCF = CFrame.new(spawnPos) * (root.CFrame.Rotation * tileCorrection)
 
 	if floor:IsA("Model") then
 		floor:PivotTo(flatCF)
@@ -246,8 +268,15 @@ local function spawnPirateRaft()
 				local raftPrimary = b.PrimaryPart
 				local piratePos = rootPart.Position
 
-				-- Use yaw-only CFrame for consistent grid calculations
-				local _, raftYaw, _ = raftPrimary.CFrame:ToEulerAnglesYXZ()
+				-- Use yaw-only CFrame for consistent grid calculations.
+				-- Prefer RestYaw attribute (matches BuildingSystem placement)
+				-- since ToEulerAnglesYXZ on a 90° pitched PrimaryPart is
+				-- gimbal-locked and unreliable.
+				local raftYaw = raftPrimary:GetAttribute("RestYaw")
+				if not raftYaw then
+					local _, yaw, _ = raftPrimary.CFrame:ToEulerAnglesYXZ()
+					raftYaw = yaw
+				end
 				local flatCF = CFrame.new(raftPrimary.Position) * CFrame.Angles(0, raftYaw, 0)
 
 				-- Collect all floor tile world positions (initial + placed tiles)
@@ -310,10 +339,16 @@ local function spawnPirateRaft()
 					end
 				end
 
-				-- Snap pirate raft flush to the edge, matching raft orientation
+				-- Snap pirate raft flush to the edge, matching existing
+				-- Raft_part orientation (not the SpawnLocation PrimaryPart's
+				-- orientation). Build the world rotation as
+				-- raftPrimary.CFrame.Rotation * tileCorrection so pitch/roll/
+				-- yaw all come from an existing Raft_part, avoiding the
+				-- gimbal-locked ToEulerAnglesYXZ on a 90° pitched PrimaryPart.
 				local dockWorld = tileCF:PointToWorldSpace(dockOffset)
-				local raftPitch, _, raftRoll = raftPrimary.CFrame:ToEulerAnglesYXZ()
-				rootPart.CFrame = CFrame.new(dockWorld.X, raftPrimary.Position.Y, dockWorld.Z) * CFrame.fromEulerAnglesYXZ(raftPitch, raftYaw, raftRoll)
+				local tileCorrection = getTileRotationCorrection(b)
+				local tileWorldRotation = raftPrimary.CFrame.Rotation * tileCorrection
+				rootPart.CFrame = CFrame.new(Vector3.new(dockWorld.X, raftPrimary.Position.Y, dockWorld.Z)) * tileWorldRotation
 
 				-- Weld all pirate raft parts to the player raft
 				for _, part in floor:GetDescendants() do
