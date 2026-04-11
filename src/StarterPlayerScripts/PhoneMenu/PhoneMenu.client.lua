@@ -46,7 +46,11 @@ local screenGui             = nil
 -- Frame that hides the menu content; at the reveal moment we tween
 -- its BackgroundTransparency out (while `menuRootScale` scales the
 -- panels in underneath) so the menu "materializes" as the cover
--- dissolves. `loadingOverlay` is on top of the cover.
+-- dissolves. `loadingOverlay` is on top of the cover. `menuRoot` and
+-- `menuRootBasePosition` are used by the lightweight slide-up open
+-- animation played on every open after the first.
+local menuRoot              = nil
+local menuRootBasePosition  = nil
 local menuRootScale         = nil
 local holoCover             = nil
 local loadingOverlay        = nil
@@ -57,6 +61,11 @@ local loadingStroke         = nil
 -- from a previous open can bail out cleanly if the user closes and
 -- reopens before it finishes.
 local openAnimationToken    = 0
+-- Set to true the first time the full holo-open animation finishes in
+-- this session. Once set, subsequent opens play the much shorter
+-- slide-up animation instead so only the initial reveal has the heavy
+-- sci-fi effect.
+local holoOpenPlayed        = false
 -- Set to true after `refreshCharacterViewport()` has built the rig for the
 -- current life. Gates the refresh so subsequent menu opens are instant and
 -- reuse the same viewport contents. Reset to false when the player respawns
@@ -404,7 +413,9 @@ local function buildMenu()
 	rootScale.Scale = 1
 	rootScale.Parent = root
 
-	menuRootScale = rootScale
+	menuRoot             = root
+	menuRootBasePosition = root.Position
+	menuRootScale        = rootScale
 
 	-- ── Center: character viewport ───────────────────────────────────────
 	-- ViewportFrame occupies the same space as before; only its contents
@@ -876,6 +887,45 @@ local function runHoloOpenAnimation(token)
 	end
 end
 
+-- ─── Slide-up open animation ──────────────────────────────────────────────
+-- Lightweight opener used for every menu open after the first of the
+-- session. The whole `root` frame starts just below the screen and
+-- tweens up to its base position with a quick ease-out — no glitch,
+-- no loading bar, no cover, just a snappy rise.
+
+local SLIDE_OPEN_DURATION = 0.28
+
+local function runSlideOpenAnimation(token)
+	if not (menuRoot and menuRootBasePosition) then return end
+
+	-- Start one full screen-height below the base position so the
+	-- entire menu sits off-screen, then tween up.
+	local basePos  = menuRootBasePosition
+	local startPos = UDim2.new(
+		basePos.X.Scale, basePos.X.Offset,
+		basePos.Y.Scale + 1, basePos.Y.Offset
+	)
+	menuRoot.Position = startPos
+
+	local tween = TweenService:Create(
+		menuRoot,
+		TweenInfo.new(
+			SLIDE_OPEN_DURATION,
+			Enum.EasingStyle.Quint,
+			Enum.EasingDirection.Out
+		),
+		{ Position = basePos }
+	)
+	tween:Play()
+	tween.Completed:Wait()
+
+	-- If the user closed mid-slide, snap back to base so the next open
+	-- isn't starting from a random in-between position.
+	if not holoTokenAlive(token) then
+		menuRoot.Position = basePos
+	end
+end
+
 -- ─── Show / hide ──────────────────────────────────────────────────────────
 local function setMenuOpen(open)
 	if not screenGui then buildMenu() end
@@ -887,28 +937,17 @@ local function setMenuOpen(open)
 			_G.CloseInventory()
 		end
 
-		-- Hide the menu behind the opaque cover IMMEDIATELY, before any
-		-- potentially-yielding work. The first-open viewport build
-		-- yields on Players:GetHumanoidDescriptionFromUserId() (a web
-		-- call that can take a second or more), and without this early
-		-- cover setup the fully-rendered menu would be visible during
-		-- that yield before the animation starts.
 		openAnimationToken += 1
 		local token = openAnimationToken
-		if holoCover then
-			holoCover.BackgroundTransparency = 0
-			holoCover.Visible                = true
-		end
-		if menuRootScale then
-			menuRootScale.Scale = HOLO_APPEAR_FROM_SCALE
-		end
 
-		-- Kick off the viewport rig build in parallel with the
-		-- animation on the first open (the rig build yields, so we
-		-- don't want it blocking the open flow). The animation's
-		-- reveal phase waits on `viewportInitialized` before letting
-		-- the cover dissolve, so the menu never materializes with an
-		-- empty viewport. Subsequent opens reuse the cached rig.
+		-- Kick off the viewport rig build in parallel on the first
+		-- open of the current life (the rig build yields on
+		-- GetHumanoidDescriptionFromUserId — a web call that can
+		-- take a second or more — so we never want it blocking the
+		-- open flow). Runs for both animation paths: on session
+		-- start the holo-open animation waits for it before the
+		-- reveal; after a respawn the slide path just lets the
+		-- rig pop in whenever it's ready.
 		if not viewportInitialized then
 			task.spawn(function()
 				refreshCharacterViewport()
@@ -916,11 +955,47 @@ local function setMenuOpen(open)
 			end)
 		end
 
-		-- Fire the holo-open animation. It reveals everything when it
-		-- finishes (and after the viewport rig is ready).
-		task.spawn(function()
-			runHoloOpenAnimation(token)
-		end)
+		if not holoOpenPlayed then
+			-- First open this session: run the full holo-open
+			-- animation. Hide the menu behind the opaque cover
+			-- IMMEDIATELY, before any potentially-yielding work,
+			-- so the menu never flashes visible during the
+			-- viewport rig build.
+			if holoCover then
+				holoCover.BackgroundTransparency = 0
+				holoCover.Visible                = true
+			end
+			if menuRootScale then
+				menuRootScale.Scale = HOLO_APPEAR_FROM_SCALE
+			end
+			if menuRoot and menuRootBasePosition then
+				menuRoot.Position = menuRootBasePosition
+			end
+
+			task.spawn(function()
+				runHoloOpenAnimation(token)
+				if token == openAnimationToken then
+					holoOpenPlayed = true
+				end
+			end)
+		else
+			-- Subsequent opens: quick slide-up from the bottom of
+			-- the screen, no cover / no glitch / no loading bar.
+			-- The viewport rig is already cached from the first
+			-- open so there's nothing to wait on.
+			if holoCover then
+				holoCover.Visible = false
+			end
+			if loadingOverlay then
+				loadingOverlay.Visible = false
+			end
+			if menuRootScale then
+				menuRootScale.Scale = 1
+			end
+			task.spawn(function()
+				runSlideOpenAnimation(token)
+			end)
+		end
 	else
 		-- Close: invalidate any in-flight animation so it bails out
 		-- when it next wakes. screenGui.Enabled is already false, so
