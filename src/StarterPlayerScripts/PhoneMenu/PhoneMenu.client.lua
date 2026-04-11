@@ -15,7 +15,7 @@ local UserInputService = game:GetService("UserInputService")
 
 -- Pose used for the viewport character. Custom looping idle that keeps the
 -- rig in a clean standing stance for the UI preview.
-local IDLE_ANIMATION_ID = "rbxassetid://98569847195083"
+local IDLE_ANIMATION_ID = "rbxassetid://79174332646470"
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
