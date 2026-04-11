@@ -290,10 +290,8 @@ end
 -- Convert local studs position to world position.
 -- Position is computed via the stable RestCFrame approach (same as the save
 -- system) so the local offset captured by the WeldConstraint is always the
--- same regardless of current wave-induced tilt. Returned rotation is the
--- Raft_part's world rotation (primary.CFrame.Rotation * tileCorrection) so
--- beams/walls stay flush with the deck even when the PrimaryPart is a
--- SpawnLocation at 90° pitch.
+-- same regardless of current wave-induced tilt. Returns the restYaw for
+-- rotating placed beams/walls/doors to face raft-forward.
 local function localToWorld(raft, studX, studZ)
 	local primaryCF = raft.PrimaryPart.CFrame
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
@@ -301,8 +299,7 @@ local function localToWorld(raft, studX, studZ)
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	local tileRotation = primaryCF.Rotation * getTileRotationCorrection(raft)
-	return (primaryCF * CFrame.new(localOffset)).Position, tileRotation
+	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
 end
 
 local function weldToRaft(obj, raft)
@@ -428,8 +425,8 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local insetX, insetZ = computeBeamInset(offsets, cx, cz)
 		local studX = cx * GRID_SIZE + insetX + BEAM_X_OFFSET
 		local studZ = cz * GRID_SIZE + insetZ
-		local worldPos, tileRotation = localToWorld(raft, studX, studZ)
-		worldPos = worldPos + tileRotation.YVector * (BEAM_HEIGHT / 2)
+		local worldPos, restYaw = localToWorld(raft, studX, studZ)
+		worldPos = worldPos + Vector3.new(0, BEAM_HEIGHT / 2, 0)
 
 		if (char.HumanoidRootPart.Position - worldPos).Magnitude > 80 then return end
 
@@ -441,7 +438,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		newBeam:SetAttribute("CornerX", cx)
 		newBeam:SetAttribute("CornerZ", cz)
 
-		local beamCF = CFrame.new(worldPos) * tileRotation
+		local beamCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw, 0)
 		if newBeam:IsA("Model") then
 			newBeam:PivotTo(beamCF)
 		else
@@ -479,8 +476,8 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local inset2X, inset2Z = computeBeamInset(offsets, cx2, cz2)
 		local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2 + BEAM_X_OFFSET
 		local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
-		local worldPos, tileRotation = localToWorld(raft, midStudX, midStudZ)
-		worldPos = worldPos + tileRotation.YVector * (PANEL_HEIGHT / 2)
+		local worldPos, restYaw = localToWorld(raft, midStudX, midStudZ)
+		worldPos = worldPos + Vector3.new(0, PANEL_HEIGHT / 2, 0)
 
 		if (char.HumanoidRootPart.Position - worldPos).Magnitude > 80 then return end
 
@@ -496,7 +493,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		newWall:SetAttribute("BeamCZ2", cz2)
 
 		local sideAngle = (cx1 == cx2) and math.rad(90) or 0
-		local wallCF = CFrame.new(worldPos) * tileRotation * CFrame.Angles(0, sideAngle, 0)
+		local wallCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 		if newWall:IsA("Model") then
 			newWall:PivotTo(wallCF)
 		else
@@ -534,8 +531,8 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local inset2X, inset2Z = computeBeamInset(offsets, cx2, cz2)
 		local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2 + BEAM_X_OFFSET
 		local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
-		local worldPos, tileRotation = localToWorld(raft, midStudX, midStudZ)
-		worldPos = worldPos + tileRotation.YVector * (ARCH_HEIGHT / 2)
+		local worldPos, restYaw = localToWorld(raft, midStudX, midStudZ)
+		worldPos = worldPos + Vector3.new(0, ARCH_HEIGHT / 2, 0)
 
 		if (char.HumanoidRootPart.Position - worldPos).Magnitude > 80 then return end
 
@@ -551,7 +548,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		newArch:SetAttribute("BeamCZ2", cz2)
 
 		local sideAngle = (cx1 == cx2) and math.rad(90) or 0
-		local archCF = CFrame.new(worldPos) * tileRotation * CFrame.Angles(0, sideAngle, 0)
+		local archCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 		if newArch:IsA("Model") then
 			newArch:PivotTo(archCF)
 		else
@@ -588,8 +585,8 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local inset2X, inset2Z = computeBeamInset(offsets, cx2, cz2)
 		local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2 + BEAM_X_OFFSET
 		local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
-		local worldPos, tileRotation = localToWorld(raft, midStudX, midStudZ)
-		worldPos = worldPos + tileRotation.YVector * (DOOR_HEIGHT / 2)
+		local worldPos, restYaw = localToWorld(raft, midStudX, midStudZ)
+		worldPos = worldPos + Vector3.new(0, DOOR_HEIGHT / 2, 0)
 
 		if (char.HumanoidRootPart.Position - worldPos).Magnitude > 80 then return end
 
@@ -604,7 +601,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		newDoor:SetAttribute("BeamCZ2", cz2)
 
 		local sideAngle = (cx1 == cx2) and math.rad(90) or 0
-		local doorCF = CFrame.new(worldPos) * tileRotation * CFrame.Angles(0, sideAngle, 0)
+		local doorCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
 		if newDoor:IsA("Model") then
 			newDoor:PivotTo(doorCF)
 		else

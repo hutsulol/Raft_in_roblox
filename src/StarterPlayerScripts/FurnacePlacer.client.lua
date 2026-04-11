@@ -21,29 +21,6 @@ local lastGhostRaftOffset = nil
 local currentTool = nil
 local rotationAngle = 0 -- radians, incremented by R key
 
--- When the raft's PrimaryPart is not a Raft_part (e.g. a SpawnLocation at
--- Orientation 90,0,0), its rotation differs from the deck tile rotation.
--- Returns the rotation offset from PrimaryPart to an existing Raft_part so
--- placed objects can be oriented flush with the deck.
-local function getTileRotationCorrection(raft)
-	local primary = raft.PrimaryPart
-	if not primary then return CFrame.new() end
-	for _, child in raft:GetChildren() do
-		if child.Name == "Raft_part" and child ~= primary then
-			local tileCF
-			if child:IsA("Model") then
-				tileCF = child:GetPivot()
-			elseif child:IsA("BasePart") then
-				tileCF = child.CFrame
-			end
-			if tileCF then
-				return primary.CFrame:ToObjectSpace(tileCF).Rotation
-			end
-		end
-	end
-	return CFrame.new()
-end
-
 -- ─── Ghost ───
 local function createGhost()
 	if ghost then ghost:Destroy() end
@@ -151,15 +128,11 @@ local function updateGhost()
 		return
 	end
 
-	-- Position ghost on top of hit surface with rotation. Use the Raft_part's
-	-- world rotation (not pure world-Y yaw) so the ghost stays flush with the
-	-- deck when the PrimaryPart is a SpawnLocation at 90° pitch.
+	-- Position ghost on top of hit surface with rotation
 	local hitPos = result.Position
 	local _, ghostSize = ghost:GetBoundingBox()
-	local tileRotation = raft.PrimaryPart.CFrame.Rotation * getTileRotationCorrection(raft)
-	local raftUp = tileRotation.YVector
-	local placePos = hitPos + raftUp * (ghostSize.Y / 2)
-	local placeCF = CFrame.new(placePos) * tileRotation * CFrame.Angles(0, rotationAngle, 0)
+	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
+	local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0)
 
 	ghost:PivotTo(placeCF)
 

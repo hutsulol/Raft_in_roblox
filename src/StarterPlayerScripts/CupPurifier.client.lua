@@ -12,29 +12,6 @@ local bushActionEvent = ReplicatedStorage:WaitForChild("BushAction")
 local gardenActionEvent = ReplicatedStorage:WaitForChild("GardenAction")
 local sawmillActionEvent = ReplicatedStorage:WaitForChild("SawmillAction")
 
--- When the raft's PrimaryPart is not a Raft_part (e.g. a SpawnLocation at
--- Orientation 90,0,0), its rotation differs from the tile rotation. Returns
--- the rotation offset so placed objects can be oriented like an existing
--- Raft_part instead of the PrimaryPart.
-local function getTileRotationCorrection(raft)
-	local primary = raft.PrimaryPart
-	if not primary then return CFrame.new() end
-	for _, child in raft:GetChildren() do
-		if child.Name == "Raft_part" and child ~= primary then
-			local tileCF
-			if child:IsA("Model") then
-				tileCF = child:GetPivot()
-			elseif child:IsA("BasePart") then
-				tileCF = child.CFrame
-			end
-			if tileCF then
-				return primary.CFrame:ToObjectSpace(tileCF).Rotation
-			end
-		end
-	end
-	return CFrame.new()
-end
-
 -- ─── State ───
 local ghost = nil
 local currentTool = nil
@@ -284,13 +261,6 @@ local function updateGhost()
 		return
 	end
 
-	-- Compute the world rotation of a Raft_part on this raft so building
-	-- ghosts can match it exactly. When the PrimaryPart is a SpawnLocation
-	-- at 90° pitch, this differs from a pure world-Y yaw and buildings
-	-- would appear tilted relative to the deck if we used CFrame.Angles(0, yaw, 0).
-	local tileRotation = raft.PrimaryPart.CFrame.Rotation * getTileRotationCorrection(raft)
-	local raftUp = tileRotation.YVector
-
 	if placingBush then
 		-- Bush: only valid on garden beds
 		local garden = findGardenBed(result.Instance)
@@ -298,9 +268,10 @@ local function updateGhost()
 			-- Snap to top center of garden bed
 			local gardenCF, gardenSize = garden:GetBoundingBox()
 			local ghostSize = ghost:GetExtentsSize()
-			local topCenter = gardenCF.Position + raftUp * (gardenSize.Y / 2)
+			local topY = gardenCF.Position.Y + gardenSize.Y / 2
+			local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 
-			local placeCF = CFrame.new(topCenter) * tileRotation * CFrame.Angles(0, rotationAngle, 0) * ghostTemplateRotation
+			local placeCF = CFrame.new(gardenCF.Position.X, topY, gardenCF.Position.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0) * ghostTemplateRotation
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
 			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
@@ -311,8 +282,8 @@ local function updateGhost()
 			lastTargetGarden = nil
 			local hitPos = result.Position
 			local ghostSize = ghost:GetExtentsSize()
-			local placePos = hitPos + raftUp * (ghostSize.Y / 2)
-			ghost:PivotTo(CFrame.new(placePos) * tileRotation * CFrame.Angles(0, rotationAngle, 0) * ghostTemplateRotation)
+			local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
+			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0) * ghostTemplateRotation)
 			setGhostColor(false)
 		end
 	else
@@ -322,9 +293,9 @@ local function updateGhost()
 		if hitOnRaft then
 			local hitPos = result.Position
 			local ghostSize = ghost:GetExtentsSize()
-			local placePos = hitPos + raftUp * (ghostSize.Y / 2)
+			local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 
-			local placeCF = CFrame.new(placePos) * tileRotation * CFrame.Angles(0, rotationAngle, 0) * ghostTemplateRotation
+			local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0) * ghostTemplateRotation
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
 			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
@@ -339,8 +310,8 @@ local function updateGhost()
 			-- Cursor is not on the raft — show red ghost at cursor position
 			local hitPos = result.Position
 			local ghostSize = ghost:GetExtentsSize()
-			local placePos = hitPos + raftUp * (ghostSize.Y / 2)
-			ghost:PivotTo(CFrame.new(placePos) * tileRotation * CFrame.Angles(0, rotationAngle, 0))
+			local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
+			ghost:PivotTo(CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0))
 			setGhostColor(false)
 		end
 	end
