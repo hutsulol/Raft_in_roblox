@@ -42,8 +42,6 @@ local MANA_TWEEN_TIME   = 0.25
 
 local MANA_ICON_ASSET = "rbxassetid://131647230431306"
 
-local COLOR_BAR_BG   = Color3.fromRGB(139, 109, 63)  -- hotbar wood
-local COLOR_OUTLINE  = Color3.fromRGB(0, 0, 0)
 local COLOR_TRACK_BG = Color3.fromRGB(28, 48, 80)
 local COLOR_FILL     = Color3.fromRGB(80, 160, 255)
 local COLOR_TEXT     = Color3.fromRGB(255, 255, 255)
@@ -56,6 +54,9 @@ screenGui.IgnoreGuiInset = true
 screenGui.DisplayOrder = 6  -- just above HotbarGui (5)
 screenGui.Parent = playerGui
 
+-- Invisible container that groups the icon + track in one layout box
+-- above the hotbar. No background, no corner, no outline — the icon
+-- just sits on the left and the track sits to its right.
 local manaBar = Instance.new("Frame")
 manaBar.Name = "ManaBar"
 manaBar.Size = UDim2.new(0, MANA_BAR_WIDTH, 0, MANA_BAR_HEIGHT)
@@ -65,20 +66,9 @@ manaBar.Position = UDim2.new(
 	0.5, -HOTBAR_WIDTH / 2,
 	1, -HOTBAR_HEIGHT - HOTBAR_BOTTOM_OFFSET - MANA_BAR_HEIGHT - MANA_BAR_GAP
 )
-manaBar.BackgroundColor3 = COLOR_BAR_BG
-manaBar.BackgroundTransparency = 0.15
+manaBar.BackgroundTransparency = 1
 manaBar.BorderSizePixel = 0
 manaBar.Parent = screenGui
-
-local manaBarCorner = Instance.new("UICorner")
-manaBarCorner.CornerRadius = UDim.new(0, 6)
-manaBarCorner.Parent = manaBar
-
--- Single black outline (no inner stroke on the track).
-local manaBarStroke = Instance.new("UIStroke")
-manaBarStroke.Color = COLOR_OUTLINE
-manaBarStroke.Thickness = 1.5
-manaBarStroke.Parent = manaBar
 
 local manaIcon = Instance.new("ImageLabel")
 manaIcon.Name = "ManaIcon"
