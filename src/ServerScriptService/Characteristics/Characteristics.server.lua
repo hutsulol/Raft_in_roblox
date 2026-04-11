@@ -25,6 +25,17 @@ local DEV_START_UPGRADE_POINTS = 20
 local XP_PER_DAY               = 10
 local XP_PER_LEVEL             = 50
 
+-- ─── Mana pool tuning ───────────────────────────────────────────────────
+-- The Mana attribute is an upgrade level bumped via the phone menu. It
+-- drives a replicated mana pool the client reads to render the mana
+-- bar above the hotbar: max = BASE_MANA + Mana * MANA_PER_LEVEL.
+local BASE_MANA                = 100
+local MANA_PER_LEVEL           = 20
+
+local function computeManaMax(manaLevel)
+	return BASE_MANA + manaLevel * MANA_PER_LEVEL
+end
+
 -- ─── Shared RemoteEvent ─────────────────────────────────────────────────
 -- Created by PhoneMenu.server.lua; we piggyback on it so attribute
 -- upgrades flow through the same pipe the rest of the phone menu uses.
@@ -57,8 +68,28 @@ local function setupPlayer(player)
 	intValue("XPRequired",    XP_PER_LEVEL,             folder)
 	intValue("UpgradePoints", DEV_START_UPGRADE_POINTS, folder)
 	intValue("Strength",      0,                        folder)
-	intValue("Mana",          0,                        folder)
+	local manaStat = intValue("Mana",          0,       folder)
 	intValue("Mutation",      0,                        folder)
+
+	-- Mana resource pool, derived from the Mana attribute. ManaMax is
+	-- recomputed whenever the Mana attribute changes; ManaCurrent
+	-- starts at full and is preserved across level-ups by granting
+	-- the delta (so the UI feels like a full refill on upgrade).
+	local initialMax = computeManaMax(manaStat.Value)
+	local manaMax     = intValue("ManaMax",     initialMax, folder)
+	local manaCurrent = intValue("ManaCurrent", initialMax, folder)
+
+	manaStat:GetPropertyChangedSignal("Value"):Connect(function()
+		local oldMax = manaMax.Value
+		local newMax = computeManaMax(manaStat.Value)
+		if newMax == oldMax then return end
+		manaMax.Value = newMax
+		if newMax > oldMax then
+			manaCurrent.Value = math.min(manaCurrent.Value + (newMax - oldMax), newMax)
+		else
+			manaCurrent.Value = math.clamp(manaCurrent.Value, 0, newMax)
+		end
+	end)
 end
 
 for _, p in Players:GetPlayers() do
