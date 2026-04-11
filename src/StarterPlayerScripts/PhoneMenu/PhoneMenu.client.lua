@@ -608,7 +608,7 @@ local function buildMenu()
 	-- line of the viewport character (waist height) — touching the
 	-- character without overlapping and without leaving a gap.
 	xpPanel.Position = UDim2.new(0.5, 0, 0.45, 240)
-	xpPanel.Size = UDim2.fromOffset(600, 48)
+	xpPanel.Size = UDim2.fromOffset(440, 48)
 	padding(xpPanel, 10)
 
 	local xpTag = makeLabel(xpPanel, "XP", FONT_TITLE, 18, COLOR_TEXT)
