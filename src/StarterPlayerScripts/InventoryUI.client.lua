@@ -1293,6 +1293,12 @@ local function closeUI()
 	if hotbarGui then hotbarGui.DisplayOrder = 5 end
 end
 
+-- Expose a force-close hook so other scripts (e.g. the phone menu) can
+-- dismiss the inventory when they take over the screen.
+_G.CloseInventory = function()
+	if isOpen then closeUI() end
+end
+
 -- ─── Build Hotbar ───
 
 local function buildHotbar()

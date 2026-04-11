@@ -187,7 +187,7 @@ local function refreshCharacterViewport()
 
 	if viewportCamera and primary then
 		-- Camera sits in front of the model, slightly raised, looking at chest.
-		viewportCamera.CFrame = CFrame.new(Vector3.new(0, 0.5, 6), Vector3.new(0, 0.5, 0))
+		viewportCamera.CFrame = CFrame.new(Vector3.new(0, 0.5, -6), Vector3.new(0, 0.5, 0))
 	end
 end
 
@@ -233,7 +233,7 @@ local function buildMenu()
 
 	viewportCamera = Instance.new("Camera")
 	viewportCamera.FieldOfView = 40
-	viewportCamera.CFrame = CFrame.new(Vector3.new(0, 0.5, 6), Vector3.new(0, 0.5, 0))
+	viewportCamera.CFrame = CFrame.new(Vector3.new(0, 0.5, -6), Vector3.new(0, 0.5, 0))
 	viewportCamera.Parent = viewportFrame
 	viewportFrame.CurrentCamera = viewportCamera
 
@@ -430,6 +430,9 @@ local function setMenuOpen(open)
 	menuOpen = open
 	screenGui.Enabled = open
 	if open then
+		if typeof(_G.CloseInventory) == "function" then
+			_G.CloseInventory()
+		end
 		refreshCharacterViewport()
 	end
 end
@@ -437,10 +440,14 @@ end
 -- ─── Tool equip tracking (Phone) ──────────────────────────────────────────
 -- While the Phone is equipped we block InventoryUI's own E handler via the
 -- `_G.SuppressInventoryToggle` hook it already exposes — otherwise pressing E
--- would open both the phone menu AND the inventory at the same time.
+-- would open both the phone menu AND the inventory at the same time. We also
+-- force-close the inventory on equip in case it's already open.
 local function setPhoneEquipped(eq)
 	phoneEquipped = eq
 	_G.SuppressInventoryToggle = eq or nil
+	if eq and typeof(_G.CloseInventory) == "function" then
+		_G.CloseInventory()
+	end
 end
 
 local function onToolEquipped(tool)
