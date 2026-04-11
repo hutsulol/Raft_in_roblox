@@ -146,18 +146,41 @@ local viewportCharModel = nil
 -- Build a static preview rig from the player's HumanoidDescription. This
 -- gives us a fresh R15 model in a clean neutral pose (like the Avatar
 -- Editor) that matches the player's appearance, instead of a snapshot of
--- the live character mid-animation. Falls back to a plain clone if the
--- description API fails for any reason.
+-- the live character mid-animation. Falls back to cloning the live
+-- character if the description API fails for any reason.
+--
+-- In either branch we guarantee the rig has a Head before returning, so
+-- the viewport never renders a headless character due to a load race.
+local function waitForHead(model, timeout)
+	if not model then return false end
+	local head = model:FindFirstChild("Head")
+	if head then return true end
+	-- WaitForChild on an in-flight R15 rig should complete quickly.
+	head = model:WaitForChild("Head", timeout or 5)
+	return head ~= nil
+end
+
 local function buildPreviewRig()
+	-- Preferred path: HumanoidDescription → fresh R15 rig. The returned
+	-- model is supposed to come fully assembled, but we still verify the
+	-- Head is present before accepting it.
 	local ok, rig = pcall(function()
 		local desc = Players:GetHumanoidDescriptionFromUserId(player.UserId)
 		return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
 	end)
-	if ok and rig then return rig end
+	if ok and rig and waitForHead(rig, 3) then
+		return rig
+	end
+	if rig then rig:Destroy() end
 
-	-- Fallback: clone the live character.
-	local char = player.Character
-	if not char then return nil end
+	-- Fallback: clone the live character. Wait for CharacterAppearanceLoaded
+	-- and for the Head to exist so we don't clone a half-streamed rig.
+	local char = player.Character or player.CharacterAdded:Wait()
+	if not player:HasAppearanceLoaded() then
+		player.CharacterAppearanceLoaded:Wait()
+	end
+	if not waitForHead(char, 5) then return nil end
+
 	local wasArchivable = char.Archivable
 	char.Archivable = true
 	local clone = char:Clone()
@@ -226,10 +249,10 @@ local function rebuildCharacterRig()
 		end
 	end
 
-	-- Place the rig at a slightly raised origin, rotated 180° around Y so
-	-- its front faces +Z (camera side). The +Y offset lifts the character
-	-- so they sit a little higher in the viewport.
-	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
+	-- Place the rig at a raised origin, rotated 180° around Y so its
+	-- front faces +Z (camera side). The +Y offset lifts the character so
+	-- feet and head both sit inside the viewport frame.
+	clone:PivotTo(CFrame.new(0, 1, 0) * CFrame.Angles(0, math.pi, 0))
 
 	-- Multi-light setup to give the clone depth and shape. A single light
 	-- flattens the model — we need a bright key light in front and a cyan
@@ -286,13 +309,11 @@ local function rebuildCharacterRig()
 	viewportCharModel = clone
 
 	if viewportCamera then
-		-- Off-center front view, slightly above, wider FOV — the slight X
-		-- offset gives the character perspective so it reads as 3D instead
-		-- of looking like a flat portrait. Pulled in closer (z = 6.5) and
-		-- raised (y = 2.5) so the character appears larger and better
-		-- centered than the previous (1.5, 2, 8) framing.
+		-- Off-center three-quarter front view. Aimed at chest height on
+		-- the raised rig so the entire body (head through feet) fits in
+		-- the viewport; slight X offset gives real 3D perspective.
 		viewportCamera.FieldOfView = 55
-		viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2.5, 6.5), Vector3.new(0, 1.5, 0))
+		viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2.5, 7), Vector3.new(0, 2, 0))
 	end
 end
 
@@ -331,11 +352,15 @@ local function buildMenu()
 	viewportFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 	viewportFrame.Position = UDim2.fromScale(0.5, 0.45)
 	viewportFrame.Size = UDim2.fromOffset(360, 500)
+	-- Fully transparent background: no gray wash, no outline, no fog —
+	-- the PointLights on the rig do all the illumination.
 	viewportFrame.BackgroundTransparency = 1
+	viewportFrame.BackgroundColor3 = Color3.new(0, 0, 0)
 	viewportFrame.BorderSizePixel = 0
+	viewportFrame.BorderColor3 = Color3.new(0, 0, 0)
 	viewportFrame.LightColor = Color3.fromRGB(255, 255, 255)
 	viewportFrame.LightDirection = Vector3.new(-0.3, -1, -0.5)
-	viewportFrame.Ambient = Color3.fromRGB(180, 200, 230)
+	viewportFrame.Ambient = Color3.fromRGB(0, 0, 0)
 	viewportFrame.Parent = root
 
 	-- WorldModel enables PointLight rendering inside the ViewportFrame.
@@ -345,7 +370,7 @@ local function buildMenu()
 
 	viewportCamera = Instance.new("Camera")
 	viewportCamera.FieldOfView = 55
-	viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2.5, 6.5), Vector3.new(0, 1.5, 0))
+	viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2.5, 7), Vector3.new(0, 2, 0))
 	viewportCamera.Parent = viewportFrame
 	viewportFrame.CurrentCamera = viewportCamera
 
