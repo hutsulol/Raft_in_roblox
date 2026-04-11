@@ -391,16 +391,21 @@ local function raycastToRaftPlane()
 	return flatCF:PointToObjectSpace(hitWorld)
 end
 
+-- Returns the world position for a local stud offset on the raft AND the
+-- world rotation of a Raft_part on the raft. Using the Raft_part rotation
+-- (instead of a pure yaw) keeps beams/walls/doors flush with the deck when
+-- the PrimaryPart is a SpawnLocation at 90° pitch.
 local function localToWorld(studX, studZ)
 	local raft = getRaft()
-	if not raft or not raft.PrimaryPart then return Vector3.zero, 0 end
+	if not raft or not raft.PrimaryPart then return Vector3.zero, CFrame.new() end
 	local primaryCF = raft.PrimaryPart.CFrame
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
 	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX, 0, studZ))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
+	local tileRotation = primaryCF.Rotation * getTileRotationCorrection(raft)
+	return (primaryCF * CFrame.new(localOffset)).Position, tileRotation
 end
 
 -- ===================== Floor grid =====================
@@ -443,9 +448,9 @@ local function getBeamCornerFromMouse()
 	local studX = cx * GRID_SIZE + insetX + BEAM_X_OFFSET
 	local studZ = cz * GRID_SIZE + insetZ
 
-	local worldPos, restYaw = localToWorld(studX, studZ)
-	worldPos = worldPos + Vector3.new(0, BEAM_HEIGHT / 2, 0)
-	local worldCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw, 0)
+	local worldPos, tileRotation = localToWorld(studX, studZ)
+	worldPos = worldPos + tileRotation.YVector * (BEAM_HEIGHT / 2)
+	local worldCF = CFrame.new(worldPos) * tileRotation
 
 	return cx, cz, worldCF
 end
@@ -492,11 +497,11 @@ local function getWallPanelFromMouse()
 	local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2 + BEAM_X_OFFSET
 	local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
 
-	local worldPos, restYaw = localToWorld(midStudX, midStudZ)
-	worldPos = worldPos + Vector3.new(0, PANEL_HEIGHT / 2, 0)
+	local worldPos, tileRotation = localToWorld(midStudX, midStudZ)
+	worldPos = worldPos + tileRotation.YVector * (PANEL_HEIGHT / 2)
 
 	local sideAngle = (side == 2 or side == 3) and math.rad(90) or 0
-	local worldCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
+	local worldCF = CFrame.new(worldPos) * tileRotation * CFrame.Angles(0, sideAngle, 0)
 
 	return cx1, cz1, cx2, cz2, side, worldCF
 end
@@ -546,11 +551,11 @@ local function getBeamPairFromMouse(height)
 	local midStudX = ((cx1 * GRID_SIZE + inset1X) + (cx2 * GRID_SIZE + inset2X)) / 2 + BEAM_X_OFFSET
 	local midStudZ = ((cz1 * GRID_SIZE + inset1Z) + (cz2 * GRID_SIZE + inset2Z)) / 2
 
-	local worldPos, restYaw = localToWorld(midStudX, midStudZ)
-	worldPos = worldPos + Vector3.new(0, height / 2, 0)
+	local worldPos, tileRotation = localToWorld(midStudX, midStudZ)
+	worldPos = worldPos + tileRotation.YVector * (height / 2)
 
 	local sideAngle = (side == 2 or side == 3) and math.rad(90) or 0
-	local worldCF = CFrame.new(worldPos) * CFrame.Angles(0, restYaw + sideAngle, 0)
+	local worldCF = CFrame.new(worldPos) * tileRotation * CFrame.Angles(0, sideAngle, 0)
 
 	return cx1, cz1, cx2, cz2, side, worldCF
 end
