@@ -132,6 +132,12 @@ local recipes = {
 		icon = "rbxassetid://122333372049252",
 		costs = {Log = 1},
 		craftType = "tool",
+		-- Phone has no 3D world model — its entire UX lives in
+		-- PhoneMenu. Skip the ReplicatedStorage template lookup so the
+		-- tool branch always falls through to the placeholder path and
+		-- we never accidentally pick up an unrelated "Phone" instance
+		-- elsewhere in the Studio file.
+		noTemplate = true,
 		category = "Tools",
 		description = "A phone for communication.",
 	},
@@ -172,17 +178,33 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 
 	-- Templates normally live directly under ReplicatedStorage, but a few
 	-- (e.g. FishingRod) are packaged inside ReplicatedStorage.MainModule.
-	-- Fall back to a recursive search so recipes don't need to know the path.
-	local template = rs:FindFirstChild(recipe.name)
-	if not template then
-		template = rs:FindFirstChild(recipe.name, true)
+	-- Fall back to a recursive search so recipes don't need to know the
+	-- path. Recipes with `noTemplate = true` opt out of the lookup entirely
+	-- (e.g. Phone) and are built from the placeholder-Tool path below,
+	-- which guarantees a working Tool in the backpack.
+	local template
+	if not recipe.noTemplate then
+		template = rs:FindFirstChild(recipe.name)
+		if not template then
+			template = rs:FindFirstChild(recipe.name, true)
+		end
 	end
 
 	if recipe.craftType == "tool" then
 		local tool
 
-		if template then
-			local cloned = template:Clone()
+		-- Only treat the found instance as a usable template if it's a
+		-- class the wrap-below logic knows how to handle. Anything else
+		-- (Folder, Script, ScreenGui, ModuleScript, etc.) falls through
+		-- to the placeholder path so we never end up parenting an empty
+		-- handle-less Tool to the Backpack.
+		local usableTemplate = template
+			and (template:IsA("Tool") or template:IsA("Model") or template:IsA("BasePart"))
+			and template
+			or nil
+
+		if usableTemplate then
+			local cloned = usableTemplate:Clone()
 
 			if cloned:IsA("Tool") then
 				tool = cloned
@@ -220,12 +242,16 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 
 				cloned:Destroy()
 			end
-		else
-			-- No 3D template exists for this tool yet (e.g. Phone, whose
-			-- UI lives entirely in PhoneMenu and doesn't need a world
-			-- model). Fall back to a transparent-handled placeholder
-			-- Tool so the recipe still produces something in the
-			-- backpack — the icon alone represents it in the hotbar.
+		end
+
+		-- Either no template was found or the template path above failed
+		-- to produce a Tool (e.g. Phone, whose UI lives entirely in
+		-- PhoneMenu and has no world model — or whose "template" in the
+		-- current Studio file is just a Folder/ScreenGui). Fall back to
+		-- a transparent-handled placeholder Tool so the recipe always
+		-- produces something in the backpack; the icon alone represents
+		-- it in the hotbar.
+		if not tool then
 			tool = Instance.new("Tool")
 			tool.Name = recipe.name
 			tool.CanBeDropped = false
