@@ -239,9 +239,10 @@ local function refreshCharacterViewport()
 		end
 	end
 
-	-- Place the clone at origin, rotated 180° around Y so its front faces
-	-- the +Z axis — that's where the camera sits.
-	clone:PivotTo(CFrame.new(0, 0, 0) * CFrame.Angles(0, math.pi, 0))
+	-- Place the clone at a slightly raised origin, rotated 180° around Y so
+	-- its front faces the +Z axis — that's where the camera sits. The small
+	-- +Y lift keeps the feet from sinking against the bottom of the frame.
+	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
 
 	-- Force a single idle animation on top of the neutral pose so the rig
 	-- has a natural stance (slight breathing sway). Because every part is
@@ -311,11 +312,11 @@ local function refreshCharacterViewport()
 	viewportCharModel = clone
 
 	if viewportCamera then
-		-- Off-center front view, slightly above, wider FOV — the slight X
-		-- offset gives the character perspective so it reads as 3D instead
-		-- of looking like a flat portrait.
-		viewportCamera.FieldOfView = 55
-		viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2, 8), Vector3.new(0, 1, 0))
+		-- Centered front view, pulled in closer and aimed at chest height so
+		-- the character reads larger and sits dead-center in the viewport.
+		-- Narrower FOV (50) tightens the framing without cropping.
+		viewportCamera.FieldOfView = 50
+		viewportCamera.CFrame = CFrame.new(Vector3.new(0, 2.2, 6.2), Vector3.new(0, 1.2, 0))
 	end
 end
 
