@@ -129,7 +129,7 @@ local recipes = {
 	{
 		name = "Phone",
 		displayName = "Phone",
-		icon = "",
+		icon = "rbxassetid://122333372049252",
 		costs = {Log = 1},
 		craftType = "tool",
 		category = "Tools",
@@ -179,9 +179,10 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	end
 
 	if recipe.craftType == "tool" then
+		local tool
+
 		if template then
 			local cloned = template:Clone()
-			local tool
 
 			if cloned:IsA("Tool") then
 				tool = cloned
@@ -219,21 +220,39 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 
 				cloned:Destroy()
 			end
+		else
+			-- No 3D template exists for this tool yet (e.g. Phone, whose
+			-- UI lives entirely in PhoneMenu and doesn't need a world
+			-- model). Fall back to a transparent-handled placeholder
+			-- Tool so the recipe still produces something in the
+			-- backpack — the icon alone represents it in the hotbar.
+			tool = Instance.new("Tool")
+			tool.Name = recipe.name
+			tool.CanBeDropped = false
+			tool.RequiresHandle = false
 
-			-- Set initial attributes if defined
-			if recipe.initAttributes then
-				for attr, val in recipe.initAttributes do
-					tool:SetAttribute(attr, val)
-				end
+			local handle = Instance.new("Part")
+			handle.Name = "Handle"
+			handle.Size = Vector3.new(1, 1, 1)
+			handle.Transparency = 1
+			handle.CanCollide = false
+			handle.Massless = true
+			handle.Parent = tool
+		end
+
+		-- Set initial attributes if defined
+		if recipe.initAttributes then
+			for attr, val in recipe.initAttributes do
+				tool:SetAttribute(attr, val)
 			end
-			-- Set tool icon
-			if recipe.icon and tool.TextureId == "" then
-				tool.TextureId = recipe.icon
-			end
-			local backpack = player:FindFirstChild("Backpack")
-			if backpack then
-				tool.Parent = backpack
-			end
+		end
+		-- Set tool icon
+		if recipe.icon and tool.TextureId == "" then
+			tool.TextureId = recipe.icon
+		end
+		local backpack = player:FindFirstChild("Backpack")
+		if backpack then
+			tool.Parent = backpack
 		end
 	elseif recipe.craftType == "placeable" then
 		-- Create a small placeholder tool (the full model is cloned on placement)

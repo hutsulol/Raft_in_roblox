@@ -112,6 +112,11 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 
 	local isResource = RESOURCE_ITEMS[itemName]
 
+	-- Captured from a tool drop so we can recreate placeholder-only
+	-- tools (those without a ReplicatedStorage template, e.g. Phone) on
+	-- pickup without losing their icon.
+	local toolTextureId = nil
+
 	if isResource then
 		-- Resource drop: deduct from inventory count
 		local inv = _G.GetInventory and _G.GetInventory(player)
@@ -130,6 +135,9 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 			if tool and not tool:IsA("Tool") then tool = nil end
 		end
 		if not tool then return end
+		if tool:IsA("Tool") then
+			toolTextureId = tool.TextureId
+		end
 		tool:Destroy()
 	end
 
@@ -169,6 +177,9 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 	clone:SetAttribute("ResourceAmount", dropCount)
 	clone:SetAttribute("IsToolDrop", not isResource)
 	clone:SetAttribute("DropperUserId", player.UserId)
+	if toolTextureId and toolTextureId ~= "" then
+		clone:SetAttribute("ToolTextureId", toolTextureId)
+	end
 
 	clone:PivotTo(CFrame.new(spawnPos))
 	clone.Parent = workspace
@@ -249,13 +260,40 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		-- Tool pickup: clone the tool template and give to player. Tool
 		-- templates may live under ReplicatedStorage.MainModule or other
 		-- subfolders (same pattern InventoryCrafting uses), so the lookup
-		-- must fall back to a recursive search — otherwise tools like
-		-- Phone / FishingRod silently fail to restore on pickup.
-		local toolTemplate = findTemplate(resType)
-		if not toolTemplate then return end
+		-- falls back to a recursive search — otherwise tools like
+		-- FishingRod would silently fail to restore on pickup.
+		--
+		-- Some tools have no ReplicatedStorage template at all (e.g.
+		-- Phone, whose UI lives entirely in PhoneMenu). For those we
+		-- reconstruct a transparent-handled placeholder Tool, mirroring
+		-- the fallback path in InventoryCrafting.server.lua. The icon is
+		-- restored from the ToolTextureId attribute captured on drop.
 		local backpack = player:FindFirstChild("Backpack")
 		if not backpack then return end
-		local toolClone = toolTemplate:Clone()
+
+		local toolTemplate = findTemplate(resType)
+		local toolClone
+		if toolTemplate then
+			toolClone = toolTemplate:Clone()
+		else
+			toolClone = Instance.new("Tool")
+			toolClone.Name = resType
+			toolClone.CanBeDropped = false
+			toolClone.RequiresHandle = false
+
+			local handle = Instance.new("Part")
+			handle.Name = "Handle"
+			handle.Size = Vector3.new(1, 1, 1)
+			handle.Transparency = 1
+			handle.CanCollide = false
+			handle.Massless = true
+			handle.Parent = toolClone
+
+			local savedTextureId = droppedItem:GetAttribute("ToolTextureId")
+			if savedTextureId and savedTextureId ~= "" then
+				toolClone.TextureId = savedTextureId
+			end
+		end
 		toolClone.Parent = backpack
 	else
 		-- Resource pickup: add to inventory count
