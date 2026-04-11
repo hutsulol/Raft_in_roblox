@@ -154,7 +154,6 @@ end
 local function applyUnlockedSlots()
 	if #gridSlotVisuals == 0 then return end
 
-	local firstLockedLocalIdx = nil
 	for i, rec in ipairs(gridSlotVisuals) do
 		local globalIdx = HOTBAR_SLOTS + i
 		local locked    = globalIdx > unlockedSlots
@@ -166,16 +165,20 @@ local function applyUnlockedSlots()
 		if rec.stroke then
 			rec.stroke.Transparency = locked and 0.7 or 0
 		end
-		if locked and not firstLockedLocalIdx then
-			firstLockedLocalIdx = i
-		end
 	end
 
 	if lockedOverlayLabel then
-		if firstLockedLocalIdx then
-			local firstRow = math.floor((firstLockedLocalIdx - 1) / COLS)
-			local rows = 4 - firstRow
-			local y = SLOT_PAD + firstRow * (SLOT_SIZE + SLOT_PAD)
+		-- Only span rows whose slots are ALL locked. A row that's still
+		-- partially usable keeps its normal per-slot dimming instead of
+		-- being covered by the banner (otherwise the banner would
+		-- obscure the slots the player can still interact with).
+		local unlockedGrid      = math.max(unlockedSlots - HOTBAR_SLOTS, 0)
+		local firstFullLockRow  = math.ceil(unlockedGrid / COLS)
+		local totalRows         = math.ceil(GRID_SLOTS / COLS)
+
+		if firstFullLockRow < totalRows then
+			local rows = totalRows - firstFullLockRow
+			local y = SLOT_PAD + firstFullLockRow * (SLOT_SIZE + SLOT_PAD)
 			local h = rows * (SLOT_SIZE + SLOT_PAD) - SLOT_PAD
 			lockedOverlayLabel.Position = UDim2.new(0, SLOT_PAD, 0, y)
 			lockedOverlayLabel.Size     = UDim2.new(1, -SLOT_PAD * 2, 0, h)
@@ -270,6 +273,67 @@ end
 
 local function hideTooltip()
 	if tooltipGui then tooltipGui.Enabled = false end
+end
+
+-- Short-lived popup used when the player tries to drop an item into a
+-- locked inventory slot. Lives in its own ScreenGui so it doesn't mess
+-- with the regular hover tooltip, and auto-destroys after fading out.
+local function showLockedDropMessage(mousePos)
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "LockedSlotPopup"
+	gui.ResetOnSpawn = false
+	gui.IgnoreGuiInset = true
+	gui.DisplayOrder = 250
+	gui.Parent = playerGui
+
+	local label = Instance.new("TextLabel")
+	label.AutomaticSize = Enum.AutomaticSize.XY
+	label.BackgroundColor3 = Color3.fromRGB(40, 15, 15)
+	label.BackgroundTransparency = 0.1
+	label.BorderSizePixel = 0
+	label.TextColor3 = Color3.fromRGB(255, 220, 180)
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 14
+	label.Text = "Slot blocked, upgrade your strength"
+	label.Parent = gui
+
+	local pad = Instance.new("UIPadding")
+	pad.PaddingTop    = UDim.new(0, 6)
+	pad.PaddingBottom = UDim.new(0, 6)
+	pad.PaddingLeft   = UDim.new(0, 10)
+	pad.PaddingRight  = UDim.new(0, 10)
+	pad.Parent = label
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 6)
+	corner.Parent = label
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(180, 90, 90)
+	stroke.Thickness = 1.5
+	stroke.Parent = label
+
+	-- Position near the mouse; flip below if it would overflow the top.
+	label.Position = UDim2.fromOffset(mousePos.X + 14, mousePos.Y - 34)
+	task.defer(function()
+		if label.AbsolutePosition.Y < 4 then
+			label.Position = UDim2.fromOffset(mousePos.X + 14, mousePos.Y + 18)
+		end
+	end)
+
+	task.delay(0.9, function()
+		if not gui.Parent then return end
+		local t = TweenService:Create(
+			label,
+			TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ BackgroundTransparency = 1, TextTransparency = 1 }
+		)
+		stroke.Enabled = false
+		t:Play()
+		t.Completed:Connect(function()
+			gui:Destroy()
+		end)
+	end)
 end
 
 local function updateTooltipPosition(mousePos)
@@ -707,10 +771,16 @@ local function endDrag(mousePos)
 	local srcSlot = dragState.sourceSlot
 	local isSplit = dragState.splitMode
 
-	-- Drops onto locked grid slots are ignored — treat them as "empty
-	-- air" so the drag just snaps back instead of overwriting data.
+	-- Drops onto locked grid slots are cancelled outright: nothing moves,
+	-- nothing is dropped into the world, and we flash a "Slot blocked"
+	-- popup at the drop point. We short-circuit here so the drag simply
+	-- snaps back to the source slot on the next render.
 	if targetSlot and isSlotLocked(targetSlot) then
-		targetSlot = nil
+		showLockedDropMessage(mousePos)
+		cancelDrag()
+		dragState.didDrag = true
+		renderAllSlots()
+		return
 	end
 
 	if targetSlot and targetSlot ~= srcSlot then
