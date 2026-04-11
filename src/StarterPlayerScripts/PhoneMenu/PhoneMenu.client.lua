@@ -13,6 +13,12 @@
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
+-- Pose used for the viewport character. This is a standard Roblox R15 idle
+-- animation — loading and playing it guarantees the clone always stands in a
+-- clean neutral pose instead of copying whatever animation the live
+-- character happens to be running (walk, jump, swim, tool hold, …).
+local IDLE_ANIMATION_ID = "rbxassetid://507766666"
+
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -143,11 +149,33 @@ local viewportWorld = nil
 local viewportCamera = nil
 local viewportCharModel = nil
 
--- Rebuild the character display inside the ViewportFrame. Clones the live
--- LocalPlayer.Character, strips scripts, anchors parts, rotates it so its
--- front faces the camera, and attaches a subtle cyan PointLight so it reads
--- clearly against the dark backdrop. Called every time the menu opens so
--- the clone always reflects the current appearance.
+-- Build a static preview rig from the player's HumanoidDescription. This
+-- gives us a fresh R15 model in a clean neutral pose (like the Avatar
+-- Editor) that matches the player's appearance, instead of a snapshot of
+-- the live character mid-animation. Falls back to a plain clone if the
+-- description API fails for any reason.
+local function buildPreviewRig()
+	local ok, rig = pcall(function()
+		local desc = Players:GetHumanoidDescriptionFromUserId(player.UserId)
+		return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+	end)
+	if ok and rig then return rig end
+
+	-- Fallback: clone the live character.
+	local char = player.Character
+	if not char then return nil end
+	local wasArchivable = char.Archivable
+	char.Archivable = true
+	local clone = char:Clone()
+	char.Archivable = wasArchivable
+	return clone
+end
+
+-- Rebuild the character display inside the ViewportFrame. Builds a fresh
+-- preview rig from the player's HumanoidDescription (so the pose is always
+-- clean and neutral), strips scripts, anchors parts, rotates it so its
+-- front faces the camera, and attaches lights for depth. Called every time
+-- the menu opens so the clone always reflects the current appearance.
 local function refreshCharacterViewport()
 	if not viewportFrame or not viewportWorld then return end
 
@@ -156,34 +184,72 @@ local function refreshCharacterViewport()
 		viewportCharModel = nil
 	end
 
-	local char = player.Character
-	if not char then return end
+	local clone = buildPreviewRig()
+	if not clone then return end
 
-	-- Archivable must be true for Clone() to succeed on the live character.
-	local wasArchivable = char.Archivable
-	char.Archivable = true
-	local clone = char:Clone()
-	char.Archivable = wasArchivable
-
-	-- Remove all Scripts / LocalScripts from the clone and anchor parts so
-	-- the model behaves as a static display rig.
+	-- Destroy every Script / LocalScript on the rig — in particular the
+	-- `Animate` LocalScript that drives walk/jump/idle animations on live
+	-- characters. Without this the clone would keep cycling animations.
 	for _, d in clone:GetDescendants() do
 		if d:IsA("Script") or d:IsA("LocalScript") then
 			d:Destroy()
-		elseif d:IsA("BasePart") then
-			d.Anchored = true
-			d.CanCollide = false
-			d.Massless = true
 		end
 	end
+
+	-- Stop any AnimationTracks that may already be playing on the humanoid
+	-- / animator before we force our idle pose.
 	local humanoid = clone:FindFirstChildOfClass("Humanoid")
+	local animator
 	if humanoid then
 		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+		humanoid.EvaluateStateMachine = false
+		-- Disable every Humanoid state so the rig can't ragdoll, fall,
+		-- jump, swim, climb, or otherwise react to anything in the
+		-- WorldModel. The idle animation is what poses the limbs.
+		for _, state in Enum.HumanoidStateType:GetEnumItems() do
+			pcall(function()
+				humanoid:SetStateEnabled(state, false)
+			end)
+		end
+		animator = humanoid:FindFirstChildOfClass("Animator")
+		if not animator then
+			animator = Instance.new("Animator")
+			animator.Parent = humanoid
+		end
+		for _, track in animator:GetPlayingAnimationTracks() do
+			track:Stop(0)
+		end
+	end
+
+	-- Only the HumanoidRootPart is anchored — the rest of the rig must
+	-- remain unanchored so the idle AnimationTrack can pose the limbs via
+	-- Motor6D.Transform. WorldModel does not simulate physics so the limbs
+	-- cannot fall or drift regardless.
+	local hrp = clone:FindFirstChild("HumanoidRootPart")
+	for _, d in clone:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.CanCollide = false
+			d.Massless = true
+			d.Anchored = (d == hrp)
+		end
 	end
 
 	-- Place the clone at origin, rotated 180° around Y so its front faces
 	-- the +Z axis — that's where the camera sits.
 	clone:PivotTo(CFrame.new(0, 0, 0) * CFrame.Angles(0, math.pi, 0))
+
+	-- Force a single idle animation on top of the neutral pose so the rig
+	-- has a natural stance (slight breathing sway). Because every part is
+	-- anchored the animation will still pose joints via Motor6D
+	-- transforms without the rig physically moving.
+	if animator then
+		local anim = Instance.new("Animation")
+		anim.AnimationId = IDLE_ANIMATION_ID
+		local track = animator:LoadAnimation(anim)
+		track.Looped = true
+		track.Priority = Enum.AnimationPriority.Action
+		track:Play(0)
+	end
 
 	-- Multi-light setup to give the clone depth and shape. A single light
 	-- flattens the model — we need a bright key light in front and a cyan
