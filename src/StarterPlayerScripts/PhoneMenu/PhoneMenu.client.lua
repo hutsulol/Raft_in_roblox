@@ -14,26 +14,7 @@ local Players           = game:GetService("Players")
 local UserInputService  = game:GetService("UserInputService")
 local GuiService        = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-
--- Holographic glitch-in animation. Plays on every open; requires a
--- LoadBar (Frame) and LoadText (TextLabel) as direct children of the
--- frame we pass in — both are created in buildMenu() below.
---
--- Loaded defensively so a missing or broken HoloOpenAnimation module
--- doesn't yield the whole LocalScript forever (which would block the
--- InputBegan handler that opens the menu in the first place).
-local HoloOpenAnimation = nil
-do
-	local mod = script.Parent:FindFirstChild("HoloOpenAnimation")
-	if mod and mod:IsA("ModuleScript") then
-		local ok, res = pcall(require, mod)
-		if ok then
-			HoloOpenAnimation = res
-		else
-			warn("[PhoneMenu] HoloOpenAnimation failed to load:", res)
-		end
-	end
-end
+local TweenService      = game:GetService("TweenService")
 
 -- Pose used for the viewport character. Custom looping idle that keeps the
 -- rig in a clean standing stance for the UI preview.
@@ -60,15 +41,21 @@ local FONT_BODY  = Enum.Font.Gotham
 local menuOpen              = false
 local phoneEquipped         = false
 local screenGui             = nil
--- Refs used by the holo-open animation. `holoRootFrame` is the frame
--- we scale/fade on every open, and holoLoadBar / holoLoadText are
--- the per-open LOAD… progress pair the HoloOpenAnimation module drives.
--- `holoPulseStop` is the stop handle for the idle heartbeat the module
--- returns — we call it on close so the pulse doesn't leak across opens.
-local holoRootFrame         = nil
-local holoLoadBar           = nil
-local holoLoadText          = nil
-local holoPulseStop         = nil
+-- Refs used by the inline holo-open animation. The menu content lives
+-- inside `menuRoot` (a CanvasGroup whose GroupTransparency we tween to
+-- reveal everything at once), and the loading UI lives in a sibling
+-- overlay that plays the glitch / RGB-shift / fill sequence *before*
+-- the menu appears.
+local menuRoot              = nil
+local menuRootScale         = nil
+local loadingOverlay        = nil
+local loadingBar            = nil
+local loadingText           = nil
+local loadingStroke         = nil
+-- Incremented every time the menu is opened so an in-flight animation
+-- from a previous open can bail out cleanly if the user closes and
+-- reopens before it finishes.
+local openAnimationToken    = 0
 -- Set to true after `refreshCharacterViewport()` has built the rig for the
 -- current life. Gates the refresh so subsequent menu opens are instant and
 -- reuse the same viewport contents. Reset to false when the player respawns
@@ -393,17 +380,29 @@ local function buildMenu()
 	backdrop.Size = UDim2.fromScale(1, 1)
 	backdrop.Parent = screenGui
 
-	-- Root frame hosts the interactive UI. Inset by the Roblox topbar
+	-- Root hosts the interactive UI. It's a CanvasGroup so we can tween
+	-- its GroupTransparency to fade every panel in as a single unit at
+	-- the end of the holo-open animation. Inset by the Roblox topbar
 	-- height at the top (plus a small margin) so the level / tasks
 	-- panels never slide under the Roblox chrome on any device.
 	local topInset = GuiService:GetGuiInset().Y
-	local root = Instance.new("Frame")
+	local root = Instance.new("CanvasGroup")
 	root.Name = "Root"
 	root.BackgroundTransparency = 1
+	root.GroupTransparency = 1  -- hidden until the open animation reveals it
 	root.AnchorPoint = Vector2.new(0, 0)
 	root.Position = UDim2.new(0, 30, 0, topInset + 20)
 	root.Size = UDim2.new(1, -60, 1, -(topInset + 50))
 	root.Parent = screenGui
+
+	-- UIScale we drive for the final "materialize" tween (0.85 → 1).
+	local rootScale = Instance.new("UIScale")
+	rootScale.Name = "HoloScale"
+	rootScale.Scale = 1
+	rootScale.Parent = root
+
+	menuRoot      = root
+	menuRootScale = rootScale
 
 	-- ── Center: character viewport ───────────────────────────────────────
 	-- ViewportFrame occupies the same space as before; only its contents
@@ -666,38 +665,182 @@ local function buildMenu()
 	xpFillFrame = xpFill
 
 	-- ── Holo-open LOAD… overlay ────────────────────────────────────────
-	-- LoadText / LoadBar are direct children of `root` so the
-	-- HoloOpenAnimation module can find them by name. They sit in the
-	-- empty space above the character viewport, centered horizontally,
-	-- and are hidden once the open animation finishes.
-	local loadText = makeLabel(root, "LOAD...", FONT_TITLE, 22, COLOR_TEXT, Enum.TextXAlignment.Center)
+	-- Sibling of `root` (NOT a child) so it isn't affected by the
+	-- CanvasGroup's GroupTransparency — the overlay is visible *while*
+	-- the menu is hidden, and hides itself once the menu is revealed.
+	local overlay = Instance.new("Frame")
+	overlay.Name = "LoadingOverlay"
+	overlay.BackgroundTransparency = 1
+	overlay.AnchorPoint = Vector2.new(0.5, 0.5)
+	overlay.Position = UDim2.fromScale(0.5, 0.5)
+	overlay.Size = UDim2.fromOffset(300, 60)
+	overlay.Visible = false
+	overlay.Parent = screenGui
+
+	local loadText = makeLabel(overlay, "LOAD...", FONT_TITLE, 22, COLOR_TEXT, Enum.TextXAlignment.Center)
 	loadText.Name = "LoadText"
-	loadText.AnchorPoint = Vector2.new(0.5, 0.5)
-	loadText.Position = UDim2.new(0.5, 0, 0.45, -180)
-	loadText.Size = UDim2.fromOffset(240, 28)
-	loadText.Visible = false
+	loadText.AnchorPoint = Vector2.new(0.5, 0)
+	loadText.Position = UDim2.new(0.5, 0, 0, 0)
+	loadText.Size = UDim2.fromOffset(260, 28)
+
+	local loadTrack = Instance.new("Frame")
+	loadTrack.Name = "LoadTrack"
+	loadTrack.BackgroundColor3 = COLOR_BAR_BG
+	loadTrack.BorderSizePixel = 0
+	loadTrack.AnchorPoint = Vector2.new(0.5, 0)
+	loadTrack.Position = UDim2.new(0.5, 0, 0, 34)
+	loadTrack.Size = UDim2.fromOffset(260, 8)
+	loadTrack.Parent = overlay
+	corner(loadTrack, 4)
 
 	local loadBar = Instance.new("Frame")
 	loadBar.Name = "LoadBar"
 	loadBar.BackgroundColor3 = COLOR_XP_FILL
 	loadBar.BorderSizePixel = 0
 	loadBar.AnchorPoint = Vector2.new(0, 0.5)
-	loadBar.Position = UDim2.new(0.5, -120, 0.45, -150)
-	loadBar.Size = UDim2.fromOffset(240, 8)
-	loadBar.Visible = false
-	loadBar.Parent = root
+	loadBar.Position = UDim2.new(0, 0, 0.5, 0)
+	loadBar.Size = UDim2.fromScale(0, 1)
+	loadBar.Parent = loadTrack
 	corner(loadBar, 4)
-	-- Cyan glow stroke so the bar has the "holo" feel called for in the
-	-- animation spec.
+
+	-- Cyan glow stroke so the bar has the "holo" feel, and also doubles
+	-- as one of the channels we tint during the RGB-shift phase.
 	local loadGlow = Instance.new("UIStroke")
 	loadGlow.Color = COLOR_XP_FILL
 	loadGlow.Thickness = 2
 	loadGlow.Transparency = 0.3
 	loadGlow.Parent = loadBar
 
-	holoRootFrame = root
-	holoLoadBar   = loadBar
-	holoLoadText  = loadText
+	loadingOverlay = overlay
+	loadingBar     = loadBar
+	loadingText    = loadText
+	loadingStroke  = loadGlow
+end
+
+-- ─── Holo-open animation (inline) ─────────────────────────────────────────
+-- Solo-Leveling / sci-fi HUD style opener. Runs entirely on the loading
+-- overlay: the menu panels stay hidden via the CanvasGroup until the
+-- loading sequence finishes, at which point they fade + scale in as the
+-- "result" of the animation completing. All tuning lives here so it's
+-- easy to tweak feel without touching the flow.
+
+local HOLO_GLITCH_DURATION   = 0.22
+local HOLO_GLITCH_STEP       = 0.025
+local HOLO_GLITCH_OFFSET_MAX = 7
+
+local HOLO_RGB_STEPS         = 6
+local HOLO_RGB_STEP          = 0.03
+
+local HOLO_LOAD_DURATION     = 0.8
+
+local HOLO_FLICKER_COUNT     = 3
+local HOLO_FLICKER_STEP      = 0.045
+
+local HOLO_APPEAR_DURATION   = 0.35
+local HOLO_APPEAR_FROM_SCALE = 0.85
+
+local HOLO_RED = Color3.fromRGB(255, 64, 96)
+local HOLO_BLU = Color3.fromRGB(64, 160, 255)
+
+local function holoJitter(range)
+	return (math.random() * 2 - 1) * range
+end
+
+-- Returns true if `token` is still the latest open token. Used so an
+-- in-flight animation can abort if the user closed+reopened the menu.
+local function holoTokenAlive(token)
+	return token == openAnimationToken and menuOpen
+end
+
+local function runHoloOpenAnimation(token)
+	-- Reset loading state before showing it.
+	loadingText.Text                  = "LOAD..."
+	loadingText.TextColor3            = COLOR_TEXT
+	loadingText.TextTransparency      = 0
+	loadingBar.BackgroundTransparency = 0
+	loadingBar.Size                   = UDim2.fromScale(0, 1)
+	loadingStroke.Color               = COLOR_XP_FILL
+	loadingStroke.Transparency        = 0.3
+	loadingOverlay.Position           = UDim2.fromScale(0.5, 0.5)
+	loadingOverlay.Visible            = true
+
+	-- Keep the menu fully hidden + slightly zoomed until the final reveal.
+	menuRoot.GroupTransparency = 1
+	menuRootScale.Scale = HOLO_APPEAR_FROM_SCALE
+
+	-- Kick the progress-bar fill in parallel with the glitch + RGB phases.
+	local fillTween = TweenService:Create(
+		loadingBar,
+		TweenInfo.new(HOLO_LOAD_DURATION, Enum.EasingStyle.Linear),
+		{ Size = UDim2.fromScale(1, 1) }
+	)
+	fillTween:Play()
+
+	-- Phase 1: glitch jitter — random position + transparency flicker.
+	local origPos = loadingOverlay.Position
+	local elapsed = 0
+	while elapsed < HOLO_GLITCH_DURATION do
+		if not holoTokenAlive(token) then fillTween:Cancel() return end
+		loadingOverlay.Position = origPos + UDim2.fromOffset(
+			math.floor(holoJitter(HOLO_GLITCH_OFFSET_MAX)),
+			math.floor(holoJitter(HOLO_GLITCH_OFFSET_MAX))
+		)
+		loadingText.TextTransparency      = 0.2 + math.random() * 0.55
+		loadingBar.BackgroundTransparency = 0.2 + math.random() * 0.55
+		task.wait(HOLO_GLITCH_STEP)
+		elapsed += HOLO_GLITCH_STEP
+	end
+	loadingOverlay.Position           = origPos
+	loadingText.TextTransparency      = 0
+	loadingBar.BackgroundTransparency = 0
+
+	-- Phase 2: RGB channel shift on text + bar stroke.
+	for i = 1, HOLO_RGB_STEPS do
+		if not holoTokenAlive(token) then fillTween:Cancel() return end
+		local odd = (i % 2) == 1
+		loadingText.TextColor3 = odd and HOLO_RED or HOLO_BLU
+		loadingStroke.Color    = odd and HOLO_BLU or HOLO_RED
+		task.wait(HOLO_RGB_STEP + math.random() * 0.015)
+	end
+	loadingText.TextColor3 = COLOR_TEXT
+	loadingStroke.Color    = COLOR_XP_FILL
+
+	-- Phase 3: wait for the loading bar to reach 100%.
+	if fillTween.PlaybackState ~= Enum.PlaybackState.Completed then
+		fillTween.Completed:Wait()
+	end
+	if not holoTokenAlive(token) then return end
+
+	-- Phase 4: "SYSTEM READY" swap + short final flicker.
+	loadingText.Text = "SYSTEM READY"
+	for _ = 1, HOLO_FLICKER_COUNT do
+		if not holoTokenAlive(token) then return end
+		loadingText.TextTransparency = 0.55
+		task.wait(HOLO_FLICKER_STEP)
+		loadingText.TextTransparency = 0
+		task.wait(HOLO_FLICKER_STEP)
+	end
+
+	-- Phase 5: reveal the menu (scale + group transparency) while the
+	-- loading overlay fades out in parallel. The menu materializing is
+	-- the "result" of the loading animation completing, per the spec.
+	local appearInfo = TweenInfo.new(
+		HOLO_APPEAR_DURATION,
+		Enum.EasingStyle.Quint,
+		Enum.EasingDirection.Out
+	)
+	TweenService:Create(menuRootScale, appearInfo, { Scale = 1 }):Play()
+	TweenService:Create(menuRoot, appearInfo, { GroupTransparency = 0 }):Play()
+	TweenService:Create(loadingText, appearInfo, { TextTransparency = 1 }):Play()
+	TweenService:Create(loadingBar,  appearInfo, { BackgroundTransparency = 1 }):Play()
+	local fadeStroke = TweenService:Create(loadingStroke, appearInfo, { Transparency = 1 })
+	fadeStroke:Play()
+	fadeStroke.Completed:Wait()
+
+	if holoTokenAlive(token) then
+		loadingOverlay.Visible = false
+		loadingStroke.Transparency = 0.3
+	end
 end
 
 -- ─── Show / hide ──────────────────────────────────────────────────────────
@@ -705,13 +848,6 @@ local function setMenuOpen(open)
 	if not screenGui then buildMenu() end
 	menuOpen = open
 	screenGui.Enabled = open
-
-	-- Always stop any idle pulse from the previous open so a rapid
-	-- close→open doesn't leak a pulse coroutine into the new session.
-	if holoPulseStop then
-		holoPulseStop()
-		holoPulseStop = nil
-	end
 
 	if open then
 		if typeof(_G.CloseInventory) == "function" then
@@ -725,31 +861,23 @@ local function setMenuOpen(open)
 			viewportInitialized = true
 		end
 
-		-- Play the holographic glitch-in animation. LoadBar / LoadText
-		-- live inside `root` only to drive the opener — reveal them for
-		-- the duration of the animation and hide them again afterward.
-		-- Gated on HoloOpenAnimation being loaded so a missing sibling
-		-- module doesn't break the menu entirely.
-		if HoloOpenAnimation and holoRootFrame and holoLoadBar and holoLoadText then
-			holoLoadBar.Visible  = true
-			holoLoadText.Visible = true
-			task.spawn(function()
-				local ok, stop = pcall(HoloOpenAnimation.PlayOpenAnimation, holoRootFrame)
-				holoLoadBar.Visible  = false
-				holoLoadText.Visible = false
-				if not ok then
-					warn("[PhoneMenu] PlayOpenAnimation errored:", stop)
-					return
-				end
-				-- Only keep the pulse handle if the menu is still open;
-				-- the user may have closed mid-animation.
-				if menuOpen then
-					holoPulseStop = stop
-				elseif typeof(stop) == "function" then
-					stop()
-				end
-			end)
+		-- Hide the menu immediately and fire the holo-open animation,
+		-- which reveals everything when it finishes.
+		openAnimationToken += 1
+		local token = openAnimationToken
+		if menuRoot then
+			menuRoot.GroupTransparency = 1
+			menuRootScale.Scale = HOLO_APPEAR_FROM_SCALE
 		end
+		task.spawn(function()
+			runHoloOpenAnimation(token)
+		end)
+	else
+		-- Close: invalidate any in-flight animation so it bails out
+		-- when it next wakes. screenGui.Enabled is already false, so
+		-- we just need to hide the overlay for the next open.
+		openAnimationToken += 1
+		if loadingOverlay then loadingOverlay.Visible = false end
 	end
 end
 
