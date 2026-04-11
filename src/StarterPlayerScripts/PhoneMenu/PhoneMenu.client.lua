@@ -10,9 +10,10 @@
 --   top-right    : daily tasks + reward
 --   bottom-right : Arsenal / Mercenaries buttons
 
-local Players          = game:GetService("Players")
-local UserInputService = game:GetService("UserInputService")
-local GuiService       = game:GetService("GuiService")
+local Players           = game:GetService("Players")
+local UserInputService  = game:GetService("UserInputService")
+local GuiService        = game:GetService("GuiService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Pose used for the viewport character. Custom looping idle that keeps the
 -- rig in a clean standing stance for the UI preview.
@@ -152,6 +153,17 @@ local viewportFrame = nil
 local viewportWorld = nil
 local viewportCamera = nil
 local viewportCharModel = nil
+
+-- Live references the Characteristics binding updates. Set during
+-- buildMenu() and re-read by refreshCharacteristics() every time a
+-- replicated IntValue changes.
+local levelBadgeLabel    = nil
+local upgradePointsLabel = nil
+local strengthFill       = nil
+local strengthLvlLabel   = nil
+local strengthButton     = nil
+local xpAmountLabel      = nil
+local xpFillFrame        = nil
 
 -- Build a static preview rig from the player's HumanoidDescription. This
 -- gives us a fresh R15 model in a clean neutral pose (like the Avatar
@@ -401,17 +413,19 @@ local function buildMenu()
 	lvlTag.Size = UDim2.new(1, 0, 0, 16)
 	lvlTag.Position = UDim2.fromOffset(0, 4)
 
-	local lvlNum = makeLabel(lvlBadge, "5", FONT_TITLE, 22, COLOR_ACCENT, Enum.TextXAlignment.Center)
+	local lvlNum = makeLabel(lvlBadge, "1", FONT_TITLE, 22, COLOR_ACCENT, Enum.TextXAlignment.Center)
 	lvlNum.Size = UDim2.new(1, 0, 0, 28)
 	lvlNum.Position = UDim2.fromOffset(0, 18)
+	levelBadgeLabel = lvlNum
 
-	local nameLbl = makeLabel(levelPanel, "usernam3", FONT_TITLE, 22, COLOR_TEXT)
+	local nameLbl = makeLabel(levelPanel, player.DisplayName ~= "" and player.DisplayName or player.Name, FONT_TITLE, 22, COLOR_TEXT)
 	nameLbl.Position = UDim2.fromOffset(60, 0)
 	nameLbl.Size = UDim2.new(1, -60, 0, 28)
 
-	local pointsLbl = makeLabel(levelPanel, "Upgrade points: 3", FONT_BODY, 14, COLOR_ACCENT)
+	local pointsLbl = makeLabel(levelPanel, "Upgrade points: 0", FONT_BODY, 14, COLOR_ACCENT)
 	pointsLbl.Position = UDim2.fromOffset(60, 30)
 	pointsLbl.Size = UDim2.new(1, -60, 0, 20)
+	upgradePointsLabel = pointsLbl
 
 	-- ── Left column: attribute bars ────────────────────────────────────
 	local statsPanel = makePanel("StatsPanel", root)
@@ -435,19 +449,51 @@ local function buildMenu()
 	list.Padding = UDim.new(0, 10)
 	list.Parent = rowHolder
 
+	-- Attribute rows. Only Strength is wired to live data right now; the
+	-- other three stay as visual placeholders so the mockup matches. The
+	-- live attribute references are captured into module-level variables
+	-- so refreshCharacteristics() can update them later.
 	local stats = {
-		{ name = "HP",        fill = 0.8, lvl = "lvl 5", glyph = "+" },
-		{ name = "Stamina",   fill = 0.2, lvl = "lvl 1", glyph = "S" },
-		{ name = "Strength",  fill = 0.6, lvl = "lvl 3", glyph = "ST" },
-		{ name = "Agility",   fill = 0.2, lvl = "lvl 1", glyph = "A" },
+		{ name = "HP",        fill = 0.8, lvl = "lvl 5", glyph = "+",  key = nil        },
+		{ name = "Stamina",   fill = 0.2, lvl = "lvl 1", glyph = "S",  key = nil        },
+		{ name = "Strength",  fill = 0.0, lvl = "lvl 0", glyph = "ST", key = "Strength" },
+		{ name = "Agility",   fill = 0.2, lvl = "lvl 1", glyph = "A",  key = nil        },
 	}
 	for i, s in ipairs(stats) do
-		local row, _, lvlLabel = makeBar(rowHolder, s.fill, s.name)
+		local row, fill, lvlLabel = makeBar(rowHolder, s.fill, s.name)
 		row.LayoutOrder = i
 		lvlLabel.Text = s.lvl
-		local icon = makeIconBox(row, s.glyph)
-		icon.AnchorPoint = Vector2.new(1, 0.5)
-		icon.Position = UDim2.new(1, -46, 0.5, 0)
+
+		if s.key == "Strength" then
+			-- Clickable upgrade button for Strength. Fires the
+			-- PhoneMenuAction RemoteEvent with "upgradeStrength" —
+			-- Characteristics.server.lua consumes it and decrements
+			-- UpgradePoints / increments Strength server-side, which
+			-- replicates straight back into refreshCharacteristics().
+			local btn = Instance.new("TextButton")
+			btn.Name = "StrengthUpgrade"
+			btn.BackgroundColor3 = COLOR_BAR_BG
+			btn.BorderSizePixel = 0
+			btn.AutoButtonColor = true
+			btn.Size = UDim2.fromOffset(26, 26)
+			btn.AnchorPoint = Vector2.new(1, 0.5)
+			btn.Position = UDim2.new(1, -46, 0.5, 0)
+			btn.Font = FONT_TITLE
+			btn.TextSize = 18
+			btn.TextColor3 = COLOR_ACCENT
+			btn.Text = "+"
+			btn.Parent = row
+			corner(btn, 6)
+			stroke(btn, 1, COLOR_PANEL_EDGE)
+
+			strengthFill     = fill
+			strengthLvlLabel = lvlLabel
+			strengthButton   = btn
+		else
+			local icon = makeIconBox(row, s.glyph)
+			icon.AnchorPoint = Vector2.new(1, 0.5)
+			icon.Position = UDim2.new(1, -46, 0.5, 0)
+		end
 	end
 
 	-- ── Top-right: daily tasks ─────────────────────────────────────────
@@ -557,9 +603,10 @@ local function buildMenu()
 	xpTag.Size = UDim2.fromOffset(40, 1)
 	xpTag.Size = UDim2.new(0, 40, 1, 0)
 
-	local xpAmount = makeLabel(xpPanel, "256 / 850", FONT_BODY, 16, COLOR_TEXT_DIM)
+	local xpAmount = makeLabel(xpPanel, "0 / 50", FONT_BODY, 16, COLOR_TEXT_DIM)
 	xpAmount.Position = UDim2.fromOffset(46, 0)
 	xpAmount.Size = UDim2.new(0, 120, 1, 0)
+	xpAmountLabel = xpAmount
 
 	local xpTrack = Instance.new("Frame")
 	xpTrack.BackgroundColor3 = COLOR_BAR_BG
@@ -573,9 +620,10 @@ local function buildMenu()
 	local xpFill = Instance.new("Frame")
 	xpFill.BackgroundColor3 = COLOR_XP_FILL
 	xpFill.BorderSizePixel = 0
-	xpFill.Size = UDim2.fromScale(256 / 850, 1)
+	xpFill.Size = UDim2.fromScale(0, 1)
 	xpFill.Parent = xpTrack
 	corner(xpFill, 7)
+	xpFillFrame = xpFill
 end
 
 -- ─── Show / hide ──────────────────────────────────────────────────────────
@@ -653,6 +701,75 @@ player.CharacterAdded:Connect(setupCharacter)
 
 -- Build the GUI once up-front so the first open has no hitch.
 buildMenu()
+
+-- ─── Characteristics binding ─────────────────────────────────────────────
+-- Pushes the replicated per-player `Characteristics` IntValues (created by
+-- Characteristics.server.lua) into the phone-menu labels and bars, and wires
+-- the Strength "+" button up to the shared PhoneMenuAction RemoteEvent.
+local phoneMenuEvent = ReplicatedStorage:WaitForChild("PhoneMenuAction")
+
+local function refreshCharacteristics()
+	local folder = player:FindFirstChild("Characteristics")
+	if not folder then return end
+
+	local level         = folder:FindFirstChild("Level")
+	local xp            = folder:FindFirstChild("XP")
+	local xpRequired    = folder:FindFirstChild("XPRequired")
+	local upgradePoints = folder:FindFirstChild("UpgradePoints")
+	local strength      = folder:FindFirstChild("Strength")
+
+	if levelBadgeLabel and level then
+		levelBadgeLabel.Text = tostring(level.Value)
+	end
+
+	if upgradePointsLabel and upgradePoints then
+		upgradePointsLabel.Text = "Upgrade points: " .. upgradePoints.Value
+	end
+
+	if strengthLvlLabel and strength then
+		strengthLvlLabel.Text = "lvl " .. strength.Value
+	end
+	if strengthFill and strength then
+		-- Dev-phase: treat 10 strength as a full bar.
+		local ratio = math.clamp(strength.Value / 10, 0, 1)
+		strengthFill.Size = UDim2.new(ratio, 0, 1, 0)
+	end
+	if strengthButton and upgradePoints then
+		local hasPoints = upgradePoints.Value > 0
+		strengthButton.AutoButtonColor = hasPoints
+		strengthButton.TextTransparency = hasPoints and 0 or 0.5
+	end
+
+	if xpAmountLabel and xp and xpRequired then
+		xpAmountLabel.Text = xp.Value .. " / " .. xpRequired.Value
+	end
+	if xpFillFrame and xp and xpRequired then
+		local ratio = xpRequired.Value > 0 and xp.Value / xpRequired.Value or 0
+		xpFillFrame.Size = UDim2.new(math.clamp(ratio, 0, 1), 0, 1, 0)
+	end
+end
+
+task.spawn(function()
+	local folder = player:WaitForChild("Characteristics")
+	for _, v in folder:GetChildren() do
+		if v:IsA("IntValue") then
+			v:GetPropertyChangedSignal("Value"):Connect(refreshCharacteristics)
+		end
+	end
+	folder.ChildAdded:Connect(function(v)
+		if v:IsA("IntValue") then
+			v:GetPropertyChangedSignal("Value"):Connect(refreshCharacteristics)
+			refreshCharacteristics()
+		end
+	end)
+	refreshCharacteristics()
+end)
+
+if strengthButton then
+	strengthButton.MouseButton1Click:Connect(function()
+		phoneMenuEvent:FireServer("upgradeStrength")
+	end)
+end
 
 -- ─── Input ────────────────────────────────────────────────────────────────
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
