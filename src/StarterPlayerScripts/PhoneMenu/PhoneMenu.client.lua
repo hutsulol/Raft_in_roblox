@@ -18,7 +18,22 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- Holographic glitch-in animation. Plays on every open; requires a
 -- LoadBar (Frame) and LoadText (TextLabel) as direct children of the
 -- frame we pass in — both are created in buildMenu() below.
-local HoloOpenAnimation = require(script.Parent:WaitForChild("HoloOpenAnimation"))
+--
+-- Loaded defensively so a missing or broken HoloOpenAnimation module
+-- doesn't yield the whole LocalScript forever (which would block the
+-- InputBegan handler that opens the menu in the first place).
+local HoloOpenAnimation = nil
+do
+	local mod = script.Parent:FindFirstChild("HoloOpenAnimation")
+	if mod and mod:IsA("ModuleScript") then
+		local ok, res = pcall(require, mod)
+		if ok then
+			HoloOpenAnimation = res
+		else
+			warn("[PhoneMenu] HoloOpenAnimation failed to load:", res)
+		end
+	end
+end
 
 -- Pose used for the viewport character. Custom looping idle that keeps the
 -- rig in a clean standing stance for the UI preview.
@@ -713,18 +728,24 @@ local function setMenuOpen(open)
 		-- Play the holographic glitch-in animation. LoadBar / LoadText
 		-- live inside `root` only to drive the opener — reveal them for
 		-- the duration of the animation and hide them again afterward.
-		if holoRootFrame and holoLoadBar and holoLoadText then
+		-- Gated on HoloOpenAnimation being loaded so a missing sibling
+		-- module doesn't break the menu entirely.
+		if HoloOpenAnimation and holoRootFrame and holoLoadBar and holoLoadText then
 			holoLoadBar.Visible  = true
 			holoLoadText.Visible = true
 			task.spawn(function()
-				local stop = HoloOpenAnimation.PlayOpenAnimation(holoRootFrame)
+				local ok, stop = pcall(HoloOpenAnimation.PlayOpenAnimation, holoRootFrame)
 				holoLoadBar.Visible  = false
 				holoLoadText.Visible = false
+				if not ok then
+					warn("[PhoneMenu] PlayOpenAnimation errored:", stop)
+					return
+				end
 				-- Only keep the pulse handle if the menu is still open;
 				-- the user may have closed mid-animation.
 				if menuOpen then
 					holoPulseStop = stop
-				else
+				elseif typeof(stop) == "function" then
 					stop()
 				end
 			end)
