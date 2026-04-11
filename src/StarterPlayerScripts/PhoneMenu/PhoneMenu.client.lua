@@ -244,17 +244,35 @@ local function refreshCharacterViewport()
 	-- +Y lift keeps the feet from sinking against the bottom of the frame.
 	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
 
-	-- Force a single idle animation on top of the neutral pose so the rig
-	-- has a natural stance (slight breathing sway). Because every part is
-	-- anchored the animation will still pose joints via Motor6D
-	-- transforms without the rig physically moving.
+	-- Load the idle animation but do NOT start it. The rig should sit in
+	-- its neutral Motor6D pose most of the time and only play the idle
+	-- occasionally so there's no constant head sway in the UI preview.
+	-- A background task plays the track once every ~30 seconds while the
+	-- model is alive.
 	if animator then
 		local anim = Instance.new("Animation")
 		anim.AnimationId = IDLE_ANIMATION_ID
 		local track = animator:LoadAnimation(anim)
-		track.Looped = true
+		track.Looped = false
 		track.Priority = Enum.AnimationPriority.Action
-		track:Play(0)
+
+		local thisModel = clone
+		task.spawn(function()
+			while thisModel.Parent do
+				task.wait(30)
+				-- Bail out if the rig was rebuilt (respawn) in the
+				-- meantime — the new rig has its own ticker.
+				if not thisModel.Parent or thisModel ~= viewportCharModel then
+					return
+				end
+				-- Make sure nothing else is playing before we trigger
+				-- the one-shot idle.
+				for _, t in animator:GetPlayingAnimationTracks() do
+					t:Stop(0)
+				end
+				track:Play()
+			end
+		end)
 	end
 
 	-- Multi-light setup to give the clone depth and shape. A single light
