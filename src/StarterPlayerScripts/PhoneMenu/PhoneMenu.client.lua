@@ -185,26 +185,66 @@ local function refreshCharacterViewport()
 	-- the +Z axis — that's where the camera sits.
 	clone:PivotTo(CFrame.new(0, 0, 0) * CFrame.Angles(0, math.pi, 0))
 
-	-- Subtle cyan PointLight attached to the root for visibility. A
-	-- PointLight only renders inside a ViewportFrame when its ancestor
-	-- is a WorldModel, which is why the clone lives under `viewportWorld`.
+	-- Multi-light setup to give the clone depth and shape. A single light
+	-- flattens the model — we need a bright key light in front and a cyan
+	-- rim light behind for an outline glow. PointLights only render inside
+	-- a ViewportFrame when their ancestor is a WorldModel (which the clone
+	-- is parented to below). Attachments are used to position each light
+	-- relative to the HumanoidRootPart.
 	local root = clone:FindFirstChild("HumanoidRootPart") or clone.PrimaryPart
 	if root and root:IsA("BasePart") then
-		local light = Instance.new("PointLight")
-		light.Name = "PhoneMenuCharLight"
-		light.Color = Color3.fromRGB(120, 220, 255)
-		light.Brightness = 1.5
-		light.Range = 12
-		light.Shadows = false
-		light.Parent = root
+		-- Key light: white, in front and slightly above (camera side).
+		local keyAtt = Instance.new("Attachment")
+		keyAtt.Name = "PhoneMenuKeyLightAtt"
+		keyAtt.Position = Vector3.new(0, 2, 4)
+		keyAtt.Parent = root
+
+		local keyLight = Instance.new("PointLight")
+		keyLight.Name = "PhoneMenuKeyLight"
+		keyLight.Color = Color3.fromRGB(255, 255, 255)
+		keyLight.Brightness = 2
+		keyLight.Range = 16
+		keyLight.Shadows = false
+		keyLight.Parent = keyAtt
+
+		-- Rim light: cyan, behind the character for an outline glow.
+		local rimAtt = Instance.new("Attachment")
+		rimAtt.Name = "PhoneMenuRimLightAtt"
+		rimAtt.Position = Vector3.new(0, 2, -4)
+		rimAtt.Parent = root
+
+		local rimLight = Instance.new("PointLight")
+		rimLight.Name = "PhoneMenuRimLight"
+		rimLight.Color = Color3.fromRGB(0, 255, 255)
+		rimLight.Brightness = 2
+		rimLight.Range = 14
+		rimLight.Shadows = false
+		rimLight.Parent = rimAtt
+
+		-- Soft fill from below so the legs/torso don't read as a black slab.
+		local fillAtt = Instance.new("Attachment")
+		fillAtt.Name = "PhoneMenuFillLightAtt"
+		fillAtt.Position = Vector3.new(-2, -1, 3)
+		fillAtt.Parent = root
+
+		local fillLight = Instance.new("PointLight")
+		fillLight.Name = "PhoneMenuFillLight"
+		fillLight.Color = Color3.fromRGB(180, 210, 255)
+		fillLight.Brightness = 1
+		fillLight.Range = 12
+		fillLight.Shadows = false
+		fillLight.Parent = fillAtt
 	end
 
 	clone.Parent = viewportWorld
 	viewportCharModel = clone
 
 	if viewportCamera then
-		-- Front view, slightly above, looking at chest height.
-		viewportCamera.CFrame = CFrame.new(Vector3.new(0, 1.5, 6), Vector3.new(0, 0.5, 0))
+		-- Off-center front view, slightly above, wider FOV — the slight X
+		-- offset gives the character perspective so it reads as 3D instead
+		-- of looking like a flat portrait.
+		viewportCamera.FieldOfView = 55
+		viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2, 8), Vector3.new(0, 1, 0))
 	end
 end
 
@@ -256,8 +296,8 @@ local function buildMenu()
 	viewportWorld.Parent = viewportFrame
 
 	viewportCamera = Instance.new("Camera")
-	viewportCamera.FieldOfView = 40
-	viewportCamera.CFrame = CFrame.new(Vector3.new(0, 1.5, 6), Vector3.new(0, 0.5, 0))
+	viewportCamera.FieldOfView = 55
+	viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2, 8), Vector3.new(0, 1, 0))
 	viewportCamera.Parent = viewportFrame
 	viewportFrame.CurrentCamera = viewportCamera
 
