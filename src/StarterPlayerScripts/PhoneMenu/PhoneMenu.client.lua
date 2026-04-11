@@ -546,7 +546,10 @@ local function buildMenu()
 	-- same visual size across resolutions (desktop and mobile alike).
 	local xpPanel = makePanel("XPPanel", root)
 	xpPanel.AnchorPoint = Vector2.new(0.5, 0)
-	xpPanel.Position = UDim2.new(0.5, 0, 0.45, 180)
+	-- Offset 240 puts the top edge of the XP bar exactly on the crop
+	-- line of the viewport character (waist height) — touching the
+	-- character without overlapping and without leaving a gap.
+	xpPanel.Position = UDim2.new(0.5, 0, 0.45, 240)
 	xpPanel.Size = UDim2.fromOffset(600, 48)
 	padding(xpPanel, 10)
 
