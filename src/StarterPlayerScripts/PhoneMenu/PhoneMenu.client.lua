@@ -172,6 +172,7 @@ local xpFillFrame        = nil
 -- updates. `dailyClaimButton` becomes clickable once every quest is
 -- complete, and goes away once the reward is claimed.
 local dailyQuestsHolder  = nil
+local dailyAllCompleteLabel = nil
 local dailyRewardLabel   = nil
 local dailyClaimButton   = nil
 local dailyTimerLabel    = nil
@@ -550,6 +551,15 @@ local function buildMenu()
 	tList.Padding = UDim.new(0, 8)
 	tList.Parent = tasksHolder
 
+	-- Shown in place of the quest rows once every quest is complete — the
+	-- individual rows still live in `tasksHolder` so rebuilding for a new
+	-- day just re-shows the holder and hides this label again.
+	local allDoneLbl = makeLabel(tasksPanel, "All tasks completed!", FONT_TITLE, 18, COLOR_ACCENT, Enum.TextXAlignment.Center)
+	allDoneLbl.Position = UDim2.fromOffset(0, 30)
+	allDoneLbl.Size = UDim2.new(1, 0, 0, 110)
+	allDoneLbl.Visible = false
+	dailyAllCompleteLabel = allDoneLbl
+
 	local rewardLbl = makeLabel(tasksPanel, "Reward:", FONT_TITLE, 16, COLOR_TEXT)
 	rewardLbl.Position = UDim2.fromOffset(0, 146)
 	rewardLbl.Size = UDim2.fromOffset(80, 22)
@@ -811,6 +821,10 @@ local function clearDailyQuestRows()
 				child:Destroy()
 			end
 		end
+		dailyQuestsHolder.Visible = true
+	end
+	if dailyAllCompleteLabel then
+		dailyAllCompleteLabel.Visible = false
 	end
 	table.clear(dailyQuestRows)
 end
@@ -837,8 +851,16 @@ local function repaintQuestRow(id)
 	local completed = quest:FindFirstChild("Completed")
 	local done      = completed and completed.Value
 
-	rec.label.Text = formatQuestLabel(quest)
-	rec.label.TextColor3 = done and COLOR_ACCENT or COLOR_TEXT
+	local labelText = formatQuestLabel(quest)
+	if done then
+		-- Strike through the whole line so the player can see at a
+		-- glance which quests they've already finished.
+		rec.label.Text = "<s>" .. labelText .. "</s>"
+		rec.label.TextColor3 = COLOR_TEXT_DIM
+	else
+		rec.label.Text = labelText
+		rec.label.TextColor3 = COLOR_TEXT
+	end
 
 	if done then
 		if not rec.check then
@@ -885,6 +907,18 @@ local function updateDailyRewardAndButton(folder)
 		end
 	end
 	if questCount == 0 then allDone = false end
+
+	-- Once every quest is done, swap the row list out for a single
+	-- celebratory label. Rebuilding for a new day re-shows the holder.
+	if dailyQuestsHolder and dailyAllCompleteLabel then
+		if allDone then
+			dailyQuestsHolder.Visible = false
+			dailyAllCompleteLabel.Visible = true
+		else
+			dailyQuestsHolder.Visible = true
+			dailyAllCompleteLabel.Visible = false
+		end
+	end
 
 	local claimed = claimedVal and claimedVal.Value or false
 
@@ -947,6 +981,9 @@ local function rebuildDailyQuests(folder)
 		local label = makeLabel(row, quest.Name, FONT_BODY, 15, COLOR_TEXT)
 		label.Position = UDim2.fromOffset(32, 0)
 		label.Size = UDim2.new(1, -32, 1, 0)
+		-- RichText lets repaintQuestRow wrap the text in <s>…</s> to
+		-- strike through completed quests.
+		label.RichText = true
 
 		dailyQuestRows[id] = { folder = quest, row = row, box = box, label = label, check = nil }
 
