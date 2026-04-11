@@ -139,14 +139,17 @@ end
 
 -- ─── Menu construction ────────────────────────────────────────────────────
 local viewportFrame = nil
+local viewportWorld = nil
 local viewportCamera = nil
 local viewportCharModel = nil
 
--- Clone the player's current character into the ViewportFrame, positioned so
--- the camera frames it nicely. Called whenever the menu opens so the model
--- always reflects the latest appearance/outfit.
+-- Rebuild the character display inside the ViewportFrame. Clones the live
+-- LocalPlayer.Character, strips scripts, anchors parts, rotates it so its
+-- front faces the camera, and attaches a subtle cyan PointLight so it reads
+-- clearly against the dark backdrop. Called every time the menu opens so
+-- the clone always reflects the current appearance.
 local function refreshCharacterViewport()
-	if not viewportFrame then return end
+	if not viewportFrame or not viewportWorld then return end
 
 	if viewportCharModel then
 		viewportCharModel:Destroy()
@@ -162,13 +165,15 @@ local function refreshCharacterViewport()
 	local clone = char:Clone()
 	char.Archivable = wasArchivable
 
-	-- Strip scripts and freeze parts so the clone is a static display model.
+	-- Remove all Scripts / LocalScripts from the clone and anchor parts so
+	-- the model behaves as a static display rig.
 	for _, d in clone:GetDescendants() do
 		if d:IsA("Script") or d:IsA("LocalScript") then
 			d:Destroy()
 		elseif d:IsA("BasePart") then
 			d.Anchored = true
 			d.CanCollide = false
+			d.Massless = true
 		end
 	end
 	local humanoid = clone:FindFirstChildOfClass("Humanoid")
@@ -176,18 +181,30 @@ local function refreshCharacterViewport()
 		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 	end
 
-	-- Center the model at the origin so the fixed camera frames it.
-	local primary = clone.PrimaryPart or clone:FindFirstChild("HumanoidRootPart")
-	if primary then
-		clone:PivotTo(CFrame.new(0, 0, 0))
+	-- Place the clone at origin, rotated 180° around Y so its front faces
+	-- the +Z axis — that's where the camera sits.
+	clone:PivotTo(CFrame.new(0, 0, 0) * CFrame.Angles(0, math.pi, 0))
+
+	-- Subtle cyan PointLight attached to the root for visibility. A
+	-- PointLight only renders inside a ViewportFrame when its ancestor
+	-- is a WorldModel, which is why the clone lives under `viewportWorld`.
+	local root = clone:FindFirstChild("HumanoidRootPart") or clone.PrimaryPart
+	if root and root:IsA("BasePart") then
+		local light = Instance.new("PointLight")
+		light.Name = "PhoneMenuCharLight"
+		light.Color = Color3.fromRGB(120, 220, 255)
+		light.Brightness = 1.5
+		light.Range = 12
+		light.Shadows = false
+		light.Parent = root
 	end
 
-	clone.Parent = viewportFrame
+	clone.Parent = viewportWorld
 	viewportCharModel = clone
 
-	if viewportCamera and primary then
-		-- Camera sits in front of the model, slightly raised, looking at chest.
-		viewportCamera.CFrame = CFrame.new(Vector3.new(0, 0.5, -6), Vector3.new(0, 0.5, 0))
+	if viewportCamera then
+		-- Front view, slightly above, looking at chest height.
+		viewportCamera.CFrame = CFrame.new(Vector3.new(0, 1.5, 6), Vector3.new(0, 0.5, 0))
 	end
 end
 
@@ -219,6 +236,8 @@ local function buildMenu()
 	root.Parent = screenGui
 
 	-- ── Center: character viewport ───────────────────────────────────────
+	-- ViewportFrame occupies the same space as before; only its contents
+	-- (WorldModel + cloned character + camera + light) changed.
 	viewportFrame = Instance.new("ViewportFrame")
 	viewportFrame.Name = "CharacterViewport"
 	viewportFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -231,9 +250,14 @@ local function buildMenu()
 	viewportFrame.Ambient = Color3.fromRGB(180, 200, 230)
 	viewportFrame.Parent = root
 
+	-- WorldModel enables PointLight rendering inside the ViewportFrame.
+	viewportWorld = Instance.new("WorldModel")
+	viewportWorld.Name = "World"
+	viewportWorld.Parent = viewportFrame
+
 	viewportCamera = Instance.new("Camera")
 	viewportCamera.FieldOfView = 40
-	viewportCamera.CFrame = CFrame.new(Vector3.new(0, 0.5, -6), Vector3.new(0, 0.5, 0))
+	viewportCamera.CFrame = CFrame.new(Vector3.new(0, 1.5, 6), Vector3.new(0, 0.5, 0))
 	viewportCamera.Parent = viewportFrame
 	viewportFrame.CurrentCamera = viewportCamera
 
