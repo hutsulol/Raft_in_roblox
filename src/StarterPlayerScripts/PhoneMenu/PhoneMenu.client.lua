@@ -206,8 +206,13 @@ local function refreshCharacterViewport()
 	-- Destroy every Script / LocalScript on the rig — in particular the
 	-- `Animate` LocalScript that drives walk/jump/idle animations on live
 	-- characters. Without this the clone would keep cycling animations.
+	-- Also strip Highlight / SelectionBox instances so the preview rig
+	-- doesn't carry over any gameplay outlines (mining highlight, pickup
+	-- glow, etc.) that might have been attached to the live character.
 	for _, d in clone:GetDescendants() do
 		if d:IsA("Script") or d:IsA("LocalScript") then
+			d:Destroy()
+		elseif d:IsA("Highlight") or d:IsA("SelectionBox") then
 			d:Destroy()
 		end
 	end
@@ -394,9 +399,12 @@ local function buildMenu()
 	viewportFrame.CurrentCamera = viewportCamera
 
 	-- ── Top-left: level + upgrade points ─────────────────────────────────
+	-- Left column (level badge + stats) is nudged ~60px below the root's
+	-- top edge so it clears the Roblox topbar icons (logo / menu / chat)
+	-- on non-Studio clients where those buttons extend past GuiInset.
 	local levelPanel = makePanel("LevelPanel", root)
 	levelPanel.AnchorPoint = Vector2.new(0, 0)
-	levelPanel.Position = UDim2.fromScale(0, 0)
+	levelPanel.Position = UDim2.fromOffset(0, 60)
 	levelPanel.Size = UDim2.fromOffset(300, 70)
 	padding(levelPanel, 10)
 
@@ -430,7 +438,7 @@ local function buildMenu()
 	-- ── Left column: attribute bars ────────────────────────────────────
 	local statsPanel = makePanel("StatsPanel", root)
 	statsPanel.AnchorPoint = Vector2.new(0, 0)
-	statsPanel.Position = UDim2.fromOffset(0, 85)
+	statsPanel.Position = UDim2.fromOffset(0, 145)
 	statsPanel.Size = UDim2.fromOffset(340, 230)
 	padding(statsPanel, 12)
 
