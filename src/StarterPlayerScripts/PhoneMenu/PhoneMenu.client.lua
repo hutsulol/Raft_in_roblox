@@ -13,12 +13,6 @@
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
--- Pose used for the viewport character. This is a standard Roblox R15 idle
--- animation — loading and playing it guarantees the clone always stands in a
--- clean neutral pose instead of copying whatever animation the live
--- character happens to be running (walk, jump, swim, tool hold, …).
-local IDLE_ANIMATION_ID = "rbxassetid://507766666"
-
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -171,12 +165,13 @@ local function buildPreviewRig()
 	return clone
 end
 
--- Rebuild the character display inside the ViewportFrame. Builds a fresh
--- preview rig from the player's HumanoidDescription (so the pose is always
--- clean and neutral), strips scripts, anchors parts, rotates it so its
--- front faces the camera, and attaches lights for depth. Called every time
--- the menu opens so the clone always reflects the current appearance.
-local function refreshCharacterViewport()
+-- Rebuild the cached character display inside the ViewportFrame. Builds a
+-- fresh preview rig from the player's HumanoidDescription (so the pose is
+-- always clean and neutral), strips scripts, freezes parts, and attaches
+-- lights for depth. Called ONCE at script startup and again whenever the
+-- player respawns — NOT on every menu open. `setMenuOpen` just toggles
+-- visibility so the menu appears instantly with zero rebuild cost.
+local function rebuildCharacterRig()
 	if not viewportFrame or not viewportWorld then return end
 
 	if viewportCharModel then
@@ -189,67 +184,52 @@ local function refreshCharacterViewport()
 
 	-- Destroy every Script / LocalScript on the rig — in particular the
 	-- `Animate` LocalScript that drives walk/jump/idle animations on live
-	-- characters. Without this the clone would keep cycling animations.
+	-- characters. Without this the rig would keep cycling animations.
 	for _, d in clone:GetDescendants() do
 		if d:IsA("Script") or d:IsA("LocalScript") then
 			d:Destroy()
 		end
 	end
 
-	-- Stop any AnimationTracks that may already be playing on the humanoid
-	-- / animator before we force our idle pose.
+	-- Freeze the humanoid so nothing can start animating the rig behind
+	-- our back: no state machine, no states enabled, no playing tracks.
 	local humanoid = clone:FindFirstChildOfClass("Humanoid")
-	local animator
 	if humanoid then
 		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 		humanoid.EvaluateStateMachine = false
-		-- Disable every Humanoid state so the rig can't ragdoll, fall,
-		-- jump, swim, climb, or otherwise react to anything in the
-		-- WorldModel. The idle animation is what poses the limbs.
 		for _, state in Enum.HumanoidStateType:GetEnumItems() do
 			pcall(function()
 				humanoid:SetStateEnabled(state, false)
 			end)
 		end
-		animator = humanoid:FindFirstChildOfClass("Animator")
-		if not animator then
-			animator = Instance.new("Animator")
-			animator.Parent = humanoid
-		end
-		for _, track in animator:GetPlayingAnimationTracks() do
-			track:Stop(0)
+		local animator = humanoid:FindFirstChildOfClass("Animator")
+		if animator then
+			for _, track in animator:GetPlayingAnimationTracks() do
+				track:Stop(0)
+			end
+			-- Remove the Animator entirely so nothing can ever start an
+			-- animation on this rig. The rig stays in its neutral
+			-- Motor6D pose (mannequin-like), which is what we want for
+			-- a static UI preview.
+			animator:Destroy()
 		end
 	end
 
-	-- Only the HumanoidRootPart is anchored — the rest of the rig must
-	-- remain unanchored so the idle AnimationTrack can pose the limbs via
-	-- Motor6D.Transform. WorldModel does not simulate physics so the limbs
-	-- cannot fall or drift regardless.
-	local hrp = clone:FindFirstChild("HumanoidRootPart")
+	-- Anchor every BasePart so the rig is 100 % static. With no Animator
+	-- and no playing tracks we don't need Motor6D.Transform to update, so
+	-- blanket-anchoring is safe and guarantees zero drift.
 	for _, d in clone:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.CanCollide = false
 			d.Massless = true
-			d.Anchored = (d == hrp)
+			d.Anchored = true
 		end
 	end
 
-	-- Place the clone at origin, rotated 180° around Y so its front faces
-	-- the +Z axis — that's where the camera sits.
-	clone:PivotTo(CFrame.new(0, 0, 0) * CFrame.Angles(0, math.pi, 0))
-
-	-- Force a single idle animation on top of the neutral pose so the rig
-	-- has a natural stance (slight breathing sway). Because every part is
-	-- anchored the animation will still pose joints via Motor6D
-	-- transforms without the rig physically moving.
-	if animator then
-		local anim = Instance.new("Animation")
-		anim.AnimationId = IDLE_ANIMATION_ID
-		local track = animator:LoadAnimation(anim)
-		track.Looped = true
-		track.Priority = Enum.AnimationPriority.Action
-		track:Play(0)
-	end
+	-- Place the rig at a slightly raised origin, rotated 180° around Y so
+	-- its front faces +Z (camera side). The +Y offset lifts the character
+	-- so they sit a little higher in the viewport.
+	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
 
 	-- Multi-light setup to give the clone depth and shape. A single light
 	-- flattens the model — we need a bright key light in front and a cyan
@@ -308,9 +288,11 @@ local function refreshCharacterViewport()
 	if viewportCamera then
 		-- Off-center front view, slightly above, wider FOV — the slight X
 		-- offset gives the character perspective so it reads as 3D instead
-		-- of looking like a flat portrait.
+		-- of looking like a flat portrait. Pulled in closer (z = 6.5) and
+		-- raised (y = 2.5) so the character appears larger and better
+		-- centered than the previous (1.5, 2, 8) framing.
 		viewportCamera.FieldOfView = 55
-		viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2, 8), Vector3.new(0, 1, 0))
+		viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2.5, 6.5), Vector3.new(0, 1.5, 0))
 	end
 end
 
@@ -363,7 +345,7 @@ local function buildMenu()
 
 	viewportCamera = Instance.new("Camera")
 	viewportCamera.FieldOfView = 55
-	viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2, 8), Vector3.new(0, 1, 0))
+	viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2.5, 6.5), Vector3.new(0, 1.5, 0))
 	viewportCamera.Parent = viewportFrame
 	viewportFrame.CurrentCamera = viewportCamera
 
@@ -563,7 +545,13 @@ local function setMenuOpen(open)
 		if typeof(_G.CloseInventory) == "function" then
 			_G.CloseInventory()
 		end
-		refreshCharacterViewport()
+		-- Lazy rebuild: if the cached rig was cleared (e.g. by a respawn
+		-- that hasn't finished yet) build it now. Normally the rig is
+		-- already cached and this is a no-op, so the menu appears
+		-- instantly.
+		if not viewportCharModel then
+			rebuildCharacterRig()
+		end
 	end
 end
 
@@ -610,14 +598,22 @@ local function setupCharacter(char)
 			break
 		end
 	end
+
+	-- Rebuild the cached rig once per respawn so the preview picks up any
+	-- appearance changes. This happens in the background — the menu's
+	-- own open path does not block on it.
+	task.spawn(rebuildCharacterRig)
 end
 
 local char = player.Character
 if char then setupCharacter(char) end
 player.CharacterAdded:Connect(setupCharacter)
 
--- Build the GUI once up-front so the first open has no hitch.
+-- Build the GUI and cache the character rig once up-front so the first
+-- open has no hitch. rebuildCharacterRig yields on
+-- Players:GetHumanoidDescriptionFromUserId, so run it in a task.
 buildMenu()
+task.spawn(rebuildCharacterRig)
 
 -- ─── Input ────────────────────────────────────────────────────────────────
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
