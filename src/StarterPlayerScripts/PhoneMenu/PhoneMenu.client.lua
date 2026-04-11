@@ -13,6 +13,12 @@
 local Players          = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 
+-- Pose used for the viewport character. This is a standard Roblox R15 idle
+-- animation — loading and playing it guarantees the clone always stands in a
+-- clean neutral pose instead of copying whatever animation the live
+-- character happens to be running (walk, jump, swim, tool hold, …).
+local IDLE_ANIMATION_ID = "rbxassetid://507766666"
+
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
@@ -143,39 +149,21 @@ local viewportWorld = nil
 local viewportCamera = nil
 local viewportCharModel = nil
 
--- Build a static preview rig by cloning the player's live character.
--- Clone is synchronous (no network round-trip) so it is effectively
--- free — the delay players saw with the HumanoidDescription pipeline
--- came from GetHumanoidDescriptionFromUserId yielding on the web
--- catalog. Character:Clone() is instant.
---
--- To avoid cloning a half-streamed character (missing head, missing
--- accessories, etc.) we wait for:
---   * the essential parts (HumanoidRootPart / Head / Humanoid), and
---   * CharacterAppearanceLoaded, which fires once accessories, body
---     colours and clothing have finished replicating.
---
--- All of that waiting happens in the background task that caches the
--- rig at startup / on respawn — NOT on menu open — so `setMenuOpen`
--- stays an instant visibility toggle.
+-- Build a static preview rig from the player's HumanoidDescription. This
+-- gives us a fresh R15 model in a clean neutral pose (like the Avatar
+-- Editor) that matches the player's appearance, instead of a snapshot of
+-- the live character mid-animation. Falls back to a plain clone if the
+-- description API fails for any reason.
 local function buildPreviewRig()
-	local char = player.Character or player.CharacterAdded:Wait()
+	local ok, rig = pcall(function()
+		local desc = Players:GetHumanoidDescriptionFromUserId(player.UserId)
+		return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+	end)
+	if ok and rig then return rig end
 
-	-- Wait for the pieces we need before snapshotting the rig.
-	char:WaitForChild("HumanoidRootPart", 10)
-	char:WaitForChild("Head", 10)
-	char:WaitForChild("Humanoid", 10)
-
-	-- Wait for appearance (accessories / clothing / body colours) to
-	-- finish loading so the clone is a complete avatar.
-	if not player:HasAppearanceLoaded() then
-		player.CharacterAppearanceLoaded:Wait()
-	end
-
-	-- Re-fetch char in case a respawn happened during the yields above.
-	char = player.Character
+	-- Fallback: clone the live character.
+	local char = player.Character
 	if not char then return nil end
-
 	local wasArchivable = char.Archivable
 	char.Archivable = true
 	local clone = char:Clone()
@@ -183,20 +171,12 @@ local function buildPreviewRig()
 	return clone
 end
 
--- Rebuild the cached character display inside the ViewportFrame. Clones
--- the live character via buildPreviewRig(), then follows the exact
--- ordering the rig needs to actually render inside a ViewportFrame:
---
---   1. strip scripts,
---   2. set PrimaryPart,
---   3. parent to the WorldModel,
---   4. PivotTo (position only works once the rig lives under the world),
---   5. freeze humanoid state and anchor the body,
---   6. attach lights.
---
--- Called ONCE at script startup and again on respawn — NOT per menu open,
--- so `setMenuOpen` stays an instant visibility toggle.
-local function rebuildCharacterRig()
+-- Rebuild the character display inside the ViewportFrame. Builds a fresh
+-- preview rig from the player's HumanoidDescription (so the pose is always
+-- clean and neutral), strips scripts, anchors parts, rotates it so its
+-- front faces the camera, and attaches lights for depth. Called every time
+-- the menu opens so the clone always reflects the current appearance.
+local function refreshCharacterViewport()
 	if not viewportFrame or not viewportWorld then return end
 
 	if viewportCharModel then
@@ -204,90 +184,133 @@ local function rebuildCharacterRig()
 		viewportCharModel = nil
 	end
 
-	local model = buildPreviewRig()
-	if not model then return end
+	local clone = buildPreviewRig()
+	if not clone then return end
 
-	-- 1. Strip every Script / LocalScript from the rig (notably the
-	--    default `Animate` LocalScript) so nothing drives animations.
-	for _, d in model:GetDescendants() do
+	-- Destroy every Script / LocalScript on the rig — in particular the
+	-- `Animate` LocalScript that drives walk/jump/idle animations on live
+	-- characters. Without this the clone would keep cycling animations.
+	for _, d in clone:GetDescendants() do
 		if d:IsA("Script") or d:IsA("LocalScript") then
 			d:Destroy()
 		end
 	end
 
-	-- 2. Ensure PrimaryPart is set — PivotTo silently no-ops on a model
-	--    without a PrimaryPart and the rig would stay at origin.
-	model.PrimaryPart = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
-
-	-- 3. Parent to the WorldModel BEFORE positioning so the parts are
-	--    registered in the viewport render pass.
-	model.Parent = viewportWorld
-
-	-- 4. Position after parenting. Raised origin + 180° yaw so the
-	--    character's front faces the +Z camera.
-	model:PivotTo(CFrame.new(0, 1, 0) * CFrame.Angles(0, math.pi, 0))
-
-	-- 5. Freeze the humanoid and body. Anchor everything so the rig is
-	--    a motionless mannequin. (WorldModel does not simulate physics,
-	--    so this is purely belt-and-suspenders.)
-	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	-- Stop any AnimationTracks that may already be playing on the humanoid
+	-- / animator before we force our idle pose.
+	local humanoid = clone:FindFirstChildOfClass("Humanoid")
+	local animator
 	if humanoid then
 		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 		humanoid.EvaluateStateMachine = false
+		-- Disable every Humanoid state so the rig can't ragdoll, fall,
+		-- jump, swim, climb, or otherwise react to anything in the
+		-- WorldModel. The idle animation is what poses the limbs.
 		for _, state in Enum.HumanoidStateType:GetEnumItems() do
 			pcall(function()
 				humanoid:SetStateEnabled(state, false)
 			end)
 		end
-		local animator = humanoid:FindFirstChildOfClass("Animator")
-		if animator then
-			for _, track in animator:GetPlayingAnimationTracks() do
-				track:Stop(0)
-			end
-			animator:Destroy()
+		animator = humanoid:FindFirstChildOfClass("Animator")
+		if not animator then
+			animator = Instance.new("Animator")
+			animator.Parent = humanoid
+		end
+		for _, track in animator:GetPlayingAnimationTracks() do
+			track:Stop(0)
 		end
 	end
 
-	for _, d in model:GetDescendants() do
+	-- Only the HumanoidRootPart is anchored — the rest of the rig must
+	-- remain unanchored so the idle AnimationTrack can pose the limbs via
+	-- Motor6D.Transform. WorldModel does not simulate physics so the limbs
+	-- cannot fall or drift regardless.
+	local hrp = clone:FindFirstChild("HumanoidRootPart")
+	for _, d in clone:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.CanCollide = false
 			d.Massless = true
-			d.Anchored = true
+			d.Anchored = (d == hrp)
 		end
 	end
 
-	-- 6. Multi-light rig attached to HumanoidRootPart for depth.
-	local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+	-- Place the clone at origin, rotated 180° around Y so its front faces
+	-- the +Z axis — that's where the camera sits.
+	clone:PivotTo(CFrame.new(0, 0, 0) * CFrame.Angles(0, math.pi, 0))
+
+	-- Force a single idle animation on top of the neutral pose so the rig
+	-- has a natural stance (slight breathing sway). Because every part is
+	-- anchored the animation will still pose joints via Motor6D
+	-- transforms without the rig physically moving.
+	if animator then
+		local anim = Instance.new("Animation")
+		anim.AnimationId = IDLE_ANIMATION_ID
+		local track = animator:LoadAnimation(anim)
+		track.Looped = true
+		track.Priority = Enum.AnimationPriority.Action
+		track:Play(0)
+	end
+
+	-- Multi-light setup to give the clone depth and shape. A single light
+	-- flattens the model — we need a bright key light in front and a cyan
+	-- rim light behind for an outline glow. PointLights only render inside
+	-- a ViewportFrame when their ancestor is a WorldModel (which the clone
+	-- is parented to below). Attachments are used to position each light
+	-- relative to the HumanoidRootPart.
+	local root = clone:FindFirstChild("HumanoidRootPart") or clone.PrimaryPart
 	if root and root:IsA("BasePart") then
-		local function addLight(name, offset, color, brightness, range)
-			local att = Instance.new("Attachment")
-			att.Name = name .. "Att"
-			att.Position = offset
-			att.Parent = root
+		-- Key light: white, in front and slightly above (camera side).
+		local keyAtt = Instance.new("Attachment")
+		keyAtt.Name = "PhoneMenuKeyLightAtt"
+		keyAtt.Position = Vector3.new(0, 2, 4)
+		keyAtt.Parent = root
 
-			local light = Instance.new("PointLight")
-			light.Name = name
-			light.Color = color
-			light.Brightness = brightness
-			light.Range = range
-			light.Shadows = false
-			light.Parent = att
-		end
-		-- Key light: white, front + above.
-		addLight("PhoneMenuKeyLight",  Vector3.new(0, 2, 4),   Color3.fromRGB(255, 255, 255), 2, 16)
-		-- Rim light: cyan, directly behind for outline glow.
-		addLight("PhoneMenuRimLight",  Vector3.new(0, 2, -4),  Color3.fromRGB(0, 255, 255),   2, 14)
-		-- Soft fill: pale cyan from off to one side, lifts shadows.
-		addLight("PhoneMenuFillLight", Vector3.new(-2, -1, 3), Color3.fromRGB(180, 210, 255), 1, 12)
+		local keyLight = Instance.new("PointLight")
+		keyLight.Name = "PhoneMenuKeyLight"
+		keyLight.Color = Color3.fromRGB(255, 255, 255)
+		keyLight.Brightness = 2
+		keyLight.Range = 16
+		keyLight.Shadows = false
+		keyLight.Parent = keyAtt
+
+		-- Rim light: cyan, behind the character for an outline glow.
+		local rimAtt = Instance.new("Attachment")
+		rimAtt.Name = "PhoneMenuRimLightAtt"
+		rimAtt.Position = Vector3.new(0, 2, -4)
+		rimAtt.Parent = root
+
+		local rimLight = Instance.new("PointLight")
+		rimLight.Name = "PhoneMenuRimLight"
+		rimLight.Color = Color3.fromRGB(0, 255, 255)
+		rimLight.Brightness = 2
+		rimLight.Range = 14
+		rimLight.Shadows = false
+		rimLight.Parent = rimAtt
+
+		-- Soft fill from below so the legs/torso don't read as a black slab.
+		local fillAtt = Instance.new("Attachment")
+		fillAtt.Name = "PhoneMenuFillLightAtt"
+		fillAtt.Position = Vector3.new(-2, -1, 3)
+		fillAtt.Parent = root
+
+		local fillLight = Instance.new("PointLight")
+		fillLight.Name = "PhoneMenuFillLight"
+		fillLight.Color = Color3.fromRGB(180, 210, 255)
+		fillLight.Brightness = 1
+		fillLight.Range = 12
+		fillLight.Shadows = false
+		fillLight.Parent = fillAtt
 	end
 
-	viewportCharModel = model
+	clone.Parent = viewportWorld
+	viewportCharModel = clone
 
-	-- Camera: front view, slightly above, aimed at chest height.
 	if viewportCamera then
+		-- Off-center front view, slightly above, wider FOV — the slight X
+		-- offset gives the character perspective so it reads as 3D instead
+		-- of looking like a flat portrait.
 		viewportCamera.FieldOfView = 55
-		viewportCamera.CFrame = CFrame.new(Vector3.new(0, 2.5, 7), Vector3.new(0, 1, 0))
-		viewportFrame.CurrentCamera = viewportCamera
+		viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2, 8), Vector3.new(0, 1, 0))
 	end
 end
 
@@ -326,15 +349,11 @@ local function buildMenu()
 	viewportFrame.AnchorPoint = Vector2.new(0.5, 0.5)
 	viewportFrame.Position = UDim2.fromScale(0.5, 0.45)
 	viewportFrame.Size = UDim2.fromOffset(360, 500)
-	-- Fully transparent background: no gray wash, no outline, no fog —
-	-- the PointLights on the rig do all the illumination.
 	viewportFrame.BackgroundTransparency = 1
-	viewportFrame.BackgroundColor3 = Color3.new(0, 0, 0)
 	viewportFrame.BorderSizePixel = 0
-	viewportFrame.BorderColor3 = Color3.new(0, 0, 0)
 	viewportFrame.LightColor = Color3.fromRGB(255, 255, 255)
 	viewportFrame.LightDirection = Vector3.new(-0.3, -1, -0.5)
-	viewportFrame.Ambient = Color3.fromRGB(0, 0, 0)
+	viewportFrame.Ambient = Color3.fromRGB(180, 200, 230)
 	viewportFrame.Parent = root
 
 	-- WorldModel enables PointLight rendering inside the ViewportFrame.
@@ -344,7 +363,7 @@ local function buildMenu()
 
 	viewportCamera = Instance.new("Camera")
 	viewportCamera.FieldOfView = 55
-	viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2.5, 7), Vector3.new(0, 2, 0))
+	viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2, 8), Vector3.new(0, 1, 0))
 	viewportCamera.Parent = viewportFrame
 	viewportFrame.CurrentCamera = viewportCamera
 
@@ -544,13 +563,7 @@ local function setMenuOpen(open)
 		if typeof(_G.CloseInventory) == "function" then
 			_G.CloseInventory()
 		end
-		-- Lazy rebuild: if the cached rig was cleared (e.g. by a respawn
-		-- that hasn't finished yet) build it now. Normally the rig is
-		-- already cached and this is a no-op, so the menu appears
-		-- instantly.
-		if not viewportCharModel then
-			rebuildCharacterRig()
-		end
+		refreshCharacterViewport()
 	end
 end
 
@@ -597,22 +610,14 @@ local function setupCharacter(char)
 			break
 		end
 	end
-
-	-- Rebuild the cached rig once per respawn so the preview picks up any
-	-- appearance changes. This happens in the background — the menu's
-	-- own open path does not block on it.
-	task.spawn(rebuildCharacterRig)
 end
 
 local char = player.Character
 if char then setupCharacter(char) end
 player.CharacterAdded:Connect(setupCharacter)
 
--- Build the GUI and cache the character rig once up-front so the first
--- open has no hitch. rebuildCharacterRig yields on
--- Players:GetHumanoidDescriptionFromUserId, so run it in a task.
+-- Build the GUI once up-front so the first open has no hitch.
 buildMenu()
-task.spawn(rebuildCharacterRig)
 
 -- ─── Input ────────────────────────────────────────────────────────────────
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
