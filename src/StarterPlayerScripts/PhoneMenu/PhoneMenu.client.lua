@@ -174,6 +174,7 @@ local xpFillFrame        = nil
 local dailyQuestsHolder  = nil
 local dailyRewardLabel   = nil
 local dailyClaimButton   = nil
+local dailyTimerLabel    = nil
 local dailyQuestRows     = {}
 local dailyQuestConnections = {}
 
@@ -527,7 +528,15 @@ local function buildMenu()
 	padding(tasksPanel, 12)
 
 	local tasksTitle = makeLabel(tasksPanel, "Tasks for today:", FONT_TITLE, 18, COLOR_TEXT)
-	tasksTitle.Size = UDim2.new(1, 0, 0, 22)
+	tasksTitle.Size = UDim2.new(0, 170, 0, 22)
+
+	-- Countdown until the next UTC midnight. dailyTimerLabel is a
+	-- module-level ref so the heartbeat task below can rewrite it
+	-- every second while the menu exists.
+	local timerLbl = makeLabel(tasksPanel, "", FONT_BODY, 14, COLOR_TEXT_DIM, Enum.TextXAlignment.Right)
+	timerLbl.Position = UDim2.new(1, -170, 0, 2)
+	timerLbl.Size = UDim2.fromOffset(170, 20)
+	dailyTimerLabel = timerLbl
 
 	local tasksHolder = Instance.new("Frame")
 	tasksHolder.Name = "TasksHolder"
@@ -1015,6 +1024,34 @@ if dailyClaimButton then
 		phoneMenuEvent:FireServer("claimDailyReward")
 	end)
 end
+
+-- ─── Daily quests reset countdown ────────────────────────────────────────
+-- Daily quests reset at 00:00 UTC every day. Compute how much time is
+-- left until that instant and repaint the label once a second. The loop
+-- only runs while the menu is open so it doesn't fire every second for
+-- the entire session.
+local function secondsUntilNextUtcMidnight()
+	local now = os.time()
+	local t = os.date("!*t", now)
+	return 86400 - (t.hour * 3600 + t.min * 60 + t.sec)
+end
+
+local function formatResetCountdown(secs)
+	if secs < 0 then secs = 0 end
+	local h = math.floor(secs / 3600)
+	local m = math.floor((secs % 3600) / 60)
+	local s = secs % 60
+	return string.format("Resets in %02d:%02d:%02d", h, m, s)
+end
+
+task.spawn(function()
+	while true do
+		if dailyTimerLabel then
+			dailyTimerLabel.Text = formatResetCountdown(secondsUntilNextUtcMidnight())
+		end
+		task.wait(1)
+	end
+end)
 
 -- ─── Input ────────────────────────────────────────────────────────────────
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
