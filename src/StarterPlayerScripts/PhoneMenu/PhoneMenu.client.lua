@@ -37,9 +37,14 @@ local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
 
 -- ─── State ────────────────────────────────────────────────────────────────
-local menuOpen      = false
-local phoneEquipped = false
-local screenGui     = nil
+local menuOpen              = false
+local phoneEquipped         = false
+local screenGui             = nil
+-- Set to true after `refreshCharacterViewport()` has built the rig for the
+-- current life. Gates the refresh so subsequent menu opens are instant and
+-- reuse the same viewport contents. Reset to false when the player respawns
+-- so the next open rebuilds against the new character.
+local viewportInitialized   = false
 
 -- ─── Small UI helpers ─────────────────────────────────────────────────────
 local function stroke(parent, thickness, color)
@@ -563,7 +568,13 @@ local function setMenuOpen(open)
 		if typeof(_G.CloseInventory) == "function" then
 			_G.CloseInventory()
 		end
-		refreshCharacterViewport()
+		-- Build the viewport rig only on the first open per life. On every
+		-- subsequent open the cached model / lights / camera are reused as-is
+		-- so the menu appears instantly with no clone or setup cost.
+		if not viewportInitialized then
+			refreshCharacterViewport()
+			viewportInitialized = true
+		end
 	end
 end
 
@@ -597,6 +608,11 @@ local function setupCharacter(char)
 	if not char then return end
 	setPhoneEquipped(false)
 	if menuOpen then setMenuOpen(false) end
+
+	-- Invalidate the cached viewport rig so the next menu open rebuilds
+	-- against the freshly-spawned character. Everything else about the
+	-- viewport (ViewportFrame, WorldModel, Camera) is reused.
+	viewportInitialized = false
 
 	char.ChildAdded:Connect(function(child)
 		if child:IsA("Tool") then onToolEquipped(child) end
