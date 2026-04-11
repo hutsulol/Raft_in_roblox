@@ -41,13 +41,14 @@ local FONT_BODY  = Enum.Font.Gotham
 local menuOpen              = false
 local phoneEquipped         = false
 local screenGui             = nil
--- Refs used by the inline holo-open animation. The menu content lives
--- inside `menuRoot` (a CanvasGroup whose GroupTransparency we tween to
--- reveal everything at once), and the loading UI lives in a sibling
--- overlay that plays the glitch / RGB-shift / fill sequence *before*
--- the menu appears.
-local menuRoot              = nil
+-- Refs used by the inline holo-open animation. While the animation is
+-- running, `holoCover` sits over the whole UI as an opaque fullscreen
+-- Frame that hides the menu content; at the reveal moment we tween
+-- its BackgroundTransparency out (while `menuRootScale` scales the
+-- panels in underneath) so the menu "materializes" as the cover
+-- dissolves. `loadingOverlay` is on top of the cover.
 local menuRootScale         = nil
+local holoCover             = nil
 local loadingOverlay        = nil
 local loadingBar            = nil
 local loadingText           = nil
@@ -380,28 +381,29 @@ local function buildMenu()
 	backdrop.Size = UDim2.fromScale(1, 1)
 	backdrop.Parent = screenGui
 
-	-- Root hosts the interactive UI. It's a CanvasGroup so we can tween
-	-- its GroupTransparency to fade every panel in as a single unit at
-	-- the end of the holo-open animation. Inset by the Roblox topbar
-	-- height at the top (plus a small margin) so the level / tasks
-	-- panels never slide under the Roblox chrome on any device.
+	-- Root hosts the interactive UI. It's a plain Frame — the menu stays
+	-- fully built and laid out beneath an opaque `holoCover` sibling
+	-- (created later in this function) that hides it during the holo
+	-- open animation and fades out at the reveal moment. Inset by the
+	-- Roblox topbar height at the top (plus a small margin) so the
+	-- level / tasks panels never slide under the Roblox chrome on any
+	-- device.
 	local topInset = GuiService:GetGuiInset().Y
-	local root = Instance.new("CanvasGroup")
+	local root = Instance.new("Frame")
 	root.Name = "Root"
 	root.BackgroundTransparency = 1
-	root.GroupTransparency = 1  -- hidden until the open animation reveals it
 	root.AnchorPoint = Vector2.new(0, 0)
 	root.Position = UDim2.new(0, 30, 0, topInset + 20)
 	root.Size = UDim2.new(1, -60, 1, -(topInset + 50))
 	root.Parent = screenGui
 
-	-- UIScale we drive for the final "materialize" tween (0.85 → 1).
+	-- UIScale we drive for the final "materialize" tween (0.85 → 1),
+	-- so the panels subtly zoom in behind the dissolving cover.
 	local rootScale = Instance.new("UIScale")
 	rootScale.Name = "HoloScale"
 	rootScale.Scale = 1
 	rootScale.Parent = root
 
-	menuRoot      = root
 	menuRootScale = rootScale
 
 	-- ── Center: character viewport ───────────────────────────────────────
@@ -664,10 +666,26 @@ local function buildMenu()
 	corner(xpFill, 7)
 	xpFillFrame = xpFill
 
+	-- ── Holo-open cover ────────────────────────────────────────────────
+	-- Opaque fullscreen Frame stacked over `root` (created AFTER root so
+	-- it sits on top of it in sibling draw order) that completely hides
+	-- the menu content during the holo-open animation. At the reveal
+	-- moment Phase 5 tweens its BackgroundTransparency from 0 → 1, so
+	-- the menu "materializes" as the cover dissolves.
+	local cover = Instance.new("Frame")
+	cover.Name = "HoloCover"
+	cover.BackgroundColor3 = COLOR_BG
+	cover.BackgroundTransparency = 0
+	cover.BorderSizePixel = 0
+	cover.Size = UDim2.fromScale(1, 1)
+	cover.Visible = false
+	cover.Parent = screenGui
+	holoCover = cover
+
 	-- ── Holo-open LOAD… overlay ────────────────────────────────────────
-	-- Sibling of `root` (NOT a child) so it isn't affected by the
-	-- CanvasGroup's GroupTransparency — the overlay is visible *while*
-	-- the menu is hidden, and hides itself once the menu is revealed.
+	-- Sibling of `root` / `holoCover` (NOT a child), created LAST so it
+	-- renders on top of the cover. The overlay is visible *while* the
+	-- menu is hidden, and hides itself once the menu is revealed.
 	local overlay = Instance.new("Frame")
 	overlay.Name = "LoadingOverlay"
 	overlay.BackgroundTransparency = 1
@@ -719,10 +737,11 @@ end
 
 -- ─── Holo-open animation (inline) ─────────────────────────────────────────
 -- Solo-Leveling / sci-fi HUD style opener. Runs entirely on the loading
--- overlay: the menu panels stay hidden via the CanvasGroup until the
--- loading sequence finishes, at which point they fade + scale in as the
--- "result" of the animation completing. All tuning lives here so it's
--- easy to tweak feel without touching the flow.
+-- overlay: the menu panels stay hidden beneath an opaque `holoCover`
+-- Frame until the loading sequence finishes, at which point the cover
+-- dissolves and the panels subtly scale in as the "result" of the
+-- animation completing. All tuning lives here so it's easy to tweak
+-- feel without touching the flow.
 
 local HOLO_GLITCH_DURATION   = 0.22
 local HOLO_GLITCH_STEP       = 0.025
@@ -764,9 +783,11 @@ local function runHoloOpenAnimation(token)
 	loadingOverlay.Position           = UDim2.fromScale(0.5, 0.5)
 	loadingOverlay.Visible            = true
 
-	-- Keep the menu fully hidden + slightly zoomed until the final reveal.
-	menuRoot.GroupTransparency = 1
-	menuRootScale.Scale = HOLO_APPEAR_FROM_SCALE
+	-- Keep the menu fully hidden behind the cover + slightly zoomed
+	-- until the final reveal.
+	holoCover.BackgroundTransparency = 0
+	holoCover.Visible                = true
+	menuRootScale.Scale              = HOLO_APPEAR_FROM_SCALE
 
 	-- Kick the progress-bar fill in parallel with the glitch + RGB phases.
 	local fillTween = TweenService:Create(
@@ -821,16 +842,17 @@ local function runHoloOpenAnimation(token)
 		task.wait(HOLO_FLICKER_STEP)
 	end
 
-	-- Phase 5: reveal the menu (scale + group transparency) while the
-	-- loading overlay fades out in parallel. The menu materializing is
-	-- the "result" of the loading animation completing, per the spec.
+	-- Phase 5: reveal the menu — dissolve the opaque cover and scale
+	-- the panels up underneath, while the loading overlay fades out in
+	-- parallel. The menu materializing is the "result" of the loading
+	-- animation completing, per the spec.
 	local appearInfo = TweenInfo.new(
 		HOLO_APPEAR_DURATION,
 		Enum.EasingStyle.Quint,
 		Enum.EasingDirection.Out
 	)
 	TweenService:Create(menuRootScale, appearInfo, { Scale = 1 }):Play()
-	TweenService:Create(menuRoot, appearInfo, { GroupTransparency = 0 }):Play()
+	TweenService:Create(holoCover, appearInfo, { BackgroundTransparency = 1 }):Play()
 	TweenService:Create(loadingText, appearInfo, { TextTransparency = 1 }):Play()
 	TweenService:Create(loadingBar,  appearInfo, { BackgroundTransparency = 1 }):Play()
 	local fadeStroke = TweenService:Create(loadingStroke, appearInfo, { Transparency = 1 })
@@ -838,7 +860,8 @@ local function runHoloOpenAnimation(token)
 	fadeStroke.Completed:Wait()
 
 	if holoTokenAlive(token) then
-		loadingOverlay.Visible = false
+		loadingOverlay.Visible     = false
+		holoCover.Visible          = false
 		loadingStroke.Transparency = 0.3
 	end
 end
@@ -861,12 +884,16 @@ local function setMenuOpen(open)
 			viewportInitialized = true
 		end
 
-		-- Hide the menu immediately and fire the holo-open animation,
-		-- which reveals everything when it finishes.
+		-- Hide the menu immediately (behind the opaque cover) and fire
+		-- the holo-open animation, which reveals everything when it
+		-- finishes.
 		openAnimationToken += 1
 		local token = openAnimationToken
-		if menuRoot then
-			menuRoot.GroupTransparency = 1
+		if holoCover then
+			holoCover.BackgroundTransparency = 0
+			holoCover.Visible                = true
+		end
+		if menuRootScale then
 			menuRootScale.Scale = HOLO_APPEAR_FROM_SCALE
 		end
 		task.spawn(function()
@@ -875,9 +902,10 @@ local function setMenuOpen(open)
 	else
 		-- Close: invalidate any in-flight animation so it bails out
 		-- when it next wakes. screenGui.Enabled is already false, so
-		-- we just need to hide the overlay for the next open.
+		-- we just need to hide the overlay + cover for the next open.
 		openAnimationToken += 1
 		if loadingOverlay then loadingOverlay.Visible = false end
+		if holoCover      then holoCover.Visible      = false end
 	end
 end
 
