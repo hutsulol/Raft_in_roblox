@@ -237,41 +237,23 @@ local function refreshCharacterViewport()
 		end
 	end
 
-	-- PrimaryPart must be set before PivotTo actually does anything.
-	clone.PrimaryPart = clone:FindFirstChild("HumanoidRootPart") or clone.PrimaryPart
-
-	-- Parent the rig into the WorldModel BEFORE playing the idle.
-	-- Animator:LoadAnimation / :Play only drive Motor6D transforms while
-	-- the rig is actually in the DataModel tree — an orphaned clone will
-	-- load the track successfully but no joints will ever move, which was
-	-- exactly why the idle looked frozen.
-	clone.Parent = viewportWorld
-
 	-- Place the clone at a slightly raised origin, rotated 180° around Y so
 	-- its front faces the +Z axis — that's where the camera sits. The small
 	-- +Y lift keeps the feet from sinking against the bottom of the frame.
 	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
 
-	-- Make sure the humanoid has an Animator. CreateHumanoidModelFromDescription
-	-- sometimes produces a rig without one, and without it LoadAnimation would
-	-- silently fail.
-	if humanoid and not animator then
-		animator = Instance.new("Animator")
-		animator.Parent = humanoid
-	end
-
-	-- Load the custom idle animation and loop it. Stop anything else the
-	-- animator may already be playing first so nothing blends with it.
+	-- Force the custom idle animation. This mirrors the exact order that
+	-- used to work with the stock Roblox idle — load the track, loop it,
+	-- play it at Action priority. The clone gets parented to the
+	-- WorldModel AFTER the lights block below, just like the original
+	-- working version.
 	if animator then
-		for _, t in animator:GetPlayingAnimationTracks() do
-			t:Stop(0)
-		end
 		local anim = Instance.new("Animation")
 		anim.AnimationId = IDLE_ANIMATION_ID
 		local track = animator:LoadAnimation(anim)
 		track.Looped = true
 		track.Priority = Enum.AnimationPriority.Action
-		track:Play()
+		track:Play(0)
 	end
 
 	-- Multi-light setup to give the clone depth and shape. A single light
@@ -325,8 +307,7 @@ local function refreshCharacterViewport()
 		fillLight.Parent = fillAtt
 	end
 
-	-- clone was already parented to viewportWorld above (before the idle
-	-- load) so the Animator could actually drive Motor6D transforms.
+	clone.Parent = viewportWorld
 	viewportCharModel = clone
 
 	if viewportCamera then
