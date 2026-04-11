@@ -172,11 +172,18 @@ local function applyUnlockedSlots()
 		-- partially usable keeps its normal per-slot dimming instead of
 		-- being covered by the banner (otherwise the banner would
 		-- obscure the slots the player can still interact with).
+		--
+		-- The banner is only shown while the player is still at the
+		-- base unlock count (Strength 0). The instant they upgrade
+		-- Strength to level 2 and earn their first extra slot, the
+		-- banner disappears for good — by then they already know how
+		-- to get more slots and the reminder becomes visual noise.
 		local unlockedGrid      = math.max(unlockedSlots - HOTBAR_SLOTS, 0)
 		local firstFullLockRow  = math.ceil(unlockedGrid / COLS)
 		local totalRows         = math.ceil(GRID_SLOTS / COLS)
+		local atBaseUnlock      = unlockedSlots <= BASE_UNLOCKED_SLOTS
 
-		if firstFullLockRow < totalRows then
+		if atBaseUnlock and firstFullLockRow < totalRows then
 			local rows = totalRows - firstFullLockRow
 			local y = SLOT_PAD + firstFullLockRow * (SLOT_SIZE + SLOT_PAD)
 			local h = rows * (SLOT_SIZE + SLOT_PAD) - SLOT_PAD
