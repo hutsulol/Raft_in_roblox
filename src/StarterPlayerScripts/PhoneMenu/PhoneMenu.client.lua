@@ -323,7 +323,7 @@ local function buildMenu()
 	screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "PhoneMenu"
 	screenGui.ResetOnSpawn = false
-	screenGui.IgnoreGuiInset = true
+	screenGui.IgnoreGuiInset = false
 	screenGui.Enabled = false
 	screenGui.DisplayOrder = 50
 	screenGui.Parent = playerGui
@@ -528,9 +528,15 @@ local function buildMenu()
 	makeSideButton("MERCENARIES", 74)
 
 	-- ── Bottom: XP counter ─────────────────────────────────────────────
+	-- Lifted above the in-game hotbar. The hotbar sits ~82 px above the
+	-- bottom of the screen (see SLOT_SIZE/SLOT_PAD in InventoryUI.client.lua)
+	-- and we want a little breathing room above that. Root already has a
+	-- 30 px bottom inset, so an additional -70 px anchor offset puts the
+	-- XP panel ~100 px above the screen bottom — clears the hotbar on any
+	-- resolution (PC and mobile).
 	local xpPanel = makePanel("XPPanel", root)
 	xpPanel.AnchorPoint = Vector2.new(0.5, 1)
-	xpPanel.Position = UDim2.new(0.5, 0, 1, 0)
+	xpPanel.Position = UDim2.new(0.5, 0, 1, -70)
 	xpPanel.Size = UDim2.new(0.6, 0, 0, 48)
 	padding(xpPanel, 10)
 
