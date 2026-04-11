@@ -842,6 +842,16 @@ local function runHoloOpenAnimation(token)
 		task.wait(HOLO_FLICKER_STEP)
 	end
 
+	-- Gate: don't reveal until the viewport rig build started by
+	-- setMenuOpen has finished. On the first open this can take a
+	-- second or more (GetHumanoidDescriptionFromUserId is a web call),
+	-- so we poll every frame here. If the user closes the menu mid-
+	-- wait the token changes and we bail out.
+	while not viewportInitialized do
+		if not holoTokenAlive(token) then return end
+		task.wait()
+	end
+
 	-- Phase 5: reveal the menu — dissolve the opaque cover and scale
 	-- the panels up underneath, while the loading overlay fades out in
 	-- parallel. The menu materializing is the "result" of the loading
@@ -876,17 +886,13 @@ local function setMenuOpen(open)
 		if typeof(_G.CloseInventory) == "function" then
 			_G.CloseInventory()
 		end
-		-- Build the viewport rig only on the first open per life. On every
-		-- subsequent open the cached model / lights / camera are reused as-is
-		-- so the menu appears instantly with no clone or setup cost.
-		if not viewportInitialized then
-			refreshCharacterViewport()
-			viewportInitialized = true
-		end
 
-		-- Hide the menu immediately (behind the opaque cover) and fire
-		-- the holo-open animation, which reveals everything when it
-		-- finishes.
+		-- Hide the menu behind the opaque cover IMMEDIATELY, before any
+		-- potentially-yielding work. The first-open viewport build
+		-- yields on Players:GetHumanoidDescriptionFromUserId() (a web
+		-- call that can take a second or more), and without this early
+		-- cover setup the fully-rendered menu would be visible during
+		-- that yield before the animation starts.
 		openAnimationToken += 1
 		local token = openAnimationToken
 		if holoCover then
@@ -896,6 +902,22 @@ local function setMenuOpen(open)
 		if menuRootScale then
 			menuRootScale.Scale = HOLO_APPEAR_FROM_SCALE
 		end
+
+		-- Kick off the viewport rig build in parallel with the
+		-- animation on the first open (the rig build yields, so we
+		-- don't want it blocking the open flow). The animation's
+		-- reveal phase waits on `viewportInitialized` before letting
+		-- the cover dissolve, so the menu never materializes with an
+		-- empty viewport. Subsequent opens reuse the cached rig.
+		if not viewportInitialized then
+			task.spawn(function()
+				refreshCharacterViewport()
+				viewportInitialized = true
+			end)
+		end
+
+		-- Fire the holo-open animation. It reveals everything when it
+		-- finishes (and after the viewport rig is ready).
 		task.spawn(function()
 			runHoloOpenAnimation(token)
 		end)
