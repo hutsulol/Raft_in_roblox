@@ -1920,6 +1920,14 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if equipped and equipped.Name == "Phone" then
 			return
 		end
+		-- Timestamp guard: DropItem.client.lua stamps `_G.LastPickupTime`
+		-- the moment it fires a pickup, so any E that was the trigger
+		-- for the pickup (or was pressed in the same frame) falls
+		-- inside this window and is rejected. This is immune to the
+		-- InputBegan handler order between the two scripts.
+		if (os.clock() - (_G.LastPickupTime or 0)) < 0.2 then
+			return
+		end
 		if not _G.SuppressInventoryToggle then
 			toggleInventory()
 		end

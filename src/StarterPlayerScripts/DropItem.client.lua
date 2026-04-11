@@ -198,6 +198,14 @@ UserInputService.InputBegan:Connect(function(input, processed)
 			if hitPart then
 				pickupEvent:FireServer(hitPart)
 			end
+			-- Stamp the pickup time BEFORE clearHighlight() (which
+			-- defers the SuppressInventoryToggle reset). InventoryUI's
+			-- E handler reads this stamp and treats any E press within
+			-- the grace window as a "just picked up" — that way the
+			-- inventory never opens in the same frame as a pickup
+			-- regardless of which InputBegan handler Roblox dispatches
+			-- first.
+			_G.LastPickupTime = os.clock()
 			clearHighlight()
 			return
 		end
