@@ -187,11 +187,18 @@ local function buildPreviewRig()
 end
 
 -- Rebuild the cached character display inside the ViewportFrame. Builds a
--- fresh preview rig from the player's HumanoidDescription (so the pose is
--- always clean and neutral), strips scripts, freezes parts, and attaches
--- lights for depth. Called ONCE at script startup and again whenever the
--- player respawns — NOT on every menu open. `setMenuOpen` just toggles
--- visibility so the menu appears instantly with zero rebuild cost.
+-- fresh preview rig from the player's HumanoidDescription, then follows the
+-- exact ordering the rig needs to actually render:
+--
+--   1. strip scripts,
+--   2. set PrimaryPart,
+--   3. parent to the WorldModel,
+--   4. PivotTo (position only works once the rig lives under the world),
+--   5. freeze humanoid state and anchor the body,
+--   6. attach lights.
+--
+-- Called ONCE at script startup and again on respawn — NOT per menu open,
+-- so `setMenuOpen` stays an instant visibility toggle.
 local function rebuildCharacterRig()
 	if not viewportFrame or not viewportWorld then return end
 
@@ -200,21 +207,33 @@ local function rebuildCharacterRig()
 		viewportCharModel = nil
 	end
 
-	local clone = buildPreviewRig()
-	if not clone then return end
+	local model = buildPreviewRig()
+	if not model then return end
 
-	-- Destroy every Script / LocalScript on the rig — in particular the
-	-- `Animate` LocalScript that drives walk/jump/idle animations on live
-	-- characters. Without this the rig would keep cycling animations.
-	for _, d in clone:GetDescendants() do
+	-- 1. Strip every Script / LocalScript from the rig (notably the
+	--    default `Animate` LocalScript) so nothing drives animations.
+	for _, d in model:GetDescendants() do
 		if d:IsA("Script") or d:IsA("LocalScript") then
 			d:Destroy()
 		end
 	end
 
-	-- Freeze the humanoid so nothing can start animating the rig behind
-	-- our back: no state machine, no states enabled, no playing tracks.
-	local humanoid = clone:FindFirstChildOfClass("Humanoid")
+	-- 2. Ensure PrimaryPart is set — PivotTo silently no-ops on a model
+	--    without a PrimaryPart and the rig would stay at origin.
+	model.PrimaryPart = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
+
+	-- 3. Parent to the WorldModel BEFORE positioning so the parts are
+	--    registered in the viewport render pass.
+	model.Parent = viewportWorld
+
+	-- 4. Position after parenting. Raised origin + 180° yaw so the
+	--    character's front faces the +Z camera.
+	model:PivotTo(CFrame.new(0, 1, 0) * CFrame.Angles(0, math.pi, 0))
+
+	-- 5. Freeze the humanoid and body. Anchor everything so the rig is
+	--    a motionless mannequin. (WorldModel does not simulate physics,
+	--    so this is purely belt-and-suspenders.)
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
 	if humanoid then
 		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
 		humanoid.EvaluateStateMachine = false
@@ -228,18 +247,11 @@ local function rebuildCharacterRig()
 			for _, track in animator:GetPlayingAnimationTracks() do
 				track:Stop(0)
 			end
-			-- Remove the Animator entirely so nothing can ever start an
-			-- animation on this rig. The rig stays in its neutral
-			-- Motor6D pose (mannequin-like), which is what we want for
-			-- a static UI preview.
 			animator:Destroy()
 		end
 	end
 
-	-- Anchor every BasePart so the rig is 100 % static. With no Animator
-	-- and no playing tracks we don't need Motor6D.Transform to update, so
-	-- blanket-anchoring is safe and guarantees zero drift.
-	for _, d in clone:GetDescendants() do
+	for _, d in model:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.CanCollide = false
 			d.Massless = true
@@ -247,71 +259,38 @@ local function rebuildCharacterRig()
 		end
 	end
 
-	-- Place the rig at a raised origin, rotated 180° around Y so its
-	-- front faces +Z (camera side). The +Y offset lifts the character so
-	-- feet and head both sit inside the viewport frame.
-	clone:PivotTo(CFrame.new(0, 1, 0) * CFrame.Angles(0, math.pi, 0))
-
-	-- Multi-light setup to give the clone depth and shape. A single light
-	-- flattens the model — we need a bright key light in front and a cyan
-	-- rim light behind for an outline glow. PointLights only render inside
-	-- a ViewportFrame when their ancestor is a WorldModel (which the clone
-	-- is parented to below). Attachments are used to position each light
-	-- relative to the HumanoidRootPart.
-	local root = clone:FindFirstChild("HumanoidRootPart") or clone.PrimaryPart
+	-- 6. Multi-light rig attached to HumanoidRootPart for depth.
+	local root = model:FindFirstChild("HumanoidRootPart") or model.PrimaryPart
 	if root and root:IsA("BasePart") then
-		-- Key light: white, in front and slightly above (camera side).
-		local keyAtt = Instance.new("Attachment")
-		keyAtt.Name = "PhoneMenuKeyLightAtt"
-		keyAtt.Position = Vector3.new(0, 2, 4)
-		keyAtt.Parent = root
+		local function addLight(name, offset, color, brightness, range)
+			local att = Instance.new("Attachment")
+			att.Name = name .. "Att"
+			att.Position = offset
+			att.Parent = root
 
-		local keyLight = Instance.new("PointLight")
-		keyLight.Name = "PhoneMenuKeyLight"
-		keyLight.Color = Color3.fromRGB(255, 255, 255)
-		keyLight.Brightness = 2
-		keyLight.Range = 16
-		keyLight.Shadows = false
-		keyLight.Parent = keyAtt
-
-		-- Rim light: cyan, behind the character for an outline glow.
-		local rimAtt = Instance.new("Attachment")
-		rimAtt.Name = "PhoneMenuRimLightAtt"
-		rimAtt.Position = Vector3.new(0, 2, -4)
-		rimAtt.Parent = root
-
-		local rimLight = Instance.new("PointLight")
-		rimLight.Name = "PhoneMenuRimLight"
-		rimLight.Color = Color3.fromRGB(0, 255, 255)
-		rimLight.Brightness = 2
-		rimLight.Range = 14
-		rimLight.Shadows = false
-		rimLight.Parent = rimAtt
-
-		-- Soft fill from below so the legs/torso don't read as a black slab.
-		local fillAtt = Instance.new("Attachment")
-		fillAtt.Name = "PhoneMenuFillLightAtt"
-		fillAtt.Position = Vector3.new(-2, -1, 3)
-		fillAtt.Parent = root
-
-		local fillLight = Instance.new("PointLight")
-		fillLight.Name = "PhoneMenuFillLight"
-		fillLight.Color = Color3.fromRGB(180, 210, 255)
-		fillLight.Brightness = 1
-		fillLight.Range = 12
-		fillLight.Shadows = false
-		fillLight.Parent = fillAtt
+			local light = Instance.new("PointLight")
+			light.Name = name
+			light.Color = color
+			light.Brightness = brightness
+			light.Range = range
+			light.Shadows = false
+			light.Parent = att
+		end
+		-- Key light: white, front + above.
+		addLight("PhoneMenuKeyLight",  Vector3.new(0, 2, 4),   Color3.fromRGB(255, 255, 255), 2, 16)
+		-- Rim light: cyan, directly behind for outline glow.
+		addLight("PhoneMenuRimLight",  Vector3.new(0, 2, -4),  Color3.fromRGB(0, 255, 255),   2, 14)
+		-- Soft fill: pale cyan from off to one side, lifts shadows.
+		addLight("PhoneMenuFillLight", Vector3.new(-2, -1, 3), Color3.fromRGB(180, 210, 255), 1, 12)
 	end
 
-	clone.Parent = viewportWorld
-	viewportCharModel = clone
+	viewportCharModel = model
 
+	-- Camera: front view, slightly above, aimed at chest height.
 	if viewportCamera then
-		-- Off-center three-quarter front view. Aimed at chest height on
-		-- the raised rig so the entire body (head through feet) fits in
-		-- the viewport; slight X offset gives real 3D perspective.
 		viewportCamera.FieldOfView = 55
-		viewportCamera.CFrame = CFrame.new(Vector3.new(1.5, 2.5, 7), Vector3.new(0, 2, 0))
+		viewportCamera.CFrame = CFrame.new(Vector3.new(0, 2.5, 7), Vector3.new(0, 1, 0))
+		viewportFrame.CurrentCamera = viewportCamera
 	end
 end
 
