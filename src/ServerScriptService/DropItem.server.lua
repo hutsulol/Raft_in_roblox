@@ -9,48 +9,83 @@ local pickupEvent = Instance.new("RemoteEvent")
 pickupEvent.Name = "PickupDroppedItem"
 pickupEvent.Parent = ReplicatedStorage
 
--- Map resource names to their 3D template names in ReplicatedStorage
+-- Map resource names to their 3D template names in ReplicatedStorage.
+-- Missing entries fall through to FALLBACK_TEMPLATE below. The template
+-- lookup tries a top-level `FindFirstChild` first and then a recursive
+-- search, so templates nested inside folders (ReplicatedStorage.Fish,
+-- ReplicatedStorage.MainModule, etc.) resolve without hard-coding paths.
 local RESOURCE_TEMPLATES = {
-	Log = "Log",
-	Plastic = "plastic_model",
-	Stone = "stone",
-	Iron_Ore = "iron_model",
+	Log        = "Log",
+	Plastic    = "plastic_model",
+	Stone      = "stone",
+	Iron_Ore   = "iron_model",
 	Iron_Ingot = "box_model",
-	Plank = "plank",
-	Leaves = "leaves",
+	Plank      = "plank",
+	Leaves     = "leaves",
+	-- Craftable / dug resources introduced after the initial set. They
+	-- may not have dedicated 3D models yet; if the named template can't
+	-- be found, the lookup silently falls back to FALLBACK_TEMPLATE so
+	-- they still drop as a generic box until proper art is added.
+	Rope       = "Rope",
+	Sand       = "Sand",
+	Clay       = "Clay",
+	Wet_Brick  = "Wet_Brick",
+	Dry_Brick  = "Dry_Brick",
 	-- Fish (templates live in ReplicatedStorage.Fish, which the lookup
 	-- below searches recursively so the space-in-name children resolve).
-	Blue_Fish = "Blue Fish",
-	Carp_Fish = "Carp Fish",
-	Fish_Bones = "Fish Bones",
-	Foil_Fish = "Foil Fish",
-	Jelly_Fish = "Jelly Fish",
-	Legendary_Fish = "Legendary Fish",
-	Seabass_Fish = "Seabass Fish",
-	Tilapia_Fish = "Tilapia Fish",
+	Blue_Fish       = "Blue Fish",
+	Carp_Fish       = "Carp Fish",
+	Fish_Bones      = "Fish Bones",
+	Foil_Fish       = "Foil Fish",
+	Jelly_Fish      = "Jelly Fish",
+	Legendary_Fish  = "Legendary Fish",
+	Seabass_Fish    = "Seabass Fish",
+	Tilapia_Fish    = "Tilapia Fish",
 }
 
--- Known resource names (items stored as counts in inventory)
+-- Known resource names (items stored as counts in inventory, not as
+-- Tool instances in the backpack). Anything not in this set is handled
+-- through the tool-drop branch below. Keep this list in sync with
+-- ResourceSpawner.server.lua's `GetInventory` defaults and the client
+-- inventory's RESOURCE_ICONS table.
 local RESOURCE_ITEMS = {
-	Log = true,
-	Plastic = true,
-	Stone = true,
-	Iron_Ore = true,
+	Log        = true,
+	Plastic    = true,
+	Stone      = true,
+	Iron_Ore   = true,
 	Iron_Ingot = true,
-	Plank = true,
-	Leaves = true,
-	Blue_Fish = true,
-	Carp_Fish = true,
-	Fish_Bones = true,
-	Foil_Fish = true,
-	Jelly_Fish = true,
-	Legendary_Fish = true,
-	Seabass_Fish = true,
-	Tilapia_Fish = true,
+	Plank      = true,
+	Leaves     = true,
+	Rope       = true,
+	Sand       = true,
+	Clay       = true,
+	Wet_Brick  = true,
+	Dry_Brick  = true,
+	Blue_Fish       = true,
+	Carp_Fish       = true,
+	Fish_Bones      = true,
+	Foil_Fish       = true,
+	Jelly_Fish      = true,
+	Legendary_Fish  = true,
+	Seabass_Fish    = true,
+	Tilapia_Fish    = true,
 }
 
 -- Fallback template for any unmapped items (tools, etc.)
 local FALLBACK_TEMPLATE = "box_model"
+
+-- Shared helper: find a template by name, top-level first and then
+-- recursively. Mirrors InventoryCrafting.server.lua so tools stored
+-- inside subfolders (e.g. ReplicatedStorage.MainModule.FishingRod) are
+-- picked up for both the physical drop and the pickup restore.
+local function findTemplate(name)
+	if type(name) ~= "string" or name == "" then return nil end
+	local t = ReplicatedStorage:FindFirstChild(name)
+	if not t then
+		t = ReplicatedStorage:FindFirstChild(name, true)
+	end
+	return t
+end
 
 local DROP_COOLDOWN = 0.3
 local DROPPED_LIFETIME = 120
@@ -98,16 +133,15 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 		tool:Destroy()
 	end
 
-	-- Find the template. Top-level lookup covers the classic resources that
-	-- sit directly under ReplicatedStorage; the recursive pass picks up
-	-- templates stored in subfolders (e.g. ReplicatedStorage.Fish.Blue Fish).
+	-- Find the template. For resources we prefer the mapped name and fall
+	-- back to FALLBACK_TEMPLATE (e.g. Rope/Sand/Clay may not have their
+	-- own 3D models yet). For tool drops we still use the fallback box
+	-- model as the physical representation — the actual Tool instance is
+	-- re-cloned from its own template only on pickup.
 	local templateName = RESOURCE_TEMPLATES[itemName] or FALLBACK_TEMPLATE
-	local template = ReplicatedStorage:FindFirstChild(templateName)
+	local template = findTemplate(templateName)
 	if not template then
-		template = ReplicatedStorage:FindFirstChild(templateName, true)
-	end
-	if not template then
-		template = ReplicatedStorage:FindFirstChild(FALLBACK_TEMPLATE)
+		template = findTemplate(FALLBACK_TEMPLATE)
 	end
 	if not template then return end
 
@@ -212,8 +246,12 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 	if not resType then return end
 
 	if isToolDrop then
-		-- Tool pickup: clone the tool template and give to player
-		local toolTemplate = ReplicatedStorage:FindFirstChild(resType)
+		-- Tool pickup: clone the tool template and give to player. Tool
+		-- templates may live under ReplicatedStorage.MainModule or other
+		-- subfolders (same pattern InventoryCrafting uses), so the lookup
+		-- must fall back to a recursive search — otherwise tools like
+		-- Phone / FishingRod silently fail to restore on pickup.
+		local toolTemplate = findTemplate(resType)
 		if not toolTemplate then return end
 		local backpack = player:FindFirstChild("Backpack")
 		if not backpack then return end
