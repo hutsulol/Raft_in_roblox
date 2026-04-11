@@ -1,17 +1,15 @@
 -- ManaUI.client.lua
--- Mana bar HUD — a compact horizontal bar rendered above the LEFT
--- HALF of the inventory hotbar, showing the player's current mana
--- amount. Driven by the replicated Characteristics.ManaCurrent /
--- ManaMax IntValues written by Characteristics.server.lua.
+-- Mana bar HUD — lives in the TOP slot of the bottom-left HUD stack
+-- (the position previously occupied by the standalone ThirstUI, which
+-- has been folded into HungerUI as a half-width right-side bar). Style
+-- matches HealthUI / HungerUI: a 28px brown circular icon badge on the
+-- left with a 160×20 tan wooden bar to its right.
 --
--- Lives in its own ScreenGui so it is fully decoupled from
--- InventoryUI.client.lua — the only coupling left is the hotbar
--- layout constants below, which must stay in sync with InventoryUI's
--- `buildHotbar()` so the two pieces line up on screen.
---
--- The text label's X position is tweened in parallel with the fill
--- size so the number always sits over the center of the currently
--- filled portion of the bar and slides smoothly as mana changes.
+-- Driven by the replicated Characteristics.ManaCurrent / ManaMax
+-- IntValues written by Characteristics.server.lua. The numeric label
+-- sits on top of the filled portion and its X anchor is tweened in
+-- parallel with the fill size so it always hovers over the center of
+-- the filled region and slides smoothly as mana changes.
 
 local Players      = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
@@ -19,97 +17,99 @@ local TweenService = game:GetService("TweenService")
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- ─── Hotbar layout mirror ────────────────────────────────────────────────
--- These MUST match InventoryUI.client.lua's buildHotbar() so the mana
--- bar aligns with the left edge of the hotbar.
-local HOTBAR_SLOTS         = 8
-local SLOT_SIZE            = 60
-local SLOT_PAD             = 6
-local HOTBAR_BOTTOM_OFFSET = 10
-local HOTBAR_WIDTH         = HOTBAR_SLOTS * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
-local HOTBAR_HEIGHT        = SLOT_SIZE + SLOT_PAD * 2
-
--- ─── Mana bar layout ─────────────────────────────────────────────────────
-local MANA_BAR_WIDTH    = HOTBAR_WIDTH / 2  -- half, covers the LEFT side
-local MANA_BAR_HEIGHT   = 34
-local MANA_BAR_GAP      = 6                 -- vertical gap above hotbar
-local MANA_ICON_SIZE    = 26
-local MANA_ICON_PAD     = 5                 -- left padding inside the bar
-local MANA_TRACK_LEFT   = MANA_ICON_PAD + MANA_ICON_SIZE + 8
-local MANA_TRACK_RIGHT  = 8
-local MANA_TRACK_HEIGHT = 18
-local MANA_TWEEN_TIME   = 0.25
-
 local MANA_ICON_ASSET = "rbxassetid://131647230431306"
 
-local COLOR_TRACK_BG = Color3.fromRGB(28, 48, 80)
-local COLOR_FILL     = Color3.fromRGB(80, 160, 255)
-local COLOR_TEXT     = Color3.fromRGB(255, 255, 255)
+local COLOR_ICON_BG     = Color3.fromRGB(90, 60, 30)
+local COLOR_ICON_STROKE = Color3.fromRGB(60, 40, 20)
+local COLOR_BAR_BG      = Color3.fromRGB(160, 130, 85)
+local COLOR_BAR_STROKE  = Color3.fromRGB(90, 60, 30)
+local COLOR_FILL        = Color3.fromRGB(80, 160, 255)
+local COLOR_TEXT        = Color3.fromRGB(255, 255, 255)
 
--- ─── Build ScreenGui ─────────────────────────────────────────────────────
+local TWEEN_TIME = 0.25
+
+-- ─── Create UI ──────────────────────────────────────────────────────────
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "ManaUI"
-screenGui.ResetOnSpawn = false
+screenGui.DisplayOrder = 15
 screenGui.IgnoreGuiInset = true
-screenGui.DisplayOrder = 6  -- just above HotbarGui (5)
+screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
--- Invisible container that groups the icon + track in one layout box
--- above the hotbar. No background, no corner, no outline — the icon
--- just sits on the left and the track sits to its right.
-local manaBar = Instance.new("Frame")
-manaBar.Name = "ManaBar"
-manaBar.Size = UDim2.new(0, MANA_BAR_WIDTH, 0, MANA_BAR_HEIGHT)
--- Left edge aligned with the hotbar's left edge, vertically stacked
--- above the hotbar with a small gap.
-manaBar.Position = UDim2.new(
-	0.5, -HOTBAR_WIDTH / 2,
-	1, -HOTBAR_HEIGHT - HOTBAR_BOTTOM_OFFSET - MANA_BAR_HEIGHT - MANA_BAR_GAP
-)
-manaBar.BackgroundTransparency = 1
-manaBar.BorderSizePixel = 0
-manaBar.Parent = screenGui
+-- Container — top slot of the left HUD stack (mana / hunger+water / health).
+local container = Instance.new("Frame")
+container.Name = "ManaContainer"
+container.AnchorPoint = Vector2.new(0, 1)
+container.Position = UDim2.new(0, 12, 1, -152)
+container.Size = UDim2.new(0, 200, 0, 28)
+container.BackgroundTransparency = 1
+container.Parent = screenGui
 
-local manaIcon = Instance.new("ImageLabel")
-manaIcon.Name = "ManaIcon"
-manaIcon.BackgroundTransparency = 1
-manaIcon.Image = MANA_ICON_ASSET
-manaIcon.Size = UDim2.fromOffset(MANA_ICON_SIZE, MANA_ICON_SIZE)
-manaIcon.AnchorPoint = Vector2.new(0, 0.5)
-manaIcon.Position = UDim2.new(0, MANA_ICON_PAD, 0.5, 0)
-manaIcon.Parent = manaBar
+-- ─── Icon badge ─────────────────────────────────────────────────────────
+local iconBg = Instance.new("Frame")
+iconBg.Name = "IconBg"
+iconBg.Size = UDim2.new(0, 28, 0, 28)
+iconBg.Position = UDim2.new(0, 0, 0, 0)
+iconBg.BackgroundColor3 = COLOR_ICON_BG
+iconBg.BorderSizePixel = 0
+iconBg.Parent = container
 
-local manaTrack = Instance.new("Frame")
-manaTrack.Name = "ManaTrack"
-manaTrack.AnchorPoint = Vector2.new(0, 0.5)
-manaTrack.Position = UDim2.new(0, MANA_TRACK_LEFT, 0.5, 0)
-manaTrack.Size = UDim2.new(1, -(MANA_TRACK_LEFT + MANA_TRACK_RIGHT), 0, MANA_TRACK_HEIGHT)
-manaTrack.BackgroundColor3 = COLOR_TRACK_BG
-manaTrack.BorderSizePixel = 0
--- Deliberately NOT clipping descendants so the mana text stays
--- readable when the fill is small enough that the centered label
--- would otherwise extend past the track's left edge.
-manaTrack.ClipsDescendants = false
-manaTrack.Parent = manaBar
+local iconBgCorner = Instance.new("UICorner")
+iconBgCorner.CornerRadius = UDim.new(1, 0)
+iconBgCorner.Parent = iconBg
 
-local manaTrackCorner = Instance.new("UICorner")
-manaTrackCorner.CornerRadius = UDim.new(0, 4)
-manaTrackCorner.Parent = manaTrack
+local iconBgStroke = Instance.new("UIStroke")
+iconBgStroke.Color = COLOR_ICON_STROKE
+iconBgStroke.Thickness = 1.5
+iconBgStroke.Parent = iconBg
 
-local manaFill = Instance.new("Frame")
-manaFill.Name = "ManaFill"
-manaFill.BackgroundColor3 = COLOR_FILL
-manaFill.BorderSizePixel = 0
-manaFill.Size = UDim2.fromScale(1, 1)
-manaFill.ZIndex = 1
-manaFill.Parent = manaTrack
+local iconImage = Instance.new("ImageLabel")
+iconImage.Name = "Icon"
+iconImage.BackgroundTransparency = 1
+iconImage.Image = MANA_ICON_ASSET
+iconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+iconImage.Position = UDim2.fromScale(0.5, 0.5)
+iconImage.Size = UDim2.fromOffset(22, 22)
+iconImage.Parent = iconBg
 
-local manaFillCorner = Instance.new("UICorner")
-manaFillCorner.CornerRadius = UDim.new(0, 4)
-manaFillCorner.Parent = manaFill
+-- ─── Bar background + fill ──────────────────────────────────────────────
+local barBg = Instance.new("Frame")
+barBg.Name = "BarBg"
+barBg.AnchorPoint = Vector2.new(0, 0.5)
+barBg.Position = UDim2.new(0, 34, 0.5, 0)
+barBg.Size = UDim2.new(0, 160, 0, 20)
+barBg.BackgroundColor3 = COLOR_BAR_BG
+barBg.BorderSizePixel = 0
+-- Don't clip: we want the text to stay readable even when the fill is
+-- narrow and the centered label would otherwise extend past the left
+-- edge of the bar's interior.
+barBg.ClipsDescendants = false
+barBg.Parent = container
 
--- Text label sits on the track (not on the fill) and its X anchor
--- moves to sit over the middle of the filled portion.
+local barBgCorner = Instance.new("UICorner")
+barBgCorner.CornerRadius = UDim.new(0, 4)
+barBgCorner.Parent = barBg
+
+local barBgStroke = Instance.new("UIStroke")
+barBgStroke.Color = COLOR_BAR_STROKE
+barBgStroke.Thickness = 2
+barBgStroke.Parent = barBg
+
+local barFill = Instance.new("Frame")
+barFill.Name = "Fill"
+barFill.Size = UDim2.new(1, 0, 1, 0)
+barFill.BackgroundColor3 = COLOR_FILL
+barFill.BorderSizePixel = 0
+barFill.ZIndex = 1
+barFill.Parent = barBg
+
+local fillCorner = Instance.new("UICorner")
+fillCorner.CornerRadius = UDim.new(0, 4)
+fillCorner.Parent = barFill
+
+-- Numeric label — parented to the bar bg (not the fill) so its X
+-- position is tweened independently to sit over the center of the
+-- currently filled portion.
 local manaText = Instance.new("TextLabel")
 manaText.Name = "ManaText"
 manaText.BackgroundTransparency = 1
@@ -123,9 +123,9 @@ manaText.Position = UDim2.fromScale(0.5, 0.5)
 manaText.Size = UDim2.fromOffset(60, 16)
 manaText.Text = "0"
 manaText.ZIndex = 2
-manaText.Parent = manaTrack
+manaText.Parent = barBg
 
--- ─── Update logic ────────────────────────────────────────────────────────
+-- ─── Update logic ───────────────────────────────────────────────────────
 local function updateManaDisplay(current, max, animate)
 	local ratio = 0
 	if max > 0 then
@@ -138,14 +138,14 @@ local function updateManaDisplay(current, max, animate)
 
 	if animate then
 		local info = TweenInfo.new(
-			MANA_TWEEN_TIME,
+			TWEEN_TIME,
 			Enum.EasingStyle.Quad,
 			Enum.EasingDirection.Out
 		)
-		TweenService:Create(manaFill, info, { Size = fillGoal }):Play()
+		TweenService:Create(barFill, info, { Size = fillGoal }):Play()
 		TweenService:Create(manaText, info, { Position = textGoal }):Play()
 	else
-		manaFill.Size = fillGoal
+		barFill.Size = fillGoal
 		manaText.Position = textGoal
 	end
 end
