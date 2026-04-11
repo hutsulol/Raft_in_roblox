@@ -887,25 +887,39 @@ local function runHoloOpenAnimation(token)
 	end
 end
 
--- ─── Slide-up open animation ──────────────────────────────────────────────
--- Lightweight opener used for every menu open after the first of the
--- session. The whole `root` frame starts just below the screen and
--- tweens up to its base position with a quick ease-out — no glitch,
--- no loading bar, no cover, just a snappy rise.
+-- ─── Slide open / close animations ────────────────────────────────────────
+-- Lightweight slide used for every menu open after the first of the
+-- session, and the universal close animation. The whole `root` frame
+-- slides up from below the screen on open, and back down on close.
 
-local SLIDE_OPEN_DURATION = 0.28
+local SLIDE_OPEN_DURATION  = 0.28
+local SLIDE_CLOSE_DURATION = 0.25
+
+-- Module-level reference to whichever slide tween is currently running
+-- on `menuRoot.Position`, so a rapid close+reopen (or open+close) can
+-- cancel the previous tween before starting a new one on the same
+-- property — otherwise both would drive Position in parallel.
+local activeSlideTween = nil
+
+-- Returns the "fully off-screen below" position for `menuRoot` —
+-- one full screen-height below its base position.
+local function slideOffscreenPosition()
+	local basePos = menuRootBasePosition
+	return UDim2.new(
+		basePos.X.Scale, basePos.X.Offset,
+		basePos.Y.Scale + 1, basePos.Y.Offset
+	)
+end
 
 local function runSlideOpenAnimation(token)
 	if not (menuRoot and menuRootBasePosition) then return end
 
+	-- Cancel any in-flight close tween before we overwrite Position.
+	if activeSlideTween then activeSlideTween:Cancel() end
+
 	-- Start one full screen-height below the base position so the
 	-- entire menu sits off-screen, then tween up.
-	local basePos  = menuRootBasePosition
-	local startPos = UDim2.new(
-		basePos.X.Scale, basePos.X.Offset,
-		basePos.Y.Scale + 1, basePos.Y.Offset
-	)
-	menuRoot.Position = startPos
+	menuRoot.Position = slideOffscreenPosition()
 
 	local tween = TweenService:Create(
 		menuRoot,
@@ -914,15 +928,53 @@ local function runSlideOpenAnimation(token)
 			Enum.EasingStyle.Quint,
 			Enum.EasingDirection.Out
 		),
-		{ Position = basePos }
+		{ Position = menuRootBasePosition }
 	)
+	activeSlideTween = tween
 	tween:Play()
 	tween.Completed:Wait()
+	if activeSlideTween == tween then activeSlideTween = nil end
 
 	-- If the user closed mid-slide, snap back to base so the next open
 	-- isn't starting from a random in-between position.
 	if not holoTokenAlive(token) then
-		menuRoot.Position = basePos
+		menuRoot.Position = menuRootBasePosition
+	end
+end
+
+-- Slide-down close: tween `root` from its current position to one
+-- full screen-height below, then disable the ScreenGui. Runs for
+-- every close regardless of which open animation played, so the menu
+-- always exits by sliding off the bottom of the screen.
+local function runSlideCloseAnimation(token)
+	if not (screenGui and menuRoot and menuRootBasePosition) then
+		if screenGui then screenGui.Enabled = false end
+		return
+	end
+
+	-- Cancel any in-flight open tween so we don't fight it.
+	if activeSlideTween then activeSlideTween:Cancel() end
+
+	local tween = TweenService:Create(
+		menuRoot,
+		TweenInfo.new(
+			SLIDE_CLOSE_DURATION,
+			Enum.EasingStyle.Quint,
+			Enum.EasingDirection.In
+		),
+		{ Position = slideOffscreenPosition() }
+	)
+	activeSlideTween = tween
+	tween:Play()
+	tween.Completed:Wait()
+	if activeSlideTween == tween then activeSlideTween = nil end
+
+	-- Only disable the GUI and reset position if no new open has
+	-- started in the meantime — otherwise the newer open coroutine is
+	-- already setting its own starting position and we'd stomp it.
+	if token == openAnimationToken then
+		screenGui.Enabled = false
+		menuRoot.Position = menuRootBasePosition
 	end
 end
 
@@ -930,9 +982,9 @@ end
 local function setMenuOpen(open)
 	if not screenGui then buildMenu() end
 	menuOpen = open
-	screenGui.Enabled = open
 
 	if open then
+		screenGui.Enabled = true
 		if typeof(_G.CloseInventory) == "function" then
 			_G.CloseInventory()
 		end
@@ -997,12 +1049,19 @@ local function setMenuOpen(open)
 			end)
 		end
 	else
-		-- Close: invalidate any in-flight animation so it bails out
-		-- when it next wakes. screenGui.Enabled is already false, so
-		-- we just need to hide the overlay + cover for the next open.
+		-- Close: invalidate any in-flight open animation so it bails
+		-- out, clear cover / overlay / scale left over from the holo
+		-- path, and play the slide-down close animation. The
+		-- ScreenGui stays enabled until the slide finishes so the
+		-- user actually sees it.
 		openAnimationToken += 1
+		local token = openAnimationToken
 		if loadingOverlay then loadingOverlay.Visible = false end
 		if holoCover      then holoCover.Visible      = false end
+		if menuRootScale  then menuRootScale.Scale    = 1       end
+		task.spawn(function()
+			runSlideCloseAnimation(token)
+		end)
 	end
 end
 
