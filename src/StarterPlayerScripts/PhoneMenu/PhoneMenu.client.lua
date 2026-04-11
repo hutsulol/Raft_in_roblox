@@ -612,19 +612,18 @@ local function buildMenu()
 	padding(xpPanel, 10)
 
 	local xpTag = makeLabel(xpPanel, "XP", FONT_TITLE, 18, COLOR_TEXT)
-	xpTag.Size = UDim2.fromOffset(40, 1)
-	xpTag.Size = UDim2.new(0, 40, 1, 0)
+	xpTag.Size = UDim2.new(0, 28, 1, 0)
 
 	local xpAmount = makeLabel(xpPanel, "0 / 50", FONT_BODY, 16, COLOR_TEXT_DIM)
-	xpAmount.Position = UDim2.fromOffset(46, 0)
-	xpAmount.Size = UDim2.new(0, 120, 1, 0)
+	xpAmount.Position = UDim2.fromOffset(30, 0)
+	xpAmount.Size = UDim2.new(0, 80, 1, 0)
 	xpAmountLabel = xpAmount
 
 	local xpTrack = Instance.new("Frame")
 	xpTrack.BackgroundColor3 = COLOR_BAR_BG
 	xpTrack.BorderSizePixel = 0
-	xpTrack.Position = UDim2.fromOffset(175, 9)
-	xpTrack.Size = UDim2.new(1, -185, 0, 14)
+	xpTrack.Position = UDim2.fromOffset(118, 9)
+	xpTrack.Size = UDim2.new(1, -128, 0, 14)
 	xpTrack.Parent = xpPanel
 	corner(xpTrack, 7)
 	stroke(xpTrack, 1, COLOR_PANEL_EDGE)
