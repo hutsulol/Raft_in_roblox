@@ -1178,6 +1178,8 @@ _G.ClosePhoneMenu = function()
 	if menuRootScale  then menuRootScale.Scale    = 1     end
 	if menuRoot and menuRootBasePosition then menuRoot.Position = menuRootBasePosition end
 	if screenGui then screenGui.Enabled = false end
+	-- Mark holo animation as done so subsequent opens use the slide animation
+	holoOpenPlayed = true
 end
 
 -- ─── Characteristics binding ─────────────────────────────────────────────
