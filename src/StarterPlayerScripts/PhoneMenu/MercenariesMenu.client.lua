@@ -10,6 +10,9 @@ local TweenService      = game:GetService("TweenService")
 
 local player = Players.LocalPlayer
 
+-- ─── Wait for SpawnMercenary remote ─────────────────────────────────────
+local spawnEvent = ReplicatedStorage:WaitForChild("SpawnMercenary", 30)
+
 -- ─── Wait for PhoneMenu to expose its root ──────────────────────────────
 local TIMEOUT = 30
 local waited  = 0
@@ -44,6 +47,7 @@ local MERC_THEMES = {
 		displayName = "Pirate",
 		stars       = 1,
 		stats       = { hp = 100, damage = 15, mana = "20/min" },
+		spawnModel  = "Pirate_2",
 	},
 }
 local DEFAULT_THEME = {
@@ -491,6 +495,30 @@ local function buildPage(mercNames)
 
 		statY += 30
 	end
+
+	-- ── SPAWN button ────────────────────────────────────────────────
+	local spawnBtn = Instance.new("TextButton")
+	spawnBtn.Name = "SpawnButton"
+	spawnBtn.BackgroundColor3 = theme.accent
+	spawnBtn.BorderSizePixel = 0
+	spawnBtn.AnchorPoint = Vector2.new(1, 0)
+	spawnBtn.Size = UDim2.fromOffset(260, 44)
+	spawnBtn.Position = UDim2.new(1, -20, 0, 400)
+	spawnBtn.Font = FONT_TITLE
+	spawnBtn.TextSize = 20
+	spawnBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	spawnBtn.Text = "SPAWN"
+	spawnBtn.AutoButtonColor = true
+	spawnBtn.ZIndex = 52
+	spawnBtn.Parent = page
+	corner(spawnBtn, 10)
+
+	spawnBtn.MouseButton1Click:Connect(function()
+		if spawnEvent then
+			spawnEvent:FireServer(selectedName)
+		end
+		closePage()
+	end)
 
 	-- ── Center: 3D character viewport ────────────────────────────────
 	buildMercViewport(page, selectedName)
