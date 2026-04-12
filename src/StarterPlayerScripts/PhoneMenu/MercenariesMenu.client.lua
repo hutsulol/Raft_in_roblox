@@ -35,7 +35,7 @@ local COLOR_BAR_FILL   = Color3.fromRGB(90, 200, 255)
 local FONT_TITLE       = Enum.Font.GothamBold
 local FONT_BODY        = Enum.Font.Gotham
 
-local IDLE_ANIMATION_ID = "rbxassetid://78578604994580"
+local IDLE_ANIMATION_ID = "rbxassetid://133090594778080"
 
 -- Per-mercenary data
 local MERC_THEMES = {
@@ -71,6 +71,28 @@ end
 
 -- ─── State ──────────────────────────────────────────────────────────────
 local page = nil
+local hiddenPanels = {} -- panels hidden while mercenaries page is open
+
+-- Hide all phone-menu panels (direct children of root) except the
+-- mercenaries page itself.
+local function hidePhonePanels()
+	hiddenPanels = {}
+	for _, child in phoneRoot:GetChildren() do
+		if child:IsA("GuiObject") and child.Name ~= "MercenariesPage" and child.Visible then
+			child.Visible = false
+			table.insert(hiddenPanels, child)
+		end
+	end
+end
+
+local function showPhonePanels()
+	for _, child in hiddenPanels do
+		if child and child.Parent then
+			child.Visible = true
+		end
+	end
+	hiddenPanels = {}
+end
 
 -- ─── Build the 3D viewport for a mercenary model ────────────────────────
 
@@ -232,6 +254,9 @@ local function buildPage(mercNames)
 	page.BorderSizePixel = 0
 	page.ZIndex = 50
 	page.Parent = phoneRoot
+
+	-- Hide phone main panels so they don't show through
+	hidePhonePanels()
 
 	-- ── Top bar: character selector ──────────────────────────────────
 	local topBar = Instance.new("Frame")
@@ -474,6 +499,7 @@ function closePage()
 	local p = page
 	page = nil
 	p:Destroy()
+	showPhonePanels()
 end
 
 -- ─── Open handler (called via _G by PhoneMenu) ─────────────────────────
