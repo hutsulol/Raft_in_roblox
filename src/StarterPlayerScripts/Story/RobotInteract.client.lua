@@ -167,36 +167,44 @@ local function stroke(parent, thickness, color)
 	s.Parent          = parent
 end
 
--- ─── Robot photo (ImageLabel) ────────────────────────────────────────────
-
-local function createRobotPhoto(parent, size, position)
-	local frame = Instance.new("Frame")
-	frame.Size                 = size
-	frame.Position             = position
-	frame.BackgroundColor3     = COLOR_BAR_BG
-	frame.BackgroundTransparency = 0.3
-	frame.BorderSizePixel      = 0
-	frame.Parent               = parent
-	corner(frame, 8)
-	stroke(frame, 1, COLOR_PANEL_EDGE)
-
-	local img = Instance.new("ImageLabel")
-	img.Size                 = UDim2.new(1, -12, 1, -12)
-	img.AnchorPoint          = Vector2.new(0.5, 0.5)
-	img.Position             = UDim2.new(0.5, 0, 0.5, 0)
-	img.BackgroundTransparency = 1
-	img.Image                = ROBOT_ICON
-	img.ScaleType            = Enum.ScaleType.Fit
-	img.Parent               = frame
-
-	return frame
-end
-
 -- ─── Shared dialogue builder ─────────────────────────────────────────────
--- Both quest and idle paths share the same layout; only the text, button
--- behaviour and whether a reward is granted differ.
+-- Builds a dialogue panel sized to fit `fullText`. One robot icon on the
+-- left, speaker + text on the right, action button at the bottom spanning
+-- the full width. Returns the dialogue label, the action button, and a
+-- close function.
 
-local function buildDialogueShell()
+local TextService = game:GetService("TextService")
+
+local PANEL_PAD     = 20    -- inner padding of the main panel
+local ICON_SIZE     = 120   -- robot icon square
+local GAP           = 14    -- gap between icon and text column
+local TEXT_PAD_H    = 16    -- horizontal padding inside the text box
+local TEXT_PAD_V    = 14    -- vertical padding inside the text box
+local SPEAKER_H     = 22    -- speaker label height
+local SPEAKER_GAP   = 8     -- gap between speaker and body text
+local BTN_H         = 38    -- action button height
+local BTN_GAP       = 12    -- gap between text area and button
+local PANEL_WIDTH   = 500   -- fixed panel width
+
+local function buildDialogueShell(fullText)
+	-- ── Measure text to compute panel height ─────────────────────
+	local textColumnW = PANEL_WIDTH - 2 * PANEL_PAD - ICON_SIZE - GAP
+	local textBodyW   = textColumnW - 2 * TEXT_PAD_H
+
+	local textBounds = TextService:GetTextSize(
+		fullText,
+		15,             -- TextSize
+		FONT_BODY,
+		Vector2.new(textBodyW, 9999)
+	)
+	local textBodyH = math.max(textBounds.Y, 20)
+
+	-- Content height = max(icon, text column) + gap + button
+	local textColumnH = TEXT_PAD_V + SPEAKER_H + SPEAKER_GAP + textBodyH + TEXT_PAD_V
+	local contentH    = math.max(ICON_SIZE, textColumnH)
+	local panelH      = 2 * PANEL_PAD + contentH + BTN_GAP + BTN_H
+
+	-- ── ScreenGui ────────────────────────────────────────────────
 	local gui = Instance.new("ScreenGui")
 	gui.Name           = "RobotDialogueGui"
 	gui.ResetOnSpawn   = false
@@ -218,54 +226,61 @@ local function buildDialogueShell()
 	panel.BackgroundTransparency = 0.05
 	panel.BorderSizePixel        = 0
 	panel.AnchorPoint            = Vector2.new(0.5, 0.5)
-	panel.Size                   = UDim2.fromOffset(620, 370)
+	panel.Size                   = UDim2.fromOffset(PANEL_WIDTH, panelH)
 	panel.Position               = UDim2.new(0.5, 0, -0.5, 0)
 	panel.Parent                 = gui
 	corner(panel, 14)
 	stroke(panel, 2, COLOR_PANEL_EDGE)
 
 	local pad = Instance.new("UIPadding")
-	pad.PaddingTop    = UDim.new(0, 20)
-	pad.PaddingBottom = UDim.new(0, 20)
-	pad.PaddingLeft   = UDim.new(0, 20)
-	pad.PaddingRight  = UDim.new(0, 20)
+	pad.PaddingTop    = UDim.new(0, PANEL_PAD)
+	pad.PaddingBottom = UDim.new(0, PANEL_PAD)
+	pad.PaddingLeft   = UDim.new(0, PANEL_PAD)
+	pad.PaddingRight  = UDim.new(0, PANEL_PAD)
 	pad.Parent        = panel
 
-	-- Left column: 3 robot photos
-	local photosFrame = Instance.new("Frame")
-	photosFrame.BackgroundTransparency = 1
-	photosFrame.Size     = UDim2.fromOffset(150, 310)
-	photosFrame.Position = UDim2.fromOffset(0, 0)
-	photosFrame.Parent   = panel
+	-- ── Left: single robot icon ──────────────────────────────────
+	local iconFrame = Instance.new("Frame")
+	iconFrame.Size                 = UDim2.fromOffset(ICON_SIZE, ICON_SIZE)
+	iconFrame.Position             = UDim2.fromOffset(0, 0)
+	iconFrame.BackgroundColor3     = COLOR_BAR_BG
+	iconFrame.BackgroundTransparency = 0.3
+	iconFrame.BorderSizePixel      = 0
+	iconFrame.Parent               = panel
+	corner(iconFrame, 8)
+	stroke(iconFrame, 1, COLOR_PANEL_EDGE)
 
-	for i = 1, 3 do
-		createRobotPhoto(
-			photosFrame,
-			UDim2.fromOffset(140, 92),
-			UDim2.fromOffset(0, (i - 1) * 105)
-		)
-	end
+	local iconImg = Instance.new("ImageLabel")
+	iconImg.Size                 = UDim2.new(1, -12, 1, -12)
+	iconImg.AnchorPoint          = Vector2.new(0.5, 0.5)
+	iconImg.Position             = UDim2.new(0.5, 0, 0.5, 0)
+	iconImg.BackgroundTransparency = 1
+	iconImg.Image                = ROBOT_ICON
+	iconImg.ScaleType            = Enum.ScaleType.Fit
+	iconImg.Parent               = iconFrame
 
-	-- Right column: speaker name + dialogue text
+	-- ── Right: speaker + dialogue text ───────────────────────────
+	local textX = ICON_SIZE + GAP
+
 	local textBg = Instance.new("Frame")
 	textBg.BackgroundColor3       = COLOR_BAR_BG
 	textBg.BackgroundTransparency = 0.3
 	textBg.BorderSizePixel        = 0
-	textBg.Size     = UDim2.new(1, -170, 0, 250)
-	textBg.Position = UDim2.fromOffset(165, 0)
+	textBg.Size     = UDim2.fromOffset(textColumnW, textColumnH)
+	textBg.Position = UDim2.fromOffset(textX, 0)
 	textBg.Parent   = panel
 	corner(textBg, 8)
 
-	local textPad = Instance.new("UIPadding")
-	textPad.PaddingTop    = UDim.new(0, 14)
-	textPad.PaddingBottom = UDim.new(0, 14)
-	textPad.PaddingLeft   = UDim.new(0, 16)
-	textPad.PaddingRight  = UDim.new(0, 16)
-	textPad.Parent        = textBg
+	local textPadUI = Instance.new("UIPadding")
+	textPadUI.PaddingTop    = UDim.new(0, TEXT_PAD_V)
+	textPadUI.PaddingBottom = UDim.new(0, TEXT_PAD_V)
+	textPadUI.PaddingLeft   = UDim.new(0, TEXT_PAD_H)
+	textPadUI.PaddingRight  = UDim.new(0, TEXT_PAD_H)
+	textPadUI.Parent        = textBg
 
 	local speakerLbl = Instance.new("TextLabel")
 	speakerLbl.BackgroundTransparency = 1
-	speakerLbl.Size           = UDim2.new(1, 0, 0, 22)
+	speakerLbl.Size           = UDim2.new(1, 0, 0, SPEAKER_H)
 	speakerLbl.Position       = UDim2.fromOffset(0, 0)
 	speakerLbl.Font           = FONT_TITLE
 	speakerLbl.TextSize       = 17
@@ -276,8 +291,8 @@ local function buildDialogueShell()
 
 	local dialogueLbl = Instance.new("TextLabel")
 	dialogueLbl.BackgroundTransparency = 1
-	dialogueLbl.Size           = UDim2.new(1, 0, 1, -32)
-	dialogueLbl.Position       = UDim2.fromOffset(0, 30)
+	dialogueLbl.Size           = UDim2.new(1, 0, 0, textBodyH)
+	dialogueLbl.Position       = UDim2.fromOffset(0, SPEAKER_H + SPEAKER_GAP)
 	dialogueLbl.Font           = FONT_BODY
 	dialogueLbl.TextSize       = 15
 	dialogueLbl.TextColor3     = COLOR_TEXT
@@ -287,13 +302,13 @@ local function buildDialogueShell()
 	dialogueLbl.TextWrapped    = true
 	dialogueLbl.Parent         = textBg
 
-	-- Action button
+	-- ── Action button (full width) ───────────────────────────────
 	local actionBtn = Instance.new("TextButton")
 	actionBtn.Name             = "ActionButton"
 	actionBtn.BackgroundColor3 = COLOR_BAR_BG
 	actionBtn.BorderSizePixel  = 0
-	actionBtn.Size     = UDim2.new(1, -170, 0, 38)
-	actionBtn.Position = UDim2.fromOffset(165, 262)
+	actionBtn.Size     = UDim2.new(1, 0, 0, BTN_H)
+	actionBtn.Position = UDim2.fromOffset(0, contentH + BTN_GAP)
 	actionBtn.Font     = FONT_TITLE
 	actionBtn.TextSize = 17
 	actionBtn.TextColor3       = COLOR_TEXT_DIM
@@ -303,7 +318,7 @@ local function buildDialogueShell()
 	corner(actionBtn, 8)
 	stroke(actionBtn, 1.5, COLOR_PANEL_EDGE)
 
-	-- Slide-in animation
+	-- ── Slide-in animation ───────────────────────────────────────
 	TweenService:Create(
 		backdrop,
 		TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
@@ -315,7 +330,7 @@ local function buildDialogueShell()
 		{ Position = UDim2.new(0.5, 0, 0.5, 0) }
 	):Play()
 
-	-- Close helper
+	-- ── Close helper ─────────────────────────────────────────────
 	local closed = false
 	local inputConn = nil
 
@@ -374,11 +389,10 @@ local function openDialogue()
 
 	local questDone = player:GetAttribute("RobotQuest1Done") == true
 
-	local dialogueLbl, actionBtn, closeDialogue = buildDialogueShell()
-
 	if questDone then
 		-- ── Idle dialogue (no active quest) ──────────────────────
 		local idleText = "I need repairs, fix me..."
+		local dialogueLbl, actionBtn, closeDialogue = buildDialogueShell(idleText)
 		local textFinished = false
 
 		actionBtn.Text       = "Skip"
@@ -411,6 +425,7 @@ local function openDialogue()
 	else
 		-- ── Quest 1: Phone hand-off ──────────────────────────────
 		local fullText = "I... I... Still working? I saved the magic phone; the astronaut left it to me. He said it would help restore humanity. Take it."
+		local dialogueLbl, actionBtn, closeDialogue = buildDialogueShell(fullText)
 		local textFinished = false
 
 		task.spawn(function()
