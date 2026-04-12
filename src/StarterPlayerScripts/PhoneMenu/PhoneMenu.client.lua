@@ -193,6 +193,7 @@ local dailyRewardLabel   = nil
 local dailyClaimButton   = nil
 local dailyTimerLabel    = nil
 local dailyResetButton   = nil
+local dailyXPButton      = nil
 local dailyQuestRows     = {}
 local dailyQuestConnections = {}
 
@@ -546,7 +547,7 @@ local function buildMenu()
 	local tasksPanel = makePanel("TasksPanel", root)
 	tasksPanel.AnchorPoint = Vector2.new(1, 0)
 	tasksPanel.Position = UDim2.new(1, 0, 0, 0)
-	tasksPanel.Size = UDim2.fromOffset(320, 260)
+	tasksPanel.Size = UDim2.fromOffset(320, 292)
 	padding(tasksPanel, 12)
 
 	local tasksTitle = makeLabel(tasksPanel, "Tasks for today:", FONT_TITLE, 18, COLOR_TEXT)
@@ -620,10 +621,26 @@ local function buildMenu()
 	resetBtn.Parent = tasksPanel
 	corner(resetBtn, 6)
 
+	-- DEV: +25 XP button for testing level-ups
+	local xpBtn = Instance.new("TextButton")
+	xpBtn.Name = "AddXPButton"
+	xpBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+	xpBtn.BorderSizePixel = 0
+	xpBtn.Position = UDim2.fromOffset(0, 240)
+	xpBtn.Size = UDim2.new(1, 0, 0, 24)
+	xpBtn.Font = FONT_BODY
+	xpBtn.TextSize = 13
+	xpBtn.TextColor3 = Color3.fromRGB(180, 255, 180)
+	xpBtn.AutoButtonColor = true
+	xpBtn.Text = "+25 XP (DEV)"
+	xpBtn.Parent = tasksPanel
+	corner(xpBtn, 6)
+
 	dailyQuestsHolder = tasksHolder
 	dailyRewardLabel  = rewardValue
 	dailyClaimButton  = claimBtn
 	dailyResetButton  = resetBtn
+	dailyXPButton     = xpBtn
 
 	-- ── Bottom-right: Arsenal / Mercenaries ────────────────────────────
 	local sidePanel = makePanel("SidePanel", root)
@@ -1478,6 +1495,12 @@ end
 if dailyResetButton then
 	dailyResetButton.MouseButton1Click:Connect(function()
 		phoneMenuEvent:FireServer("resetQuests")
+	end)
+end
+
+if dailyXPButton then
+	dailyXPButton.MouseButton1Click:Connect(function()
+		phoneMenuEvent:FireServer("devAddXP")
 	end)
 end
 

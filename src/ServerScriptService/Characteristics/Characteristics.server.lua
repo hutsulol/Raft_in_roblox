@@ -169,6 +169,12 @@ local UPGRADE_ACTIONS = {
 }
 
 phoneMenuEvent.OnServerEvent:Connect(function(player, action)
+	-- DEV: grant 25 XP for testing level-ups
+	if action == "devAddXP" then
+		addXP(player, 25)
+		return
+	end
+
 	local statName = UPGRADE_ACTIONS[action]
 	if not statName then return end
 
