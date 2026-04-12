@@ -8,6 +8,7 @@ local UserInputService  = game:GetService("UserInputService")
 local RunService        = game:GetService("RunService")
 local TweenService      = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService      = game:GetService("SoundService")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -28,8 +29,12 @@ local FONT_TITLE       = Enum.Font.GothamBold
 local FONT_BODY        = Enum.Font.Gotham
 
 local INTERACT_DISTANCE  = 15
-local TYPEWRITER_SPEED   = 0.035 -- seconds per character
 local ROBOT_ICON         = "rbxassetid://86743841980627"
+
+-- ─── Robot voiceover sounds ─────────────────────────────────────────────
+local robotSoundsFolder = SoundService:WaitForChild("Story"):WaitForChild("Robot")
+local SOUND_QUEST = robotSoundsFolder:WaitForChild("1_restore_humanity")  -- 12.251 s
+local SOUND_IDLE  = robotSoundsFolder:WaitForChild("0_system_damaged")    --  3.6   s
 
 -- ─── State ───────────────────────────────────────────────────────────────
 local currentHighlight  = nil
@@ -341,6 +346,10 @@ local function buildDialogueShell(fullText)
 		if closed then return end
 		closed = true
 
+		-- Stop any playing voiceover
+		SOUND_QUEST:Stop()
+		SOUND_IDLE:Stop()
+
 		for _, desc in gui:GetDescendants() do
 			if desc:IsA("TextLabel") or desc:IsA("TextButton") then
 				TweenService:Create(desc, TweenInfo.new(0.2), {
@@ -399,15 +408,18 @@ local function openDialogue()
 		local idleText = "I need repairs, fix me..."
 		local dialogueLbl, actionBtn, closeDialogue = buildDialogueShell(idleText)
 		local textFinished = false
+		local charDelay = SOUND_IDLE.TimeLength / #idleText
 
 		actionBtn.Text       = "Skip"
 		actionBtn.TextColor3 = COLOR_TEXT_DIM
+
+		SOUND_IDLE:Play()
 
 		task.spawn(function()
 			for i = 1, #idleText do
 				if textFinished then break end
 				dialogueLbl.Text = string.sub(idleText, 1, i)
-				task.wait(TYPEWRITER_SPEED)
+				task.wait(charDelay)
 			end
 			if not textFinished then
 				textFinished = true
@@ -420,10 +432,12 @@ local function openDialogue()
 		actionBtn.MouseButton1Click:Connect(function()
 			if not textFinished then
 				textFinished = true
+				SOUND_IDLE:Stop()
 				dialogueLbl.Text     = idleText
 				actionBtn.Text       = "Close"
 				actionBtn.TextColor3 = COLOR_ACCENT
 			else
+				SOUND_IDLE:Stop()
 				closeDialogue()
 			end
 		end)
@@ -432,12 +446,15 @@ local function openDialogue()
 		local fullText = "I... I... Still working? I saved the magic phone; the astronaut left it to me. He said it would help restore humanity. Take it."
 		local dialogueLbl, actionBtn, closeDialogue = buildDialogueShell(fullText)
 		local textFinished = false
+		local charDelay = SOUND_QUEST.TimeLength / #fullText
+
+		SOUND_QUEST:Play()
 
 		task.spawn(function()
 			for i = 1, #fullText do
 				if textFinished then break end
 				dialogueLbl.Text = string.sub(fullText, 1, i)
-				task.wait(TYPEWRITER_SPEED)
+				task.wait(charDelay)
 			end
 			if not textFinished then
 				textFinished = true
@@ -450,10 +467,12 @@ local function openDialogue()
 		actionBtn.MouseButton1Click:Connect(function()
 			if not textFinished then
 				textFinished = true
+				SOUND_QUEST:Stop()
 				dialogueLbl.Text     = fullText
 				actionBtn.Text       = "Claim"
 				actionBtn.TextColor3 = COLOR_ACCENT
 			else
+				SOUND_QUEST:Stop()
 				storyEvent:FireServer("claimRobotPhone")
 				closeDialogue()
 			end
