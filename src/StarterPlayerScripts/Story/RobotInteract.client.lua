@@ -405,10 +405,19 @@ local function openDialogue()
 
 	if questDone then
 		-- ── Idle dialogue (no active quest) ──────────────────────
-		local idleText = "System damaged. Repairs required."
+		-- Phrases timed to the 0_system_damaged waveform
+		local idlePhrases = {
+			{ text = "System damaged!",  t0 = 0.07, t1 = 1.267 },
+			{ text = " Repairs required.", t0 = 1.8,  t1 = 3.9   },
+		}
+
+		local idleText = ""
+		for _, p in idlePhrases do
+			idleText = idleText .. p.text
+		end
+
 		local dialogueLbl, actionBtn, closeDialogue = buildDialogueShell(idleText)
 		local textFinished = false
-		local charDelay = math.max((SOUND_IDLE.TimeLength - 1) / #idleText, 0.02)
 
 		actionBtn.Text       = "Skip"
 		actionBtn.TextColor3 = COLOR_TEXT_DIM
@@ -416,12 +425,27 @@ local function openDialogue()
 		SOUND_IDLE:Play()
 
 		task.spawn(function()
-			task.wait(1)
-			for i = 1, #idleText do
+			local startClock = os.clock()
+			local displayed = ""
+
+			for _, phrase in idlePhrases do
 				if textFinished then break end
-				dialogueLbl.Text = string.sub(idleText, 1, i)
-				task.wait(charDelay)
+
+				local waitFor = phrase.t0 - (os.clock() - startClock)
+				if waitFor > 0 then task.wait(waitFor) end
+				if textFinished then break end
+
+				local charDelay = (phrase.t1 - phrase.t0) / #phrase.text
+				for c = 1, #phrase.text do
+					if textFinished then break end
+					displayed = displayed .. string.sub(phrase.text, c, c)
+					dialogueLbl.Text = displayed
+					if c < #phrase.text then
+						task.wait(charDelay)
+					end
+				end
 			end
+
 			if not textFinished then
 				textFinished = true
 				dialogueLbl.Text     = idleText
