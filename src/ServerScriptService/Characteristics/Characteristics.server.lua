@@ -63,10 +63,10 @@ local function setupPlayer(player)
 	folder.Name = "Characteristics"
 	folder.Parent = player
 
-	intValue("Level",         DEV_START_LEVEL,          folder)
-	intValue("XP",            0,                        folder)
-	intValue("XPRequired",    XP_PER_LEVEL,             folder)
-	intValue("UpgradePoints", DEV_START_UPGRADE_POINTS, folder)
+	local level         = intValue("Level",         DEV_START_LEVEL,          folder)
+	local xp            = intValue("XP",            0,                        folder)
+	local xpRequired    = intValue("XPRequired",    XP_PER_LEVEL,             folder)
+	local upgradePoints = intValue("UpgradePoints", DEV_START_UPGRADE_POINTS, folder)
 	intValue("Strength",      0,                        folder)
 	local manaStat = intValue("Mana",          0,       folder)
 	intValue("Mutation",      0,                        folder)
@@ -90,6 +90,21 @@ local function setupPlayer(player)
 			manaCurrent.Value = math.clamp(manaCurrent.Value, 0, newMax)
 		end
 	end)
+
+	-- Auto level-up: whenever XP changes from ANY source (day payout,
+	-- quest rewards, future systems), check for level-ups. A reentrancy
+	-- guard prevents the nested Changed signals from double-processing.
+	local levelingUp = false
+	xp:GetPropertyChangedSignal("Value"):Connect(function()
+		if levelingUp then return end
+		levelingUp = true
+		while xp.Value >= xpRequired.Value and xpRequired.Value > 0 do
+			xp.Value = xp.Value - xpRequired.Value
+			level.Value = level.Value + 1
+			upgradePoints.Value = upgradePoints.Value + 1
+		end
+		levelingUp = false
+	end)
 end
 
 for _, p in Players:GetPlayers() do
@@ -102,23 +117,10 @@ Players.PlayerAdded:Connect(setupPlayer)
 local function addXP(player, amount)
 	local folder = player:FindFirstChild("Characteristics")
 	if not folder then return end
-
-	local xp            = folder:FindFirstChild("XP")
-	local level         = folder:FindFirstChild("Level")
-	local xpRequired    = folder:FindFirstChild("XPRequired")
-	local upgradePoints = folder:FindFirstChild("UpgradePoints")
-	if not (xp and level and xpRequired and upgradePoints) then return end
-
+	local xp = folder:FindFirstChild("XP")
+	if not xp then return end
+	-- Level-up is handled automatically by the XP Changed listener
 	xp.Value = xp.Value + amount
-
-	-- Handle multi-level gains cleanly — unlikely in normal play but we
-	-- still want the loop to settle correctly if a big chunk of XP is
-	-- granted at once (e.g. future quest rewards).
-	while xp.Value >= xpRequired.Value do
-		xp.Value = xp.Value - xpRequired.Value
-		level.Value = level.Value + 1
-		upgradePoints.Value = upgradePoints.Value + 1
-	end
 end
 
 -- ─── Day hook ───────────────────────────────────────────────────────────
