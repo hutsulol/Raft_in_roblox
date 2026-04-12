@@ -205,7 +205,7 @@ local function buildDialogueShell(fullText)
 		FONT_BODY,
 		Vector2.new(textBodyW, 9999)
 	)
-	local textBodyH = math.max(textBounds.Y, 20)
+	local textBodyH = math.max(textBounds.Y + 20, 20)
 
 	-- Content height = max(icon, text column) + gap + button
 	local textColumnH = TEXT_PAD_V + SPEAKER_H + SPEAKER_GAP + textBodyH + TEXT_PAD_V
@@ -405,10 +405,10 @@ local function openDialogue()
 
 	if questDone then
 		-- ── Idle dialogue (no active quest) ──────────────────────
-		local idleText = "I need repairs, fix me..."
+		local idleText = "System damaged. Repairs required."
 		local dialogueLbl, actionBtn, closeDialogue = buildDialogueShell(idleText)
 		local textFinished = false
-		local charDelay = SOUND_IDLE.TimeLength / #idleText
+		local charDelay = math.max((SOUND_IDLE.TimeLength - 1) / #idleText, 0.02)
 
 		actionBtn.Text       = "Skip"
 		actionBtn.TextColor3 = COLOR_TEXT_DIM
@@ -416,6 +416,7 @@ local function openDialogue()
 		SOUND_IDLE:Play()
 
 		task.spawn(function()
+			task.wait(1)
 			for i = 1, #idleText do
 				if textFinished then break end
 				dialogueLbl.Text = string.sub(idleText, 1, i)
@@ -446,11 +447,12 @@ local function openDialogue()
 		local fullText = "I... I... Still working? I saved the magic phone; the astronaut left it to me. He said it would help restore humanity. Take it."
 		local dialogueLbl, actionBtn, closeDialogue = buildDialogueShell(fullText)
 		local textFinished = false
-		local charDelay = SOUND_QUEST.TimeLength / #fullText
+		local charDelay = math.max((SOUND_QUEST.TimeLength - 1) / #fullText, 0.02)
 
 		SOUND_QUEST:Play()
 
 		task.spawn(function()
+			task.wait(1)
 			for i = 1, #fullText do
 				if textFinished then break end
 				dialogueLbl.Text = string.sub(fullText, 1, i)
