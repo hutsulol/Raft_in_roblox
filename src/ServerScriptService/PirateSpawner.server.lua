@@ -162,7 +162,7 @@ local function spawnPirateRaft()
 			if hum then
 				hum.Died:Connect(function()
 					pirate:SetAttribute("Downed", true)
-					pirate:SetAttribute("RecruitChance", 70)
+					pirate:SetAttribute("RecruitChance", 100)
 					deadCount = deadCount + 1
 					if deadCount >= PIRATE_COUNT then
 						allDeadEvent:Fire()
@@ -209,7 +209,7 @@ local function spawnPirateRaft()
 						end
 						if downed then
 							pirate:SetAttribute("Downed", true)
-							pirate:SetAttribute("RecruitChance", 70)
+							pirate:SetAttribute("RecruitChance", 100)
 						end
 					end
 				end

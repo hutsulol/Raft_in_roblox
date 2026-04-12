@@ -35,7 +35,7 @@ local COLOR_BAR_FILL   = Color3.fromRGB(90, 200, 255)
 local FONT_TITLE       = Enum.Font.GothamBold
 local FONT_BODY        = Enum.Font.Gotham
 
-local IDLE_ANIMATION_ID = "rbxassetid://133090594778080"
+local IDLE_ANIMATION_ID = "rbxassetid://107139405334393"
 
 -- Per-mercenary data
 local MERC_THEMES = {
