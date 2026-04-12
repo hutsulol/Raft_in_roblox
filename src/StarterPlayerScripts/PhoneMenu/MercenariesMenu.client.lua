@@ -130,7 +130,11 @@ local function buildMercViewport(parent, mercName)
 	local clone = template:Clone()
 	template.Archivable = wasArchivable
 
-	-- Strip scripts and gameplay visuals
+	-- Strip scripts, gameplay visuals, and the Humanoid itself.
+	-- ViewportFrame does not support Humanoid physics — Motor6D joints
+	-- break, the torso floats, and animations glitch. We replace the
+	-- Humanoid with a standalone AnimationController + Animator which
+	-- can pose Motor6D joints cleanly without any physics.
 	for _, d in clone:GetDescendants() do
 		if d:IsA("Script") or d:IsA("LocalScript") then
 			d:Destroy()
@@ -139,11 +143,20 @@ local function buildMercViewport(parent, mercName)
 		end
 	end
 
-	-- Ensure all parts are fully visible (template may have been
-	-- modified by spawn/death systems)
+	-- Remove Humanoid (it causes torso issues in ViewportFrame)
+	local humanoid = clone:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		humanoid:Destroy()
+	end
+
+	-- Ensure all parts are fully visible, anchored, no collisions.
+	-- Every part must be anchored because there is no physics in the
+	-- ViewportFrame — the AnimationController poses limbs via
+	-- Motor6D.Transform without needing unanchored parts.
 	for _, d in clone:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.Transparency = 0
+			d.Anchored = true
 			d.CanCollide = false
 			d.Massless = true
 		elseif d:IsA("Decal") then
@@ -151,59 +164,39 @@ local function buildMercViewport(parent, mercName)
 		end
 	end
 
-	-- Configure humanoid
-	local humanoid = clone:FindFirstChildOfClass("Humanoid")
-	local animator
-	if humanoid then
-		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-		pcall(function() humanoid.EvaluateStateMachine = false end)
-		for _, state in Enum.HumanoidStateType:GetEnumItems() do
-			pcall(function() humanoid:SetStateEnabled(state, false) end)
-		end
-		animator = humanoid:FindFirstChildOfClass("Animator")
-		if not animator then
-			animator = Instance.new("Animator")
-			animator.Parent = humanoid
-		end
-		for _, track in animator:GetPlayingAnimationTracks() do
-			track:Stop(0)
-		end
-	end
-
-	-- Anchor the root part (or all parts if no HumanoidRootPart)
-	local hrp = clone:FindFirstChild("HumanoidRootPart")
-	if hrp then
-		hrp.Anchored = true
-	else
-		-- No HRP — anchor every part so the model doesn't fall
-		for _, d in clone:GetDescendants() do
-			if d:IsA("BasePart") then
-				d.Anchored = true
-			end
-		end
-	end
-
 	-- Position and rotate to face camera
 	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
 
-	-- Play idle animation
-	if animator then
-		pcall(function()
-			local anim = Instance.new("Animation")
-			anim.AnimationId = IDLE_ANIMATION_ID
-			local track = animator:LoadAnimation(anim)
-			track.Looped = true
-			track.Priority = Enum.AnimationPriority.Action
-			track:Play(0)
-		end)
-	end
+	-- Use AnimationController (not Humanoid) for ViewportFrame animation.
+	-- This drives Motor6D.Transform without physics or state-machine
+	-- interference, so the torso animates correctly.
+	local animController = Instance.new("AnimationController")
+	animController.Parent = clone
+
+	local animator = Instance.new("Animator")
+	animator.Parent = animController
+
+	clone.Parent = world
+
+	-- Load and play the idle animation after parenting to WorldModel
+	pcall(function()
+		local anim = Instance.new("Animation")
+		anim.AnimationId = IDLE_ANIMATION_ID
+		local track = animator:LoadAnimation(anim)
+		track.Looped = true
+		track.Priority = Enum.AnimationPriority.Action
+		track:Play(0)
+	end)
 
 	-- 3-point lighting
-	local rootPart = hrp or clone.PrimaryPart or clone:FindFirstChildWhichIsA("BasePart", true)
-	if rootPart then
+	local lightRoot = clone:FindFirstChild("HumanoidRootPart")
+		or clone:FindFirstChild("Torso")
+		or clone.PrimaryPart
+		or clone:FindFirstChildWhichIsA("BasePart", true)
+	if lightRoot then
 		local keyAtt = Instance.new("Attachment")
 		keyAtt.Position = Vector3.new(0, 2, 4)
-		keyAtt.Parent = rootPart
+		keyAtt.Parent = lightRoot
 		local keyLight = Instance.new("PointLight")
 		keyLight.Color = Color3.fromRGB(255, 255, 255)
 		keyLight.Brightness = 2
@@ -213,7 +206,7 @@ local function buildMercViewport(parent, mercName)
 
 		local rimAtt = Instance.new("Attachment")
 		rimAtt.Position = Vector3.new(0, 2, -4)
-		rimAtt.Parent = rootPart
+		rimAtt.Parent = lightRoot
 		local rimLight = Instance.new("PointLight")
 		rimLight.Color = Color3.fromRGB(255, 100, 100)
 		rimLight.Brightness = 2
@@ -223,7 +216,7 @@ local function buildMercViewport(parent, mercName)
 
 		local fillAtt = Instance.new("Attachment")
 		fillAtt.Position = Vector3.new(-2, -1, 3)
-		fillAtt.Parent = rootPart
+		fillAtt.Parent = lightRoot
 		local fillLight = Instance.new("PointLight")
 		fillLight.Color = Color3.fromRGB(180, 210, 255)
 		fillLight.Brightness = 1
@@ -231,8 +224,6 @@ local function buildMercViewport(parent, mercName)
 		fillLight.Shadows = false
 		fillLight.Parent = fillAtt
 	end
-
-	clone.Parent = world
 
 	return vp
 end
