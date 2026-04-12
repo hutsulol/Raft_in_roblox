@@ -91,7 +91,7 @@ local function clearHighlight()
 	end
 	isHovering = false
 	task.defer(function()
-		if not isHovering then
+		if not isHovering and not dialogueOpen then
 			_G.SuppressInventoryToggle = false
 		end
 	end)
@@ -138,6 +138,9 @@ end
 -- ─── Hover loop ──────────────────────────────────────────────────────────
 RunService.RenderStepped:Connect(function()
 	if dialogueOpen then
+		-- Keep inventory suppressed while dialogue is open; other scripts
+		-- (e.g. RecruitmentSystem) may clear the flag every frame.
+		_G.SuppressInventoryToggle = true
 		clearHighlight()
 		return
 	end
@@ -362,6 +365,7 @@ local function buildDialogueShell(fullText)
 		task.delay(0.25, function()
 			gui:Destroy()
 			dialogueOpen = false
+			_G.SuppressInventoryToggle = false
 		end)
 
 		if inputConn then
@@ -385,6 +389,7 @@ end
 local function openDialogue()
 	if dialogueOpen then return end
 	dialogueOpen = true
+	_G.SuppressInventoryToggle = true
 	clearHighlight()
 
 	local questDone = player:GetAttribute("RobotQuest1Done") == true
