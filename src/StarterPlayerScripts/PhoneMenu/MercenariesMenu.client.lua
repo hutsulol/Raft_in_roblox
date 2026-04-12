@@ -150,15 +150,16 @@ local function buildMercViewport(parent, mercName)
 		end
 	end
 
-	-- Hide the Torso — it doesn't animate properly in ViewportFrame
-	-- and floats in place. The shirt/clothes still render on the limbs.
-	local torso = clone:FindFirstChild("Torso")
-	if torso then
-		torso.Transparency = 1
-		-- Also hide any decals on the torso (shirt front/back)
-		for _, d in torso:GetChildren() do
-			if d:IsA("Decal") then
-				d.Transparency = 1
+	-- Hide the Torso and HumanoidRootPart — they don't animate properly
+	-- in ViewportFrame and float in place as ghost blocks.
+	for _, partName in {"Torso", "HumanoidRootPart"} do
+		local part = clone:FindFirstChild(partName)
+		if part then
+			part.Transparency = 1
+			for _, d in part:GetChildren() do
+				if d:IsA("Decal") then
+					d.Transparency = 1
+				end
 			end
 		end
 	end
