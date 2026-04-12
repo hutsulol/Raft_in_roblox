@@ -130,11 +130,7 @@ local function buildMercViewport(parent, mercName)
 	local clone = template:Clone()
 	template.Archivable = wasArchivable
 
-	-- Strip scripts, gameplay visuals, and the Humanoid itself.
-	-- ViewportFrame does not support Humanoid physics — Motor6D joints
-	-- break, the torso floats, and animations glitch. We replace the
-	-- Humanoid with a standalone AnimationController + Animator which
-	-- can pose Motor6D joints cleanly without any physics.
+	-- Strip scripts and gameplay visuals
 	for _, d in clone:GetDescendants() do
 		if d:IsA("Script") or d:IsA("LocalScript") then
 			d:Destroy()
@@ -143,20 +139,10 @@ local function buildMercViewport(parent, mercName)
 		end
 	end
 
-	-- Remove Humanoid (it causes torso issues in ViewportFrame)
-	local humanoid = clone:FindFirstChildOfClass("Humanoid")
-	if humanoid then
-		humanoid:Destroy()
-	end
-
-	-- Ensure all parts are fully visible, anchored, no collisions.
-	-- Every part must be anchored because there is no physics in the
-	-- ViewportFrame — the AnimationController poses limbs via
-	-- Motor6D.Transform without needing unanchored parts.
+	-- Ensure all parts are visible
 	for _, d in clone:GetDescendants() do
 		if d:IsA("BasePart") then
 			d.Transparency = 0
-			d.Anchored = true
 			d.CanCollide = false
 			d.Massless = true
 		elseif d:IsA("Decal") then
@@ -164,29 +150,67 @@ local function buildMercViewport(parent, mercName)
 		end
 	end
 
+	-- Hide the Torso — it doesn't animate properly in ViewportFrame
+	-- and floats in place. The shirt/clothes still render on the limbs.
+	local torso = clone:FindFirstChild("Torso")
+	if torso then
+		torso.Transparency = 1
+		-- Also hide any decals on the torso (shirt front/back)
+		for _, d in torso:GetChildren() do
+			if d:IsA("Decal") then
+				d.Transparency = 1
+			end
+		end
+	end
+
+	-- Configure humanoid for animation (keep it — AnimationController
+	-- alone doesn't work for R6 in ViewportFrame)
+	local humanoid = clone:FindFirstChildOfClass("Humanoid")
+	local animator
+	if humanoid then
+		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+		pcall(function() humanoid.EvaluateStateMachine = false end)
+		for _, state in Enum.HumanoidStateType:GetEnumItems() do
+			pcall(function() humanoid:SetStateEnabled(state, false) end)
+		end
+		animator = humanoid:FindFirstChildOfClass("Animator")
+		if not animator then
+			animator = Instance.new("Animator")
+			animator.Parent = humanoid
+		end
+		for _, track in animator:GetPlayingAnimationTracks() do
+			track:Stop(0)
+		end
+	end
+
+	-- Anchor root part, leave limbs unanchored for Motor6D animation
+	local hrp = clone:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		hrp.Anchored = true
+	else
+		for _, d in clone:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.Anchored = true
+			end
+		end
+	end
+
 	-- Position and rotate to face camera
 	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
 
-	-- Use AnimationController (not Humanoid) for ViewportFrame animation.
-	-- This drives Motor6D.Transform without physics or state-machine
-	-- interference, so the torso animates correctly.
-	local animController = Instance.new("AnimationController")
-	animController.Parent = clone
-
-	local animator = Instance.new("Animator")
-	animator.Parent = animController
+	-- Play idle animation
+	if animator then
+		pcall(function()
+			local anim = Instance.new("Animation")
+			anim.AnimationId = IDLE_ANIMATION_ID
+			local track = animator:LoadAnimation(anim)
+			track.Looped = true
+			track.Priority = Enum.AnimationPriority.Action
+			track:Play(0)
+		end)
+	end
 
 	clone.Parent = world
-
-	-- Load and play the idle animation after parenting to WorldModel
-	pcall(function()
-		local anim = Instance.new("Animation")
-		anim.AnimationId = IDLE_ANIMATION_ID
-		local track = animator:LoadAnimation(anim)
-		track.Looped = true
-		track.Priority = Enum.AnimationPriority.Action
-		track:Play(0)
-	end)
 
 	-- 3-point lighting
 	local lightRoot = clone:FindFirstChild("HumanoidRootPart")
