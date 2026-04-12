@@ -122,7 +122,7 @@ divider.Parent = trackBg
 local chanceLabel = Instance.new("TextLabel")
 chanceLabel.Size = UDim2.new(1, 0, 1, 0)
 chanceLabel.BackgroundTransparency = 1
-chanceLabel.Text = "70%"
+chanceLabel.Text = "100%"
 chanceLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
 chanceLabel.TextScaled = true
 chanceLabel.Font = Enum.Font.GothamBold
@@ -362,7 +362,7 @@ local function runMinigame(chance)
 		if math.abs(velocity) < stopThreshold or (tick() - startTime) > MAX_TIME then
 			conn:Disconnect()
 
-			local successZone = (chance or 70) / 100
+			local successZone = (chance or 100) / 100
 			local success = x <= successZone
 
 			if currentPirate then
@@ -390,7 +390,7 @@ end
 
 recruitBtn.MouseButton1Click:Connect(function()
 	if not currentPirate or minigameRunning then return end
-	local chance = currentPirate:GetAttribute("RecruitChance") or 70
+	local chance = currentPirate:GetAttribute("RecruitChance") or 100
 	runMinigame(chance)
 end)
 
@@ -421,7 +421,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		currentPirate = pirate
 		uiOpen = true
 
-		local chance = pirate:GetAttribute("RecruitChance") or 70
+		local chance = pirate:GetAttribute("RecruitChance") or 100
 		greenZone.Size = UDim2.new(chance / 100, 0, 1, 0)
 		divider.Position = UDim2.new(chance / 100, -1, 0, 0)
 		chanceLabel.Text = tostring(chance) .. "%"
