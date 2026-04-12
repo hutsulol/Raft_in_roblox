@@ -1168,6 +1168,9 @@ buildMenu()
 -- itself inside the phone menu.
 _G.PhoneMenuRoot = menuRoot
 _G.PhoneScreenGui = screenGui
+_G.ClosePhoneMenu = function()
+	if menuOpen then setMenuOpen(false) end
+end
 
 -- ─── Characteristics binding ─────────────────────────────────────────────
 -- Pushes the replicated per-player `Characteristics` IntValues (created by

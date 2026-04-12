@@ -518,6 +518,9 @@ local function buildPage(mercNames)
 			spawnEvent:FireServer(selectedName)
 		end
 		closePage()
+		if typeof(_G.ClosePhoneMenu) == "function" then
+			_G.ClosePhoneMenu()
+		end
 	end)
 
 	-- ── Center: 3D character viewport ────────────────────────────────
