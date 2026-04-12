@@ -150,18 +150,11 @@ local function buildMercViewport(parent, mercName)
 		end
 	end
 
-	-- Hide the Torso and HumanoidRootPart — they don't animate properly
-	-- in ViewportFrame and float in place as ghost blocks.
-	for _, partName in {"Torso", "HumanoidRootPart"} do
-		local part = clone:FindFirstChild(partName)
-		if part then
-			part.Transparency = 1
-			for _, d in part:GetChildren() do
-				if d:IsA("Decal") then
-					d.Transparency = 1
-				end
-			end
-		end
+	-- Hide HumanoidRootPart — it's an invisible physics block that the
+	-- "ensure visible" loop above accidentally made visible.
+	local hrpPart = clone:FindFirstChild("HumanoidRootPart")
+	if hrpPart then
+		hrpPart.Transparency = 1
 	end
 
 	-- Configure humanoid for animation (keep it — AnimationController
