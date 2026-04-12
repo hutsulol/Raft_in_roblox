@@ -46,6 +46,16 @@ if not phoneMenuEvent then
 	phoneMenuEvent.Parent = ReplicatedStorage
 end
 
+-- RemoteEvent fired to the client when the player levels up. Carries
+-- oldLevel, newLevel so the UI can show "3 -> 4".
+local levelUpEvent = Instance.new("RemoteEvent")
+levelUpEvent.Name = "LevelUp"
+levelUpEvent.Parent = ReplicatedStorage
+
+-- Bonus resources granted on each level-up (on top of the +1 upgrade
+-- point that the XP loop already gives).
+local LEVELUP_LOG_REWARD = 5
+
 -- ─── Per-player data ────────────────────────────────────────────────────
 
 local function intValue(name, value, parent)
@@ -98,10 +108,22 @@ local function setupPlayer(player)
 	xp:GetPropertyChangedSignal("Value"):Connect(function()
 		if levelingUp then return end
 		levelingUp = true
+		local oldLevel = level.Value
 		while xp.Value >= xpRequired.Value and xpRequired.Value > 0 do
 			xp.Value = xp.Value - xpRequired.Value
 			level.Value = level.Value + 1
 			upgradePoints.Value = upgradePoints.Value + 1
+		end
+		local newLevel = level.Value
+		if newLevel > oldLevel then
+			-- Grant bonus log reward
+			local inv = _G.GetInventory and _G.GetInventory(player)
+			if inv then
+				inv.Log = (inv.Log or 0) + LEVELUP_LOG_REWARD * (newLevel - oldLevel)
+				if _G.SendInventory then _G.SendInventory(player) end
+			end
+			-- Notify client for the level-up screen
+			levelUpEvent:FireClient(player, oldLevel, newLevel)
 		end
 		levelingUp = false
 	end)
