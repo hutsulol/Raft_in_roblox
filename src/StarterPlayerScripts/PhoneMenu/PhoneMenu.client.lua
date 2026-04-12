@@ -1169,7 +1169,15 @@ buildMenu()
 _G.PhoneMenuRoot = menuRoot
 _G.PhoneScreenGui = screenGui
 _G.ClosePhoneMenu = function()
-	if menuOpen then setMenuOpen(false) end
+	if not menuOpen then return end
+	menuOpen = false
+	openAnimationToken += 1
+	if activeSlideTween then activeSlideTween:Cancel(); activeSlideTween = nil end
+	if loadingOverlay then loadingOverlay.Visible = false end
+	if holoCover      then holoCover.Visible      = false end
+	if menuRootScale  then menuRootScale.Scale    = 1     end
+	if menuRoot and menuRootBasePosition then menuRoot.Position = menuRootBasePosition end
+	if screenGui then screenGui.Enabled = false end
 end
 
 -- ─── Characteristics binding ─────────────────────────────────────────────
