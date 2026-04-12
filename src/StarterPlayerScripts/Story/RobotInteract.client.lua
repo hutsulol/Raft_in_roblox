@@ -444,20 +444,52 @@ local function openDialogue()
 		end)
 	else
 		-- ── Quest 1: Phone hand-off ──────────────────────────────
-		local fullText = "I... I... Still working? I saved the magic phone; the astronaut left it to me. He said it would help restore humanity. Take it."
+		-- Phrases timed to the 1_restore_humanity waveform
+		local questPhrases = {
+			{ text = "I...",                                      t0 = 0.1,   t1 = 0.5   },
+			{ text = " I...",                                     t0 = 1.284, t1 = 1.721 },
+			{ text = " Still working?",                           t0 = 2.4,   t1 = 3.414 },
+			{ text = " I saved the magic phone;",                 t0 = 3.9,   t1 = 5.657 },
+			{ text = " the astronaut left it to me.",              t0 = 6.1,   t1 = 7.94  },
+			{ text = " He said it would help restore humanity.",   t0 = 8.58,  t1 = 10.95 },
+			{ text = " Take it.",                                  t0 = 11.48, t1 = 12.0  },
+		}
+
+		-- Build full text from phrases for panel sizing and skip
+		local fullText = ""
+		for _, p in questPhrases do
+			fullText = fullText .. p.text
+		end
+
 		local dialogueLbl, actionBtn, closeDialogue = buildDialogueShell(fullText)
 		local textFinished = false
-		local charDelay = math.max((SOUND_QUEST.TimeLength - 1) / #fullText, 0.02)
 
 		SOUND_QUEST:Play()
 
 		task.spawn(function()
-			task.wait(1)
-			for i = 1, #fullText do
+			local startClock = os.clock()
+			local displayed = ""
+
+			for _, phrase in questPhrases do
 				if textFinished then break end
-				dialogueLbl.Text = string.sub(fullText, 1, i)
-				task.wait(charDelay)
+
+				-- Wait until this phrase's start time
+				local waitFor = phrase.t0 - (os.clock() - startClock)
+				if waitFor > 0 then task.wait(waitFor) end
+				if textFinished then break end
+
+				-- Typewriter within the phrase duration
+				local charDelay = (phrase.t1 - phrase.t0) / #phrase.text
+				for c = 1, #phrase.text do
+					if textFinished then break end
+					displayed = displayed .. string.sub(phrase.text, c, c)
+					dialogueLbl.Text = displayed
+					if c < #phrase.text then
+						task.wait(charDelay)
+					end
+				end
 			end
+
 			if not textFinished then
 				textFinished = true
 				dialogueLbl.Text     = fullText
