@@ -653,21 +653,29 @@ local function buildMenu()
 	sideTitle.Size = UDim2.new(1, 0, 0, 20)
 
 	local function makeSideButton(text, y)
-		local b = Instance.new("Frame")
+		local b = Instance.new("TextButton")
 		b.BackgroundColor3 = COLOR_BAR_BG
 		b.BorderSizePixel = 0
 		b.Position = UDim2.fromOffset(0, y)
 		b.Size = UDim2.new(1, 0, 0, 38)
+		b.Font = FONT_TITLE
+		b.TextSize = 16
+		b.TextColor3 = COLOR_TEXT
+		b.Text = text
+		b.AutoButtonColor = true
 		b.Parent = sidePanel
 		corner(b, 8)
 		stroke(b, 1.5, COLOR_ACCENT)
-		local l = makeLabel(b, text, FONT_TITLE, 16, COLOR_TEXT, Enum.TextXAlignment.Center)
-		l.Size = UDim2.fromScale(1, 1)
 		return b
 	end
 
 	makeSideButton("ARSENAL",    28)
-	makeSideButton("MERCENARIES", 74)
+	local mercButton = makeSideButton("MERCENARIES", 74)
+	mercButton.MouseButton1Click:Connect(function()
+		if typeof(_G.OpenMercenariesMenu) == "function" then
+			_G.OpenMercenariesMenu()
+		end
+	end)
 
 	-- ── Bottom: XP counter ─────────────────────────────────────────────
 	-- Anchored to the bottom edge of the ViewportFrame so that the XP bar
@@ -1155,6 +1163,11 @@ player.CharacterAdded:Connect(setupCharacter)
 
 -- Build the GUI once up-front so the first open has no hitch.
 buildMenu()
+
+-- Expose root frame and ScreenGui so the Mercenaries page can parent
+-- itself inside the phone menu.
+_G.PhoneMenuRoot = menuRoot
+_G.PhoneScreenGui = screenGui
 
 -- ─── Characteristics binding ─────────────────────────────────────────────
 -- Pushes the replicated per-player `Characteristics` IntValues (created by

@@ -20,6 +20,27 @@ local recruitedCounts = {}
 -- Prevents two players from claiming the same pirate body.
 local claimedPirates = {}
 
+-- ── Mercenaries folder (replicated to client) ──────────────────────────
+-- Each recruited pirate type gets a StringValue child so the phone menu
+-- can enumerate them. Duplicate pirate names are skipped ("max one of
+-- each type" rule).
+local function ensureMercenariesFolder(player)
+	local folder = player:FindFirstChild("Mercenaries")
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "Mercenaries"
+		folder.Parent = player
+	end
+	return folder
+end
+
+Players.PlayerAdded:Connect(function(player)
+	ensureMercenariesFolder(player)
+end)
+for _, p in Players:GetPlayers() do
+	ensureMercenariesFolder(p)
+end
+
 local function fadePirate(pirate, delay, duration)
 	if delay and delay > 0 then
 		task.wait(delay)
@@ -83,6 +104,17 @@ recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 		end
 		recruitedCounts[player] += 1
 		recruitEvent:FireClient(player, "recruited", recruitedCounts[player])
+
+		-- Track individual mercenary (one per name)
+		local folder = ensureMercenariesFolder(player)
+		local pirateName = pirate.Name
+		if not folder:FindFirstChild(pirateName) then
+			local entry = Instance.new("StringValue")
+			entry.Name = pirateName
+			entry.Value = pirateName
+			entry.Parent = folder
+		end
+
 		task.spawn(fadePirate, pirate, 0, 2)
 
 	elseif action == "fail" then
