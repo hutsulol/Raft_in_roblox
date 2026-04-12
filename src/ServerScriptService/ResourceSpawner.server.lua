@@ -167,6 +167,10 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 		collectNotify:FireAllClients("broke", resource, resType)
 		_G.SendInventory(player)
 
+		if _G.OnQuestResource then
+			_G.OnQuestResource(player, resType, resAmount)
+		end
+
 		resource:Destroy()
 	end
 end)

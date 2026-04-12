@@ -373,6 +373,7 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		end
 
 		if _G.SendInventory then _G.SendInventory(player) end
+		if _G.OnQuestResource then _G.OnQuestResource(player, outType, collectCount) end
 		furnaceEvent:FireClient(player, "stateUpdate", state)
 
 	elseif action == "getState" then

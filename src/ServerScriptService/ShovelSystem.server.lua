@@ -70,6 +70,9 @@ digDirtEvent.OnServerEvent:Connect(function(player, part)
 		if _G.SendInventory then
 			_G.SendInventory(player)
 		end
+		if _G.OnQuestResource then
+			_G.OnQuestResource(player, digType, 1)
+		end
 
 		digDirtEvent:FireClient(player, "destroyed", 1, digType)
 		part:Destroy()

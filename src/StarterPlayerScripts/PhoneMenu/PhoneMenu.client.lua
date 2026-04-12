@@ -192,6 +192,7 @@ local dailyAllCompleteLabel = nil
 local dailyRewardLabel   = nil
 local dailyClaimButton   = nil
 local dailyTimerLabel    = nil
+local dailyResetButton   = nil
 local dailyQuestRows     = {}
 local dailyQuestConnections = {}
 
@@ -545,7 +546,7 @@ local function buildMenu()
 	local tasksPanel = makePanel("TasksPanel", root)
 	tasksPanel.AnchorPoint = Vector2.new(1, 0)
 	tasksPanel.Position = UDim2.new(1, 0, 0, 0)
-	tasksPanel.Size = UDim2.fromOffset(320, 230)
+	tasksPanel.Size = UDim2.fromOffset(320, 260)
 	padding(tasksPanel, 12)
 
 	local tasksTitle = makeLabel(tasksPanel, "Tasks for today:", FONT_TITLE, 18, COLOR_TEXT)
@@ -604,9 +605,25 @@ local function buildMenu()
 	corner(claimBtn, 8)
 	stroke(claimBtn, 1.5, COLOR_PANEL_EDGE)
 
+	-- DEV: reset tasks button (rerolls quests for testing)
+	local resetBtn = Instance.new("TextButton")
+	resetBtn.Name = "ResetTasksButton"
+	resetBtn.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
+	resetBtn.BorderSizePixel = 0
+	resetBtn.Position = UDim2.fromOffset(0, 212)
+	resetBtn.Size = UDim2.new(1, 0, 0, 24)
+	resetBtn.Font = FONT_BODY
+	resetBtn.TextSize = 13
+	resetBtn.TextColor3 = Color3.fromRGB(255, 180, 180)
+	resetBtn.AutoButtonColor = true
+	resetBtn.Text = "Reset Tasks (DEV)"
+	resetBtn.Parent = tasksPanel
+	corner(resetBtn, 6)
+
 	dailyQuestsHolder = tasksHolder
 	dailyRewardLabel  = rewardValue
 	dailyClaimButton  = claimBtn
+	dailyResetButton  = resetBtn
 
 	-- ── Bottom-right: Arsenal / Mercenaries ────────────────────────────
 	local sidePanel = makePanel("SidePanel", root)
@@ -1455,6 +1472,12 @@ if dailyClaimButton then
 	dailyClaimButton.MouseButton1Click:Connect(function()
 		if not dailyClaimButton.Active then return end
 		phoneMenuEvent:FireServer("claimDailyReward")
+	end)
+end
+
+if dailyResetButton then
+	dailyResetButton.MouseButton1Click:Connect(function()
+		phoneMenuEvent:FireServer("resetQuests")
 	end)
 end
 

@@ -279,59 +279,31 @@ local function validateSave(save)
 end
 
 -- ─── Progress tracking ─────────────────────────────────────────────────
--- We piggy-back on the existing `_G.SendInventory(player)` function that
--- ResourceSpawner / FurnaceCraft call every time a player's inventory
--- changes. We take a snapshot of the last-seen inventory per player and
--- any positive delta on a resource that's being tracked by one of the
--- player's current quests increments that quest's progress.
---
--- This means the only change required elsewhere is: nothing. Any
--- gameplay system that goes through _G.GetInventory + _G.SendInventory
--- is automatically hooked.
+-- Instead of tracking inventory deltas (which would incorrectly count
+-- dropped-item pickups, crafting side-effects, etc.), we expose a
+-- dedicated `_G.OnQuestResource(player, resource, amount)` callback.
+-- Only code paths that represent genuine gathering (sea collection,
+-- mining, digging, smelting, fishing) call this function, so quest
+-- progress accurately reflects real gameplay actions.
 
-local function snapshotInventory(player)
-	local getInv = _G.GetInventory
-	if not getInv then return nil end
-	local inv = getInv(player)
-	if not inv then return nil end
-	local snap = {}
-	for k, v in inv do snap[k] = v end
-	return snap
-end
-
-local function applyInventoryDelta(player)
+local function onQuestResource(player, resource, amount)
 	local s = state[player]
 	if not s then return end
+	if type(resource) ~= "string" then return end
+	amount = (type(amount) == "number" and amount > 0) and amount or 1
 
-	local getInv = _G.GetInventory
-	if not getInv then return end
-	local inv = getInv(player)
-	if not inv then return end
-
-	local last = s.inventory or {}
 	local changed = false
 
 	for _, id in s.save.questIds do
 		local def = QUEST_BY_ID[id]
-		if def then
-			local now   = inv[def.resource] or 0
-			local prev  = last[def.resource] or 0
-			local delta = now - prev
-			if delta > 0 then
-				local prog = s.save.progress[id] or 0
-				if prog < def.target then
-					s.save.progress[id] = math.min(def.target, prog + delta)
-					changed = true
-				end
+		if def and def.resource == resource then
+			local prog = s.save.progress[id] or 0
+			if prog < def.target then
+				s.save.progress[id] = math.min(def.target, prog + amount)
+				changed = true
 			end
 		end
 	end
-
-	-- Refresh the snapshot so the next call sees the new baseline,
-	-- including resources we don't care about (they just update freely).
-	local snap = {}
-	for k, v in inv do snap[k] = v end
-	s.inventory = snap
 
 	if changed then
 		syncFolder(player)
@@ -339,26 +311,7 @@ local function applyInventoryDelta(player)
 	end
 end
 
--- Patch `_G.SendInventory` exactly once. Wrapping preserves whatever
--- the real function (installed by ResourceSpawner) does and just adds
--- our delta check before delegating. ResourceSpawner may still be
--- loading when we get here, so we poll for `_G.SendInventory` on a
--- background task and install the wrapper as soon as it exists.
-if not _G.__DailyQuestsSendInventoryPatched then
-	_G.__DailyQuestsSendInventoryPatched = true
-	task.spawn(function()
-		while not _G.SendInventory do
-			task.wait(0.1)
-		end
-		local originalSendInventory = _G.SendInventory
-		_G.SendInventory = function(player)
-			applyInventoryDelta(player)
-			if originalSendInventory then
-				return originalSendInventory(player)
-			end
-		end
-	end)
-end
+_G.OnQuestResource = onQuestResource
 
 -- ─── Player lifecycle ──────────────────────────────────────────────────
 
@@ -378,7 +331,6 @@ local function loadForPlayer(player)
 		save         = save,
 		folder       = folder,
 		questFolders = questFolders,
-		inventory    = snapshotInventory(player) or {},
 		saveDirty    = false,
 		lastSaveAt   = tick(),
 	}
@@ -487,20 +439,37 @@ local function grantRewards(player, save)
 end
 
 phoneMenuEvent.OnServerEvent:Connect(function(player, action)
-	if action ~= "claimDailyReward" then return end
+	if action == "claimDailyReward" then
+		local s = state[player]
+		if not s then return end
+		if s.save.claimed then return end
+		if not allQuestsComplete(s.save) then return end
 
-	local s = state[player]
-	if not s then return end
-	if s.save.claimed then return end
-	if not allQuestsComplete(s.save) then return end
+		s.save.claimed = true
+		grantRewards(player, s.save)
+		syncFolder(player)
 
-	s.save.claimed = true
-	grantRewards(player, s.save)
-	syncFolder(player)
+		-- Claiming is a meaningful milestone — flush it to the DataStore
+		-- immediately so a crash or rejoin can't un-claim the reward.
+		s.saveDirty  = false
+		s.lastSaveAt = tick()
+		task.spawn(writeSave, player.UserId, s.date, s.save)
 
-	-- Claiming is a meaningful milestone — flush it to the DataStore
-	-- immediately so a crash or rejoin can't un-claim the reward.
-	s.saveDirty  = false
-	s.lastSaveAt = tick()
-	task.spawn(writeSave, player.UserId, s.date, s.save)
+	elseif action == "resetQuests" then
+		-- DEV / testing: reroll quests as if a new day started. Wipes
+		-- current progress and generates a fresh quest list.
+		unloadForPlayer(player)
+		local save = generateDailySave()
+		local dateStr = todayDateString()
+		writeSave(player.UserId, dateStr, save)
+		local folder, questFolders = buildFolder(player, save)
+		state[player] = {
+			date         = dateStr,
+			save         = save,
+			folder       = folder,
+			questFolders = questFolders,
+			saveDirty    = false,
+			lastSaveAt   = tick(),
+		}
+	end
 end)

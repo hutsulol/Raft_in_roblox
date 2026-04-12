@@ -169,6 +169,9 @@ mineRockEvent.OnServerEvent:Connect(function(player, rockPart)
 		if _G.SendInventory then
 			_G.SendInventory(player)
 		end
+		if _G.OnQuestResource then
+			_G.OnQuestResource(player, "Stone", stoneAmount)
+		end
 
 		-- Feedback to client
 		mineRockEvent:FireClient(player, "destroyed", stoneAmount)
