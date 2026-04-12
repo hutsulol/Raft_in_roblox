@@ -98,7 +98,7 @@ local function showLevelUp(oldLevel, newLevel)
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "LevelUpGui"
 	gui.ResetOnSpawn = false
-	gui.DisplayOrder = 20
+	gui.DisplayOrder = 100
 	gui.IgnoreGuiInset = true
 	gui.Parent = playerGui
 	activeGui = gui
