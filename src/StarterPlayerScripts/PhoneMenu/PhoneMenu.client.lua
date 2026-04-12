@@ -1096,6 +1096,7 @@ local function setMenuOpen(open)
 		-- path, and play the slide-down close animation. The
 		-- ScreenGui stays enabled until the slide finishes so the
 		-- user actually sees it.
+		holoOpenPlayed = true
 		openAnimationToken += 1
 		local token = openAnimationToken
 		if loadingOverlay then loadingOverlay.Visible = false end
