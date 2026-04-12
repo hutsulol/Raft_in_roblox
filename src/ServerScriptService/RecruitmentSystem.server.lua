@@ -75,7 +75,7 @@ recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 			or hum.PlatformStand
 		if not isDowned then return end
 		pirate:SetAttribute("Downed", true)
-		pirate:SetAttribute("RecruitChance", 70)
+		pirate:SetAttribute("RecruitChance", 100)
 	end
 	if claimedPirates[pirate] then return end
 

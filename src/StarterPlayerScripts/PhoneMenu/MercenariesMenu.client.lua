@@ -2,8 +2,7 @@
 -- Full-page mercenary roster inside the Phone menu.
 -- Opens when the player clicks the MERCENARIES button on the phone.
 -- Genshin-style layout: character selector at top, 3D model in center,
--- menu buttons on the left, stats panel on the right, gradient background
--- tinted to the character's primary colour.
+-- menu buttons on the left, stats panel on the right.
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -24,7 +23,8 @@ if not phoneRoot then
 	return
 end
 
--- ─── Theme ──────────────────────────────────────────────────────────────
+-- ─── Theme (matches PhoneMenu) ──────────────────────────────────────────
+local COLOR_BG         = Color3.fromRGB(5, 15, 35)
 local COLOR_PANEL      = Color3.fromRGB(10, 25, 55)
 local COLOR_PANEL_EDGE = Color3.fromRGB(80, 180, 255)
 local COLOR_ACCENT     = Color3.fromRGB(120, 210, 255)
@@ -37,26 +37,20 @@ local FONT_BODY        = Enum.Font.Gotham
 
 local IDLE_ANIMATION_ID = "rbxassetid://78578604994580"
 
--- Per-mercenary theme colours (gradient + accent).
--- The background uses a radial-style two-colour UIGradient.
+-- Per-mercenary data
 local MERC_THEMES = {
 	["Pirate lvl1"] = {
-		gradientTop    = Color3.fromRGB(35, 8, 12),
-		gradientBottom = Color3.fromRGB(120, 20, 30),
-		accent         = Color3.fromRGB(255, 80, 80),
-		displayName    = "Pirate",
-		stars          = 1,
-		stats          = { hp = 100, damage = 15, mana = "20/min" },
+		accent      = Color3.fromRGB(255, 80, 80),
+		displayName = "Pirate",
+		stars       = 1,
+		stats       = { hp = 100, damage = 15, mana = "20/min" },
 	},
 }
--- Fallback for unknown pirate types
 local DEFAULT_THEME = {
-	gradientTop    = Color3.fromRGB(10, 15, 35),
-	gradientBottom = Color3.fromRGB(30, 50, 100),
-	accent         = COLOR_ACCENT,
-	displayName    = "Unknown",
-	stars          = 1,
-	stats          = { hp = 50, damage = 5, mana = "0/min" },
+	accent      = COLOR_ACCENT,
+	displayName = "Unknown",
+	stars       = 1,
+	stats       = { hp = 50, damage = 5, mana = "0/min" },
 }
 
 -- ─── Small UI helpers ───────────────────────────────────────────────────
@@ -76,16 +70,11 @@ local function stroke(parent, thickness, color)
 end
 
 -- ─── State ──────────────────────────────────────────────────────────────
-local page            = nil   -- the full-page Frame
-local currentMerc     = nil   -- selected mercenary name
-local viewportWorld   = nil
-local viewportModel   = nil
-local viewportCamera  = nil
+local page = nil
 
 -- ─── Build the 3D viewport for a mercenary model ────────────────────────
 
 local function buildMercViewport(parent, mercName)
-	-- ViewportFrame
 	local vp = Instance.new("ViewportFrame")
 	vp.Name = "MercViewport"
 	vp.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -95,18 +84,17 @@ local function buildMercViewport(parent, mercName)
 	vp.LightColor = Color3.fromRGB(255, 255, 255)
 	vp.LightDirection = Vector3.new(-0.3, -1, -0.5)
 	vp.Ambient = Color3.fromRGB(180, 200, 230)
+	vp.ZIndex = 50
 	vp.Parent = parent
 
 	local world = Instance.new("WorldModel")
 	world.Parent = vp
-	viewportWorld = world
 
 	local cam = Instance.new("Camera")
 	cam.FieldOfView = 50
 	cam.CFrame = CFrame.new(Vector3.new(0, 2.2, 6.2), Vector3.new(0, 1.2, 0))
 	cam.Parent = vp
 	vp.CurrentCamera = cam
-	viewportCamera = cam
 
 	-- Clone pirate template from ReplicatedStorage
 	local template = ReplicatedStorage:FindFirstChild(mercName)
@@ -120,7 +108,7 @@ local function buildMercViewport(parent, mercName)
 	local clone = template:Clone()
 	template.Archivable = wasArchivable
 
-	-- Strip scripts
+	-- Strip scripts and gameplay visuals
 	for _, d in clone:GetDescendants() do
 		if d:IsA("Script") or d:IsA("LocalScript") then
 			d:Destroy()
@@ -129,12 +117,24 @@ local function buildMercViewport(parent, mercName)
 		end
 	end
 
+	-- Ensure all parts are fully visible (template may have been
+	-- modified by spawn/death systems)
+	for _, d in clone:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Transparency = 0
+			d.CanCollide = false
+			d.Massless = true
+		elseif d:IsA("Decal") then
+			d.Transparency = 0
+		end
+	end
+
 	-- Configure humanoid
 	local humanoid = clone:FindFirstChildOfClass("Humanoid")
 	local animator
 	if humanoid then
 		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-		humanoid.EvaluateStateMachine = false
+		pcall(function() humanoid.EvaluateStateMachine = false end)
 		for _, state in Enum.HumanoidStateType:GetEnumItems() do
 			pcall(function() humanoid:SetStateEnabled(state, false) end)
 		end
@@ -148,32 +148,37 @@ local function buildMercViewport(parent, mercName)
 		end
 	end
 
-	-- Physics setup
+	-- Anchor the root part (or all parts if no HumanoidRootPart)
 	local hrp = clone:FindFirstChild("HumanoidRootPart")
-	for _, d in clone:GetDescendants() do
-		if d:IsA("BasePart") then
-			d.CanCollide = false
-			d.Massless = true
-			d.Anchored = (d == hrp)
+	if hrp then
+		hrp.Anchored = true
+	else
+		-- No HRP — anchor every part so the model doesn't fall
+		for _, d in clone:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.Anchored = true
+			end
 		end
 	end
 
-	-- Position and rotate
+	-- Position and rotate to face camera
 	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
 
 	-- Play idle animation
 	if animator then
-		local anim = Instance.new("Animation")
-		anim.AnimationId = IDLE_ANIMATION_ID
-		local track = animator:LoadAnimation(anim)
-		track.Looped = true
-		track.Priority = Enum.AnimationPriority.Action
-		track:Play(0)
+		pcall(function()
+			local anim = Instance.new("Animation")
+			anim.AnimationId = IDLE_ANIMATION_ID
+			local track = animator:LoadAnimation(anim)
+			track.Looped = true
+			track.Priority = Enum.AnimationPriority.Action
+			track:Play(0)
+		end)
 	end
 
-	-- Lighting (same 3-point setup as PhoneMenu)
-	local rootPart = clone:FindFirstChild("HumanoidRootPart") or clone.PrimaryPart
-	if rootPart and rootPart:IsA("BasePart") then
+	-- 3-point lighting
+	local rootPart = hrp or clone.PrimaryPart or clone:FindFirstChildWhichIsA("BasePart", true)
+	if rootPart then
 		local keyAtt = Instance.new("Attachment")
 		keyAtt.Position = Vector3.new(0, 2, 4)
 		keyAtt.Parent = rootPart
@@ -206,36 +211,27 @@ local function buildMercViewport(parent, mercName)
 	end
 
 	clone.Parent = world
-	viewportModel = clone
 
 	return vp
 end
 
 -- ─── Build the full page ────────────────────────────────────────────────
 
-local selectorCircles = {}  -- references to top-bar circles for highlight
-
 local function buildPage(mercNames)
 	if page then page:Destroy() end
 
-	local selectedIndex = 1
-	local selectedName  = mercNames[1]
-	local theme         = MERC_THEMES[selectedName] or DEFAULT_THEME
+	local selectedName = mercNames[1]
+	local theme        = MERC_THEMES[selectedName] or DEFAULT_THEME
 
-	-- ── Full-page container ──────────────────────────────────────────
+	-- ── Full-page container (phone-style blue background) ────────────
 	page = Instance.new("Frame")
 	page.Name = "MercenariesPage"
 	page.Size = UDim2.fromScale(1, 1)
-	page.BackgroundColor3 = theme.gradientTop
+	page.BackgroundColor3 = COLOR_BG
+	page.BackgroundTransparency = 0.15
 	page.BorderSizePixel = 0
 	page.ZIndex = 50
 	page.Parent = phoneRoot
-
-	-- Gradient background
-	local gradient = Instance.new("UIGradient")
-	gradient.Color = ColorSequence.new(theme.gradientTop, theme.gradientBottom)
-	gradient.Rotation = 180  -- top darker, bottom lighter
-	gradient.Parent = page
 
 	-- ── Top bar: character selector ──────────────────────────────────
 	local topBar = Instance.new("Frame")
@@ -243,6 +239,7 @@ local function buildPage(mercNames)
 	topBar.BackgroundTransparency = 1
 	topBar.Size = UDim2.new(1, 0, 0, 56)
 	topBar.Position = UDim2.fromOffset(0, 0)
+	topBar.ZIndex = 51
 	topBar.Parent = page
 
 	-- Back button
@@ -258,15 +255,14 @@ local function buildPage(mercNames)
 	backBtn.TextColor3 = COLOR_ACCENT
 	backBtn.Text = "← Back"
 	backBtn.AutoButtonColor = true
-	backBtn.ZIndex = 51
+	backBtn.ZIndex = 52
 	backBtn.Parent = topBar
 	corner(backBtn, 8)
 
-	-- Character circles (centered in the top bar)
+	-- Character circles (centered)
 	local circleSize = 42
 	local circleGap = 8
 	local totalW = #mercNames * circleSize + (#mercNames - 1) * circleGap
-	local startX = math.floor((0.5 * 1000) - totalW / 2)  -- approximate; use UDim2 centering
 
 	local circleContainer = Instance.new("Frame")
 	circleContainer.BackgroundTransparency = 1
@@ -276,53 +272,38 @@ local function buildPage(mercNames)
 	circleContainer.ZIndex = 51
 	circleContainer.Parent = topBar
 
-	selectorCircles = {}
 	for i, name in mercNames do
-		local circleTheme = MERC_THEMES[name] or DEFAULT_THEME
+		local cTheme = MERC_THEMES[name] or DEFAULT_THEME
 
 		local circle = Instance.new("Frame")
-		circle.Name = "Circle_" .. name
-		circle.BackgroundColor3 = circleTheme.accent
+		circle.BackgroundColor3 = cTheme.accent
 		circle.BackgroundTransparency = 0.3
 		circle.BorderSizePixel = 0
 		circle.Size = UDim2.fromOffset(circleSize, circleSize)
 		circle.Position = UDim2.fromOffset((i - 1) * (circleSize + circleGap), 0)
-		circle.ZIndex = 51
+		circle.ZIndex = 52
 		circle.Parent = circleContainer
-		corner(circle, circleSize / 2) -- fully round
+		corner(circle, circleSize / 2)
 
-		-- Selection ring
 		local ring = Instance.new("UIStroke")
-		ring.Thickness = i == selectedIndex and 3 or 1.5
-		ring.Color = i == selectedIndex and Color3.fromRGB(255, 255, 255) or COLOR_PANEL_EDGE
+		ring.Thickness = i == 1 and 3 or 1.5
+		ring.Color = i == 1 and Color3.fromRGB(255, 255, 255) or COLOR_PANEL_EDGE
 		ring.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		ring.Parent = circle
 
-		-- Name initial
 		local initLabel = Instance.new("TextLabel")
 		initLabel.BackgroundTransparency = 1
 		initLabel.Size = UDim2.fromScale(1, 1)
 		initLabel.Font = FONT_TITLE
 		initLabel.TextSize = 18
 		initLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-		initLabel.Text = string.sub(circleTheme.displayName, 1, 1)
-		initLabel.ZIndex = 52
+		initLabel.Text = string.sub(cTheme.displayName, 1, 1)
+		initLabel.ZIndex = 53
 		initLabel.Parent = circle
-
-		-- Click handler for circle
-		local clickBtn = Instance.new("TextButton")
-		clickBtn.BackgroundTransparency = 1
-		clickBtn.Size = UDim2.fromScale(1, 1)
-		clickBtn.Text = ""
-		clickBtn.ZIndex = 53
-		clickBtn.Parent = circle
-
-		selectorCircles[i] = { frame = circle, ring = ring, name = name }
 	end
 
 	-- ── Left side: menu buttons (visual only) ────────────────────────
 	local leftPanel = Instance.new("Frame")
-	leftPanel.Name = "LeftMenu"
 	leftPanel.BackgroundTransparency = 1
 	leftPanel.Size = UDim2.fromOffset(200, 260)
 	leftPanel.Position = UDim2.new(0, 20, 0.5, -100)
@@ -385,7 +366,6 @@ local function buildPage(mercNames)
 	nameLabel.Parent = rightPanel
 
 	-- Stars
-	local starsText = string.rep("★", theme.stars) .. string.rep("☆", 6 - theme.stars)
 	local starsLabel = Instance.new("TextLabel")
 	starsLabel.BackgroundTransparency = 1
 	starsLabel.Size = UDim2.new(1, 0, 0, 20)
@@ -393,12 +373,12 @@ local function buildPage(mercNames)
 	starsLabel.Font = FONT_BODY
 	starsLabel.TextSize = 16
 	starsLabel.TextColor3 = Color3.fromRGB(255, 220, 100)
-	starsLabel.Text = starsText
+	starsLabel.Text = string.rep("★", theme.stars) .. string.rep("☆", 6 - theme.stars)
 	starsLabel.TextXAlignment = Enum.TextXAlignment.Left
 	starsLabel.ZIndex = 52
 	starsLabel.Parent = rightPanel
 
-	-- Level label
+	-- Level
 	local levelLabel = Instance.new("TextLabel")
 	levelLabel.BackgroundTransparency = 1
 	levelLabel.Size = UDim2.new(1, 0, 0, 22)
@@ -424,7 +404,7 @@ local function buildPage(mercNames)
 	local xpFill = Instance.new("Frame")
 	xpFill.BackgroundColor3 = theme.accent
 	xpFill.BorderSizePixel = 0
-	xpFill.Size = UDim2.new(0, 0, 1, 0) -- 0/100
+	xpFill.Size = UDim2.new(0, 0, 1, 0)
 	xpFill.ZIndex = 53
 	xpFill.Parent = xpBarBg
 	corner(xpFill, 6)
@@ -443,78 +423,43 @@ local function buildPage(mercNames)
 
 	-- Stat rows
 	local statDefs = {
-		{ label = "Max HP",            value = tostring(theme.stats.hp)     },
-		{ label = "Damage",            value = tostring(theme.stats.damage) },
-		{ label = "Mana consumption",  value = theme.stats.mana            },
+		{ label = "Max HP",           value = tostring(theme.stats.hp)     },
+		{ label = "Damage",           value = tostring(theme.stats.damage) },
+		{ label = "Mana consumption", value = theme.stats.mana            },
 	}
 
 	local statY = 124
 	for _, def in statDefs do
-		local row = Instance.new("Frame")
-		row.BackgroundTransparency = 1
-		row.Size = UDim2.new(1, 0, 0, 26)
-		row.Position = UDim2.fromOffset(0, statY)
-		row.ZIndex = 52
-		row.Parent = rightPanel
-
 		local lbl = Instance.new("TextLabel")
 		lbl.BackgroundTransparency = 1
-		lbl.Size = UDim2.new(0.6, 0, 1, 0)
+		lbl.Size = UDim2.new(0.65, 0, 0, 26)
+		lbl.Position = UDim2.fromOffset(0, statY)
 		lbl.Font = FONT_BODY
 		lbl.TextSize = 14
 		lbl.TextColor3 = COLOR_TEXT_DIM
 		lbl.Text = def.label
 		lbl.TextXAlignment = Enum.TextXAlignment.Left
 		lbl.ZIndex = 52
-		lbl.Parent = row
+		lbl.Parent = rightPanel
 
 		local val = Instance.new("TextLabel")
 		val.BackgroundTransparency = 1
-		val.Size = UDim2.new(0.4, 0, 1, 0)
+		val.Size = UDim2.new(0.35, 0, 0, 26)
 		val.AnchorPoint = Vector2.new(1, 0)
-		val.Position = UDim2.new(1, 0, 0, 0)
+		val.Position = UDim2.new(1, 0, 0, statY)
 		val.Font = FONT_TITLE
 		val.TextSize = 15
 		val.TextColor3 = COLOR_TEXT
 		val.Text = def.value
 		val.TextXAlignment = Enum.TextXAlignment.Right
 		val.ZIndex = 52
-		val.Parent = row
+		val.Parent = rightPanel
 
 		statY += 30
 	end
 
 	-- ── Center: 3D character viewport ────────────────────────────────
 	buildMercViewport(page, selectedName)
-
-	-- ── Fade-in animation ────────────────────────────────────────────
-	page.BackgroundTransparency = 1
-	-- Fade all descendants in
-	for _, desc in page:GetDescendants() do
-		if desc:IsA("TextLabel") or desc:IsA("TextButton") then
-			desc.TextTransparency = 1
-		elseif desc:IsA("Frame") and desc ~= page then
-			desc.BackgroundTransparency = 1
-		elseif desc:IsA("ViewportFrame") then
-			desc.ImageTransparency = 1
-		end
-	end
-
-	-- Tween everything in
-	TweenService:Create(page, TweenInfo.new(0.3), { BackgroundTransparency = 0 }):Play()
-	for _, desc in page:GetDescendants() do
-		if desc:IsA("TextLabel") or desc:IsA("TextButton") then
-			TweenService:Create(desc, TweenInfo.new(0.3), { TextTransparency = 0 }):Play()
-		elseif desc:IsA("Frame") and desc.Name == "RightStats" then
-			TweenService:Create(desc, TweenInfo.new(0.3), { BackgroundTransparency = 0.4 }):Play()
-		elseif desc:IsA("ViewportFrame") then
-			TweenService:Create(desc, TweenInfo.new(0.3), { ImageTransparency = 0 }):Play()
-		end
-	end
-
-	-- Bar backgrounds need to become visible
-	TweenService:Create(xpBarBg, TweenInfo.new(0.3), { BackgroundTransparency = 0 }):Play()
-	TweenService:Create(xpFill, TweenInfo.new(0.3), { BackgroundTransparency = 0 }):Play()
 
 	-- ── Back button handler ──────────────────────────────────────────
 	backBtn.MouseButton1Click:Connect(function()
@@ -526,33 +471,9 @@ end
 
 function closePage()
 	if not page then return end
-
 	local p = page
 	page = nil
-
-	-- Fade out
-	TweenService:Create(p, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
-	for _, desc in p:GetDescendants() do
-		if desc:IsA("TextLabel") or desc:IsA("TextButton") then
-			TweenService:Create(desc, TweenInfo.new(0.2), {
-				TextTransparency = 1,
-				BackgroundTransparency = 1,
-			}):Play()
-		elseif desc:IsA("Frame") then
-			TweenService:Create(desc, TweenInfo.new(0.2), { BackgroundTransparency = 1 }):Play()
-		elseif desc:IsA("ViewportFrame") then
-			TweenService:Create(desc, TweenInfo.new(0.2), { ImageTransparency = 1 }):Play()
-		elseif desc:IsA("UIStroke") then
-			TweenService:Create(desc, TweenInfo.new(0.2), { Transparency = 1 }):Play()
-		end
-	end
-
-	task.delay(0.25, function()
-		p:Destroy()
-		viewportModel = nil
-		viewportWorld = nil
-		viewportCamera = nil
-	end)
+	p:Destroy()
 end
 
 -- ─── Open handler (called via _G by PhoneMenu) ─────────────────────────
@@ -572,8 +493,6 @@ local function openMercenariesMenu()
 	end
 
 	if #mercNames == 0 then
-		-- No mercenaries recruited — show empty state briefly
-		-- For now, just return; later we can show a message
 		return
 	end
 
