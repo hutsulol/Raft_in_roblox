@@ -69,6 +69,20 @@ local function stabilizeRodParts(rod)
 	end
 end
 
+local function setVerticalGrip(rod)
+	-- Important: vertical/horizontal tilt is controlled by orientation vectors,
+	-- not by Grip position. Position only moves the tool in hand.
+	rod.GripPos = Vector3.new(0.1, -0.9, -0.25)
+
+	-- Build an orthonormal basis for Tool grip:
+	-- Right  -> +X of hand space
+	-- Up     -> where the top of the rod should point (world-up feel)
+	-- Forward-> pointing down along the hand so rod appears upright
+	rod.GripRight = Vector3.new(1, 0, 0)
+	rod.GripUp = Vector3.new(0, 0, 1)
+	rod.GripForward = Vector3.new(0, -1, 0)
+end
+
 local function equipFishingRod()
 	local template = findToolTemplate()
 	if not template then
@@ -80,9 +94,7 @@ local function equipFishingRod()
 
 	local rod = template:Clone()
 	rod.CanBeDropped = false
-	-- NPC hold pose: keep rod mostly vertical like a real "standing with rod" stance.
-	-- Position slightly to the right/front of the hand, then rotate so the rod points upward.
-	rod.Grip = CFrame.new(0.1, -0.9, -0.25) * CFrame.Angles(math.rad(15), math.rad(90), math.rad(90))
+	setVerticalGrip(rod)
 	disableFishingMechanics(rod)
 	stabilizeRodParts(rod)
 	rod.Parent = npc
