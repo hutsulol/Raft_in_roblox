@@ -24,6 +24,12 @@ local claimedPirates = {}
 -- Each recruited pirate type gets a StringValue child so the phone menu
 -- can enumerate them. Duplicate pirate names are skipped ("max one of
 -- each type" rule).
+-- ── DEV MODE ──────────────────────────────────────────────────────────
+-- Set to true to auto-grant a mercenary on join for testing.
+-- Remove or set to false before shipping.
+local DEV_AUTO_GRANT = true
+local DEV_MERCENARY_NAME = "Pirate lvl1"
+
 local function ensureMercenariesFolder(player)
 	local folder = player:FindFirstChild("Mercenaries")
 	if not folder then
@@ -34,11 +40,24 @@ local function ensureMercenariesFolder(player)
 	return folder
 end
 
+local function grantDevMercenary(player)
+	if not DEV_AUTO_GRANT then return end
+	local folder = ensureMercenariesFolder(player)
+	if not folder:FindFirstChild(DEV_MERCENARY_NAME) then
+		local entry = Instance.new("StringValue")
+		entry.Name = DEV_MERCENARY_NAME
+		entry.Value = DEV_MERCENARY_NAME
+		entry.Parent = folder
+	end
+end
+
 Players.PlayerAdded:Connect(function(player)
 	ensureMercenariesFolder(player)
+	grantDevMercenary(player)
 end)
 for _, p in Players:GetPlayers() do
 	ensureMercenariesFolder(p)
+	grantDevMercenary(p)
 end
 
 local function fadePirate(pirate, delay, duration)
