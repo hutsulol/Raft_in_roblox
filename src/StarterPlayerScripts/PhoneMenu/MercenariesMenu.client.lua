@@ -126,7 +126,7 @@ local function buildMercViewport(parent, mercName, weaponId)
 
 	local cam = Instance.new("Camera")
 	cam.FieldOfView = 50
-	cam.CFrame = CFrame.new(Vector3.new(0, 2.2, 7.5), Vector3.new(0, 1.8, 0))
+	cam.CFrame = CFrame.new(Vector3.new(0, 2.2, 7.5), Vector3.new(0, 0, 0))
 	cam.Parent = vp
 	vp.CurrentCamera = cam
 
