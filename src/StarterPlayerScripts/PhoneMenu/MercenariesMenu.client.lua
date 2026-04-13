@@ -21,6 +21,7 @@ while not _G.PhoneMenuRoot and waited < TIMEOUT do
 	waited += 0.25
 end
 local phoneRoot = _G.PhoneMenuRoot
+local screenGui = _G.PhoneScreenGui
 if not phoneRoot then
 	warn("[MercenariesMenu] PhoneMenuRoot not available")
 	return
@@ -337,7 +338,7 @@ buildPage = function(mercNames)
 	page.BackgroundTransparency = 0.15
 	page.BorderSizePixel = 0
 	page.ZIndex = 50
-	page.Parent = phoneRoot
+	page.Parent = screenGui
 
 	-- Hide phone main panels so they don't show through
 	hidePhonePanels()
@@ -693,7 +694,7 @@ buildEquipmentPage = function(mercName, mercNames)
 	page.BackgroundTransparency = 0.15
 	page.BorderSizePixel = 0
 	page.ZIndex = 50
-	page.Parent = phoneRoot
+	page.Parent = screenGui
 
 	hidePhonePanels()
 
