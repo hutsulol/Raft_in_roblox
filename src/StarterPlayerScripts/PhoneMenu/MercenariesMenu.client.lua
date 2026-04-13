@@ -348,7 +348,7 @@ buildPage = function(mercNames)
 	topBar.Name = "TopBar"
 	topBar.BackgroundTransparency = 1
 	topBar.Size = UDim2.new(1, 0, 0, 56)
-	topBar.Position = UDim2.fromOffset(0, 0)
+	topBar.Position = UDim2.fromOffset(0, 36)
 	topBar.ZIndex = 51
 	topBar.Parent = page
 
@@ -457,7 +457,7 @@ buildPage = function(mercNames)
 	rightPanel.BorderSizePixel = 0
 	rightPanel.AnchorPoint = Vector2.new(1, 0)
 	rightPanel.Size = UDim2.fromOffset(260, 320)
-	rightPanel.Position = UDim2.new(1, -20, 0, 70)
+	rightPanel.Position = UDim2.new(1, -20, 0, 106)
 	rightPanel.ZIndex = 51
 	rightPanel.Parent = page
 	corner(rightPanel, 10)
@@ -703,6 +703,7 @@ buildEquipmentPage = function(mercName, mercNames)
 	topBar.Name = "TopBar"
 	topBar.BackgroundTransparency = 1
 	topBar.Size = UDim2.new(1, 0, 0, 56)
+	topBar.Position = UDim2.fromOffset(0, 36)
 	topBar.ZIndex = 51
 	topBar.Parent = page
 
@@ -747,7 +748,7 @@ buildEquipmentPage = function(mercName, mercNames)
 	detailPanel.BorderSizePixel = 0
 	detailPanel.AnchorPoint = Vector2.new(1, 0)
 	detailPanel.Size = UDim2.fromOffset(260, 400)
-	detailPanel.Position = UDim2.new(1, -20, 0, 62)
+	detailPanel.Position = UDim2.new(1, -20, 0, 98)
 	detailPanel.ZIndex = 51
 	detailPanel.Parent = page
 	corner(detailPanel, 10)
@@ -861,8 +862,8 @@ buildEquipmentPage = function(mercName, mercNames)
 	gridFrame.Name = "EquipGrid"
 	gridFrame.BackgroundTransparency = 1
 	gridFrame.BorderSizePixel = 0
-	gridFrame.Size = UDim2.new(0.55, -10, 1, -66)
-	gridFrame.Position = UDim2.fromOffset(10, 62)
+	gridFrame.Size = UDim2.new(0.55, -10, 1, -102)
+	gridFrame.Position = UDim2.fromOffset(10, 98)
 	gridFrame.ScrollBarThickness = 4
 	gridFrame.ScrollBarImageColor3 = COLOR_PANEL_EDGE
 	gridFrame.CanvasSize = UDim2.new(0, 0, 0, 0) -- auto-sized below
