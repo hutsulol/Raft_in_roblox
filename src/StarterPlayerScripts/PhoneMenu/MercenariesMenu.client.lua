@@ -106,7 +106,7 @@ end
 
 -- ─── Build the 3D viewport for a mercenary model ────────────────────────
 
-local function buildMercViewport(parent, mercName)
+local function buildMercViewport(parent, mercName, weaponId)
 	local vp = Instance.new("ViewportFrame")
 	vp.Name = "MercViewport"
 	vp.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -212,6 +212,68 @@ local function buildMercViewport(parent, mercName)
 			track.Priority = Enum.AnimationPriority.Action
 			track:Play(0)
 		end)
+	end
+
+	-- ── Weapon swap in viewport ─────────────────────────────────────
+	if weaponId and weaponId ~= "Sword" then
+		-- Remove existing weapon tools from clone
+		local gripC0
+		local rightArm = clone:FindFirstChild("Right Arm")
+		if rightArm then
+			local oldGrip = rightArm:FindFirstChild("RightGrip")
+			if oldGrip then gripC0 = oldGrip.C0 end
+		end
+		for _, child in clone:GetChildren() do
+			if child:IsA("Tool") then child:Destroy() end
+		end
+		if rightArm then
+			local oldGrip = rightArm:FindFirstChild("RightGrip")
+			if oldGrip then oldGrip:Destroy() end
+		end
+
+		-- Clone new weapon from ReplicatedStorage
+		local weaponTemplate = ReplicatedStorage:FindFirstChild(weaponId)
+			or ReplicatedStorage:FindFirstChild(weaponId, true)
+		if weaponTemplate and rightArm then
+			local wArchivable = weaponTemplate.Archivable
+			weaponTemplate.Archivable = true
+			local wClone = weaponTemplate:Clone()
+			weaponTemplate.Archivable = wArchivable
+
+			-- Strip scripts
+			for _, d in wClone:GetDescendants() do
+				if d:IsA("Script") or d:IsA("LocalScript") then d:Destroy() end
+			end
+			-- Make parts visible
+			for _, d in wClone:GetDescendants() do
+				if d:IsA("BasePart") then
+					d.Transparency = 0; d.CanCollide = false; d.Massless = true
+				end
+			end
+
+			local handle = wClone:FindFirstChild("Handle")
+			if not handle then handle = wClone:FindFirstChildWhichIsA("BasePart", true) end
+
+			if handle then
+				local newGrip = Instance.new("Motor6D")
+				newGrip.Name = "RightGrip"
+				newGrip.Part0 = rightArm
+				newGrip.Part1 = handle
+				newGrip.C0 = gripC0 or CFrame.new(0, -1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0)
+				newGrip.C1 = wClone:IsA("Tool") and wClone.Grip or CFrame.new()
+				newGrip.Parent = rightArm
+
+				-- Parent tool contents into clone
+				if wClone:IsA("Tool") then
+					for _, child in wClone:GetChildren() do
+						child.Parent = clone
+					end
+					wClone:Destroy()
+				else
+					wClone.Parent = clone
+				end
+			end
+		end
 	end
 
 	clone.Parent = world
@@ -808,7 +870,14 @@ buildEquipmentPage = function(mercName, mercNames)
 
 	local function rebuildViewport()
 		if currentViewport then currentViewport:Destroy() end
-		currentViewport = buildMercViewport(page, mercName)
+		-- Pass the selected weapon so the pirate holds it in the viewport
+		local weaponToShow = selectedItemId
+		if activeCategory ~= "Weapons" then
+			-- If browsing artifacts, show currently equipped weapon
+			local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
+			weaponToShow = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+		end
+		currentViewport = buildMercViewport(page, mercName, weaponToShow)
 	end
 
 	rebuildViewport()
@@ -982,6 +1051,9 @@ buildEquipmentPage = function(mercName, mercNames)
 				selectedItemId = item.id
 				highlightCard(item.id)
 				refreshDetails()
+				if activeCategory == "Weapons" then
+					rebuildViewport()
+				end
 			end)
 		end
 
@@ -1038,6 +1110,7 @@ buildEquipmentPage = function(mercName, mercNames)
 			mercEntry:SetAttribute("EquippedWeapon", selectedItemId)
 		end
 		refreshDetails()
+		rebuildViewport()
 	end)
 
 	-- ── Initial build ───────────────────────────────────────────────

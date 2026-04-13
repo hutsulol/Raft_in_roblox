@@ -54,6 +54,15 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local clone = template:Clone()
 	template.Archivable = wasArchivable
 
+	-- Pass equipped weapon attribute so scripts like EquipFishingRod can act on it
+	local mercEntry = folder:FindFirstChild(mercName)
+	if mercEntry then
+		local equippedWeapon = mercEntry:GetAttribute("EquippedWeapon")
+		if equippedWeapon then
+			clone:SetAttribute("EquippedWeapon", equippedWeapon)
+		end
+	end
+
 	local spawnCF = hrp.CFrame * CFrame.new(0, 0, -8)
 	clone:PivotTo(spawnCF)
 	clone.Parent = workspace
