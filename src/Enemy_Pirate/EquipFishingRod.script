@@ -80,7 +80,9 @@ local function equipFishingRod()
 
 	local rod = template:Clone()
 	rod.CanBeDropped = false
-	rod.Grip = CFrame.new(0, -0.8, -0.55) * CFrame.Angles(math.rad(-90), math.rad(180), 0)
+	-- NPC hold pose: keep rod mostly vertical like a real "standing with rod" stance.
+	-- Position slightly to the right/front of the hand, then rotate so the rod points upward.
+	rod.Grip = CFrame.new(0.1, -0.9, -0.25) * CFrame.Angles(math.rad(15), math.rad(90), math.rad(90))
 	disableFishingMechanics(rod)
 	stabilizeRodParts(rod)
 	rod.Parent = npc
