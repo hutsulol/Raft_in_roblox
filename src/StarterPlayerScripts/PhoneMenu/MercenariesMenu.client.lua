@@ -86,6 +86,7 @@ local buildEquipmentPage
 -- Hide all phone-menu panels (direct children of root) except the
 -- mercenaries page itself.
 local function hidePhonePanels()
+	if #hiddenPanels > 0 then return end -- already hidden
 	hiddenPanels = {}
 	for _, child in phoneRoot:GetChildren() do
 		if child:IsA("GuiObject") and child.Name ~= "MercenariesPage" and child.Visible then
