@@ -54,14 +54,37 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local clone = template:Clone()
 	template.Archivable = wasArchivable
 
-	-- Pass equipped weapon attribute so scripts like EquipFishingRod can act on it
+	-- Read equipped weapon and swap if not default (Sword/ClassicSword)
 	local mercEntry = folder:FindFirstChild(mercName)
-	if mercEntry then
-		local equippedWeapon = mercEntry:GetAttribute("EquippedWeapon")
-		if equippedWeapon then
-			clone:SetAttribute("EquippedWeapon", equippedWeapon)
+	local equippedWeapon = mercEntry and mercEntry:GetAttribute("EquippedWeapon")
+
+	if equippedWeapon and equippedWeapon ~= "Sword" then
+		-- Remove existing weapon tools from clone
+		for _, child in clone:GetChildren() do
+			if child:IsA("Tool") then
+				child:Destroy()
+			end
+		end
+
+		-- Clone the selected weapon from ReplicatedStorage
+		local weaponTemplate = ReplicatedStorage:FindFirstChild(equippedWeapon)
+			or ReplicatedStorage:FindFirstChild(equippedWeapon, true)
+		if weaponTemplate then
+			local wArchivable = weaponTemplate.Archivable
+			weaponTemplate.Archivable = true
+			local weaponClone = weaponTemplate:Clone()
+			weaponTemplate.Archivable = wArchivable
+			-- Parent to character — Humanoid auto-equips it
+			local hum = clone:FindFirstChildOfClass("Humanoid")
+			if hum then
+				weaponClone.Parent = clone
+			end
 		end
 	end
+
+	-- Remove EquipFishingRod script if present (handled by spawner now)
+	local equipScript = clone:FindFirstChild("EquipFishingRod")
+	if equipScript then equipScript:Destroy() end
 
 	local spawnCF = hrp.CFrame * CFrame.new(0, 0, -8)
 	clone:PivotTo(spawnCF)
