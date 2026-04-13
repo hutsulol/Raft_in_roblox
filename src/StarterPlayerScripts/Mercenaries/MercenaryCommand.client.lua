@@ -20,8 +20,11 @@ local targetMerc = nil           -- model currently under crosshair
 local promptBillboard = nil      -- small "[E] Command" BillboardGui
 local commandMenuGui = nil       -- full command menu ScreenGui
 local commandMenuOpen = false
-local isPlacingLocation = false
+local isPlacingLocation = false  -- phase 1: pick raft spot
+local isPlacingCast = false      -- phase 2: pick water cast spot
 local placingMercName = nil
+local pendingRaftPart = nil      -- saved from phase 1 for the server
+local pendingRaftOffset = nil
 local previewCircle = nil
 local renderConn = nil
 local inputConn = nil
@@ -252,8 +255,8 @@ end
 
 local hintGui = nil
 
-local function showHint()
-	if hintGui then return end
+local function showHint(text)
+	if hintGui then hintGui:Destroy(); hintGui = nil end
 
 	hintGui = Instance.new("ScreenGui")
 	hintGui.Name = "FishingLocationHint"
@@ -262,12 +265,12 @@ local function showHint()
 	hintGui.Parent = playerGui
 
 	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(0, 350, 0, 36)
-	label.Position = UDim2.new(0.5, -175, 1, -100)
+	label.Size = UDim2.new(0, 400, 0, 36)
+	label.Position = UDim2.new(0.5, -200, 1, -100)
 	label.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 	label.BackgroundTransparency = 0.3
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.Text = "Click on the raft to set fishing location  |  Esc to cancel"
+	label.Text = text
 	label.Font = Enum.Font.Gotham
 	label.TextScaled = true
 	label.BorderSizePixel = 0
@@ -333,11 +336,42 @@ local function raycastFromMouse()
 	return ray.Origin + ray.Direction * t, false, nil, nil
 end
 
--- ── Placement mode ──────────────────────────────────────────────────────
+-- ── Water raycast ────────────────────────────────────────────────────────
 
-local function stopPlacementMode()
+local waterRayParams = RaycastParams.new()
+waterRayParams.FilterType = Enum.RaycastFilterType.Exclude
+waterRayParams.IgnoreWater = false
+
+-- Returns hitPosition, isOnWater
+local function raycastWaterFromMouse()
+	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
+
+	local filterList = {}
+	if previewCircle then table.insert(filterList, previewCircle) end
+	if player.Character then table.insert(filterList, player.Character) end
+	-- Also exclude all SpawnedMercenary models
+	for _, merc in CollectionService:GetTagged("SpawnedMercenary") do
+		table.insert(filterList, merc)
+	end
+	waterRayParams.FilterDescendantsInstances = filterList
+
+	local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, waterRayParams)
+	if result then
+		local isWater = result.Material == Enum.Material.Water
+		return result.Position, isWater
+	end
+
+	return nil, false
+end
+
+-- ── Placement mode (shared cleanup) ─────────────────────────────────────
+
+local function stopAllPlacement()
 	isPlacingLocation = false
+	isPlacingCast = false
 	placingMercName = nil
+	pendingRaftPart = nil
+	pendingRaftOffset = nil
 	placementValid = false
 	destroyPreviewCircle()
 	hideHint()
@@ -348,8 +382,67 @@ local function stopPlacementMode()
 	if cancelConn then cancelConn:Disconnect(); cancelConn = nil end
 end
 
+-- ── Phase 2: pick water cast target ─────────────────────────────────────
+
+local function startCastPlacementMode()
+	-- Disconnect old connections from phase 1
+	if renderConn then renderConn:Disconnect(); renderConn = nil end
+	if inputConn then inputConn:Disconnect(); inputConn = nil end
+	if cancelConn then cancelConn:Disconnect(); cancelConn = nil end
+
+	isPlacingLocation = false
+	isPlacingCast = true
+	placementValid = false
+
+	destroyPreviewCircle()
+	createPreviewCircle()
+	showHint("Click on the water to cast the fishing line  |  Esc to cancel")
+
+	renderConn = RunService.RenderStepped:Connect(function()
+		if not isPlacingCast or not previewCircle then return end
+
+		local hitPos, isWater = raycastWaterFromMouse()
+		if hitPos then
+			moveCircleTo(hitPos + Vector3.new(0, 0.1, 0))
+			previewCircle.Transparency = 0.4
+			placementValid = isWater
+			previewCircle.Color = isWater and Color3.fromRGB(80, 140, 220) or CIRCLE_COLOR_INVALID
+		else
+			previewCircle.Transparency = 1
+			placementValid = false
+		end
+	end)
+
+	inputConn = UserInputService.InputBegan:Connect(function(input, processed)
+		if processed then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1
+			and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		if not placementValid then return end
+
+		local hitPos, isWater = raycastWaterFromMouse()
+		if not hitPos or not isWater then return end
+
+		-- Send both the raft location and the cast target to the server
+		commandEvent:FireServer(
+			"setFishingLocation", placingMercName,
+			pendingRaftPart, pendingRaftOffset, hitPos
+		)
+		stopAllPlacement()
+	end)
+
+	cancelConn = UserInputService.InputBegan:Connect(function(input, _)
+		if input.KeyCode == Enum.KeyCode.Escape then
+			stopAllPlacement()
+		end
+	end)
+end
+
+-- ── Phase 1: pick raft spot ─────────────────────────────────────────────
+
 function startPlacementMode(mercName)
-	if isPlacingLocation then stopPlacementMode() end
+	if isPlacingLocation or isPlacingCast then stopAllPlacement() end
 
 	isPlacingLocation = true
 	placingMercName = mercName
@@ -357,7 +450,7 @@ function startPlacementMode(mercName)
 	_G.SuppressInventoryToggle = true
 
 	createPreviewCircle()
-	showHint()
+	showHint("Click on the raft to set fishing location  |  Esc to cancel")
 
 	renderConn = RunService.RenderStepped:Connect(function()
 		if not isPlacingLocation or not previewCircle then return end
@@ -385,15 +478,15 @@ function startPlacementMode(mercName)
 		local hitPos, onRaft, hitPart, localOffset = raycastFromMouse()
 		if not hitPos or not onRaft or not hitPart then return end
 
-		-- Send the raft part and local offset so the server can track
-		-- the moving raft instead of using a fixed world position.
-		commandEvent:FireServer("setFishingLocation", placingMercName, hitPart, localOffset)
-		stopPlacementMode()
+		-- Save raft data and transition to phase 2
+		pendingRaftPart = hitPart
+		pendingRaftOffset = localOffset
+		startCastPlacementMode()
 	end)
 
 	cancelConn = UserInputService.InputBegan:Connect(function(input, _)
 		if input.KeyCode == Enum.KeyCode.Escape then
-			stopPlacementMode()
+			stopAllPlacement()
 		end
 	end)
 end
@@ -401,7 +494,7 @@ end
 -- ── Hover detection: show "[E] Command" prompt ──────────────────────────
 
 RunService.RenderStepped:Connect(function()
-	if isPlacingLocation or commandMenuOpen then
+	if isPlacingLocation or isPlacingCast or commandMenuOpen then
 		if promptBillboard then destroyPrompt() end
 		return
 	end
