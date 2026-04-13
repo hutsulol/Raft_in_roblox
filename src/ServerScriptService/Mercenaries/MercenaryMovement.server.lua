@@ -1,19 +1,18 @@
 -- MercenaryMovement.server.lua
 -- Handles movement and fishing commands for spawned mercenaries.
 -- The client sends a raft part + local offset for walking, and a water
--- position for casting. After the pirate arrives, it fishes automatically.
+-- position for casting. After the pirate arrives, it fishes automatically
+-- using a self-contained bobber system (no dependency on tool internals).
 
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
-local Debris = game:GetService("Debris")
 
 local commandEvent = Instance.new("RemoteEvent")
 commandEvent.Name = "MercenaryCommand"
 commandEvent.Parent = ReplicatedStorage
 
--- Active task tokens per mercenary (cancel previous walk/fish on new command)
 local activeTokens = {} -- [model] = token
 
 -- ── Catch pools (same as FishingRod Script) ─────────────────────────────
@@ -102,37 +101,24 @@ local function grantCatchToPlayer(player, resourceName)
 	end
 end
 
--- ── Find the fishing rod tool on the mercenary ──────────────────────────
-
-local function findFishingRod(model)
-	for _, child in model:GetChildren() do
-		if child:IsA("Tool") and (
-			child.Name == "FishingRod"
-			or child.Name == "FishingRod ( Tool )"
-			or child.Name:find("FishingRod")
-		) then
-			return child
-		end
+-- Get the NPC's right hand position (rod tip approximation)
+local function getRodTipPosition(model)
+	local rightArm = model:FindFirstChild("Right Arm")
+		or model:FindFirstChild("RightHand")
+		or model:FindFirstChild("RightLowerArm")
+	if rightArm then
+		return rightArm.Position + Vector3.new(0, 3, 0)
 	end
-	return nil
-end
-
--- Disable the tool's built-in scripts and rope so they don't conflict
--- with our NPC fishing logic, but keep Pointer and Device accessible.
-local function prepareRodForNPC(rod)
-	for _, desc in rod:GetDescendants() do
-		if desc:IsA("Script") or desc:IsA("LocalScript") then
-			desc.Enabled = false
-		elseif desc:IsA("RopeConstraint") then
-			desc.Enabled = false
-			desc.Visible = false
-		end
+	local hrp = model:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		return hrp.Position + hrp.CFrame.LookVector * 2 + Vector3.new(0, 3, 0)
 	end
+	return model:GetPivot().Position + Vector3.new(0, 5, 0)
 end
 
 -- ── Spawn hooked catch prop ─────────────────────────────────────────────
 
-local function spawnHookedProp(templateName, position)
+local function spawnHookedProp(templateName, bobber)
 	local template = ReplicatedStorage:FindFirstChild(templateName)
 	if not template then
 		template = ReplicatedStorage:FindFirstChild(templateName, true)
@@ -146,9 +132,9 @@ local function spawnHookedProp(templateName, position)
 	end
 
 	if clone:IsA("Model") then
-		clone:PivotTo(CFrame.new(position))
+		clone:PivotTo(CFrame.new(bobber.Position))
 	elseif clone:IsA("BasePart") then
-		clone.CFrame = CFrame.new(position)
+		clone.CFrame = CFrame.new(bobber.Position)
 	end
 
 	local function neuter(part)
@@ -164,46 +150,54 @@ local function spawnHookedProp(templateName, position)
 	end
 
 	clone.Parent = workspace
+
+	-- Weld to bobber
+	local primaryPart = clone:IsA("BasePart") and clone or clone.PrimaryPart
+	if primaryPart then
+		local weld = Instance.new("WeldConstraint")
+		weld.Name = "HookWeld"
+		weld.Part0 = bobber
+		weld.Part1 = primaryPart
+		weld.Parent = primaryPart
+	end
+
 	return clone
+end
+
+-- ── Create a standalone bobber ──────────────────────────────────────────
+
+local function createBobber()
+	local part = Instance.new("Part")
+	part.Name = "NPCBobber"
+	part.Shape = Enum.PartType.Ball
+	part.Size = Vector3.new(0.6, 0.6, 0.6)
+	part.Color = Color3.fromRGB(200, 40, 40)
+	part.Material = Enum.Material.SmoothPlastic
+	part.Anchored = true
+	part.CanCollide = false
+	part.CastShadow = false
+	part.Parent = workspace
+	return part
+end
+
+-- ── Timed wait that checks token ────────────────────────────────────────
+
+local function waitSeconds(model, token, seconds)
+	local elapsed = 0
+	while elapsed < seconds and activeTokens[model] == token do
+		local dt = RunService.Heartbeat:Wait()
+		elapsed = elapsed + dt
+	end
+	return activeTokens[model] == token
 end
 
 -- ── NPC fishing cycle ───────────────────────────────────────────────────
 
 local function runFishingLoop(model, token, castTarget, ownerUserId)
-	local rod = findFishingRod(model)
-	if not rod then
-		warn("[MercenaryMovement] No fishing rod found on", model.Name)
-		return
-	end
-
-	-- Disable built-in rod scripts so they don't interfere
-	prepareRodForNPC(rod)
-
-	local pointer = rod:FindFirstChild("Pointer")
-	local device = rod:FindFirstChild("Device") or rod:FindFirstChild("Handle")
-	if not pointer then
-		warn("[MercenaryMovement] No Pointer found on rod", rod:GetFullName())
-		-- List children for debugging
-		for _, c in rod:GetChildren() do
-			warn("  -", c.Name, c.ClassName)
-		end
-		return
-	end
-	if not device then
-		warn("[MercenaryMovement] No Device/Handle found on rod")
-		return
-	end
-
-	-- Ensure pointer is unanchored and detached for casting
-	pointer.Anchored = false
-	pointer.CanCollide = false
-
-	-- Sounds
-	local fishBiteSound = rod:FindFirstChild("Fish Bite")
-	local itemBiteSound = rod:FindFirstChild("Item Bite")
-	local pickUpSound = rod:FindFirstChild("PickUp")
-	local wooshSound = (device:FindFirstChild("woosh"))
-		or (rod:FindFirstChild("Handle") and rod.Handle:FindFirstChild("woosh"))
+	local bobber = createBobber()
+	-- Start bobber hidden at the NPC
+	bobber.CFrame = CFrame.new(getRodTipPosition(model))
+	bobber.Transparency = 1
 
 	local player = getPlayerByUserId(ownerUserId)
 
@@ -212,83 +206,49 @@ local function runFishingLoop(model, token, castTarget, ownerUserId)
 		local humanoid = model:FindFirstChildOfClass("Humanoid")
 		if not humanoid or humanoid.Health <= 0 then break end
 
-		-- ── CAST ──
-		-- Detach bobber
-		local existingWeld = device:FindFirstChild("thing")
-		if existingWeld then existingWeld:Destroy() end
+		-- ── CAST: bobber flies from rod tip to water ──
+		local startPos = getRodTipPosition(model)
+		local distance = (castTarget - startPos).Magnitude
+		local arcHeight = math.max(distance * 0.15, 3)
+		local flightTime = math.clamp(distance / 40, 0.3, 1.5)
 
-		local startPos = device.Position
-		local arcHeight = math.max((castTarget - startPos).Magnitude * 0.15, 3)
-		local flightTime = math.clamp((castTarget - startPos).Magnitude / 40, 0.25, 1.5)
-
-		if wooshSound then wooshSound:Play() end
-
-		pointer.Anchored = true
+		bobber.Transparency = 0
+		bobber.Anchored = true
 		local launchTick = tick()
+
 		while activeTokens[model] == token do
 			local elapsed = tick() - launchTick
 			local t = elapsed / flightTime
 			if t >= 1 then break end
 			local linear = startPos:Lerp(castTarget, t)
 			local arc = Vector3.new(0, arcHeight * math.sin(t * math.pi), 0)
-			pointer.CFrame = CFrame.new(linear + arc)
+			bobber.CFrame = CFrame.new(linear + arc)
 			RunService.Heartbeat:Wait()
 		end
 		if activeTokens[model] ~= token then break end
 
 		-- Land on water
-		pointer.CFrame = CFrame.new(castTarget)
-		pointer.Anchored = true
+		bobber.CFrame = CFrame.new(castTarget)
 
-		-- ── WAIT FOR BITE ──
-		local biteDelay = math.random(2, 4)
-		local waited = 0
-		while waited < biteDelay and activeTokens[model] == token do
-			RunService.Heartbeat:Wait()
-			waited = waited + RunService.Heartbeat:Wait()
-		end
-		if activeTokens[model] ~= token then break end
+		-- ── WAIT FOR BITE (2-4 seconds) ──
+		if not waitSeconds(model, token, math.random(2, 4)) then break end
 
-		-- ── BITE ──
+		-- ── BITE: roll catch ──
 		local catchDef = rollCatch()
 		local hookedClone = nil
 
 		if catchDef then
-			-- Spawn visual catch at bobber
-			hookedClone = spawnHookedProp(catchDef.templateName, pointer.Position)
-			if hookedClone then
-				local primaryPart = hookedClone:IsA("BasePart") and hookedClone or hookedClone.PrimaryPart
-				if primaryPart then
-					local weld = Instance.new("WeldConstraint")
-					weld.Name = "HookWeld"
-					weld.Part0 = pointer
-					weld.Part1 = primaryPart
-					weld.Parent = primaryPart
-				end
-			end
-
-			-- Bite sound
-			if catchDef.category == "fish" then
-				if fishBiteSound then fishBiteSound:Play() end
-			else
-				if itemBiteSound then itemBiteSound:Play() end
-			end
+			hookedClone = spawnHookedProp(catchDef.templateName, bobber)
 		end
 
-		-- Short pause before auto-reel
-		local reelDelay = math.random(1, 2)
-		waited = 0
-		while waited < reelDelay and activeTokens[model] == token do
-			RunService.Heartbeat:Wait()
-			waited = waited + RunService.Heartbeat:Wait()
-		end
-		if activeTokens[model] ~= token then
+		-- Brief pause before auto-reel (1-2 seconds)
+		if not waitSeconds(model, token, math.random(1, 2)) then
 			if hookedClone and hookedClone.Parent then hookedClone:Destroy() end
 			break
 		end
 
-		-- ── REEL IN ──
-		local reelStart = pointer.Position
+		-- ── REEL IN: bobber arcs back to rod tip ──
+		local reelStart = bobber.Position
 		local returnTime = 0.7
 		local reelArc = 4
 		local reelTick = tick()
@@ -297,10 +257,10 @@ local function runFishingLoop(model, token, castTarget, ownerUserId)
 			local elapsed = tick() - reelTick
 			local t = elapsed / returnTime
 			if t >= 1 then break end
-			local endPos = device.Position
+			local endPos = getRodTipPosition(model)
 			local linear = reelStart:Lerp(endPos, t)
 			local arc = Vector3.new(0, reelArc * math.sin(t * math.pi), 0)
-			pointer.CFrame = CFrame.new(linear + arc)
+			bobber.CFrame = CFrame.new(linear + arc)
 			RunService.Heartbeat:Wait()
 		end
 		if activeTokens[model] ~= token then
@@ -310,9 +270,8 @@ local function runFishingLoop(model, token, castTarget, ownerUserId)
 
 		-- ── GRANT CATCH ──
 		if catchDef then
-			player = getPlayerByUserId(ownerUserId) -- refresh in case of reconnect
+			player = getPlayerByUserId(ownerUserId)
 			grantCatchToPlayer(player, catchDef.inventoryName)
-			if pickUpSound then pickUpSound:Play() end
 		end
 
 		-- Clean up catch prop
@@ -320,31 +279,17 @@ local function runFishingLoop(model, token, castTarget, ownerUserId)
 			hookedClone:Destroy()
 		end
 
-		-- Re-attach bobber to rod
-		pointer.Anchored = false
-		local weld = Instance.new("WeldConstraint")
-		weld.Name = "thing"
-		pointer.CFrame = device.CFrame
-		weld.Part0 = pointer
-		weld.Part1 = device
-		weld.Parent = device
+		-- Hide bobber between casts
+		bobber.Transparency = 1
+		bobber.CFrame = CFrame.new(getRodTipPosition(model))
 
-		-- Brief pause before next cast
-		task.wait(1)
+		-- Pause before next cast
+		if not waitSeconds(model, token, 1.5) then break end
 	end
 
-	-- Ensure bobber is attached when loop ends
-	if pointer and pointer.Parent and device and device.Parent then
-		pointer.Anchored = false
-		local w = device:FindFirstChild("thing")
-		if not w then
-			local weld = Instance.new("WeldConstraint")
-			weld.Name = "thing"
-			pointer.CFrame = device.CFrame
-			weld.Part0 = pointer
-			weld.Part1 = device
-			weld.Parent = device
-		end
+	-- Clean up bobber
+	if bobber and bobber.Parent then
+		bobber:Destroy()
 	end
 end
 
@@ -396,7 +341,7 @@ local function walkThenFish(model, raftPart, localOffset, castTarget, ownerUserI
 			end
 		end
 
-		task.wait(0.3)
+		task.wait(0.5)
 
 		-- Phase 2: fish in a loop
 		if activeTokens[model] == token then
