@@ -1,5 +1,5 @@
 -- MercenaryCommand.client.lua
--- Provides a hover-over control menu for spawned mercenaries and a
+-- Provides an E-key interaction for spawned mercenaries and a
 -- building-system-style placement UI for setting a fishing location.
 
 local Players = game:GetService("Players")
@@ -16,14 +16,18 @@ local camera = workspace.CurrentCamera
 local commandEvent = ReplicatedStorage:WaitForChild("MercenaryCommand")
 
 -- ── State ───────────────────────────────────────────────────────────────
-local hoveredMerc = nil          -- model currently under cursor
-local activeBillboard = nil      -- BillboardGui shown on hover
-local isPlacingLocation = false  -- true while in placement mode
-local placingMercName = nil      -- which mercenary we're placing for
-local previewCircle = nil        -- green circle Part
-local renderConn = nil           -- RenderStepped connection
-local inputConn = nil            -- InputBegan connection for click
-local cancelConn = nil           -- InputBegan connection for cancel
+local targetMerc = nil           -- model currently under crosshair
+local promptBillboard = nil      -- small "[E] Command" BillboardGui
+local commandMenuGui = nil       -- full command menu ScreenGui
+local commandMenuOpen = false
+local isPlacingLocation = false
+local placingMercName = nil
+local previewCircle = nil
+local renderConn = nil
+local inputConn = nil
+local cancelConn = nil
+
+local MAX_INTERACT_DISTANCE = 20
 
 -- ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -39,72 +43,172 @@ local function getAncestorWithTag(instance, tag)
 end
 
 local function isOwnedMercenary(model)
-	return model
-		and model:GetAttribute("OwnerUserId") == player.UserId
+	return model and model:GetAttribute("OwnerUserId") == player.UserId
 end
 
 local function hasFishingRod(model)
-	local weapon = model:GetAttribute("EquippedWeapon")
-	return weapon == "FishingRod"
+	return model and model:GetAttribute("EquippedWeapon") == "FishingRod"
 end
 
--- ── Billboard (hover menu) ─────────────────────────────────────────────
+local function distanceToModel(model)
+	local char = player.Character
+	if not char then return math.huge end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return math.huge end
+	local mercHrp = model:FindFirstChild("HumanoidRootPart")
+	if not mercHrp then return math.huge end
+	return (hrp.Position - mercHrp.Position).Magnitude
+end
 
-local function destroyBillboard()
-	if activeBillboard then
-		activeBillboard:Destroy()
-		activeBillboard = nil
+-- ── Prompt billboard ("[E] Command") ────────────────────────────────────
+
+local function destroyPrompt()
+	if promptBillboard then
+		promptBillboard:Destroy()
+		promptBillboard = nil
 	end
 end
 
-local function createBillboard(model)
-	destroyBillboard()
+local function createPrompt(model)
+	destroyPrompt()
 
-	local hrp = model:FindFirstChild("HumanoidRootPart")
-		or model:FindFirstChild("Head")
-	if not hrp then return end
+	local adornee = model:FindFirstChild("Head")
+		or model:FindFirstChild("HumanoidRootPart")
+	if not adornee then return end
 
 	local bb = Instance.new("BillboardGui")
-	bb.Name = "MercCommandMenu"
-	bb.Adornee = hrp
-	bb.Size = UDim2.new(0, 180, 0, 50)
-	bb.StudsOffset = Vector3.new(0, 4, 0)
+	bb.Name = "MercInteractPrompt"
+	bb.Adornee = adornee
+	bb.Size = UDim2.new(0, 120, 0, 36)
+	bb.StudsOffset = Vector3.new(0, 3, 0)
 	bb.AlwaysOnTop = true
 	bb.ResetOnSpawn = false
 	bb.Parent = playerGui
 
-	local btn = Instance.new("TextButton")
-	btn.Name = "SetLocationBtn"
-	btn.Size = UDim2.new(1, 0, 1, 0)
-	btn.BackgroundColor3 = Color3.fromRGB(50, 140, 80)
-	btn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	btn.Text = "Set Fishing Location"
-	btn.Font = Enum.Font.GothamBold
-	btn.TextScaled = true
-	btn.BorderSizePixel = 0
-	btn.Parent = bb
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.new(1, 0, 1, 0)
+	label.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+	label.BackgroundTransparency = 0.3
+	label.TextColor3 = Color3.fromRGB(255, 255, 0)
+	label.Text = "[E] Command"
+	label.Font = Enum.Font.GothamBold
+	label.TextScaled = true
+	label.BorderSizePixel = 0
+	label.Parent = bb
 
 	local corner = Instance.new("UICorner")
 	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = btn
+	corner.Parent = label
 
-	local padding = Instance.new("UIPadding")
-	padding.PaddingLeft = UDim.new(0, 6)
-	padding.PaddingRight = UDim.new(0, 6)
-	padding.PaddingTop = UDim.new(0, 4)
-	padding.PaddingBottom = UDim.new(0, 4)
-	padding.Parent = btn
+	promptBillboard = bb
+end
 
-	btn.MouseButton1Click:Connect(function()
-		local mercName = model:GetAttribute("MercName")
-		if mercName then
-			destroyBillboard()
-			hoveredMerc = nil
-			startPlacementMode(mercName)
-		end
+-- ── Command menu (ScreenGui) ────────────────────────────────────────────
+
+local function closeCommandMenu()
+	if commandMenuGui then
+		commandMenuGui:Destroy()
+		commandMenuGui = nil
+	end
+	commandMenuOpen = false
+	_G.SuppressInventoryToggle = false
+end
+
+local function openCommandMenu(model)
+	closeCommandMenu()
+	commandMenuOpen = true
+	_G.SuppressInventoryToggle = true
+
+	local mercName = model:GetAttribute("MercName")
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "MercCommandMenu"
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 30
+	gui.Parent = playerGui
+
+	-- Semi-transparent background to indicate menu mode
+	local bg = Instance.new("Frame")
+	bg.Name = "Backdrop"
+	bg.Size = UDim2.new(1, 0, 1, 0)
+	bg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	bg.BackgroundTransparency = 0.6
+	bg.BorderSizePixel = 0
+	bg.Parent = gui
+
+	-- Central panel
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.Size = UDim2.new(0, 260, 0, 160)
+	panel.Position = UDim2.new(0.5, -130, 0.5, -80)
+	panel.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+	panel.BorderSizePixel = 0
+	panel.Parent = gui
+
+	local panelCorner = Instance.new("UICorner")
+	panelCorner.CornerRadius = UDim.new(0, 12)
+	panelCorner.Parent = panel
+
+	-- Title
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.Size = UDim2.new(1, 0, 0, 36)
+	title.Position = UDim2.new(0, 0, 0, 8)
+	title.BackgroundTransparency = 1
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.Text = "Mercenary Commands"
+	title.Font = Enum.Font.GothamBold
+	title.TextScaled = true
+	title.Parent = panel
+
+	-- "Set Fishing Location" button (only shown if mercenary has a fishing rod)
+	if hasFishingRod(model) then
+		local btn = Instance.new("TextButton")
+		btn.Name = "SetFishingBtn"
+		btn.Size = UDim2.new(0.85, 0, 0, 42)
+		btn.Position = UDim2.new(0.075, 0, 0, 52)
+		btn.BackgroundColor3 = Color3.fromRGB(50, 140, 80)
+		btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		btn.Text = "Set Fishing Location"
+		btn.Font = Enum.Font.GothamBold
+		btn.TextScaled = true
+		btn.BorderSizePixel = 0
+		btn.Parent = panel
+
+		local btnCorner = Instance.new("UICorner")
+		btnCorner.CornerRadius = UDim.new(0, 8)
+		btnCorner.Parent = btn
+
+		btn.MouseButton1Click:Connect(function()
+			closeCommandMenu()
+			if mercName then
+				startPlacementMode(mercName)
+			end
+		end)
+	end
+
+	-- Close button
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Name = "CloseBtn"
+	closeBtn.Size = UDim2.new(0.85, 0, 0, 36)
+	closeBtn.Position = UDim2.new(0.075, 0, 1, -46)
+	closeBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeBtn.Text = "Close"
+	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.TextScaled = true
+	closeBtn.BorderSizePixel = 0
+	closeBtn.Parent = panel
+
+	local closeBtnCorner = Instance.new("UICorner")
+	closeBtnCorner.CornerRadius = UDim.new(0, 8)
+	closeBtnCorner.Parent = closeBtn
+
+	closeBtn.MouseButton1Click:Connect(function()
+		closeCommandMenu()
 	end)
 
-	activeBillboard = bb
+	commandMenuGui = gui
 end
 
 -- ── Preview circle ──────────────────────────────────────────────────────
@@ -118,7 +222,6 @@ local function createPreviewCircle()
 	local part = Instance.new("Part")
 	part.Name = "FishingLocationPreview"
 	part.Shape = Enum.PartType.Cylinder
-	-- Cylinder axis is along X; rotate so flat face is horizontal
 	part.Size = Vector3.new(0.15, CIRCLE_DIAMETER, CIRCLE_DIAMETER)
 	part.Anchored = true
 	part.CanCollide = false
@@ -140,7 +243,6 @@ end
 
 local function moveCircleTo(worldPos)
 	if not previewCircle then return end
-	-- Cylinder: rotate 90 degrees around Z so the flat faces point up/down
 	previewCircle.CFrame = CFrame.new(worldPos) * CFrame.Angles(0, 0, math.rad(90))
 end
 
@@ -188,7 +290,6 @@ rayParams.FilterType = Enum.RaycastFilterType.Exclude
 rayParams.IgnoreWater = false
 
 local function raycastFromMouse()
-	-- Exclude the preview circle and the player's character
 	local filterList = {}
 	if previewCircle then table.insert(filterList, previewCircle) end
 	if player.Character then table.insert(filterList, player.Character) end
@@ -200,11 +301,10 @@ local function raycastFromMouse()
 		return result.Position
 	end
 
-	-- Fallback: intersect with y = water level (approximate sea level at y=0)
-	local waterY = 0
+	-- Fallback: intersect with y = 0 (sea level)
 	local denom = ray.Direction.Y
 	if math.abs(denom) < 0.001 then return nil end
-	local t = (waterY - ray.Origin.Y) / denom
+	local t = -ray.Origin.Y / denom
 	if t < 0 then return nil end
 	return ray.Origin + ray.Direction * t
 end
@@ -216,19 +316,11 @@ local function stopPlacementMode()
 	placingMercName = nil
 	destroyPreviewCircle()
 	hideHint()
+	_G.SuppressInventoryToggle = false
 
-	if renderConn then
-		renderConn:Disconnect()
-		renderConn = nil
-	end
-	if inputConn then
-		inputConn:Disconnect()
-		inputConn = nil
-	end
-	if cancelConn then
-		cancelConn:Disconnect()
-		cancelConn = nil
-	end
+	if renderConn then renderConn:Disconnect(); renderConn = nil end
+	if inputConn then inputConn:Disconnect(); inputConn = nil end
+	if cancelConn then cancelConn:Disconnect(); cancelConn = nil end
 end
 
 function startPlacementMode(mercName)
@@ -236,11 +328,11 @@ function startPlacementMode(mercName)
 
 	isPlacingLocation = true
 	placingMercName = mercName
+	_G.SuppressInventoryToggle = true
 
 	createPreviewCircle()
 	showHint()
 
-	-- Move circle every frame
 	renderConn = RunService.RenderStepped:Connect(function()
 		if not isPlacingLocation or not previewCircle then return end
 
@@ -253,7 +345,6 @@ function startPlacementMode(mercName)
 		end
 	end)
 
-	-- Left-click to confirm
 	inputConn = UserInputService.InputBegan:Connect(function(input, processed)
 		if processed then return end
 		if input.UserInputType ~= Enum.UserInputType.MouseButton1
@@ -268,8 +359,7 @@ function startPlacementMode(mercName)
 		stopPlacementMode()
 	end)
 
-	-- Right-click or Escape to cancel
-	cancelConn = UserInputService.InputBegan:Connect(function(input, processed)
+	cancelConn = UserInputService.InputBegan:Connect(function(input, _)
 		if input.UserInputType == Enum.UserInputType.MouseButton2 then
 			stopPlacementMode()
 		elseif input.KeyCode == Enum.KeyCode.Escape then
@@ -278,32 +368,51 @@ function startPlacementMode(mercName)
 	end)
 end
 
--- ── Hover detection (runs every frame) ──────────────────────────────────
+-- ── Hover detection: show "[E] Command" prompt ──────────────────────────
 
 RunService.RenderStepped:Connect(function()
-	-- Don't show hover menu while in placement mode
-	if isPlacingLocation then return end
-
-	local target = mouse.Target
-	if not target then
-		if hoveredMerc then
-			hoveredMerc = nil
-			destroyBillboard()
-		end
+	if isPlacingLocation or commandMenuOpen then
+		if promptBillboard then destroyPrompt() end
 		return
 	end
 
-	local mercModel = getAncestorWithTag(target, "SpawnedMercenary")
+	local target = mouse.Target
+	local mercModel = target and getAncestorWithTag(target, "SpawnedMercenary")
 
-	if mercModel and isOwnedMercenary(mercModel) and hasFishingRod(mercModel) then
-		if mercModel ~= hoveredMerc then
-			hoveredMerc = mercModel
-			createBillboard(mercModel)
+	if mercModel
+		and isOwnedMercenary(mercModel)
+		and hasFishingRod(mercModel)
+		and distanceToModel(mercModel) <= MAX_INTERACT_DISTANCE
+	then
+		if mercModel ~= targetMerc then
+			targetMerc = mercModel
+			createPrompt(mercModel)
 		end
 	else
-		if hoveredMerc then
-			hoveredMerc = nil
-			destroyBillboard()
+		if targetMerc then
+			targetMerc = nil
+			destroyPrompt()
 		end
+	end
+end)
+
+-- ── E key interaction ───────────────────────────────────────────────────
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then return end
+	if input.KeyCode ~= Enum.KeyCode.E then return end
+
+	-- Close the command menu if it's already open
+	if commandMenuOpen then
+		closeCommandMenu()
+		return
+	end
+
+	-- Open command menu if looking at a mercenary
+	if targetMerc and targetMerc.Parent then
+		-- Suppress inventory toggle so it doesn't open at the same time
+		_G.SuppressInventoryToggle = true
+		openCommandMenu(targetMerc)
+		destroyPrompt()
 	end
 end)
