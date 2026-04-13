@@ -191,6 +191,26 @@ local function waitSeconds(model, token, seconds)
 	return activeTokens[model] == token
 end
 
+-- ── Fishing animation ───────────────────────────────────────────────────
+
+local FISHING_ANIM_ID = "rbxassetid://78830292804063"
+
+local function playFishingAnimation(model)
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return nil end
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = humanoid
+	end
+	local anim = Instance.new("Animation")
+	anim.AnimationId = FISHING_ANIM_ID
+	local track = animator:LoadAnimation(anim)
+	track.Looped = true
+	track:Play()
+	return track
+end
+
 -- ── NPC fishing cycle ───────────────────────────────────────────────────
 
 local function runFishingLoop(model, token, castTarget, ownerUserId)
@@ -198,6 +218,9 @@ local function runFishingLoop(model, token, castTarget, ownerUserId)
 	-- Start bobber hidden at the NPC
 	bobber.CFrame = CFrame.new(getRodTipPosition(model))
 	bobber.Transparency = 1
+
+	-- Play fishing animation
+	local fishingTrack = playFishingAnimation(model)
 
 	local player = getPlayerByUserId(ownerUserId)
 
@@ -285,6 +308,12 @@ local function runFishingLoop(model, token, castTarget, ownerUserId)
 
 		-- Pause before next cast
 		if not waitSeconds(model, token, 1.5) then break end
+	end
+
+	-- Stop fishing animation
+	if fishingTrack then
+		fishingTrack:Stop()
+		fishingTrack:Destroy()
 	end
 
 	-- Clean up bobber
