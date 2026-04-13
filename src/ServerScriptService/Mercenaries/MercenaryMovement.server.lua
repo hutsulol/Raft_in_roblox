@@ -46,21 +46,28 @@ local function walkToRaftPoint(model, raftPart, localOffset)
 			if not humanoid or not humanoid.Parent or humanoid.Health <= 0 then break end
 			if not raftPart or not raftPart.Parent then break end
 
-			-- Recalculate world position from raft part's current CFrame
-			local worldTarget = raftPart.CFrame:PointToWorldSpace(localOffset)
-
-			humanoid:MoveTo(worldTarget)
-			humanoid.MoveToFinished:Wait()
-
-			-- Check if close enough
 			local currentHRP = model:FindFirstChild("HumanoidRootPart")
 			if not currentHRP then break end
 
-			-- Recompute target (raft may have moved during walk)
-			local freshTarget = raftPart.CFrame:PointToWorldSpace(localOffset)
-			local dist = (currentHRP.Position - freshTarget).Magnitude
-			if dist < 3 then
+			-- Recalculate world target from raft part every tick
+			local worldTarget = raftPart.CFrame:PointToWorldSpace(localOffset)
+			local dist = (currentHRP.Position - worldTarget).Magnitude
+
+			if dist < 2 then
+				-- Arrived — stop walking
 				break
+			end
+
+			-- Continuously redirect toward the moving target
+			humanoid:MoveTo(worldTarget)
+			task.wait(0.15)
+		end
+
+		-- Ensure the humanoid stops moving
+		if humanoid and humanoid.Parent then
+			local finalHRP = model:FindFirstChild("HumanoidRootPart")
+			if finalHRP then
+				humanoid:MoveTo(finalHRP.Position)
 			end
 		end
 
