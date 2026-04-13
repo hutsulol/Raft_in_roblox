@@ -75,7 +75,13 @@ end
 
 -- ─── State ──────────────────────────────────────────────────────────────
 local page = nil
-local hiddenPanels = {} -- panels hidden while mercenaries page is open
+local hiddenPanels = {}    -- panels hidden while mercenaries page is open
+local currentMercNames = {}  -- remembered across page switches
+local currentSelectedMerc = nil
+
+-- Forward declarations so character page and equipment page can call each other
+local buildPage
+local buildEquipmentPage
 
 -- Hide all phone-menu panels (direct children of root) except the
 -- mercenaries page itself.
@@ -252,10 +258,12 @@ end
 
 -- ─── Build the full page ────────────────────────────────────────────────
 
-local function buildPage(mercNames)
+buildPage = function(mercNames)
 	if page then page:Destroy() end
 
+	currentMercNames = mercNames
 	local selectedName = mercNames[1]
+	currentSelectedMerc = selectedName
 	local theme        = MERC_THEMES[selectedName] or DEFAULT_THEME
 
 	-- ── Full-page container (phone-style blue background) ────────────
@@ -340,7 +348,7 @@ local function buildPage(mercNames)
 		initLabel.Parent = circle
 	end
 
-	-- ── Left side: menu buttons (visual only) ────────────────────────
+	-- ── Left side: menu buttons ─────────────────────────────────────
 	local leftPanel = Instance.new("Frame")
 	leftPanel.BackgroundTransparency = 1
 	leftPanel.Size = UDim2.fromOffset(200, 260)
@@ -357,7 +365,7 @@ local function buildPage(mercNames)
 	}
 
 	for i, itemText in menuItems do
-		local row = Instance.new("TextLabel")
+		local row = Instance.new("TextButton")
 		row.BackgroundTransparency = 1
 		row.Size = UDim2.new(1, 0, 0, 32)
 		row.Position = UDim2.fromOffset(0, (i - 1) * 40)
@@ -366,8 +374,15 @@ local function buildPage(mercNames)
 		row.TextColor3 = COLOR_TEXT
 		row.Text = "◇ " .. itemText
 		row.TextXAlignment = Enum.TextXAlignment.Left
+		row.AutoButtonColor = false
 		row.ZIndex = 51
 		row.Parent = leftPanel
+
+		if itemText == "Equipment" then
+			row.MouseButton1Click:Connect(function()
+				buildEquipmentPage(selectedName, mercNames)
+			end)
+		end
 	end
 
 	-- ── Right side: stats panel ──────────────────────────────────────
@@ -530,6 +545,503 @@ local function buildPage(mercNames)
 	backBtn.MouseButton1Click:Connect(function()
 		closePage()
 	end)
+end
+
+-- ─── Equipment data ─────────────────────────────────────────────────────
+
+local EQUIP_CATEGORIES = { "Weapons", "Artifacts" }
+
+local EQUIP_ITEMS = {
+	Weapons = {
+		{
+			id            = "Sword",
+			displayName   = "Pirate Sword",
+			typeName      = "Melee",
+			stars         = 1,
+			baseAttack    = 10,
+			description   = "A basic pirate cutlass. Short range but reliable in close combat.",
+			alwaysUnlocked = true,
+		},
+		{
+			id            = "FishingRod",
+			displayName   = "Fishing Rod",
+			typeName      = "Utility",
+			stars         = 1,
+			baseAttack    = 0,
+			description   = "Cast your line to catch fish. Equip to a mercenary for automated fishing.",
+		},
+	},
+	Artifacts = {},
+}
+
+-- ─── Build equipment page ───────────────────────────────────────────────
+
+buildEquipmentPage = function(mercName, mercNames)
+	if page then page:Destroy() end
+
+	currentSelectedMerc = mercName
+	currentMercNames = mercNames
+	local theme = MERC_THEMES[mercName] or DEFAULT_THEME
+
+	-- Which category is active
+	local activeCategory = "Weapons"
+	local selectedItemId = "Sword" -- default selection
+
+	-- Read currently equipped weapon from attribute
+	local mercFolder = player:FindFirstChild("Mercenaries")
+	if mercFolder then
+		local entry = mercFolder:FindFirstChild(mercName)
+		if entry then
+			local eq = entry:GetAttribute("EquippedWeapon")
+			if eq then selectedItemId = eq end
+		end
+	end
+
+	-- Read unlocked equipment
+	local unlockedSet = {}
+	local eqFolder = player:FindFirstChild("UnlockedEquipment")
+	if eqFolder then
+		for _, child in eqFolder:GetChildren() do
+			unlockedSet[child.Name] = true
+		end
+	end
+	-- Sword is always unlocked
+	unlockedSet["Sword"] = true
+
+	-- ── Full-page container ─────────────────────────────────────────
+	page = Instance.new("Frame")
+	page.Name = "MercenariesPage"
+	page.Size = UDim2.fromScale(1, 1)
+	page.BackgroundColor3 = COLOR_BG
+	page.BackgroundTransparency = 0.15
+	page.BorderSizePixel = 0
+	page.ZIndex = 50
+	page.Parent = phoneRoot
+
+	hidePhonePanels()
+
+	-- ── Top bar ─────────────────────────────────────────────────────
+	local topBar = Instance.new("Frame")
+	topBar.Name = "TopBar"
+	topBar.BackgroundTransparency = 1
+	topBar.Size = UDim2.new(1, 0, 0, 56)
+	topBar.ZIndex = 51
+	topBar.Parent = page
+
+	-- Back button
+	local backBtn = Instance.new("TextButton")
+	backBtn.BackgroundColor3 = COLOR_BAR_BG
+	backBtn.BackgroundTransparency = 0.3
+	backBtn.BorderSizePixel = 0
+	backBtn.Size = UDim2.fromOffset(70, 36)
+	backBtn.Position = UDim2.fromOffset(12, 10)
+	backBtn.Font = FONT_TITLE
+	backBtn.TextSize = 16
+	backBtn.TextColor3 = COLOR_ACCENT
+	backBtn.Text = "← Back"
+	backBtn.AutoButtonColor = true
+	backBtn.ZIndex = 52
+	backBtn.Parent = topBar
+	corner(backBtn, 8)
+
+	backBtn.MouseButton1Click:Connect(function()
+		buildPage(currentMercNames)
+	end)
+
+	-- ── Category tabs (centered) ────────────────────────────────────
+	local tabW, tabH, tabGap = 110, 34, 10
+	local totalTabW = #EQUIP_CATEGORIES * tabW + (#EQUIP_CATEGORIES - 1) * tabGap
+	local tabContainer = Instance.new("Frame")
+	tabContainer.BackgroundTransparency = 1
+	tabContainer.AnchorPoint = Vector2.new(0.5, 0)
+	tabContainer.Position = UDim2.new(0.5, 0, 0, 11)
+	tabContainer.Size = UDim2.fromOffset(totalTabW, tabH)
+	tabContainer.ZIndex = 51
+	tabContainer.Parent = topBar
+
+	local tabButtons = {}
+
+	-- ── Right side: item details panel ──────────────────────────────
+	local detailPanel = Instance.new("Frame")
+	detailPanel.Name = "DetailPanel"
+	detailPanel.BackgroundColor3 = COLOR_PANEL
+	detailPanel.BackgroundTransparency = 0.4
+	detailPanel.BorderSizePixel = 0
+	detailPanel.AnchorPoint = Vector2.new(1, 0)
+	detailPanel.Size = UDim2.fromOffset(260, 400)
+	detailPanel.Position = UDim2.new(1, -20, 0, 62)
+	detailPanel.ZIndex = 51
+	detailPanel.Parent = page
+	corner(detailPanel, 10)
+
+	local dPad = Instance.new("UIPadding")
+	dPad.PaddingTop    = UDim.new(0, 14)
+	dPad.PaddingLeft   = UDim.new(0, 16)
+	dPad.PaddingRight  = UDim.new(0, 16)
+	dPad.Parent = detailPanel
+
+	-- Detail labels (will be updated on selection)
+	local detailName = Instance.new("TextLabel")
+	detailName.BackgroundTransparency = 1
+	detailName.Size = UDim2.new(1, 0, 0, 26)
+	detailName.Font = FONT_TITLE
+	detailName.TextSize = 20
+	detailName.TextColor3 = COLOR_TEXT
+	detailName.TextXAlignment = Enum.TextXAlignment.Left
+	detailName.ZIndex = 52
+	detailName.Parent = detailPanel
+
+	local detailType = Instance.new("TextLabel")
+	detailType.BackgroundTransparency = 1
+	detailType.Size = UDim2.new(1, 0, 0, 20)
+	detailType.Position = UDim2.fromOffset(0, 28)
+	detailType.Font = FONT_BODY
+	detailType.TextSize = 14
+	detailType.TextColor3 = COLOR_TEXT_DIM
+	detailType.TextXAlignment = Enum.TextXAlignment.Left
+	detailType.ZIndex = 52
+	detailType.Parent = detailPanel
+
+	local detailStars = Instance.new("TextLabel")
+	detailStars.BackgroundTransparency = 1
+	detailStars.Size = UDim2.new(1, 0, 0, 20)
+	detailStars.Position = UDim2.fromOffset(0, 50)
+	detailStars.Font = FONT_BODY
+	detailStars.TextSize = 16
+	detailStars.TextColor3 = Color3.fromRGB(255, 220, 100)
+	detailStars.TextXAlignment = Enum.TextXAlignment.Left
+	detailStars.ZIndex = 52
+	detailStars.Parent = detailPanel
+
+	local detailAttackLabel = Instance.new("TextLabel")
+	detailAttackLabel.BackgroundTransparency = 1
+	detailAttackLabel.Size = UDim2.new(0.6, 0, 0, 22)
+	detailAttackLabel.Position = UDim2.fromOffset(0, 82)
+	detailAttackLabel.Font = FONT_BODY
+	detailAttackLabel.TextSize = 14
+	detailAttackLabel.TextColor3 = COLOR_TEXT_DIM
+	detailAttackLabel.Text = "Base Attack"
+	detailAttackLabel.TextXAlignment = Enum.TextXAlignment.Left
+	detailAttackLabel.ZIndex = 52
+	detailAttackLabel.Parent = detailPanel
+
+	local detailAttackVal = Instance.new("TextLabel")
+	detailAttackVal.BackgroundTransparency = 1
+	detailAttackVal.AnchorPoint = Vector2.new(1, 0)
+	detailAttackVal.Size = UDim2.new(0.4, 0, 0, 22)
+	detailAttackVal.Position = UDim2.new(1, 0, 0, 82)
+	detailAttackVal.Font = FONT_TITLE
+	detailAttackVal.TextSize = 16
+	detailAttackVal.TextColor3 = COLOR_TEXT
+	detailAttackVal.TextXAlignment = Enum.TextXAlignment.Right
+	detailAttackVal.ZIndex = 52
+	detailAttackVal.Parent = detailPanel
+
+	local detailLevelLabel = Instance.new("TextLabel")
+	detailLevelLabel.BackgroundTransparency = 1
+	detailLevelLabel.Size = UDim2.new(1, 0, 0, 22)
+	detailLevelLabel.Position = UDim2.fromOffset(0, 112)
+	detailLevelLabel.Font = FONT_TITLE
+	detailLevelLabel.TextSize = 14
+	detailLevelLabel.TextColor3 = COLOR_ACCENT
+	detailLevelLabel.Text = "Lv. 1/20"
+	detailLevelLabel.TextXAlignment = Enum.TextXAlignment.Left
+	detailLevelLabel.ZIndex = 52
+	detailLevelLabel.Parent = detailPanel
+
+	local detailDesc = Instance.new("TextLabel")
+	detailDesc.BackgroundTransparency = 1
+	detailDesc.Size = UDim2.new(1, 0, 0, 80)
+	detailDesc.Position = UDim2.fromOffset(0, 144)
+	detailDesc.Font = FONT_BODY
+	detailDesc.TextSize = 13
+	detailDesc.TextColor3 = COLOR_TEXT_DIM
+	detailDesc.TextWrapped = true
+	detailDesc.TextYAlignment = Enum.TextYAlignment.Top
+	detailDesc.TextXAlignment = Enum.TextXAlignment.Left
+	detailDesc.ZIndex = 52
+	detailDesc.Parent = detailPanel
+
+	-- EQUIP button
+	local equipBtn = Instance.new("TextButton")
+	equipBtn.Name = "EquipButton"
+	equipBtn.BackgroundColor3 = theme.accent
+	equipBtn.BorderSizePixel = 0
+	equipBtn.Size = UDim2.new(1, 0, 0, 40)
+	equipBtn.Position = UDim2.fromOffset(0, 340)
+	equipBtn.Font = FONT_TITLE
+	equipBtn.TextSize = 18
+	equipBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	equipBtn.Text = "EQUIP"
+	equipBtn.AutoButtonColor = true
+	equipBtn.ZIndex = 52
+	equipBtn.Parent = detailPanel
+	corner(equipBtn, 8)
+
+	-- ── Left side: equipment grid ───────────────────────────────────
+	local gridFrame = Instance.new("ScrollingFrame")
+	gridFrame.Name = "EquipGrid"
+	gridFrame.BackgroundTransparency = 1
+	gridFrame.BorderSizePixel = 0
+	gridFrame.Size = UDim2.new(0.55, -10, 1, -66)
+	gridFrame.Position = UDim2.fromOffset(10, 62)
+	gridFrame.ScrollBarThickness = 4
+	gridFrame.ScrollBarImageColor3 = COLOR_PANEL_EDGE
+	gridFrame.CanvasSize = UDim2.new(0, 0, 0, 0) -- auto-sized below
+	gridFrame.ZIndex = 51
+	gridFrame.Parent = page
+
+	local gridLayout = Instance.new("UIGridLayout")
+	gridLayout.CellSize = UDim2.fromOffset(90, 115)
+	gridLayout.CellPadding = UDim2.fromOffset(8, 8)
+	gridLayout.FillDirection = Enum.FillDirection.Horizontal
+	gridLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	gridLayout.Parent = gridFrame
+
+	local gridPad = Instance.new("UIPadding")
+	gridPad.PaddingTop  = UDim.new(0, 6)
+	gridPad.PaddingLeft = UDim.new(0, 6)
+	gridPad.Parent = gridFrame
+
+	-- ── Viewport (behind grid, center) ──────────────────────────────
+	local currentViewport = nil
+
+	local function rebuildViewport()
+		if currentViewport then currentViewport:Destroy() end
+		currentViewport = buildMercViewport(page, mercName)
+	end
+
+	rebuildViewport()
+
+	-- ── Helpers to refresh UI on selection ───────────────────────────
+
+	local gridCards = {}
+
+	local function refreshDetails()
+		local items = EQUIP_ITEMS[activeCategory] or {}
+		local item
+		for _, it in items do
+			if it.id == selectedItemId then item = it; break end
+		end
+		if not item then
+			detailName.Text = ""
+			detailType.Text = ""
+			detailStars.Text = ""
+			detailAttackVal.Text = ""
+			detailDesc.Text = activeCategory == "Artifacts" and "No artifacts yet." or ""
+			equipBtn.Visible = false
+			return
+		end
+		detailName.Text = item.displayName
+		detailType.Text = item.typeName
+		detailStars.Text = string.rep("★", item.stars) .. string.rep("☆", 6 - item.stars)
+		detailAttackVal.Text = tostring(item.baseAttack)
+		detailDesc.Text = item.description
+		equipBtn.Visible = unlockedSet[item.id] == true
+
+		-- Update equip button text
+		local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
+		local currentEquip = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+		if currentEquip == selectedItemId then
+			equipBtn.Text = "EQUIPPED"
+			equipBtn.BackgroundColor3 = COLOR_BAR_BG
+		else
+			equipBtn.Text = "EQUIP"
+			equipBtn.BackgroundColor3 = theme.accent
+		end
+	end
+
+	local function highlightCard(id)
+		for cardId, card in gridCards do
+			local ring = card:FindFirstChildOfClass("UIStroke")
+			if ring then
+				ring.Thickness = (cardId == id) and 2.5 or 1
+				ring.Color = (cardId == id) and Color3.fromRGB(255, 255, 255) or COLOR_PANEL_EDGE
+			end
+		end
+	end
+
+	local function buildGrid()
+		-- Clear old cards
+		for _, card in gridCards do card:Destroy() end
+		gridCards = {}
+
+		local items = EQUIP_ITEMS[activeCategory] or {}
+		if #items == 0 then
+			local empty = Instance.new("TextLabel")
+			empty.BackgroundTransparency = 1
+			empty.Size = UDim2.fromOffset(200, 40)
+			empty.Font = FONT_BODY
+			empty.TextSize = 15
+			empty.TextColor3 = COLOR_TEXT_DIM
+			empty.Text = "No items yet."
+			empty.ZIndex = 52
+			empty.Parent = gridFrame
+			gridCards["_empty"] = empty
+			selectedItemId = nil
+			refreshDetails()
+			return
+		end
+
+		-- Auto-select first if current selection not in this category
+		local found = false
+		for _, it in items do
+			if it.id == selectedItemId then found = true; break end
+		end
+		if not found then selectedItemId = items[1].id end
+
+		for idx, item in items do
+			local unlocked = unlockedSet[item.id] or item.alwaysUnlocked
+
+			local card = Instance.new("TextButton")
+			card.Name = item.id
+			card.BackgroundColor3 = COLOR_PANEL
+			card.BackgroundTransparency = unlocked and 0.3 or 0.6
+			card.BorderSizePixel = 0
+			card.AutoButtonColor = false
+			card.LayoutOrder = idx
+			card.Size = UDim2.fromOffset(90, 115) -- driven by grid
+			card.ZIndex = 52
+			card.Parent = gridFrame
+			corner(card, 8)
+			stroke(card, 1, COLOR_PANEL_EDGE)
+
+			-- Level label (top-left)
+			local lvl = Instance.new("TextLabel")
+			lvl.BackgroundTransparency = 1
+			lvl.Size = UDim2.new(1, -8, 0, 16)
+			lvl.Position = UDim2.fromOffset(6, 4)
+			lvl.Font = FONT_BODY
+			lvl.TextSize = 11
+			lvl.TextColor3 = COLOR_TEXT_DIM
+			lvl.Text = "Lv. 1"
+			lvl.TextXAlignment = Enum.TextXAlignment.Left
+			lvl.ZIndex = 53
+			lvl.Parent = card
+
+			-- Icon placeholder (center)
+			local iconLabel = Instance.new("TextLabel")
+			iconLabel.BackgroundTransparency = 1
+			iconLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+			iconLabel.Position = UDim2.new(0.5, 0, 0.45, 0)
+			iconLabel.Size = UDim2.fromOffset(50, 40)
+			iconLabel.Font = FONT_TITLE
+			iconLabel.TextSize = 28
+			iconLabel.TextColor3 = unlocked and COLOR_TEXT or COLOR_TEXT_DIM
+			iconLabel.Text = item.id == "Sword" and "⚔" or "🎣"
+			iconLabel.ZIndex = 53
+			iconLabel.Parent = card
+
+			-- Stars (bottom)
+			local starLbl = Instance.new("TextLabel")
+			starLbl.BackgroundTransparency = 1
+			starLbl.Size = UDim2.new(1, 0, 0, 14)
+			starLbl.AnchorPoint = Vector2.new(0, 1)
+			starLbl.Position = UDim2.new(0, 6, 1, -20)
+			starLbl.Font = FONT_BODY
+			starLbl.TextSize = 12
+			starLbl.TextColor3 = Color3.fromRGB(255, 220, 100)
+			starLbl.Text = string.rep("★", item.stars)
+			starLbl.TextXAlignment = Enum.TextXAlignment.Left
+			starLbl.ZIndex = 53
+			starLbl.Parent = card
+
+			-- Name (very bottom)
+			local nameLbl = Instance.new("TextLabel")
+			nameLbl.BackgroundTransparency = 1
+			nameLbl.Size = UDim2.new(1, -8, 0, 14)
+			nameLbl.AnchorPoint = Vector2.new(0, 1)
+			nameLbl.Position = UDim2.new(0, 6, 1, -4)
+			nameLbl.Font = FONT_BODY
+			nameLbl.TextSize = 11
+			nameLbl.TextColor3 = COLOR_TEXT
+			nameLbl.Text = item.displayName
+			nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+			nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+			nameLbl.ZIndex = 53
+			nameLbl.Parent = card
+
+			-- Locked overlay
+			if not unlocked then
+				local lock = Instance.new("TextLabel")
+				lock.BackgroundTransparency = 1
+				lock.AnchorPoint = Vector2.new(1, 0)
+				lock.Position = UDim2.new(1, -4, 0, 2)
+				lock.Size = UDim2.fromOffset(20, 16)
+				lock.Font = FONT_TITLE
+				lock.TextSize = 14
+				lock.TextColor3 = COLOR_TEXT_DIM
+				lock.Text = "🔒"
+				lock.ZIndex = 54
+				lock.Parent = card
+			end
+
+			gridCards[item.id] = card
+
+			card.MouseButton1Click:Connect(function()
+				selectedItemId = item.id
+				highlightCard(item.id)
+				refreshDetails()
+			end)
+		end
+
+		-- Update canvas size
+		task.defer(function()
+			gridFrame.CanvasSize = UDim2.fromOffset(0, gridLayout.AbsoluteContentSize.Y + 16)
+		end)
+
+		highlightCard(selectedItemId)
+		refreshDetails()
+	end
+
+	-- ── Build category tabs ─────────────────────────────────────────
+	for i, cat in EQUIP_CATEGORIES do
+		local tab = Instance.new("TextButton")
+		tab.BackgroundColor3 = COLOR_PANEL
+		tab.BackgroundTransparency = (cat == activeCategory) and 0.2 or 0.6
+		tab.BorderSizePixel = 0
+		tab.Size = UDim2.fromOffset(tabW, tabH)
+		tab.Position = UDim2.fromOffset((i - 1) * (tabW + tabGap), 0)
+		tab.Font = FONT_TITLE
+		tab.TextSize = 14
+		tab.TextColor3 = (cat == activeCategory) and COLOR_TEXT or COLOR_TEXT_DIM
+		tab.Text = cat
+		tab.AutoButtonColor = true
+		tab.ZIndex = 52
+		tab.Parent = tabContainer
+		corner(tab, 8)
+
+		tabButtons[cat] = tab
+
+		tab.MouseButton1Click:Connect(function()
+			activeCategory = cat
+			-- Update tab visuals
+			for c, btn in tabButtons do
+				btn.BackgroundTransparency = (c == cat) and 0.2 or 0.6
+				btn.TextColor3 = (c == cat) and COLOR_TEXT or COLOR_TEXT_DIM
+			end
+			buildGrid()
+		end)
+	end
+
+	-- ── EQUIP handler ───────────────────────────────────────────────
+	local equipEvent = ReplicatedStorage:FindFirstChild("MercenaryEquipment")
+	equipBtn.MouseButton1Click:Connect(function()
+		if not selectedItemId then return end
+		if not unlockedSet[selectedItemId] then return end
+		if equipEvent then
+			equipEvent:FireServer("equip", mercName, selectedItemId)
+		end
+		-- Optimistic update
+		local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
+		if mercEntry then
+			mercEntry:SetAttribute("EquippedWeapon", selectedItemId)
+		end
+		refreshDetails()
+	end)
+
+	-- ── Initial build ───────────────────────────────────────────────
+	buildGrid()
 end
 
 -- ─── Close the page ─────────────────────────────────────────────────────
