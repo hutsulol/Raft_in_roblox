@@ -215,6 +215,8 @@ end
 
 local CIRCLE_DIAMETER = 6
 local CIRCLE_COLOR_VALID = Color3.fromRGB(80, 200, 80)
+local CIRCLE_COLOR_INVALID = Color3.fromRGB(200, 80, 80)
+local placementValid = false -- true when circle is on the raft
 
 local function createPreviewCircle()
 	if previewCircle then previewCircle:Destroy() end
@@ -265,7 +267,7 @@ local function showHint()
 	label.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
 	label.BackgroundTransparency = 0.3
 	label.TextColor3 = Color3.fromRGB(255, 255, 255)
-	label.Text = "Click to set fishing location  |  Right-click / Esc to cancel"
+	label.Text = "Click on the raft to set fishing location  |  Esc to cancel"
 	label.Font = Enum.Font.Gotham
 	label.TextScaled = true
 	label.BorderSizePixel = 0
@@ -283,30 +285,51 @@ local function hideHint()
 	end
 end
 
--- ── Raycast to world surface ────────────────────────────────────────────
+-- ── Raycast (raft-only) ─────────────────────────────────────────────────
 
-local rayParams = RaycastParams.new()
-rayParams.FilterType = Enum.RaycastFilterType.Exclude
-rayParams.IgnoreWater = false
+local raftRayParams = RaycastParams.new()
+raftRayParams.FilterType = Enum.RaycastFilterType.Include
+raftRayParams.IgnoreWater = true
 
+local function getRaft()
+	return workspace:FindFirstChild("Raft")
+end
+
+-- Returns hitPosition, isOnRaft
 local function raycastFromMouse()
+	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
+
+	local raft = getRaft()
+	if raft then
+		-- Only accept hits on the raft itself
+		raftRayParams.FilterDescendantsInstances = {raft}
+		local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, raftRayParams)
+		if result then
+			return result.Position, true
+		end
+	end
+
+	-- Not on raft — still return a world position so the circle follows
+	-- the cursor (shown in red), but mark it as invalid.
+	local allParams = RaycastParams.new()
+	allParams.FilterType = Enum.RaycastFilterType.Exclude
 	local filterList = {}
 	if previewCircle then table.insert(filterList, previewCircle) end
 	if player.Character then table.insert(filterList, player.Character) end
-	rayParams.FilterDescendantsInstances = filterList
+	allParams.FilterDescendantsInstances = filterList
+	allParams.IgnoreWater = false
 
-	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
-	local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, rayParams)
+	local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, allParams)
 	if result then
-		return result.Position
+		return result.Position, false
 	end
 
-	-- Fallback: intersect with y = 0 (sea level)
+	-- Plane fallback at y=0
 	local denom = ray.Direction.Y
-	if math.abs(denom) < 0.001 then return nil end
+	if math.abs(denom) < 0.001 then return nil, false end
 	local t = -ray.Origin.Y / denom
-	if t < 0 then return nil end
-	return ray.Origin + ray.Direction * t
+	if t < 0 then return nil, false end
+	return ray.Origin + ray.Direction * t, false
 end
 
 -- ── Placement mode ──────────────────────────────────────────────────────
@@ -314,6 +337,7 @@ end
 local function stopPlacementMode()
 	isPlacingLocation = false
 	placingMercName = nil
+	placementValid = false
 	destroyPreviewCircle()
 	hideHint()
 	_G.SuppressInventoryToggle = false
@@ -328,6 +352,7 @@ function startPlacementMode(mercName)
 
 	isPlacingLocation = true
 	placingMercName = mercName
+	placementValid = false
 	_G.SuppressInventoryToggle = true
 
 	createPreviewCircle()
@@ -336,12 +361,15 @@ function startPlacementMode(mercName)
 	renderConn = RunService.RenderStepped:Connect(function()
 		if not isPlacingLocation or not previewCircle then return end
 
-		local hitPos = raycastFromMouse()
+		local hitPos, onRaft = raycastFromMouse()
 		if hitPos then
 			moveCircleTo(hitPos + Vector3.new(0, 0.1, 0))
 			previewCircle.Transparency = 0.4
+			placementValid = onRaft
+			previewCircle.Color = onRaft and CIRCLE_COLOR_VALID or CIRCLE_COLOR_INVALID
 		else
 			previewCircle.Transparency = 1
+			placementValid = false
 		end
 	end)
 
@@ -351,18 +379,17 @@ function startPlacementMode(mercName)
 			and input.UserInputType ~= Enum.UserInputType.Touch then
 			return
 		end
+		if not placementValid then return end
 
-		local hitPos = raycastFromMouse()
-		if not hitPos then return end
+		local hitPos, onRaft = raycastFromMouse()
+		if not hitPos or not onRaft then return end
 
 		commandEvent:FireServer("setFishingLocation", placingMercName, hitPos)
 		stopPlacementMode()
 	end)
 
 	cancelConn = UserInputService.InputBegan:Connect(function(input, _)
-		if input.UserInputType == Enum.UserInputType.MouseButton2 then
-			stopPlacementMode()
-		elseif input.KeyCode == Enum.KeyCode.Escape then
+		if input.KeyCode == Enum.KeyCode.Escape then
 			stopPlacementMode()
 		end
 	end)
