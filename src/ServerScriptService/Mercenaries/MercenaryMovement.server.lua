@@ -2,7 +2,8 @@
 -- Handles movement and fishing commands for spawned mercenaries.
 -- The client sends a raft part + local offset for walking, and a water
 -- position for casting. After the pirate arrives, it fishes automatically
--- using a self-contained bobber system (no dependency on tool internals).
+-- using the actual fishing rod tool's Pointer (bobber) and Device (rod tip).
+-- Falls back to a standalone bobber if the rod parts are missing.
 
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
@@ -101,7 +102,11 @@ local function grantCatchToPlayer(player, resourceName)
 	end
 end
 
--- Get the NPC's right hand position (rod tip approximation)
+local function playSound(sound)
+	if sound then sound:Play() end
+end
+
+-- Fallback: approximate rod tip from the NPC's right hand
 local function getRodTipPosition(model)
 	local rightArm = model:FindFirstChild("Right Arm")
 		or model:FindFirstChild("RightHand")
@@ -114,6 +119,86 @@ local function getRodTipPosition(model)
 		return hrp.Position + hrp.CFrame.LookVector * 2 + Vector3.new(0, 3, 0)
 	end
 	return model:GetPivot().Position + Vector3.new(0, 5, 0)
+end
+
+-- ── Fishing rod management ──────────────────────────────────────────────
+
+local function findFishingRod(model)
+	for _, child in model:GetChildren() do
+		if child:IsA("Tool") and (
+			child.Name == "FishingRod ( Tool )"
+			or child.Name == "FishingRod"
+			or child.Name:find("FishingRod")
+		) then
+			return child
+		end
+	end
+	-- Check descendants (tool might be nested)
+	for _, desc in model:GetDescendants() do
+		if desc:IsA("Tool") and (
+			desc.Name == "FishingRod ( Tool )"
+			or desc.Name == "FishingRod"
+			or desc.Name:find("FishingRod")
+		) then
+			return desc
+		end
+	end
+	return nil
+end
+
+local function prepareRodForNPC(rod)
+	for _, desc in rod:GetDescendants() do
+		if desc:IsA("Script") or desc:IsA("LocalScript") then
+			desc.Enabled = false
+		elseif desc:IsA("RopeConstraint") then
+			desc.Enabled = false
+			desc.Visible = false
+		end
+	end
+	rod.CanBeDropped = false
+	rod.Grip = CFrame.new(0.1, -0.9, -0.25)
+		* CFrame.Angles(math.rad(15), math.rad(-90), math.rad(180))
+end
+
+local function weldPointerToHandle(pointer, handle)
+	local existing = pointer:FindFirstChild("NPCPointerWeld")
+	if existing then existing:Destroy() end
+	-- Also remove any "thing" weld from the original rod system
+	local tool = pointer.Parent
+	if tool then
+		local device = tool:FindFirstChild("Device")
+		if device then
+			local thingWeld = device:FindFirstChild("thing")
+			if thingWeld then thingWeld:Destroy() end
+		end
+	end
+
+	pointer.Anchored = false
+	pointer.Massless = true
+	pointer.CanCollide = false
+	pointer.CanTouch = false
+	pointer.CanQuery = false
+	pointer.CFrame = handle.CFrame
+
+	local weld = Instance.new("WeldConstraint")
+	weld.Name = "NPCPointerWeld"
+	weld.Part0 = handle
+	weld.Part1 = pointer
+	weld.Parent = pointer
+end
+
+local function detachPointer(pointer)
+	local weld = pointer:FindFirstChild("NPCPointerWeld")
+	if weld then weld:Destroy() end
+	local tool = pointer.Parent
+	if tool then
+		local device = tool:FindFirstChild("Device")
+		if device then
+			local thingWeld = device:FindFirstChild("thing")
+			if thingWeld then thingWeld:Destroy() end
+		end
+	end
+	pointer.Anchored = true
 end
 
 -- ── Spawn hooked catch prop ─────────────────────────────────────────────
@@ -164,7 +249,7 @@ local function spawnHookedProp(templateName, bobber)
 	return clone
 end
 
--- ── Create a standalone bobber ──────────────────────────────────────────
+-- ── Create a standalone bobber (fallback) ───────────────────────────────
 
 local function createBobber()
 	local part = Instance.new("Part")
@@ -194,10 +279,46 @@ end
 -- ── NPC fishing cycle ───────────────────────────────────────────────────
 
 local function runFishingLoop(model, token, castTarget, ownerUserId)
-	local bobber = createBobber()
-	-- Start bobber hidden at the NPC
-	bobber.CFrame = CFrame.new(getRodTipPosition(model))
-	bobber.Transparency = 1
+	-- Try to find the actual fishing rod and its parts
+	local rod = findFishingRod(model)
+	local pointer, device, handle
+	if rod then
+		prepareRodForNPC(rod)
+		pointer = rod:FindFirstChild("Pointer")
+		device = rod:FindFirstChild("Device")
+		handle = rod:FindFirstChild("Handle")
+		if pointer and handle then
+			weldPointerToHandle(pointer, handle)
+		end
+	end
+
+	local useRodParts = pointer and (device or handle)
+	local bobber
+
+	if useRodParts then
+		bobber = pointer
+	else
+		-- Fallback: standalone bobber
+		bobber = createBobber()
+		bobber.CFrame = CFrame.new(getRodTipPosition(model))
+		bobber.Transparency = 1
+	end
+
+	-- Start position source
+	local function getStartPos()
+		if device and device.Parent then
+			return device.Position
+		elseif handle and handle.Parent then
+			return handle.Position
+		end
+		return getRodTipPosition(model)
+	end
+
+	-- Sounds from the rod
+	local wooshSound = handle and handle:FindFirstChild("woosh")
+	local fishBiteSound = rod and rod:FindFirstChild("Fish Bite")
+	local itemBiteSound = rod and rod:FindFirstChild("Item Bite")
+	local pickUpSound = rod and rod:FindFirstChild("PickUp")
 
 	local player = getPlayerByUserId(ownerUserId)
 
@@ -207,15 +328,21 @@ local function runFishingLoop(model, token, castTarget, ownerUserId)
 		if not humanoid or humanoid.Health <= 0 then break end
 
 		-- ── CAST: bobber flies from rod tip to water ──
-		local startPos = getRodTipPosition(model)
+		if useRodParts then
+			detachPointer(bobber)
+		else
+			bobber.Transparency = 0
+			bobber.Anchored = true
+		end
+
+		local startPos = getStartPos()
 		local distance = (castTarget - startPos).Magnitude
 		local arcHeight = math.max(distance * 0.15, 3)
 		local flightTime = math.clamp(distance / 40, 0.3, 1.5)
 
-		bobber.Transparency = 0
-		bobber.Anchored = true
-		local launchTick = tick()
+		playSound(wooshSound)
 
+		local launchTick = tick()
 		while activeTokens[model] == token do
 			local elapsed = tick() - launchTick
 			local t = elapsed / flightTime
@@ -239,6 +366,11 @@ local function runFishingLoop(model, token, castTarget, ownerUserId)
 
 		if catchDef then
 			hookedClone = spawnHookedProp(catchDef.templateName, bobber)
+			if catchDef.category == "fish" then
+				playSound(fishBiteSound)
+			else
+				playSound(itemBiteSound)
+			end
 		end
 
 		-- Brief pause before auto-reel (1-2 seconds)
@@ -257,7 +389,7 @@ local function runFishingLoop(model, token, castTarget, ownerUserId)
 			local elapsed = tick() - reelTick
 			local t = elapsed / returnTime
 			if t >= 1 then break end
-			local endPos = getRodTipPosition(model)
+			local endPos = getStartPos()
 			local linear = reelStart:Lerp(endPos, t)
 			local arc = Vector3.new(0, reelArc * math.sin(t * math.pi), 0)
 			bobber.CFrame = CFrame.new(linear + arc)
@@ -272,6 +404,7 @@ local function runFishingLoop(model, token, castTarget, ownerUserId)
 		if catchDef then
 			player = getPlayerByUserId(ownerUserId)
 			grantCatchToPlayer(player, catchDef.inventoryName)
+			playSound(pickUpSound)
 		end
 
 		-- Clean up catch prop
@@ -279,17 +412,27 @@ local function runFishingLoop(model, token, castTarget, ownerUserId)
 			hookedClone:Destroy()
 		end
 
-		-- Hide bobber between casts
-		bobber.Transparency = 1
-		bobber.CFrame = CFrame.new(getRodTipPosition(model))
+		-- Re-attach bobber between casts
+		if useRodParts and handle and handle.Parent then
+			weldPointerToHandle(bobber, handle)
+		else
+			bobber.Transparency = 1
+			bobber.CFrame = CFrame.new(getRodTipPosition(model))
+		end
 
 		-- Pause before next cast
 		if not waitSeconds(model, token, 1.5) then break end
 	end
 
-	-- Clean up bobber
-	if bobber and bobber.Parent then
-		bobber:Destroy()
+	-- Clean up on exit
+	if useRodParts then
+		if bobber and bobber.Parent and handle and handle.Parent then
+			weldPointerToHandle(bobber, handle)
+		end
+	else
+		if bobber and bobber.Parent then
+			bobber:Destroy()
+		end
 	end
 end
 
