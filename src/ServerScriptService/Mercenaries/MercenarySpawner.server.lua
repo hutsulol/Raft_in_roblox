@@ -55,32 +55,34 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local clone = template:Clone()
 	template.Archivable = wasArchivable
 
-	-- Read equipped weapon and swap if not default (Sword/ClassicSword)
+	-- Read equipped weapon and swap to the correct one
 	local mercEntry = folder:FindFirstChild(mercName)
-	local equippedWeapon = mercEntry and mercEntry:GetAttribute("EquippedWeapon")
+	local equippedWeapon = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
 
-	if equippedWeapon and equippedWeapon ~= "Sword" then
-		-- Remove existing weapon tools from clone
-		for _, child in clone:GetChildren() do
-			if child:IsA("Tool") then
-				child:Destroy()
-			end
+	-- Remove all existing tools from the clone (template may have a FishingRod, etc.)
+	for _, child in clone:GetChildren() do
+		if child:IsA("Tool") then
+			child:Destroy()
 		end
+	end
 
-		-- Clone the selected weapon from ReplicatedStorage
-		local weaponTemplate = ReplicatedStorage:FindFirstChild(equippedWeapon)
-			or ReplicatedStorage:FindFirstChild(equippedWeapon, true)
-		if weaponTemplate then
-			local wArchivable = weaponTemplate.Archivable
-			weaponTemplate.Archivable = true
-			local weaponClone = weaponTemplate:Clone()
-			weaponTemplate.Archivable = wArchivable
-			-- Parent to character — Humanoid auto-equips it
-			local hum = clone:FindFirstChildOfClass("Humanoid")
-			if hum then
-				weaponClone.Parent = clone
-			end
-		end
+	-- Equip the chosen weapon from ReplicatedStorage
+	local weaponName = equippedWeapon
+	-- For default sword, try common names
+	if weaponName == "Sword" then
+		weaponName = "ClassicSword"
+	end
+
+	local weaponTemplate = ReplicatedStorage:FindFirstChild(weaponName)
+		or ReplicatedStorage:FindFirstChild(weaponName, true)
+		or ReplicatedStorage:FindFirstChild(equippedWeapon)
+		or ReplicatedStorage:FindFirstChild(equippedWeapon, true)
+	if weaponTemplate and weaponTemplate:IsA("Tool") then
+		local wArchivable = weaponTemplate.Archivable
+		weaponTemplate.Archivable = true
+		local weaponClone = weaponTemplate:Clone()
+		weaponTemplate.Archivable = wArchivable
+		weaponClone.Parent = clone
 	end
 
 	-- Remove EquipFishingRod script if present (handled by spawner now)
