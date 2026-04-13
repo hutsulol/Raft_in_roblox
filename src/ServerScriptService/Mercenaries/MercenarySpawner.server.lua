@@ -91,42 +91,6 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local zombieScript = clone:FindFirstChild("Zombie") or clone:FindFirstChild("MonsterScript")
 	if zombieScript then zombieScript:Destroy() end
 
-	-- Prepare any fishing rod tool on the mercenary (replaces what EquipFishingRod did)
-	for _, child in clone:GetChildren() do
-		if child:IsA("Tool") and (child.Name:find("FishingRod")) then
-			-- Disable built-in rod scripts and rope so they don't interfere
-			for _, desc in child:GetDescendants() do
-				if desc:IsA("Script") or desc:IsA("LocalScript") then
-					desc.Enabled = false
-				elseif desc:IsA("RopeConstraint") then
-					desc.Enabled = false
-					desc.Visible = false
-				end
-			end
-			child.CanBeDropped = false
-			-- NPC fishing stance grip
-			child.Grip = CFrame.new(0.1, -0.9, -0.25)
-				* CFrame.Angles(math.rad(15), math.rad(-90), math.rad(180))
-			-- Stabilize Pointer (bobber) by welding it to Handle
-			local handle = child:FindFirstChild("Handle")
-			local pointer = child:FindFirstChild("Pointer")
-			if handle and pointer and handle:IsA("BasePart") and pointer:IsA("BasePart") then
-				pointer.Anchored = false
-				pointer.Massless = true
-				pointer.CanCollide = false
-				pointer.CanTouch = false
-				pointer.CanQuery = false
-				pointer.CFrame = handle.CFrame
-				local weld = Instance.new("WeldConstraint")
-				weld.Name = "NPCPointerWeld"
-				weld.Part0 = handle
-				weld.Part1 = pointer
-				weld.Parent = pointer
-			end
-			break
-		end
-	end
-
 	local spawnCF = hrp.CFrame * CFrame.new(0, 0, -8)
 	clone:PivotTo(spawnCF)
 	clone.Parent = workspace
