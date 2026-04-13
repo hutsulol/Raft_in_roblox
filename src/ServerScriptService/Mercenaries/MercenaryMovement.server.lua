@@ -106,11 +106,28 @@ end
 
 local function findFishingRod(model)
 	for _, child in model:GetChildren() do
-		if child:IsA("Tool") and child.Name == "FishingRod" then
+		if child:IsA("Tool") and (
+			child.Name == "FishingRod"
+			or child.Name == "FishingRod ( Tool )"
+			or child.Name:find("FishingRod")
+		) then
 			return child
 		end
 	end
 	return nil
+end
+
+-- Disable the tool's built-in scripts and rope so they don't conflict
+-- with our NPC fishing logic, but keep Pointer and Device accessible.
+local function prepareRodForNPC(rod)
+	for _, desc in rod:GetDescendants() do
+		if desc:IsA("Script") or desc:IsA("LocalScript") then
+			desc.Enabled = false
+		elseif desc:IsA("RopeConstraint") then
+			desc.Enabled = false
+			desc.Visible = false
+		end
+	end
 end
 
 -- ── Spawn hooked catch prop ─────────────────────────────────────────────
@@ -154,17 +171,38 @@ end
 
 local function runFishingLoop(model, token, castTarget, ownerUserId)
 	local rod = findFishingRod(model)
-	if not rod then return end
+	if not rod then
+		warn("[MercenaryMovement] No fishing rod found on", model.Name)
+		return
+	end
+
+	-- Disable built-in rod scripts so they don't interfere
+	prepareRodForNPC(rod)
 
 	local pointer = rod:FindFirstChild("Pointer")
-	local device = rod:FindFirstChild("Device")
-	if not pointer or not device then return end
+	local device = rod:FindFirstChild("Device") or rod:FindFirstChild("Handle")
+	if not pointer then
+		warn("[MercenaryMovement] No Pointer found on rod", rod:GetFullName())
+		-- List children for debugging
+		for _, c in rod:GetChildren() do
+			warn("  -", c.Name, c.ClassName)
+		end
+		return
+	end
+	if not device then
+		warn("[MercenaryMovement] No Device/Handle found on rod")
+		return
+	end
+
+	-- Ensure pointer is unanchored and detached for casting
+	pointer.Anchored = false
+	pointer.CanCollide = false
 
 	-- Sounds
 	local fishBiteSound = rod:FindFirstChild("Fish Bite")
 	local itemBiteSound = rod:FindFirstChild("Item Bite")
 	local pickUpSound = rod:FindFirstChild("PickUp")
-	local wooshSound = device and device:FindFirstChild("woosh")
+	local wooshSound = (device:FindFirstChild("woosh"))
 		or (rod:FindFirstChild("Handle") and rod.Handle:FindFirstChild("woosh"))
 
 	local player = getPlayerByUserId(ownerUserId)
