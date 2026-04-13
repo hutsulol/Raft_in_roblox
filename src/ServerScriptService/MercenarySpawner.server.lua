@@ -3,6 +3,7 @@
 -- from the Mercenaries phone menu.
 
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local spawnEvent = Instance.new("RemoteEvent")
@@ -86,9 +87,19 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local equipScript = clone:FindFirstChild("EquipFishingRod")
 	if equipScript then equipScript:Destroy() end
 
+	-- Remove Zombie AI so the mercenary doesn't attack the player
+	local zombieScript = clone:FindFirstChild("Zombie") or clone:FindFirstChild("MonsterScript")
+	if zombieScript then zombieScript:Destroy() end
+
 	local spawnCF = hrp.CFrame * CFrame.new(0, 0, -8)
 	clone:PivotTo(spawnCF)
 	clone.Parent = workspace
+
+	-- Tag for identification by other scripts (movement, client hover)
+	CollectionService:AddTag(clone, "SpawnedMercenary")
+	clone:SetAttribute("OwnerUserId", player.UserId)
+	clone:SetAttribute("MercName", mercName)
+	clone:SetAttribute("EquippedWeapon", equippedWeapon or "Sword")
 
 	-- Track active mercenary
 	if not activeMercs[player] then
