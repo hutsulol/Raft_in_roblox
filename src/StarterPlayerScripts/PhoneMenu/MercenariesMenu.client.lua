@@ -1128,8 +1128,52 @@ buildEquipmentPage = function(mercName, mercNames)
 		rebuildViewport()
 	end)
 
+	-- ── Rescan unlocks (called when Backpack changes) ──────────────
+	local function rescanUnlocks()
+		unlockedSet = {}
+		local ef = player:FindFirstChild("UnlockedEquipment")
+		if ef then
+			for _, child in ef:GetChildren() do
+				unlockedSet[child.Name] = true
+			end
+		end
+		unlockedSet["Sword"] = true
+		local bp = player:FindFirstChild("Backpack")
+		if bp then
+			for _, child in bp:GetChildren() do
+				if child:IsA("Tool") then unlockedSet[child.Name] = true end
+			end
+		end
+		local ch = player.Character
+		if ch then
+			for _, child in ch:GetChildren() do
+				if child:IsA("Tool") then unlockedSet[child.Name] = true end
+			end
+		end
+	end
+
 	-- ── Initial build ───────────────────────────────────────────────
 	buildGrid()
+
+	-- ── Live-update when player crafts a new tool ───────────────────
+	local backpackConn
+	local bp = player:FindFirstChild("Backpack")
+	if bp then
+		backpackConn = bp.ChildAdded:Connect(function(child)
+			if not page then return end
+			if child:IsA("Tool") and not unlockedSet[child.Name] then
+				rescanUnlocks()
+				buildGrid()
+			end
+		end)
+	end
+
+	-- Clean up listener when page closes
+	local pageRef = page
+	task.spawn(function()
+		while pageRef and pageRef.Parent do task.wait(0.5) end
+		if backpackConn then backpackConn:Disconnect() end
+	end)
 end
 
 -- ─── Close the page ─────────────────────────────────────────────────────
