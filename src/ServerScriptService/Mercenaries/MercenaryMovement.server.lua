@@ -1,6 +1,8 @@
 -- MercenaryMovement.server.lua
 -- Handles movement commands for spawned mercenaries.
--- The client sends a target position; the server walks the mercenary there.
+-- The client sends a raft part + local offset; the server walks the
+-- mercenary to that point, continuously recalculating the world position
+-- so the target moves with the raft.
 
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
@@ -12,7 +14,7 @@ commandEvent.Parent = ReplicatedStorage
 
 -- Active walk coroutines per mercenary model, so we can cancel a walk if
 -- a new destination is set before the old one is reached.
-local activeWalks = {} -- [model] = true (flag checked by walk loop)
+local activeWalks = {} -- [model] = token
 
 local function findMercenary(player, mercName)
 	for _, model in CollectionService:GetTagged("SpawnedMercenary") do
@@ -25,7 +27,7 @@ local function findMercenary(player, mercName)
 	return nil
 end
 
-local function walkTo(model, targetPos)
+local function walkToRaftPoint(model, raftPart, localOffset)
 	-- Cancel any previous walk for this model
 	activeWalks[model] = nil
 
@@ -39,41 +41,51 @@ local function walkTo(model, targetPos)
 	local token = {}
 	activeWalks[model] = token
 
-	-- Repeatedly call MoveTo until we're close enough (MoveTo has an 8s timeout).
 	task.spawn(function()
 		while activeWalks[model] == token do
 			if not humanoid or not humanoid.Parent or humanoid.Health <= 0 then break end
+			if not raftPart or not raftPart.Parent then break end
 
-			humanoid:MoveTo(targetPos)
+			-- Recalculate world position from raft part's current CFrame
+			local worldTarget = raftPart.CFrame:PointToWorldSpace(localOffset)
+
+			humanoid:MoveTo(worldTarget)
 			humanoid.MoveToFinished:Wait()
 
+			-- Check if close enough
 			local currentHRP = model:FindFirstChild("HumanoidRootPart")
 			if not currentHRP then break end
 
-			local dist = (currentHRP.Position - targetPos).Magnitude
+			-- Recompute target (raft may have moved during walk)
+			local freshTarget = raftPart.CFrame:PointToWorldSpace(localOffset)
+			local dist = (currentHRP.Position - freshTarget).Magnitude
 			if dist < 3 then
 				break
 			end
 		end
 
-		-- Clear walk token if it's still ours
 		if activeWalks[model] == token then
 			activeWalks[model] = nil
 		end
 	end)
 end
 
-commandEvent.OnServerEvent:Connect(function(player, action, mercName, data)
+commandEvent.OnServerEvent:Connect(function(player, action, mercName, raftPart, localOffset)
 	if typeof(action) ~= "string" then return end
 
 	if action == "setFishingLocation" then
 		if typeof(mercName) ~= "string" then return end
-		if typeof(data) ~= "Vector3" then return end
+		if typeof(raftPart) ~= "Instance" or not raftPart:IsA("BasePart") then return end
+		if typeof(localOffset) ~= "Vector3" then return end
+
+		-- Verify the part is actually on the raft
+		local raft = workspace:FindFirstChild("Raft")
+		if not raft or not raftPart:IsDescendantOf(raft) then return end
 
 		local model = findMercenary(player, mercName)
 		if not model then return end
 
-		walkTo(model, data)
+		walkToRaftPoint(model, raftPart, localOffset)
 	end
 end)
 

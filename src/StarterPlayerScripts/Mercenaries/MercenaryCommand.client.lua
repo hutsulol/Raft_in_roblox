@@ -295,7 +295,7 @@ local function getRaft()
 	return workspace:FindFirstChild("Raft")
 end
 
--- Returns hitPosition, isOnRaft
+-- Returns hitPosition, isOnRaft, hitPart, localOffset
 local function raycastFromMouse()
 	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
 
@@ -305,7 +305,8 @@ local function raycastFromMouse()
 		raftRayParams.FilterDescendantsInstances = {raft}
 		local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, raftRayParams)
 		if result then
-			return result.Position, true
+			local localOffset = result.Instance.CFrame:PointToObjectSpace(result.Position)
+			return result.Position, true, result.Instance, localOffset
 		end
 	end
 
@@ -321,15 +322,15 @@ local function raycastFromMouse()
 
 	local result = workspace:Raycast(ray.Origin, ray.Direction * 1000, allParams)
 	if result then
-		return result.Position, false
+		return result.Position, false, nil, nil
 	end
 
 	-- Plane fallback at y=0
 	local denom = ray.Direction.Y
-	if math.abs(denom) < 0.001 then return nil, false end
+	if math.abs(denom) < 0.001 then return nil, false, nil, nil end
 	local t = -ray.Origin.Y / denom
-	if t < 0 then return nil, false end
-	return ray.Origin + ray.Direction * t, false
+	if t < 0 then return nil, false, nil, nil end
+	return ray.Origin + ray.Direction * t, false, nil, nil
 end
 
 -- ── Placement mode ──────────────────────────────────────────────────────
@@ -381,10 +382,12 @@ function startPlacementMode(mercName)
 		end
 		if not placementValid then return end
 
-		local hitPos, onRaft = raycastFromMouse()
-		if not hitPos or not onRaft then return end
+		local hitPos, onRaft, hitPart, localOffset = raycastFromMouse()
+		if not hitPos or not onRaft or not hitPart then return end
 
-		commandEvent:FireServer("setFishingLocation", placingMercName, hitPos)
+		-- Send the raft part and local offset so the server can track
+		-- the moving raft instead of using a fixed world position.
+		commandEvent:FireServer("setFishingLocation", placingMercName, hitPart, localOffset)
 		stopPlacementMode()
 	end)
 
