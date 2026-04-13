@@ -670,6 +670,20 @@ buildEquipmentPage = function(mercName, mercNames)
 	end
 	-- Sword is always unlocked
 	unlockedSet["Sword"] = true
+	-- Fallback: also scan Backpack and Character for tools the server
+	-- may not have tracked yet (race with save-data restore).
+	local backpack = player:FindFirstChild("Backpack")
+	if backpack then
+		for _, child in backpack:GetChildren() do
+			if child:IsA("Tool") then unlockedSet[child.Name] = true end
+		end
+	end
+	local char = player.Character
+	if char then
+		for _, child in char:GetChildren() do
+			if child:IsA("Tool") then unlockedSet[child.Name] = true end
+		end
+	end
 
 	-- ── Full-page container ─────────────────────────────────────────
 	page = Instance.new("Frame")

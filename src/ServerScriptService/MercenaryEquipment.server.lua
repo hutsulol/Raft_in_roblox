@@ -100,9 +100,20 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, weaponId)
 	local mercEntry = mercFolder:FindFirstChild(mercName)
 	if not mercEntry then return end
 
-	-- Verify weapon is unlocked
-	local eqFolder = player:FindFirstChild("UnlockedEquipment")
-	if not eqFolder or not eqFolder:FindFirstChild(weaponId) then return end
+	-- Verify weapon is unlocked (check folder, then fallback to Backpack/Character)
+	local eqFolder = ensureFolder(player)
+	if not eqFolder:FindFirstChild(weaponId) then
+		-- Fallback: check if the player has the tool right now
+		local found = false
+		local backpack = player:FindFirstChild("Backpack")
+		if backpack and backpack:FindFirstChild(weaponId) then found = true end
+		if not found and player.Character and player.Character:FindFirstChild(weaponId) then
+			found = true
+		end
+		if not found and weaponId ~= "Sword" then return end
+		-- Auto-unlock since they have it
+		if found then tryUnlock(player, backpack:FindFirstChild(weaponId) or player.Character:FindFirstChild(weaponId)) end
+	end
 
 	-- Store equipped weapon as attribute (replicated to client)
 	mercEntry:SetAttribute("EquippedWeapon", weaponId)
