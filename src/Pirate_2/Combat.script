@@ -58,6 +58,28 @@ if humanoid == nil then
 	return
 end
 
+-- Load the Attack animation the user dropped inside this script. It's a
+-- child Animation named "Attack", copied from the hostile pirate's
+-- MonsterScript.Attack. Without this the sword swings (via tool:Activate)
+-- but the rig itself never plays a slash animation.
+local attackTrack = nil
+local attackAnim = script:FindFirstChild("Attack")
+if attackAnim and attackAnim:IsA("Animation") then
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = humanoid
+	end
+	local ok, track = pcall(function()
+		return animator:LoadAnimation(attackAnim)
+	end)
+	if ok and track then
+		attackTrack = track
+	end
+else
+	warn("[Pirate_2/Combat] no child Animation named 'Attack' — swings will be animation-less")
+end
+
 -- Wake the rig up. The MercenarySpawner already does this, but double up
 -- here for safety in case the script runs before the spawner gets to it.
 for _, d in Self:GetDescendants() do
@@ -273,8 +295,14 @@ local function attack()
 		currentTarget:TakeDamage(ATTR.AttackDamage)
 		lastAttack = tick()
 
-		-- Sword swing animation: ClassicSword plays its own R6 slash
-		-- animation when Activated, so we just trigger it.
+		-- Play the rig's own Attack animation (loaded from script.Attack)
+		-- so the arm visibly swings, matching hostile pirates.
+		if attackTrack then
+			attackTrack:Play()
+		end
+
+		-- Also fire the tool's Activated event so the ClassicSword's
+		-- internal swing sound / hitbox logic runs alongside.
 		local tool = Self:FindFirstChildWhichIsA("Tool")
 		if tool then
 			pcall(function() tool:Activate() end)
