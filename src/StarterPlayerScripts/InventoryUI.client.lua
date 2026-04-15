@@ -1302,16 +1302,46 @@ local function openDetailOverlay(recipe)
 	matTitle.ZIndex = 21
 	matTitle.Parent = detailOverlay
 
-	-- Material items
-	local matY = 278
+	-- Material items — in a ScrollingFrame so recipes with many
+	-- ingredients don't slide under the Craft button. The frame spans
+	-- from just below the "Materials:" header to just above the craft
+	-- button (which sits at bottom -68, height 54).
+	local matScroll = Instance.new("ScrollingFrame")
+	matScroll.Name = "MaterialsScroll"
+	matScroll.Size = UDim2.new(1, -34, 1, -348)
+	matScroll.Position = UDim2.new(0, 17, 0, 274)
+	matScroll.BackgroundTransparency = 1
+	matScroll.BorderSizePixel = 0
+	matScroll.ScrollBarThickness = 6
+	matScroll.ScrollBarImageColor3 = COLORS.panelBorder
+	matScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	matScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	matScroll.ScrollingDirection = Enum.ScrollingDirection.Y
+	matScroll.ZIndex = 21
+	matScroll.ClipsDescendants = true
+	matScroll.Parent = detailOverlay
+
+	local matLayout = Instance.new("UIListLayout")
+	matLayout.FillDirection = Enum.FillDirection.Vertical
+	matLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	matLayout.Padding = UDim.new(0, 6)
+	matLayout.Parent = matScroll
+
+	-- Small right-side padding so rows don't sit under the scroll bar.
+	local matPadding = Instance.new("UIPadding")
+	matPadding.PaddingRight = UDim.new(0, 8)
+	matPadding.Parent = matScroll
+
+	local matOrder = 0
 	for item, amount in recipe.costs do
+		matOrder = matOrder + 1
 		local matRow = Instance.new("Frame")
-		matRow.Size = UDim2.new(1, -34, 0, 48)
-		matRow.Position = UDim2.new(0, 17, 0, matY)
+		matRow.Size = UDim2.new(1, 0, 0, 48)
+		matRow.LayoutOrder = matOrder
 		matRow.BackgroundColor3 = COLORS.craftItemBg
 		matRow.BorderSizePixel = 0
 		matRow.ZIndex = 21
-		matRow.Parent = detailOverlay
+		matRow.Parent = matScroll
 
 		local matCorner = Instance.new("UICorner")
 		matCorner.CornerRadius = UDim.new(0, 6)
@@ -1338,8 +1368,6 @@ local function openDetailOverlay(recipe)
 		matLabel.TextXAlignment = Enum.TextXAlignment.Left
 		matLabel.ZIndex = 22
 		matLabel.Parent = matRow
-
-		matY = matY + 54
 	end
 
 	-- Craft button at bottom
