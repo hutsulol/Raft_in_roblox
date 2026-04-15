@@ -388,13 +388,13 @@ local function buildMercViewport(parent, mercName, weaponId)
 			grip.Name  = "RightGrip"
 			grip.Part0 = rightArm
 			grip.Part1 = handle
-			-- Engine-canonical RightGrip.C0. A previous attempt composed
-			-- this with CFrame.Angles(0, -pi/2, 0) (rotation around grip-Y /
-			-- arm-local Y) but that rotated the weapon on the wrong axis
-			-- and the wrong direction. Try the grip-X axis (pitch) instead —
-			-- that pivots the weapon forward out of the hand.
+			-- Engine-canonical RightGrip.C0 composed with two 90° rotations
+			-- dialed in by iteration: the X-axis pitch pivots the weapon
+			-- forward out of the hand, and the added Z-axis roll flips the
+			-- blade from pointing down at the ground to pointing up — the
+			-- "ready" pose the pirate uses in-game.
 			local baseGripC0 = CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
-			grip.C0    = baseGripC0 * CFrame.Angles(-math.pi / 2, 0, 0)
+			grip.C0    = baseGripC0 * CFrame.Angles(-math.pi / 2, 0, -math.pi / 2)
 			grip.C1    = toolGripC1
 			grip.Parent = rightArm
 
