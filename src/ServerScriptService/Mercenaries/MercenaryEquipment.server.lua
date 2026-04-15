@@ -34,6 +34,13 @@ local function ensureFolder(player)
 		sv.Value = "Sword"
 		sv.Parent = folder
 	end
+	-- Backpack is always available (free starter artifact)
+	if not folder:FindFirstChild("Backpack") then
+		local sv = Instance.new("StringValue")
+		sv.Name = "Backpack"
+		sv.Value = "Backpack"
+		sv.Parent = folder
+	end
 	return folder
 end
 

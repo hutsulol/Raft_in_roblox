@@ -635,7 +635,18 @@ local EQUIP_ITEMS = {
 			description   = "Cast your line to catch fish. Equip to a mercenary for automated fishing.",
 		},
 	},
-	Artifacts = {},
+	Artifacts = {
+		{
+			id            = "Backpack",
+			displayName   = "Backpack",
+			typeName      = "Artifact",
+			stars         = 1,
+			baseAttack    = 0,
+			description   = "A sturdy pirate backpack. Free starter gear given to all captains.",
+			icon          = "rbxassetid://87410058497044",
+			alwaysUnlocked = true,
+		},
+	},
 }
 
 -- ─── Build equipment page ───────────────────────────────────────────────
@@ -671,6 +682,8 @@ buildEquipmentPage = function(mercName, mercNames)
 	end
 	-- Sword is always unlocked
 	unlockedSet["Sword"] = true
+	-- Backpack is always unlocked (free starter artifact)
+	unlockedSet["Backpack"] = true
 	-- Fallback: also scan Backpack and Character for tools the server
 	-- may not have tracked yet (race with save-data restore).
 	local backpack = player:FindFirstChild("Backpack")
@@ -1005,18 +1018,31 @@ buildEquipmentPage = function(mercName, mercNames)
 			lvl.ZIndex = 53
 			lvl.Parent = card
 
-			-- Icon placeholder (center)
-			local iconLabel = Instance.new("TextLabel")
-			iconLabel.BackgroundTransparency = 1
-			iconLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-			iconLabel.Position = UDim2.new(0.5, 0, 0.45, 0)
-			iconLabel.Size = UDim2.fromOffset(50, 40)
-			iconLabel.Font = FONT_TITLE
-			iconLabel.TextSize = 28
-			iconLabel.TextColor3 = unlocked and COLOR_TEXT or COLOR_TEXT_DIM
-			iconLabel.Text = item.id == "Sword" and "⚔" or "🎣"
-			iconLabel.ZIndex = 53
-			iconLabel.Parent = card
+			-- Icon (center) — use image asset if provided, otherwise emoji
+			local iconLabel
+			if item.icon then
+				iconLabel = Instance.new("ImageLabel")
+				iconLabel.BackgroundTransparency = 1
+				iconLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+				iconLabel.Position = UDim2.new(0.5, 0, 0.45, 0)
+				iconLabel.Size = UDim2.fromOffset(50, 50)
+				iconLabel.Image = item.icon
+				iconLabel.ImageColor3 = unlocked and Color3.fromRGB(255, 255, 255) or COLOR_TEXT_DIM
+				iconLabel.ZIndex = 53
+				iconLabel.Parent = card
+			else
+				iconLabel = Instance.new("TextLabel")
+				iconLabel.BackgroundTransparency = 1
+				iconLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+				iconLabel.Position = UDim2.new(0.5, 0, 0.45, 0)
+				iconLabel.Size = UDim2.fromOffset(50, 40)
+				iconLabel.Font = FONT_TITLE
+				iconLabel.TextSize = 28
+				iconLabel.TextColor3 = unlocked and COLOR_TEXT or COLOR_TEXT_DIM
+				iconLabel.Text = item.id == "Sword" and "⚔" or "🎣"
+				iconLabel.ZIndex = 53
+				iconLabel.Parent = card
+			end
 
 			-- Stars (bottom)
 			local starLbl = Instance.new("TextLabel")
