@@ -422,10 +422,14 @@ local function buildMercViewport(parent, mercName, weaponId)
 			newGrip.Part0 = rightArm
 			newGrip.Part1 = handle
 			-- Canonical Roblox R6 RightGrip C0 — this is the exact value the
-			-- engine writes when a Tool is equipped in-game. Using anything
-			-- else (including the arbitrary "0,0,1,1,0,0,0,1,0" rotation we
-			-- tried first) leaves the handle twisted in the hand.
-			newGrip.C0    = priorGripC0 or CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
+			-- engine writes when a Tool is equipped in-game. Compose with a
+			-- 90° Y rotation so the blade / rod points straight forward out
+			-- of the hand instead of sideways. (Tool.Grip's convention
+			-- expects the handle's +X to align with the arm's grip-forward,
+			-- which the raw canonical matrix doesn't deliver on its own
+			-- inside a WorldModel without a live Humanoid:EquipTool pass.)
+			local baseGripC0 = priorGripC0 or CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
+			newGrip.C0    = baseGripC0 * CFrame.Angles(0, math.pi / 2, 0)
 			newGrip.C1    = toolGripC1
 			newGrip.Parent = rightArm
 
