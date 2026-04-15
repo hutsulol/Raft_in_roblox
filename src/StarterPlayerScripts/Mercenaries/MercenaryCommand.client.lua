@@ -255,16 +255,34 @@ local function openMercInventory(mercModel)
 
 	-- Position: directly to the left of the player's inventory CenterPanel.
 	-- Fallback: 14px from screen left, vertically centred.
+	--
+	-- The inventory panel's AbsolutePosition / AbsoluteSize are reported in
+	-- post-UIScale screen pixels. Our own ScreenGui has the same responsive
+	-- UIScale attached (see _G.AttachInventoryUIScale above), and any
+	-- UDim2.fromOffset we assign to `panel` is multiplied again by that
+	-- scale — so we have to divide the inventory's screen-space coordinates
+	-- by our scale to convert them back into our local (pre-scale) space.
+	-- Without this the backpack drifts left at lower scales (phones /
+	-- shorter windows) and loses its connection to the inventory.
 	local GAP = 8
+	local function currentUIScale()
+		local scaleObj = gui:FindFirstChildOfClass("UIScale")
+		local s = scaleObj and scaleObj.Scale or 1
+		if s <= 0 then s = 1 end
+		return s
+	end
 	local function repositionPanel()
 		local pp = findPlayerInventoryPanel()
 		if pp and pp.Parent then
 			local pos = pp.AbsolutePosition
 			local size = pp.AbsoluteSize
-			local x = pos.X - panelW - GAP
-			local y = pos.Y + (size.Y - panelH) / 2
+			local s = currentUIScale()
+			-- Convert inventory's top-left from screen space back into the
+			-- backpack's local (pre-scale) space.
+			local xLocal = pos.X / s - panelW - GAP
+			local yLocal = pos.Y / s + (size.Y / s - panelH) / 2
 			panel.AnchorPoint = Vector2.new(0, 0)
-			panel.Position = UDim2.fromOffset(math.max(x, 4), y)
+			panel.Position = UDim2.fromOffset(math.max(xLocal, 4), yLocal)
 		else
 			panel.AnchorPoint = Vector2.new(0, 0.5)
 			panel.Position = UDim2.new(0, 14, 0.5, 0)
@@ -274,6 +292,14 @@ local function openMercInventory(mercModel)
 	if playerPanel then
 		table.insert(mercInvConns, playerPanel:GetPropertyChangedSignal("AbsolutePosition"):Connect(repositionPanel))
 		table.insert(mercInvConns, playerPanel:GetPropertyChangedSignal("AbsoluteSize"):Connect(repositionPanel))
+	end
+	-- Reposition when our own UIScale changes (viewport resize). The
+	-- inventory-panel-property listeners above also fire on resize, but
+	-- only if the inventory is currently open; covering the UIScale
+	-- directly keeps the fallback path stable too.
+	local ownScale = gui:FindFirstChildOfClass("UIScale")
+	if ownScale then
+		table.insert(mercInvConns, ownScale:GetPropertyChangedSignal("Scale"):Connect(repositionPanel))
 	end
 
 	local panelCorner = Instance.new("UICorner")
