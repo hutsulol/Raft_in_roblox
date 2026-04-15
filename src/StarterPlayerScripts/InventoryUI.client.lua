@@ -147,8 +147,8 @@ local COLORS = {
 local HOTBAR_SLOTS = 8
 local GRID_SLOTS = 20
 local TOTAL_SLOTS = HOTBAR_SLOTS + GRID_SLOTS
-local SLOT_SIZE = 60
-local SLOT_PAD = 6
+local SLOT_SIZE = 80
+local SLOT_PAD = 8
 local COLS = 5
 local BASE_UNLOCKED_SLOTS = HOTBAR_SLOTS + 5 -- hotbar + first grid row until Strength unlocks more
 
@@ -1614,13 +1614,20 @@ local function buildUI()
 
 	local gridWidth = COLS * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
 	local gridHeight = 4 * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
-	local panelWidth = gridWidth + 30
-	local panelHeight = gridHeight + 70
+	local panelWidth = gridWidth + 40
+	local panelHeight = gridHeight + 80
+
+	-- Center the combined block (CraftPanel on the left + CenterPanel)
+	-- horizontally on screen.
+	local craftPanelWidth = 180
+	local craftGap = 12
+	local combinedWidth = craftPanelWidth + craftGap + panelWidth
+	local centerPanelLeft = -combinedWidth / 2 + craftPanelWidth + craftGap
 
 	local centerPanel = Instance.new("Frame")
 	centerPanel.Name = "CenterPanel"
 	centerPanel.Size = UDim2.new(0, panelWidth, 0, panelHeight)
-	centerPanel.Position = UDim2.new(0.5, -panelWidth / 2, 0.5, -panelHeight / 2 - 50)
+	centerPanel.Position = UDim2.new(0.5, centerPanelLeft, 0.5, -panelHeight / 2)
 	centerPanel.BackgroundColor3 = COLORS.panelBg
 	centerPanel.BorderSizePixel = 0
 	centerPanel.Parent = screenGui
@@ -1792,11 +1799,12 @@ local function buildUI()
 	applyUnlockedSlots()
 
 	-- ─── Left Crafting Panel (vertical category list) ───
-	local craftPanelWidth = 160
+	-- `craftPanelWidth`, `craftGap`, and `combinedWidth` are defined above
+	-- when computing `centerPanelLeft`.
 	local craftPanel = Instance.new("Frame")
 	craftPanel.Name = "CraftPanel"
 	craftPanel.Size = UDim2.new(0, craftPanelWidth, 0, panelHeight)
-	craftPanel.Position = UDim2.new(0.5, -panelWidth / 2 - craftPanelWidth - 10, 0.5, -panelHeight / 2 - 50)
+	craftPanel.Position = UDim2.new(0.5, -combinedWidth / 2, 0.5, -panelHeight / 2)
 	craftPanel.BackgroundColor3 = COLORS.craftPanelBg
 	craftPanel.BorderSizePixel = 0
 	craftPanel.Parent = screenGui

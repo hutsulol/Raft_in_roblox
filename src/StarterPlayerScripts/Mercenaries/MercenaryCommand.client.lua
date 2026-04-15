@@ -235,8 +235,8 @@ local function openMercInventory(mercModel)
 	-- Panel dimensions (3 cols × 2 rows), spacing mirrors InventoryUI
 	local COLS = 3
 	local ROWS = math.ceil(MERC_INVENTORY_SLOTS / COLS)
-	local SLOT_SIZE = 60
-	local SLOT_PAD = 6
+	local SLOT_SIZE = 80
+	local SLOT_PAD = 8
 	local GRID_Y = 52       -- matches InventoryUI.CenterPanel grid offset
 	local FOOTER_H = 28
 	local PAD = 10
