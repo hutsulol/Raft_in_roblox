@@ -165,28 +165,49 @@ function Monster:TryRecomputePath()
 	end
 end
 
+-- Returns the body part we should treat as the "torso" of a humanoid.
+-- The original script only read .Torso (R6-only). When the target is an
+-- R15 player that property is nil and TargetIsValid/RecomputePath fail,
+-- so pirates never path to the player and just stand around. Fall back
+-- to UpperTorso / HumanoidRootPart so R15 characters are supported too.
+local function GetHumanoidTorso(humanoid)
+	if humanoid == nil then return nil end
+	local character = humanoid.Parent
+	if character == nil then return nil end
+	local torso = humanoid.Torso
+		or character:FindFirstChild("Torso")
+		or character:FindFirstChild("UpperTorso")
+		or humanoid.RootPart
+		or character:FindFirstChild("HumanoidRootPart")
+	return torso
+end
+
 function Monster:GetTargetCFrame()
 	local targetHumanoid = Mind.CurrentTargetHumanoid.Value
-	
+
 	if Monster:TargetIsValid() then
-		return targetHumanoid.Torso.CFrame
-	else
-		return CFrame.new()
+		local torso = GetHumanoidTorso(targetHumanoid)
+		if torso ~= nil then
+			return torso.CFrame
+		end
 	end
+	return CFrame.new()
 end
 
 function Monster:IsAlive()
-	return Self.Humanoid.Health > 0 and Self.Humanoid.Torso ~= nil
+	return Self.Humanoid.Health > 0 and GetHumanoidTorso(Self.Humanoid) ~= nil
 end
 
 function Monster:TargetIsValid()
 	local targetHumanoid = Mind.CurrentTargetHumanoid.Value
-	
-	if targetHumanoid ~= nil and targetHumanoid:IsA 'Humanoid' and targetHumanoid.Torso ~= nil and targetHumanoid.Torso:IsA 'BasePart' then
-		return true
-	else
-		return false
+
+	if targetHumanoid ~= nil and targetHumanoid:IsA 'Humanoid' then
+		local torso = GetHumanoidTorso(targetHumanoid)
+		if torso ~= nil and torso:IsA 'BasePart' then
+			return true
+		end
 	end
+	return false
 end
 
 function Monster:HasClearLineOfSight()
@@ -422,8 +443,8 @@ function Monster:ReevaluateTarget()
 		
 		
 		if currentTarget == Mind.CurrentTargetHumanoid.Value then
-			local torso = currentTarget.Torso
-			
+			local torso = GetHumanoidTorso(currentTarget)
+
 			if torso ~= nil and torso:IsA 'BasePart' then
 				if Settings.CanGiveUp.Value and (torso.Position - Monster:GetCFrame().p).magnitude > Monster:GetMaximumDetectionDistance() then
 					Mind.CurrentTargetHumanoid.Value = nil
