@@ -89,9 +89,19 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local equipScript = clone:FindFirstChild("EquipFishingRod")
 	if equipScript then equipScript:Destroy() end
 
-	-- Remove Zombie AI so the mercenary doesn't attack the player
-	local zombieScript = clone:FindFirstChild("Zombie") or clone:FindFirstChild("MonsterScript")
-	if zombieScript then zombieScript:Destroy() end
+	-- Remove Zombie AI so the mercenary doesn't attack the player.
+	-- Match any of the names the script has shipped under over time
+	-- ("Zombie", "MonsterScript", "ZombieScript") so the restored pirate
+	-- template doesn't keep its hostile AI after being recruited.
+	for _, child in clone:GetChildren() do
+		if (child:IsA("Script") or child:IsA("LocalScript"))
+			and (child.Name == "Zombie"
+				or child.Name == "ZombieScript"
+				or child.Name == "MonsterScript"
+				or child.Name == "Ragdoller") then
+			child:Destroy()
+		end
+	end
 
 	local spawnCF = hrp.CFrame * CFrame.new(0, 0, -8)
 	clone:PivotTo(spawnCF)
