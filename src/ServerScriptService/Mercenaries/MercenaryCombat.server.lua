@@ -23,6 +23,36 @@ local ATTACK_COOLDOWN = 1.2  -- seconds between swings
 local SCAN_INTERVAL   = 0.15 -- seconds between combat ticks
 
 local lastAttack = {} -- [mercenaryModel] = tick()
+local prepared  = {} -- [mercenaryModel] = true, once humanoid forced walkable
+local debugged  = {} -- [mercenaryModel] = true, once enemy engage print fired
+
+local DEBUG = true
+
+local function prepareMercenary(merc, hum)
+	if prepared[merc] then return end
+	prepared[merc] = true
+	-- The Pirate_2 template doesn't ship with a ZombieScript, so nothing
+	-- configures the Humanoid on spawn. If the template happens to have
+	-- WalkSpeed = 0 or a disabled Running state, MoveTo silently does
+	-- nothing. Force a sane movement config so combat can actually run.
+	if hum.WalkSpeed <= 0 then
+		hum.WalkSpeed = 12
+	end
+	hum.PlatformStand = false
+	hum.Sit = false
+	pcall(function()
+		hum:SetStateEnabled(Enum.HumanoidStateType.Running, true)
+		hum:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, true)
+		hum:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
+		hum:ChangeState(Enum.HumanoidStateType.Running)
+	end)
+	if DEBUG then
+		print(string.format(
+			"[MercenaryCombat] prepared %s (WalkSpeed=%.1f, Health=%.1f)",
+			merc.Name, hum.WalkSpeed, hum.Health
+		))
+	end
+end
 
 local function getTorso(model)
 	-- Mercenaries and hostile pirates are both R6 clones, so Torso is
@@ -82,8 +112,18 @@ local function tickMercenary(merc)
 	local myTorso = getTorso(merc)
 	if not myTorso then return end
 
+	prepareMercenary(merc, hum)
+
 	local target, dist = findNearestHostile(merc, myTorso.Position)
 	if not target then return end
+
+	if DEBUG and not debugged[merc] then
+		debugged[merc] = true
+		print(string.format(
+			"[MercenaryCombat] %s engaging %s at %.1f studs",
+			merc.Name, target.Name, dist
+		))
+	end
 
 	local targetTorso = getTorso(target)
 	local targetHum = getHumanoid(target)
@@ -114,4 +154,19 @@ end)
 
 CollectionService:GetInstanceRemovedSignal("SpawnedMercenary"):Connect(function(merc)
 	lastAttack[merc] = nil
+	prepared[merc]   = nil
+	debugged[merc]   = nil
 end)
+
+if DEBUG then
+	CollectionService:GetInstanceAddedSignal("SpawnedMercenary"):Connect(function(merc)
+		print("[MercenaryCombat] saw new mercenary:", merc:GetFullName())
+	end)
+	-- Dump current tag snapshot on startup so we can confirm the driver
+	-- is running and that tags are actually present.
+	print(string.format(
+		"[MercenaryCombat] online — mercenaries=%d, hostile pirates=%d",
+		#CollectionService:GetTagged("SpawnedMercenary"),
+		#CollectionService:GetTagged("HostilePirate")
+	))
+end
