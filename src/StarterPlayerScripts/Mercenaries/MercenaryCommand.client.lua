@@ -363,18 +363,28 @@ local function openMercInventory(mercModel)
 		btnStroke.Thickness = 1.5
 		btnStroke.Parent = btn
 
-		-- Item name label (centred)
-		local nameLbl = Instance.new("TextLabel")
-		nameLbl.Size = UDim2.new(1, -4, 0, 16)
-		nameLbl.Position = UDim2.new(0, 2, 0, 4)
-		nameLbl.BackgroundTransparency = 1
-		nameLbl.TextColor3 = INV_COLORS.titleText
-		nameLbl.Font = Enum.Font.GothamMedium
-		nameLbl.TextSize = 11
-		nameLbl.TextXAlignment = Enum.TextXAlignment.Center
-		nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
-		nameLbl.Text = ""
-		nameLbl.Parent = btn
+		-- Rarity frame background (filled in on refresh)
+		local rarityFrame = Instance.new("ImageLabel")
+		rarityFrame.Name = "RarityFrame"
+		rarityFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+		rarityFrame.Size = UDim2.new(1, 0, 1, 0)
+		rarityFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+		rarityFrame.BackgroundTransparency = 1
+		rarityFrame.ScaleType = Enum.ScaleType.Stretch
+		rarityFrame.ZIndex = 1
+		rarityFrame.Visible = false
+		rarityFrame.Parent = btn
+
+		-- Item icon on top of the rarity frame
+		local iconLbl = Instance.new("ImageLabel")
+		iconLbl.Name = "ItemIcon"
+		iconLbl.AnchorPoint = Vector2.new(0.5, 0.5)
+		iconLbl.Size = UDim2.new(0.7, 0, 0.7, 0)
+		iconLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
+		iconLbl.BackgroundTransparency = 1
+		iconLbl.ScaleType = Enum.ScaleType.Fit
+		iconLbl.ZIndex = 2
+		iconLbl.Parent = btn
 
 		-- Count label (bottom-right)
 		local countLbl = Instance.new("TextLabel")
@@ -386,10 +396,13 @@ local function openMercInventory(mercModel)
 		countLbl.Font = Enum.Font.GothamBold
 		countLbl.TextSize = 14
 		countLbl.TextXAlignment = Enum.TextXAlignment.Right
+		countLbl.TextStrokeTransparency = 0.5
+		countLbl.TextStrokeColor3 = Color3.new(0, 0, 0)
 		countLbl.Text = ""
+		countLbl.ZIndex = 3
 		countLbl.Parent = btn
 
-		slotButtons[i] = { button = btn, nameLbl = nameLbl, countLbl = countLbl, slotIndex = i }
+		slotButtons[i] = { button = btn, iconLbl = iconLbl, rarityFrame = rarityFrame, countLbl = countLbl, slotIndex = i }
 	end
 
 	-- ── Drag-and-drop state ────────────────────────────────────────────
@@ -448,29 +461,48 @@ local function openMercInventory(mercModel)
 		gStroke.Thickness = 2
 		gStroke.Parent = ghost
 
-		local gName = Instance.new("TextLabel")
-		gName.Size = UDim2.new(1, -4, 0, 16)
-		gName.Position = UDim2.new(0, 2, 0, 4)
-		gName.BackgroundTransparency = 1
-		gName.TextColor3 = INV_COLORS.titleText
-		gName.Font = Enum.Font.GothamMedium
-		gName.TextSize = 11
-		gName.TextXAlignment = Enum.TextXAlignment.Center
-		gName.TextTruncate = Enum.TextTruncate.AtEnd
-		gName.Text = itemName:gsub("_", " ")
-		gName.Parent = ghost
+		local rarity = (_G.GetItemRarity and _G.GetItemRarity(itemName)) or "common"
+		local frameAsset = (_G.GetRarityFrameAsset and _G.GetRarityFrameAsset(rarity)) or ""
+		local iconAsset = (_G.GetItemIcon and _G.GetItemIcon(itemName)) or ""
 
-		local gCount = Instance.new("TextLabel")
-		gCount.AnchorPoint = Vector2.new(1, 1)
-		gCount.Size = UDim2.new(0, 30, 0, 16)
-		gCount.Position = UDim2.new(1, -4, 1, -2)
-		gCount.BackgroundTransparency = 1
-		gCount.TextColor3 = INV_COLORS.titleText
-		gCount.Font = Enum.Font.GothamBold
-		gCount.TextSize = 14
-		gCount.TextXAlignment = Enum.TextXAlignment.Right
-		gCount.Text = "x" .. tostring(count)
-		gCount.Parent = ghost
+		if frameAsset ~= "" then
+			local gFrame = Instance.new("ImageLabel")
+			gFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+			gFrame.Size = UDim2.new(1, 0, 1, 0)
+			gFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+			gFrame.BackgroundTransparency = 1
+			gFrame.Image = frameAsset
+			gFrame.ScaleType = Enum.ScaleType.Stretch
+			gFrame.ZIndex = 1
+			gFrame.Parent = ghost
+		end
+
+		local gIcon = Instance.new("ImageLabel")
+		gIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+		gIcon.Size = UDim2.new(0.7, 0, 0.7, 0)
+		gIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+		gIcon.BackgroundTransparency = 1
+		gIcon.Image = iconAsset
+		gIcon.ScaleType = Enum.ScaleType.Fit
+		gIcon.ZIndex = 2
+		gIcon.Parent = ghost
+
+		if count > 1 then
+			local gCount = Instance.new("TextLabel")
+			gCount.AnchorPoint = Vector2.new(1, 1)
+			gCount.Size = UDim2.new(0, 30, 0, 16)
+			gCount.Position = UDim2.new(1, -4, 1, -2)
+			gCount.BackgroundTransparency = 1
+			gCount.TextColor3 = INV_COLORS.titleText
+			gCount.Font = Enum.Font.GothamBold
+			gCount.TextSize = 14
+			gCount.TextXAlignment = Enum.TextXAlignment.Right
+			gCount.TextStrokeTransparency = 0.5
+			gCount.TextStrokeColor3 = Color3.new(0, 0, 0)
+			gCount.Text = tostring(count)
+			gCount.ZIndex = 3
+			gCount.Parent = ghost
+		end
 
 		drag.ghostGui = ghostGui
 	end
@@ -558,13 +590,21 @@ local function openMercInventory(mercModel)
 			if slot then
 				local itemName = mercEntry:GetAttribute("Slot" .. i .. "_Name")
 				local count = mercEntry:GetAttribute("Slot" .. i .. "_Count")
-				if typeof(itemName) == "string" and itemName ~= "" and typeof(count) == "number" and count > 0 then
-					slot.nameLbl.Text = itemName:gsub("_", " ")
-					slot.countLbl.Text = "x" .. tostring(count)
+				if typeof(itemName) == "string" and itemName ~= ""
+					and typeof(count) == "number" and count > 0 then
+					local rarity = (_G.GetItemRarity and _G.GetItemRarity(itemName)) or "common"
+					local frameAsset = (_G.GetRarityFrameAsset and _G.GetRarityFrameAsset(rarity)) or ""
+					local iconAsset = (_G.GetItemIcon and _G.GetItemIcon(itemName)) or ""
+					slot.rarityFrame.Image = frameAsset
+					slot.rarityFrame.Visible = frameAsset ~= ""
+					slot.iconLbl.Image = iconAsset
+					slot.countLbl.Text = count > 1 and tostring(count) or ""
 					slot.button.BackgroundColor3 = INV_COLORS.slotBg
 					slot.button.BackgroundTransparency = 0
 				else
-					slot.nameLbl.Text = ""
+					slot.rarityFrame.Visible = false
+					slot.rarityFrame.Image = ""
+					slot.iconLbl.Image = ""
 					slot.countLbl.Text = ""
 					slot.button.BackgroundColor3 = INV_COLORS.slotBg
 					slot.button.BackgroundTransparency = 0.4

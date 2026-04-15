@@ -81,6 +81,34 @@ local TOOL_ICONS = {
 	["Grapes"] = "rbxassetid://137478230275649",
 }
 
+-- ── Item rarity ────────────────────────────────────────────────────────
+-- Each rarity has its own inventory-slot background frame. Items not
+-- listed in ITEM_RARITY default to "common".
+local RARITY_FRAMES = {
+	common = "rbxassetid://134988922333958",
+	rare = "rbxassetid://79767754854530",
+	super_rare = "rbxassetid://97396474395148",
+}
+
+local ITEM_RARITY = {
+	FishingRod = "rare",
+}
+
+local function getItemRarity(itemName)
+	return (itemName and ITEM_RARITY[itemName]) or "common"
+end
+
+_G.GetItemRarity = getItemRarity
+_G.GetRarityFrameAsset = function(rarity)
+	return RARITY_FRAMES[rarity] or RARITY_FRAMES.common
+end
+
+-- Exposed so the mercenary backpack UI can reuse the same icons.
+_G.GetItemIcon = function(itemName)
+	if not itemName then return "" end
+	return RESOURCE_ICONS[itemName] or TOOL_ICONS[itemName] or ""
+end
+
 local inventory = {Log = 0, Plastic = 0, Stone = 0, Iron_Ore = 0, Iron_Ingot = 0, Leaves = 0}
 local recipes = {}
 local selectedRecipe = nil
@@ -575,6 +603,18 @@ local function renderSlot(slot, data)
 	clearSlotUI(slot)
 	if not data then return end
 
+	-- Rarity background fills the slot; item icon sits on top of it.
+	local rarityFrame = Instance.new("ImageLabel")
+	rarityFrame.Name = "RarityFrame"
+	rarityFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+	rarityFrame.Size = UDim2.new(1, 0, 1, 0)
+	rarityFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+	rarityFrame.BackgroundTransparency = 1
+	rarityFrame.Image = RARITY_FRAMES[getItemRarity(data.name)] or RARITY_FRAMES.common
+	rarityFrame.ScaleType = Enum.ScaleType.Stretch
+	rarityFrame.ZIndex = 1
+	rarityFrame.Parent = slot
+
 	local img = Instance.new("ImageLabel")
 	img.Name = "ItemIcon"
 	img.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -583,6 +623,7 @@ local function renderSlot(slot, data)
 	img.BackgroundTransparency = 1
 	img.Image = data.icon or ""
 	img.ScaleType = Enum.ScaleType.Fit
+	img.ZIndex = 2
 	img.Parent = slot
 
 	if data.count and data.count > 1 then
@@ -598,6 +639,7 @@ local function renderSlot(slot, data)
 		count.Font = Enum.Font.GothamBold
 		count.TextSize = 13
 		count.TextXAlignment = Enum.TextXAlignment.Right
+		count.ZIndex = 3
 		count.Parent = slot
 	end
 end
