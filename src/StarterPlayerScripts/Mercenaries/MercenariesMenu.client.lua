@@ -421,8 +421,14 @@ local function buildMercViewport(parent, mercName, weaponId)
 			newGrip.Name  = "RightGrip"
 			newGrip.Part0 = rightArm
 			newGrip.Part1 = handle
-			-- Canonical R6 Right Arm grip attachment orientation.
-			newGrip.C0    = priorGripC0 or CFrame.new(0, -1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0)
+			-- Canonical R6 Right Arm grip attachment orientation, then
+			-- rotated 180° around the arm's Y axis so the blade/rod points
+			-- forward rather than back toward the pirate's body. (In a live
+			-- Roblox game the Tool's Equipped flow handles this; inside a
+			-- ViewportFrame with a hand-rolled Motor6D we have to apply it
+			-- ourselves.)
+			local baseGripC0 = priorGripC0 or CFrame.new(0, -1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0)
+			newGrip.C0    = baseGripC0 * CFrame.Angles(0, math.pi, 0)
 			newGrip.C1    = toolGripC1
 			newGrip.Parent = rightArm
 
