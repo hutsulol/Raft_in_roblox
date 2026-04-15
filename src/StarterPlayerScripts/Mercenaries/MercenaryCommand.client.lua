@@ -235,11 +235,11 @@ local function openMercInventory(mercModel)
 	-- Panel dimensions (3 cols × 2 rows), spacing mirrors InventoryUI
 	local COLS = 3
 	local ROWS = math.ceil(MERC_INVENTORY_SLOTS / COLS)
-	local SLOT_SIZE = 80
-	local SLOT_PAD = 8
-	local GRID_Y = 52       -- matches InventoryUI.CenterPanel grid offset
-	local FOOTER_H = 28
-	local PAD = 10
+	local SLOT_SIZE = 140
+	local SLOT_PAD = 14
+	local GRID_Y = 85       -- matches InventoryUI.CenterPanel grid offset
+	local FOOTER_H = 40
+	local PAD = 16
 	local panelW = PAD * 2 + COLS * SLOT_SIZE + (COLS - 1) * SLOT_PAD
 	local panelH = GRID_Y + ROWS * (SLOT_SIZE + SLOT_PAD) + FOOTER_H
 
@@ -284,32 +284,32 @@ local function openMercInventory(mercModel)
 
 	-- Header (title + separator, matching the player inventory style)
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -80, 0, 30)
-	title.Position = UDim2.new(0, PAD, 0, 8)
+	title.Size = UDim2.new(1, -120, 0, 50)
+	title.Position = UDim2.new(0, PAD, 0, 12)
 	title.BackgroundTransparency = 1
 	title.TextColor3 = INV_COLORS.titleText
 	title.Text = "Backpack"
 	title.Font = Enum.Font.GothamBold
-	title.TextSize = 22
+	title.TextSize = 36
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = panel
 
 	local sep = Instance.new("Frame")
-	sep.Size = UDim2.new(1, -PAD * 2, 0, 2)
-	sep.Position = UDim2.new(0, PAD, 0, 42)
+	sep.Size = UDim2.new(1, -PAD * 2, 0, 3)
+	sep.Position = UDim2.new(0, PAD, 0, 70)
 	sep.BackgroundColor3 = INV_COLORS.separator
 	sep.BorderSizePixel = 0
 	sep.Parent = panel
 
 	-- Close (X) button matching the inventory's close button
 	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.fromOffset(28, 28)
-	closeBtn.Position = UDim2.new(1, -32, 0, 6)
+	closeBtn.Size = UDim2.fromOffset(46, 46)
+	closeBtn.Position = UDim2.new(1, -58, 0, 14)
 	closeBtn.BackgroundColor3 = INV_COLORS.closeBg
 	closeBtn.TextColor3 = Color3.new(1, 1, 1)
 	closeBtn.Text = "X"
 	closeBtn.Font = Enum.Font.GothamBold
-	closeBtn.TextSize = 16
+	closeBtn.TextSize = 26
 	closeBtn.BorderSizePixel = 0
 	closeBtn.Parent = panel
 	local closeCorner = Instance.new("UICorner")
@@ -329,7 +329,7 @@ local function openMercInventory(mercModel)
 	hintLabel.BackgroundTransparency = 1
 	hintLabel.TextColor3 = INV_COLORS.titleText
 	hintLabel.Font = Enum.Font.Gotham
-	hintLabel.TextSize = 12
+	hintLabel.TextSize = 18
 	hintLabel.TextWrapped = true
 	hintLabel.Text = ""
 	hintLabel.TextXAlignment = Enum.TextXAlignment.Center

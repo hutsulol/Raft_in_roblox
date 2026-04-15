@@ -147,8 +147,8 @@ local COLORS = {
 local HOTBAR_SLOTS = 8
 local GRID_SLOTS = 20
 local TOTAL_SLOTS = HOTBAR_SLOTS + GRID_SLOTS
-local SLOT_SIZE = 80
-local SLOT_PAD = 8
+local SLOT_SIZE = 140
+local SLOT_PAD = 14
 local COLS = 5
 local BASE_UNLOCKED_SLOTS = HOTBAR_SLOTS + 5 -- hotbar + first grid row until Strength unlocks more
 
@@ -1062,13 +1062,13 @@ local function openCategoryOverlay(cat)
 	stroke.Parent = categoryOverlay
 
 	local backBtn = Instance.new("TextButton")
-	backBtn.Size = UDim2.new(0, 60, 0, 28)
-	backBtn.Position = UDim2.new(0, 10, 0, 8)
+	backBtn.Size = UDim2.new(0, 100, 0, 46)
+	backBtn.Position = UDim2.new(0, 18, 0, 14)
 	backBtn.BackgroundColor3 = COLORS.craftItemBg
 	backBtn.Text = "< Back"
 	backBtn.TextColor3 = COLORS.titleText
 	backBtn.Font = Enum.Font.GothamBold
-	backBtn.TextSize = 13
+	backBtn.TextSize = 22
 	backBtn.BorderSizePixel = 0
 	backBtn.ZIndex = 16
 	backBtn.Parent = categoryOverlay
@@ -1080,20 +1080,20 @@ local function openCategoryOverlay(cat)
 	backBtn.MouseButton1Click:Connect(closeCategoryOverlay)
 
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -90, 0, 30)
-	title.Position = UDim2.new(0, 80, 0, 8)
+	title.Size = UDim2.new(1, -150, 0, 50)
+	title.Position = UDim2.new(0, 134, 0, 14)
 	title.BackgroundTransparency = 1
 	title.Text = cat
 	title.TextColor3 = COLORS.titleText
 	title.Font = Enum.Font.GothamMedium
-	title.TextSize = 22
+	title.TextSize = 36
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.ZIndex = 16
 	title.Parent = categoryOverlay
 
 	local sep = Instance.new("Frame")
-	sep.Size = UDim2.new(1, -30, 0, 2)
-	sep.Position = UDim2.new(0, 15, 0, 42)
+	sep.Size = UDim2.new(1, -50, 0, 3)
+	sep.Position = UDim2.new(0, 25, 0, 70)
 	sep.BackgroundColor3 = COLORS.separator
 	sep.BorderSizePixel = 0
 	sep.ZIndex = 16
@@ -1101,11 +1101,11 @@ local function openCategoryOverlay(cat)
 
 	local craftList = Instance.new("ScrollingFrame")
 	craftList.Name = "CraftList"
-	craftList.Size = UDim2.new(1, -20, 1, -60)
-	craftList.Position = UDim2.new(0, 10, 0, 50)
+	craftList.Size = UDim2.new(1, -36, 1, -100)
+	craftList.Position = UDim2.new(0, 18, 0, 88)
 	craftList.BackgroundTransparency = 1
 	craftList.BorderSizePixel = 0
-	craftList.ScrollBarThickness = 6
+	craftList.ScrollBarThickness = 10
 	craftList.CanvasSize = UDim2.new(0, 0, 0, 0)
 	craftList.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	craftList.ZIndex = 17
@@ -1113,7 +1113,7 @@ local function openCategoryOverlay(cat)
 
 	local listLayout = Instance.new("UIListLayout")
 	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	listLayout.Padding = UDim.new(0, 5)
+	listLayout.Padding = UDim.new(0, 10)
 	listLayout.Parent = craftList
 
 	rebuildCraftList()
@@ -1311,7 +1311,7 @@ function rebuildCraftList()
 
 			local btn = Instance.new("TextButton")
 			btn.Name = "Recipe_" .. recipe.name
-			btn.Size = UDim2.new(1, 0, 0, 45)
+			btn.Size = UDim2.new(1, 0, 0, 80)
 			btn.BackgroundColor3 = COLORS.craftItemBg
 			btn.Text = ""
 			btn.BorderSizePixel = 0
@@ -1322,12 +1322,12 @@ function rebuildCraftList()
 			btn:SetAttribute("RecipeName", recipe.name)
 
 			local btnCorner = Instance.new("UICorner")
-			btnCorner.CornerRadius = UDim.new(0, 6)
+			btnCorner.CornerRadius = UDim.new(0, 8)
 			btnCorner.Parent = btn
 
 			local icon = Instance.new("ImageLabel")
-			icon.Size = UDim2.new(0, 32, 0, 32)
-			icon.Position = UDim2.new(0, 6, 0.5, -16)
+			icon.Size = UDim2.new(0, 56, 0, 56)
+			icon.Position = UDim2.new(0, 12, 0.5, -28)
 			icon.BackgroundTransparency = 1
 			icon.Image = recipe.icon or ""
 			icon.ScaleType = Enum.ScaleType.Fit
@@ -1335,13 +1335,13 @@ function rebuildCraftList()
 			icon.Parent = btn
 
 			local nameLabel = Instance.new("TextLabel")
-			nameLabel.Size = UDim2.new(1, -50, 0, 20)
-			nameLabel.Position = UDim2.new(0, 44, 0, 3)
+			nameLabel.Size = UDim2.new(1, -90, 0, 32)
+			nameLabel.Position = UDim2.new(0, 80, 0, 8)
 			nameLabel.BackgroundTransparency = 1
 			nameLabel.Text = recipe.displayName or recipe.name
 			nameLabel.TextColor3 = COLORS.titleText
 			nameLabel.Font = Enum.Font.Gotham
-			nameLabel.TextSize = 14
+			nameLabel.TextSize = 22
 			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 			nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 			nameLabel.ZIndex = 18
@@ -1354,13 +1354,13 @@ function rebuildCraftList()
 
 			local costLabel = Instance.new("TextLabel")
 			costLabel.Name = "CostLabel"
-			costLabel.Size = UDim2.new(1, -50, 0, 16)
-			costLabel.Position = UDim2.new(0, 44, 0, 24)
+			costLabel.Size = UDim2.new(1, -90, 0, 26)
+			costLabel.Position = UDim2.new(0, 80, 0, 42)
 			costLabel.BackgroundTransparency = 1
 			costLabel.Text = costText
 			costLabel.TextColor3 = canAfford(recipe) and COLORS.affordable or COLORS.notAffordable
 			costLabel.Font = Enum.Font.Gotham
-			costLabel.TextSize = 11
+			costLabel.TextSize = 18
 			costLabel.TextXAlignment = Enum.TextXAlignment.Left
 			costLabel.ZIndex = 18
 			costLabel.Parent = btn
@@ -1614,13 +1614,13 @@ local function buildUI()
 
 	local gridWidth = COLS * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
 	local gridHeight = 4 * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
-	local panelWidth = gridWidth + 40
-	local panelHeight = gridHeight + 80
+	local panelWidth = gridWidth + 60
+	local panelHeight = gridHeight + 110
 
 	-- Center the combined block (CraftPanel on the left + CenterPanel)
 	-- horizontally on screen.
-	local craftPanelWidth = 180
-	local craftGap = 12
+	local craftPanelWidth = 340
+	local craftGap = 20
 	local combinedWidth = craftPanelWidth + craftGap + panelWidth
 	local centerPanelLeft = -combinedWidth / 2 + craftPanelWidth + craftGap
 
@@ -1642,27 +1642,27 @@ local function buildUI()
 	centerStroke.Parent = centerPanel
 
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -80, 0, 30)
-	title.Position = UDim2.new(0, 10, 0, 8)
+	title.Size = UDim2.new(1, -120, 0, 50)
+	title.Position = UDim2.new(0, 16, 0, 12)
 	title.BackgroundTransparency = 1
 	title.Text = "Inventory"
 	title.TextColor3 = COLORS.titleText
 	title.Font = Enum.Font.GothamBold
-	title.TextSize = 22
+	title.TextSize = 36
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = centerPanel
 
 	local sep = Instance.new("Frame")
-	sep.Size = UDim2.new(1, -30, 0, 2)
-	sep.Position = UDim2.new(0, 15, 0, 42)
+	sep.Size = UDim2.new(1, -50, 0, 3)
+	sep.Position = UDim2.new(0, 25, 0, 70)
 	sep.BackgroundColor3 = COLORS.separator
 	sep.BorderSizePixel = 0
 	sep.Parent = centerPanel
 
 	-- Log counter
 	local logIcon = Instance.new("ImageLabel")
-	logIcon.Size = UDim2.new(0, 20, 0, 20)
-	logIcon.Position = UDim2.new(1, -130, 0, 13)
+	logIcon.Size = UDim2.new(0, 32, 0, 32)
+	logIcon.Position = UDim2.new(1, -210, 0, 20)
 	logIcon.BackgroundTransparency = 1
 	logIcon.Image = LOG_ICON
 	logIcon.ScaleType = Enum.ScaleType.Fit
@@ -1670,20 +1670,20 @@ local function buildUI()
 
 	local logCount = Instance.new("TextLabel")
 	logCount.Name = "LogCount"
-	logCount.Size = UDim2.new(0, 30, 0, 20)
-	logCount.Position = UDim2.new(1, -108, 0, 13)
+	logCount.Size = UDim2.new(0, 50, 0, 32)
+	logCount.Position = UDim2.new(1, -174, 0, 20)
 	logCount.BackgroundTransparency = 1
 	logCount.Text = tostring(inventory.Log or 0)
 	logCount.TextColor3 = COLORS.titleText
 	logCount.Font = Enum.Font.GothamBold
-	logCount.TextSize = 14
+	logCount.TextSize = 22
 	logCount.TextXAlignment = Enum.TextXAlignment.Left
 	logCount.Parent = centerPanel
 
 	-- Plastic counter
 	local plasticIcon = Instance.new("ImageLabel")
-	plasticIcon.Size = UDim2.new(0, 20, 0, 20)
-	plasticIcon.Position = UDim2.new(1, -70, 0, 13)
+	plasticIcon.Size = UDim2.new(0, 32, 0, 32)
+	plasticIcon.Position = UDim2.new(1, -110, 0, 20)
 	plasticIcon.BackgroundTransparency = 1
 	plasticIcon.Image = PLASTIC_ICON
 	plasticIcon.ScaleType = Enum.ScaleType.Fit
@@ -1691,18 +1691,18 @@ local function buildUI()
 
 	local plasticCount = Instance.new("TextLabel")
 	plasticCount.Name = "PlasticCount"
-	plasticCount.Size = UDim2.new(0, 30, 0, 20)
-	plasticCount.Position = UDim2.new(1, -48, 0, 13)
+	plasticCount.Size = UDim2.new(0, 50, 0, 32)
+	plasticCount.Position = UDim2.new(1, -74, 0, 20)
 	plasticCount.BackgroundTransparency = 1
 	plasticCount.Text = tostring(inventory.Plastic or 0)
 	plasticCount.TextColor3 = COLORS.titleText
 	plasticCount.Font = Enum.Font.GothamBold
-	plasticCount.TextSize = 14
+	plasticCount.TextSize = 22
 	-- Inventory grid (these are slots 9-28)
 	local gridFrame = Instance.new("Frame")
 	gridFrame.Name = "InventoryGrid"
 	gridFrame.Size = UDim2.new(0, gridWidth, 0, gridHeight)
-	gridFrame.Position = UDim2.new(0.5, -gridWidth / 2, 0, 52)
+	gridFrame.Position = UDim2.new(0.5, -gridWidth / 2, 0, 85)
 	gridFrame.BackgroundTransparency = 1
 	gridFrame.Parent = centerPanel
 
@@ -1819,19 +1819,19 @@ local function buildUI()
 	craftStroke.Parent = craftPanel
 
 	local craftTitle = Instance.new("TextLabel")
-	craftTitle.Size = UDim2.new(1, -15, 0, 28)
-	craftTitle.Position = UDim2.new(0, 10, 0, 8)
+	craftTitle.Size = UDim2.new(1, -25, 0, 50)
+	craftTitle.Position = UDim2.new(0, 18, 0, 14)
 	craftTitle.BackgroundTransparency = 1
 	craftTitle.Text = "Crafting"
 	craftTitle.TextColor3 = COLORS.titleText
 	craftTitle.Font = Enum.Font.GothamMedium
-	craftTitle.TextSize = 18
+	craftTitle.TextSize = 32
 	craftTitle.TextXAlignment = Enum.TextXAlignment.Left
 	craftTitle.Parent = craftPanel
 
 	local craftSep = Instance.new("Frame")
-	craftSep.Size = UDim2.new(1, -20, 0, 2)
-	craftSep.Position = UDim2.new(0, 10, 0, 38)
+	craftSep.Size = UDim2.new(1, -36, 0, 3)
+	craftSep.Position = UDim2.new(0, 18, 0, 70)
 	craftSep.BackgroundColor3 = COLORS.panelBorder
 	craftSep.BorderSizePixel = 0
 	craftSep.Parent = craftPanel
@@ -1839,27 +1839,27 @@ local function buildUI()
 	-- Vertical category tabs
 	local tabFrame = Instance.new("Frame")
 	tabFrame.Name = "CategoryTabs"
-	tabFrame.Size = UDim2.new(1, -20, 1, -55)
-	tabFrame.Position = UDim2.new(0, 10, 0, 48)
+	tabFrame.Size = UDim2.new(1, -36, 1, -100)
+	tabFrame.Position = UDim2.new(0, 18, 0, 88)
 	tabFrame.BackgroundTransparency = 1
 	tabFrame.Parent = craftPanel
 
 	local tabsLayout = Instance.new("UIListLayout")
 	tabsLayout.FillDirection = Enum.FillDirection.Vertical
 	tabsLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	tabsLayout.Padding = UDim.new(0, 8)
+	tabsLayout.Padding = UDim.new(0, 14)
 	tabsLayout.Parent = tabFrame
 
 	for i, cat in CATEGORIES do
 		local tab = Instance.new("TextButton")
 		tab.Name = "Tab_" .. cat
-		tab.Size = UDim2.new(1, 0, 0, 38)
+		tab.Size = UDim2.new(1, 0, 0, 68)
 		tab.LayoutOrder = i
 		tab.BackgroundColor3 = COLORS.craftItemBg
 		tab.TextColor3 = COLORS.titleText
 		tab.Text = ""
 		tab.Font = Enum.Font.GothamMedium
-		tab.TextSize = 14
+		tab.TextSize = 22
 		tab.BorderSizePixel = 0
 		tab.AutoButtonColor = false
 		tab.Parent = tabFrame
@@ -1870,8 +1870,8 @@ local function buildUI()
 		if iconId then
 			local icon = Instance.new("ImageLabel")
 			icon.Name = "Icon"
-			icon.Size = UDim2.new(0, 24, 0, 24)
-			icon.Position = UDim2.new(0, 8, 0.5, -12)
+			icon.Size = UDim2.new(0, 44, 0, 44)
+			icon.Position = UDim2.new(0, 14, 0.5, -22)
 			icon.BackgroundTransparency = 1
 			icon.Image = iconId
 			icon.ScaleType = Enum.ScaleType.Fit
@@ -1881,13 +1881,13 @@ local function buildUI()
 		-- Text label to the right of the icon
 		local label = Instance.new("TextLabel")
 		label.Name = "Label"
-		label.Size = UDim2.new(1, -42, 1, 0)
-		label.Position = UDim2.new(0, 38, 0, 0)
+		label.Size = UDim2.new(1, -76, 1, 0)
+		label.Position = UDim2.new(0, 68, 0, 0)
 		label.BackgroundTransparency = 1
 		label.Text = cat
 		label.TextColor3 = COLORS.titleText
 		label.Font = Enum.Font.GothamMedium
-		label.TextSize = 14
+		label.TextSize = 22
 		label.TextXAlignment = Enum.TextXAlignment.Left
 		label.Parent = tab
 
@@ -1919,13 +1919,13 @@ local function buildUI()
 
 	-- Close button
 	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.new(0, 28, 0, 28)
-	closeBtn.Position = UDim2.new(1, -32, 0, 6)
+	closeBtn.Size = UDim2.new(0, 46, 0, 46)
+	closeBtn.Position = UDim2.new(1, -58, 0, 14)
 	closeBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 50)
 	closeBtn.Text = "X"
 	closeBtn.TextColor3 = Color3.new(1, 1, 1)
 	closeBtn.Font = Enum.Font.GothamBold
-	closeBtn.TextSize = 16
+	closeBtn.TextSize = 26
 	closeBtn.BorderSizePixel = 0
 	closeBtn.Parent = centerPanel
 
