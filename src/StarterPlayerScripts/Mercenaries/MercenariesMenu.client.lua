@@ -1435,6 +1435,15 @@ function closePage()
 	if not page then return end
 	local p = page
 	page = nil
+	-- Clear the viewport cache before tearing down the page. The cached
+	-- ViewportFrames live inside `page`, so p:Destroy() below kills them
+	-- anyway — but if we leave stale entries in the table, the next
+	-- openMercenariesMenu() call would hit them, try to reparent a
+	-- destroyed instance, and the character would silently fail to
+	-- appear. A fresh open rebuilds from scratch.
+	for mercName in pairs(viewportCache) do
+		viewportCache[mercName] = nil
+	end
 	p:Destroy()
 	showPhonePanels()
 end
