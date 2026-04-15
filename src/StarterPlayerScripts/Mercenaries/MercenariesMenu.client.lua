@@ -329,65 +329,121 @@ local function buildMercViewport(parent, mercName, weaponId)
 	end
 
 	-- ── Weapon swap in viewport ─────────────────────────────────────
-	if weaponId and weaponId ~= "Sword" then
-		-- Remove existing weapon tools from clone
-		local gripC0
-		local rightArm = clone:FindFirstChild("Right Arm")
-		if rightArm then
-			local oldGrip = rightArm:FindFirstChild("RightGrip")
-			if oldGrip then gripC0 = oldGrip.C0 end
-		end
-		for _, child in clone:GetChildren() do
-			if child:IsA("Tool") then child:Destroy() end
-		end
-		if rightArm then
-			local oldGrip = rightArm:FindFirstChild("RightGrip")
-			if oldGrip then oldGrip:Destroy() end
-		end
+	-- Always run: the Pirate_2 template may ship with its own Tool
+	-- (FishingRod leftover, etc.), and the "Sword" id needs to map to the
+	-- actual "ClassicSword" model in ReplicatedStorage — same mapping
+	-- MercenarySpawner uses on the real spawned rig.
+	local rightArm = clone:FindFirstChild("Right Arm")
 
-		-- Clone new weapon from ReplicatedStorage
-		local weaponTemplate = ReplicatedStorage:FindFirstChild(weaponId)
+	-- Save and wipe any pre-existing RightGrip + Tool on the template clone.
+	local priorGripC0
+	if rightArm then
+		local oldGrip = rightArm:FindFirstChild("RightGrip")
+		if oldGrip then
+			priorGripC0 = oldGrip.C0
+			oldGrip:Destroy()
+		end
+	end
+	for _, child in clone:GetChildren() do
+		if child:IsA("Tool") then child:Destroy() end
+	end
+
+	-- Resolve the weapon template name. "Sword" is a UI alias for
+	-- ClassicSword; other ids (FishingRod) map 1:1.
+	local resolvedWeaponId = weaponId
+	if not resolvedWeaponId or resolvedWeaponId == "Sword" then
+		resolvedWeaponId = "ClassicSword"
+	end
+
+	local weaponTemplate = ReplicatedStorage:FindFirstChild(resolvedWeaponId)
+		or ReplicatedStorage:FindFirstChild(resolvedWeaponId, true)
+	-- Fall back to the raw id if the alias lookup failed (e.g. a future
+	-- weapon that lives under the literal name the UI passes in).
+	if not weaponTemplate and resolvedWeaponId ~= weaponId then
+		weaponTemplate = ReplicatedStorage:FindFirstChild(weaponId)
 			or ReplicatedStorage:FindFirstChild(weaponId, true)
-		if weaponTemplate and rightArm then
-			local wArchivable = weaponTemplate.Archivable
-			weaponTemplate.Archivable = true
-			local wClone = weaponTemplate:Clone()
-			weaponTemplate.Archivable = wArchivable
+	end
 
-			-- Strip scripts
-			for _, d in wClone:GetDescendants() do
-				if d:IsA("Script") or d:IsA("LocalScript") then d:Destroy() end
-			end
-			-- Make parts visible
-			for _, d in wClone:GetDescendants() do
-				if d:IsA("BasePart") then
-					d.Transparency = 0; d.CanCollide = false; d.Massless = true
-				end
-			end
+	if weaponTemplate and rightArm then
+		local wArchivable = weaponTemplate.Archivable
+		weaponTemplate.Archivable = true
+		local wClone = weaponTemplate:Clone()
+		weaponTemplate.Archivable = wArchivable
 
-			local handle = wClone:FindFirstChild("Handle")
-			if not handle then handle = wClone:FindFirstChildWhichIsA("BasePart", true) end
-
-			if handle then
-				local newGrip = Instance.new("Motor6D")
-				newGrip.Name = "RightGrip"
-				newGrip.Part0 = rightArm
-				newGrip.Part1 = handle
-				newGrip.C0 = gripC0 or CFrame.new(0, -1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0)
-				newGrip.C1 = wClone:IsA("Tool") and wClone.Grip or CFrame.new()
-				newGrip.Parent = rightArm
-
-				-- Parent tool contents into clone
-				if wClone:IsA("Tool") then
-					for _, child in wClone:GetChildren() do
-						child.Parent = clone
-					end
-					wClone:Destroy()
-				else
-					wClone.Parent = clone
-				end
+		-- Strip scripts so nothing tries to run inside the ViewportFrame.
+		for _, d in wClone:GetDescendants() do
+			if d:IsA("Script") or d:IsA("LocalScript") then d:Destroy() end
+		end
+		-- Make parts visible, unanchored, massless so the RightGrip Motor6D
+		-- actually drives them. CanCollide off so they don't fight the rig.
+		for _, d in wClone:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.Transparency = 0
+				d.CanCollide   = false
+				d.Anchored     = false
+				d.Massless     = true
 			end
 		end
+
+		local handle = wClone:FindFirstChild("Handle")
+		if not handle and wClone:IsA("Tool") then
+			-- Some tools hide their main part under a different name; grab
+			-- the first BasePart as a last resort.
+			handle = wClone:FindFirstChildWhichIsA("BasePart")
+		end
+		if not handle then
+			handle = wClone:FindFirstChildWhichIsA("BasePart", true)
+		end
+
+		-- Read Tool.Grip BEFORE we tear the Tool apart — reparenting its
+		-- children invalidates wClone.Grip access on some edge cases.
+		local toolGripC1 = CFrame.new()
+		if wClone:IsA("Tool") then
+			toolGripC1 = wClone.Grip
+		end
+
+		if handle then
+			-- Strip any welds that link the Handle to nothing-in-this-rig
+			-- (e.g. a previous RightGrip baked into the template). Preserve
+			-- internal welds (Handle → other BaseParts inside the tool,
+			-- which keep multi-part tools like FishingRod assembled) by only
+			-- removing welds whose Part0 is outside the weapon clone.
+			for _, w in handle:GetChildren() do
+				if w:IsA("Motor6D") or w:IsA("Weld") then
+					local p0 = w.Part0
+					if not p0 or not p0:IsDescendantOf(wClone) then
+						w:Destroy()
+					end
+				end
+			end
+
+			local newGrip = Instance.new("Motor6D")
+			newGrip.Name  = "RightGrip"
+			newGrip.Part0 = rightArm
+			newGrip.Part1 = handle
+			-- Canonical R6 Right Arm grip attachment orientation.
+			newGrip.C0    = priorGripC0 or CFrame.new(0, -1, 0, 0, 0, 1, 1, 0, 0, 0, 1, 0)
+			newGrip.C1    = toolGripC1
+			newGrip.Parent = rightArm
+
+			-- Flatten the Tool: move its children into the clone Model
+			-- (a Tool won't render its parts as "held" inside a ViewportFrame
+			-- without a live Humanoid equipping it). Keep internal welds
+			-- intact so multi-part tools stay rigid.
+			if wClone:IsA("Tool") then
+				for _, child in wClone:GetChildren() do
+					child.Parent = clone
+				end
+				wClone:Destroy()
+			else
+				wClone.Parent = clone
+			end
+		else
+			warn("[MercenariesMenu] "..resolvedWeaponId.." has no Handle — cannot display")
+			wClone:Destroy()
+		end
+	elseif not weaponTemplate then
+		warn("[MercenariesMenu] weapon template not found:", weaponId)
 	end
 
 	clone.Parent = world
