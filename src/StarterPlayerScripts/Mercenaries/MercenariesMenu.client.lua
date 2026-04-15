@@ -211,46 +211,84 @@ local function buildMercViewport(parent, mercName, weaponId)
 		end
 	end
 
-	-- Manually weld accessories to the head. Roblox's auto-weld pass on
-	-- Accessory-added usually handles this for live characters, but we're
-	-- cloning into a WorldModel (not a real character) where that pass
-	-- doesn't always fire in time for the preview. Match Handle
-	-- attachments (HatAttachment, FaceFrontAttachment, etc.) to their
-	-- peers on the Head and weld by attachment CFrame so the hat sits
-	-- flush and moves with the rig.
+	-- Manually weld accessories (and legacy Hat instances) to the Head.
+	-- The auto-weld pass that normally fires on Accessory-added doesn't
+	-- always run for rigs inside a WorldModel, so the hat ends up floating
+	-- free. Cover three classes of rigging:
+	--
+	--   1. Accessory / Hat (both inherit from Accoutrement): standard case,
+	--      weld Handle attachment → same-named attachment on Head.
+	--   2. The Handle's attachment names don't match anything on the Head
+	--      (rare but happens with custom hats): fall back to the first
+	--      attachment we can find on Head.
+	--   3. Custom hat Models (no Accoutrement wrapper) that contain a
+	--      "Handle" part directly. PirateHat looks like a standard
+	--      Accoutrement from the Explorer, but the fallback is cheap.
 	local head = clone:FindFirstChild("Head")
+	local headAttachments = {}
+	if head then
+		for _, att in head:GetChildren() do
+			if att:IsA("Attachment") then
+				headAttachments[att.Name] = att
+			end
+		end
+	end
+
+	local function weldHandleToHead(handle, sourceName)
+		if not head or not handle then return end
+		local handleAtt
+		for _, a in handle:GetChildren() do
+			if a:IsA("Attachment") then
+				handleAtt = a
+				break
+			end
+		end
+		if not handleAtt then
+			warn("[MercenariesMenu] "..sourceName..".Handle has no Attachment — cannot weld")
+			return
+		end
+		local headAtt = headAttachments[handleAtt.Name]
+		if not headAtt then
+			-- Fall back to any head attachment so the hat at least follows
+			for _, att in pairs(headAttachments) do
+				headAtt = att
+				break
+			end
+		end
+		if not headAtt then
+			warn("[MercenariesMenu] Head has no Attachment at all — "..sourceName.." will float")
+			return
+		end
+		for _, w in handle:GetChildren() do
+			if w:IsA("Weld") or w:IsA("Motor6D") or w:IsA("WeldConstraint") then
+				w:Destroy()
+			end
+		end
+		handle.Anchored = false
+		handle.CanCollide = false
+		handle.Massless = true
+		local weld = Instance.new("Motor6D")
+		weld.Name = "AccessoryWeld"
+		weld.Part0 = head
+		weld.Part1 = handle
+		weld.C0 = headAtt.CFrame
+		weld.C1 = handleAtt.CFrame
+		weld.Parent = handle
+	end
+
 	if head then
 		for _, acc in clone:GetChildren() do
-			if acc:IsA("Accessory") then
+			-- Accoutrement is the shared base for both Accessory and
+			-- legacy Hat, so this catches both. PirateHat in the current
+			-- template is showing up in Explorer with the Hat/Accoutrement
+			-- icon — :IsA("Accessory") would miss a legacy Hat.
+			if acc:IsA("Accoutrement") then
 				local handle = acc:FindFirstChild("Handle")
+					or acc:FindFirstChildWhichIsA("BasePart")
 				if handle then
-					local handleAtt
-					for _, a in handle:GetChildren() do
-						if a:IsA("Attachment") then
-							handleAtt = a
-							break
-						end
-					end
-					if handleAtt then
-						local headAtt = head:FindFirstChild(handleAtt.Name)
-						if headAtt and headAtt:IsA("Attachment") then
-							for _, w in handle:GetChildren() do
-								if w:IsA("Weld") or w:IsA("Motor6D") or w:IsA("WeldConstraint") then
-									w:Destroy()
-								end
-							end
-							handle.Anchored = false
-							handle.CanCollide = false
-							handle.Massless = true
-							local weld = Instance.new("Motor6D")
-							weld.Name = "AccessoryWeld"
-							weld.Part0 = head
-							weld.Part1 = handle
-							weld.C0 = headAtt.CFrame
-							weld.C1 = handleAtt.CFrame
-							weld.Parent = handle
-						end
-					end
+					weldHandleToHead(handle, acc.Name)
+				else
+					warn("[MercenariesMenu] "..acc.Name.." has no Handle part — cannot weld")
 				end
 			end
 		end
