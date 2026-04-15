@@ -1,18 +1,12 @@
 -- MercenaryCombat.server.lua
--- Drives combat for summoned mercenaries. The Pirate_2 template that
--- mercenaries are cloned from doesn't ship with a ZombieScript, so we
--- can't reuse the legacy AI loop the hostile pirates run. Instead this
--- polls every "SpawnedMercenary"-tagged model, finds the closest
--- "HostilePirate"-tagged enemy, and has the mercenary walk up to it and
--- attack until the enemy is dead.
+-- Fallback combat driver for any mercenary that somehow ships without
+-- the embedded src/Pirate_2/Combat.script. That script is the
+-- authoritative AI — we only kick in when a tagged mercenary has no
+-- Combat child, which shouldn't happen in normal play.
 --
 -- The hostile pirates target mercenaries through the role-aware
--- SearchForTarget in Enemy_Pirate/Zombie.script, so combat is mutual.
---
--- Note: this issues Humanoid:MoveTo on every tick during combat, which
--- overrides the fishing-walk loop in MercenaryMovement when an enemy is
--- in range. The bobber will be left floating until combat ends — that's
--- intentional for now (combat > fishing).
+-- SearchForTarget in Enemy_Pirate/Zombie.script, so combat is mutual
+-- regardless of which driver is running on the mercenary side.
 
 local CollectionService = game:GetService("CollectionService")
 
@@ -26,7 +20,7 @@ local lastAttack = {} -- [mercenaryModel] = tick()
 local prepared  = {} -- [mercenaryModel] = true, once humanoid forced walkable
 local debugged  = {} -- [mercenaryModel] = true, once enemy engage print fired
 
-local DEBUG = true
+local DEBUG = false
 
 local function prepareMercenary(merc, hum)
 	if prepared[merc] then return end

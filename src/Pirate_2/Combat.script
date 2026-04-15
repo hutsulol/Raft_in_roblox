@@ -1,50 +1,69 @@
--- Combat.script
--- Lives inside the Pirate_2 model. When the model is cloned as a
--- mercenary and parented to workspace, this script wakes up, finds the
--- nearest "HostilePirate"-tagged enemy, walks over, and swings.
+-- Combat.script (Pirate_2 — Mercenary AI)
 --
--- This mirrors the role hostile pirates have via Enemy_Pirate/Zombie.
--- We intentionally do NOT target players — mercenaries are friendly.
--- Targets are discovered through CollectionService tags only.
+-- This is a mercenary-flavored port of Enemy_Pirate/Zombie.script ("Basic
+-- Monster" by ArceusInator). It lives inside the Pirate_2 model and
+-- drives the rig with the same loop the hostile pirate uses:
+--
+--   SearchForTarget → TryRecomputePath → TravelPath → TryJumpCheck →
+--   TryAttack
+--
+-- Differences from the hostile-pirate version:
+--   * Self-contained: does NOT require Configurations / Mind / Respawn /
+--     Died / Respawned / Attacked to exist in the model. The player
+--     stripped those when they cleaned out Pirate_2. All config values
+--     live in the ATTR table below.
+--   * Role: MERCENARY. Protects players. Targets any Humanoid in
+--     workspace that is NOT a player character and NOT another
+--     mercenary. In practice this means HostilePirate and any future
+--     hostile NPC (sharks, bosses, etc.) gets engaged automatically.
+--   * No respawn. A killed mercenary stays dead.
+--   * Attack animation: uses the equipped Tool's Activated event
+--     (ClassicSword plays its own swing animation), so we don't depend
+--     on script.Attack being present.
 
-local CollectionService = game:GetService("CollectionService")
+local CollectionService   = game:GetService("CollectionService")
+local Players             = game:GetService("Players")
+local PathfindingService  = game:GetService("PathfindingService")
+local RunService          = game:GetService("RunService")
 
 local Self = script.Parent
 
-local DETECTION_RANGE = 80    -- studs; how far we'll notice an enemy
-local ATTACK_RANGE    = 5.5   -- studs; close enough to swing
-local ATTACK_DAMAGE   = 8
-local ATTACK_COOLDOWN = 1.2   -- seconds between swings
-local TICK_INTERVAL   = 0.15  -- seconds between AI ticks
+-- ── Tunables ──────────────────────────────────────────────────────────
+local ATTR = {
+	MaximumDetectionDistance = 120,
+	AttackDamage             = 8,
+	AttackFrequency          = 1,   -- swings per second
+	AttackRange              = 5.5, -- studs
+	RecomputePathFrequency   = 1,   -- path recomputes per second
+	JumpCheckFrequency       = 1,   -- jump checks per second
+}
 
--- ── Wait until we're actually in the world ────────────────────────────
--- The menu viewport strips scripts from its preview clone, but belt-and-
--- suspenders: don't run unless we're a descendant of workspace.
+-- ── Wait for the rig to be in the world ───────────────────────────────
+-- MercenariesMenu builds a ViewportFrame preview by cloning Pirate_2 and
+-- stripping scripts, but belt and suspenders: don't run unless we're in
+-- workspace (not the menu preview, not still inside ReplicatedStorage).
 while not Self:IsDescendantOf(workspace) do
 	Self.AncestryChanged:Wait()
 end
 
 local humanoid = Self:FindFirstChildOfClass("Humanoid")
-local waitedFor = 0
-while humanoid == nil and waitedFor < 5 do
+local waited = 0
+while humanoid == nil and waited < 5 do
 	task.wait(0.1)
-	waitedFor = waitedFor + 0.1
+	waited = waited + 0.1
 	humanoid = Self:FindFirstChildOfClass("Humanoid")
 end
-if humanoid == nil then return end
+if humanoid == nil then
+	warn("[Pirate_2/Combat] no Humanoid — AI cannot run")
+	return
+end
 
--- The Pirate_2 template has historically shipped anchored / with a
--- "wooden" Humanoid (WalkSpeed = 0, Running state disabled). Force a
--- sane movement config so MoveTo actually drives us.
+-- Wake the rig up. The MercenarySpawner already does this, but double up
+-- here for safety in case the script runs before the spawner gets to it.
 for _, d in Self:GetDescendants() do
-	if d:IsA("BasePart") then
-		d.Anchored = false
-	end
+	if d:IsA("BasePart") then d.Anchored = false end
 end
-
-if humanoid.WalkSpeed <= 0 then
-	humanoid.WalkSpeed = 12
-end
+if humanoid.WalkSpeed <= 0 then humanoid.WalkSpeed = 14 end
 humanoid.PlatformStand = false
 humanoid.Sit = false
 pcall(function()
@@ -56,66 +75,267 @@ end)
 -- ── Helpers ───────────────────────────────────────────────────────────
 
 local function getTorso(model)
+	-- R6 rigs have .Torso; R15 uses .UpperTorso. Pirate_2 is R6, but be
+	-- defensive for target inspection.
 	return model:FindFirstChild("Torso")
-		or model:FindFirstChild("HumanoidRootPart")
 		or model:FindFirstChild("UpperTorso")
+		or model:FindFirstChild("HumanoidRootPart")
 end
 
-local function findNearestHostile(myPos)
-	local closest, closestDist = nil, nil
-	for _, pirate in CollectionService:GetTagged("HostilePirate") do
-		if pirate ~= Self and pirate:IsDescendantOf(workspace) then
-			local hum = pirate:FindFirstChildOfClass("Humanoid")
-			if hum and hum.Health > 0 then
-				local torso = getTorso(pirate)
-				if torso then
+local function getHRP()
+	return Self:FindFirstChild("HumanoidRootPart")
+end
+
+local function isPlayerCharacter(model)
+	return Players:GetPlayerFromCharacter(model) ~= nil
+end
+
+local function isFellowMercenary(model)
+	return CollectionService:HasTag(model, "SpawnedMercenary")
+end
+
+-- ── State ─────────────────────────────────────────────────────────────
+local currentTarget     = nil -- Humanoid
+local pathCoords        = {}
+local currentNode       = nil
+local currentNodeIndex  = 1
+local autoRecompute     = true
+local recomputing       = false
+local lastPathTime      = 0
+local lastJumpCheck     = 0
+local lastAttack        = 0
+
+-- ── Target search ─────────────────────────────────────────────────────
+-- Mercenary rule: attack anything with a Humanoid that is NOT a player
+-- and NOT another mercenary. This covers HostilePirate today and any
+-- future hostile NPCs automatically — no need to whitelist tags.
+local function searchForTarget()
+	local hrp = getHRP()
+	if not hrp then return end
+	local myPos = hrp.Position
+
+	local closestHum, closestDist = nil, math.huge
+
+	for _, model in workspace:GetDescendants() do
+		if model:IsA("Humanoid")
+			and model ~= humanoid
+			and model.Health > 0
+		then
+			local parent = model.Parent
+			if parent
+				and not isPlayerCharacter(parent)
+				and not isFellowMercenary(parent)
+				and parent ~= Self
+			then
+				local torso = getTorso(parent)
+				if torso and torso:IsA("BasePart") then
 					local d = (torso.Position - myPos).Magnitude
-					if d < DETECTION_RANGE and (closestDist == nil or d < closestDist) then
-						closest, closestDist = pirate, d
+					if d < ATTR.MaximumDetectionDistance and d < closestDist then
+						closestHum, closestDist = model, d
 					end
 				end
 			end
 		end
 	end
-	return closest, closestDist
+
+	currentTarget = closestHum
 end
 
-local lastAttack = 0
+-- ── Target validity / CFrames ─────────────────────────────────────────
 
-local function swing(targetHumanoid)
-	targetHumanoid:TakeDamage(ATTACK_DAMAGE)
-	local tool = Self:FindFirstChildWhichIsA("Tool")
-	if tool then
-		pcall(function() tool:Activate() end)
+local function targetIsValid()
+	if currentTarget == nil then return false end
+	if currentTarget.Health <= 0 then return false end
+	local torso = currentTarget.Parent and getTorso(currentTarget.Parent)
+	return torso ~= nil and torso:IsA("BasePart")
+end
+
+local function getTargetPosition()
+	if not targetIsValid() then return nil end
+	return getTorso(currentTarget.Parent).Position
+end
+
+-- ── Pathfinding ───────────────────────────────────────────────────────
+
+local function hasLineOfSight()
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return false end
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { Self, currentTarget.Parent }
+
+	local result = workspace:Raycast(hrp.Position, tp - hrp.Position, params)
+	return result == nil
+end
+
+local function recomputePath()
+	if recomputing then return end
+	if not targetIsValid() then return end
+
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+
+	if hasLineOfSight() then
+		autoRecompute   = true
+		pathCoords      = { hrp.Position, tp }
+		currentNode     = nil
+		currentNodeIndex = 2
+		lastPathTime    = tick()
+		return
+	end
+
+	-- Fall back to real pathfinding around obstacles.
+	recomputing = true
+	autoRecompute = false
+
+	local ok, path = pcall(function()
+		return PathfindingService:CreatePath({
+			AgentRadius = 2,
+			AgentHeight = 5,
+			AgentCanJump = true,
+		})
+	end)
+	if not ok or not path then
+		recomputing = false
+		return
+	end
+
+	local computeOk = pcall(function()
+		path:ComputeAsync(hrp.Position, tp)
+	end)
+	if computeOk and path.Status == Enum.PathStatus.Success then
+		pathCoords = {}
+		for _, wp in path:GetWaypoints() do
+			table.insert(pathCoords, wp.Position)
+		end
+		currentNode      = nil
+		currentNodeIndex = 1
+	else
+		-- Pathfinding failed; fall back to direct approach.
+		pathCoords = { hrp.Position, tp }
+		currentNode      = nil
+		currentNodeIndex = 2
+	end
+
+	recomputing = false
+	lastPathTime = tick()
+end
+
+local function tryRecomputePath()
+	if autoRecompute or tick() - lastPathTime > 1 / ATTR.RecomputePathFrequency then
+		recomputePath()
+	end
+end
+
+-- ── Jump check (rubber-band over small obstacles) ─────────────────────
+
+local function jumpCheck()
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+
+	local checkVector = (tp - hrp.Position)
+	if checkVector.Magnitude < 0.1 then return end
+	checkVector = checkVector.Unit * 2
+
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { Self }
+
+	local result = workspace:Raycast(
+		hrp.Position + Vector3.new(0, -2.4, 0),
+		checkVector,
+		params
+	)
+	if result and currentTarget.Parent and not result.Instance:IsDescendantOf(currentTarget.Parent) then
+		humanoid.Jump = true
+	end
+	lastJumpCheck = tick()
+end
+
+local function tryJumpCheck()
+	if tick() - lastJumpCheck > 1 / ATTR.JumpCheckFrequency then
+		jumpCheck()
+	end
+end
+
+-- ── Attack ────────────────────────────────────────────────────────────
+
+local function attack()
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+
+	if (hrp.Position - tp).Magnitude <= ATTR.AttackRange then
+		currentTarget:TakeDamage(ATTR.AttackDamage)
+		lastAttack = tick()
+
+		-- Sword swing animation: ClassicSword plays its own R6 slash
+		-- animation when Activated, so we just trigger it.
+		local tool = Self:FindFirstChildWhichIsA("Tool")
+		if tool then
+			pcall(function() tool:Activate() end)
+		end
+	end
+end
+
+local function tryAttack()
+	if tick() - lastAttack > 1 / ATTR.AttackFrequency then
+		attack()
+	end
+end
+
+-- ── Path travel ───────────────────────────────────────────────────────
+
+local function travelPath()
+	if #pathCoords == 0 then return end
+
+	local hrp = getHRP()
+	if not hrp then return end
+	local myPos = hrp.Position
+
+	local skipCurrent = currentNode ~= nil and (currentNode - myPos).Magnitude < 3
+
+	local closest, closestDist, closestIdx = nil, math.huge, nil
+	for i = currentNodeIndex, #pathCoords do
+		local c = pathCoords[i]
+		if not (skipCurrent and c == currentNode) then
+			local d = (c - myPos).Magnitude
+			if d < closestDist then
+				closest, closestDist, closestIdx = c, d, i
+			else
+				break
+			end
+		end
+	end
+
+	if closest then
+		currentNode      = closest
+		currentNodeIndex = closestIdx
+
+		humanoid:MoveTo(closest)
+
+		if humanoid.Health > 0 and targetIsValid() then
+			tryJumpCheck()
+			tryAttack()
+		end
+
+		if closestIdx == #pathCoords then
+			autoRecompute = true
+		end
 	end
 end
 
 -- ── Main loop ─────────────────────────────────────────────────────────
 
 while Self.Parent and humanoid.Health > 0 do
-	local myTorso = getTorso(Self)
-	if not myTorso then
-		task.wait(TICK_INTERVAL)
-		continue
+	searchForTarget()
+	if targetIsValid() then
+		tryRecomputePath()
+		travelPath()
 	end
-
-	local target, dist = findNearestHostile(myTorso.Position)
-	if target then
-		local targetTorso = getTorso(target)
-		local targetHum = target:FindFirstChildOfClass("Humanoid")
-		if targetTorso and targetHum then
-			if dist > ATTACK_RANGE then
-				humanoid:MoveTo(targetTorso.Position)
-			else
-				humanoid:MoveTo(myTorso.Position)
-				local now = tick()
-				if now - lastAttack >= ATTACK_COOLDOWN then
-					lastAttack = now
-					swing(targetHum)
-				end
-			end
-		end
-	end
-
-	task.wait(TICK_INTERVAL)
+	RunService.Heartbeat:Wait()
 end
