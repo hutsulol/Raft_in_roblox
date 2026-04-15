@@ -207,6 +207,51 @@ local function buildMercViewport(parent, mercName, weaponId)
 		end
 	end
 
+	-- Manually weld accessories to the head. Roblox normally auto-welds
+	-- each Accessory's Handle to the matching named attachment on the
+	-- character once the Humanoid's state machine processes it — but we
+	-- disabled every HumanoidStateType above, so the pirate hat was just
+	-- floating above the head. Match Handle attachments (HatAttachment,
+	-- FaceFrontAttachment, etc.) to their peers on the Head and weld by
+	-- attachment CFrame so the hat sits flush and moves with the rig.
+	local head = clone:FindFirstChild("Head")
+	if head then
+		for _, acc in clone:GetChildren() do
+			if acc:IsA("Accessory") then
+				local handle = acc:FindFirstChild("Handle")
+				if handle then
+					local handleAtt
+					for _, a in handle:GetChildren() do
+						if a:IsA("Attachment") then
+							handleAtt = a
+							break
+						end
+					end
+					if handleAtt then
+						local headAtt = head:FindFirstChild(handleAtt.Name)
+						if headAtt and headAtt:IsA("Attachment") then
+							for _, w in handle:GetChildren() do
+								if w:IsA("Weld") or w:IsA("Motor6D") or w:IsA("WeldConstraint") then
+									w:Destroy()
+								end
+							end
+							handle.Anchored = false
+							handle.CanCollide = false
+							handle.Massless = true
+							local weld = Instance.new("Motor6D")
+							weld.Name = "AccessoryWeld"
+							weld.Part0 = head
+							weld.Part1 = handle
+							weld.C0 = headAtt.CFrame
+							weld.C1 = handleAtt.CFrame
+							weld.Parent = handle
+						end
+					end
+				end
+			end
+		end
+	end
+
 	-- Position and rotate to face camera
 	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
 
