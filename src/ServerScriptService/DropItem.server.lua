@@ -93,6 +93,89 @@ local MAX_DROP_DISTANCE = 80
 local PICKUP_DISTANCE = 15
 local lastDropTime = {}
 
+-- Spawn a physical dropped-item in the world near the player. Shared
+-- between the explicit "drop from inventory" event and the
+-- inventory-full overflow path (_G.SpawnResourceDrop below). Caller is
+-- responsible for any inventory / tool bookkeeping before calling this.
+local function spawnPhysicalDrop(player, itemName, amount, isToolDrop, dropPosition)
+	if type(itemName) ~= "string" or itemName == "" then return nil end
+	amount = tonumber(amount) or 0
+	if amount <= 0 then return nil end
+
+	local char = player and player.Character
+	if not char then return nil end
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then return nil end
+
+	-- Find the template. Resources prefer their mapped name and fall
+	-- back to FALLBACK_TEMPLATE; tool drops use the fallback box.
+	local templateName = RESOURCE_TEMPLATES[itemName] or FALLBACK_TEMPLATE
+	local template = findTemplate(templateName)
+	if not template then
+		template = findTemplate(FALLBACK_TEMPLATE)
+	end
+	if not template then return nil end
+
+	-- Determine spawn position
+	local spawnPos
+	if typeof(dropPosition) == "Vector3"
+		and (dropPosition - hrp.Position).Magnitude < MAX_DROP_DISTANCE then
+		spawnPos = dropPosition + Vector3.new(0, 2, 0)
+	else
+		local lookDir = hrp.CFrame.LookVector
+		spawnPos = hrp.Position + lookDir * 4 + Vector3.new(0, -1, 0)
+	end
+
+	local clone = template:Clone()
+
+	if clone:IsA("Model") and not clone.PrimaryPart then
+		local first = clone:FindFirstChildWhichIsA("BasePart")
+		if first then
+			clone.PrimaryPart = first
+		end
+	end
+
+	clone:SetAttribute("ResourceType", itemName)
+	clone:SetAttribute("ResourceAmount", amount)
+	clone:SetAttribute("IsToolDrop", isToolDrop and true or false)
+	clone:SetAttribute("DropperUserId", player.UserId)
+
+	clone:PivotTo(CFrame.new(spawnPos))
+	clone.Parent = workspace
+
+	for _, part in clone:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
+			part.Massless = true
+			part:SetNetworkOwner(nil)
+		end
+	end
+
+	-- Inherit the raft's velocity so the item stays with the raft long
+	-- enough to be detected by on-raft systems (e.g. sawmill log polling).
+	local raft = workspace:FindFirstChild("Raft")
+	local primaryClonePart = clone:IsA("BasePart") and clone or (clone:IsA("Model") and clone.PrimaryPart)
+	if raft and raft.PrimaryPart and primaryClonePart then
+		primaryClonePart.AssemblyLinearVelocity = raft.PrimaryPart.AssemblyLinearVelocity
+	end
+
+	CollectionService:AddTag(clone, "DroppedItem")
+
+	task.delay(DROPPED_LIFETIME, function()
+		if clone and clone.Parent then
+			clone:Destroy()
+		end
+	end)
+
+	return clone
+end
+
+-- Exposed so the inventory-add path can overflow directly to the world
+-- without routing through the drop event.
+_G.SpawnResourceDrop = function(player, itemName, amount, dropPosition)
+	return spawnPhysicalDrop(player, itemName, amount, false, dropPosition)
+end
+
 dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPosition)
 	if type(itemName) ~= "string" then return end
 	if type(dropCount) ~= "number" then return end
@@ -133,75 +216,7 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 		tool:Destroy()
 	end
 
-	-- Find the template. For resources we prefer the mapped name and fall
-	-- back to FALLBACK_TEMPLATE (e.g. Rope/Sand/Clay may not have their
-	-- own 3D models yet). For tool drops we still use the fallback box
-	-- model as the physical representation — the actual Tool instance is
-	-- re-cloned from its own template only on pickup.
-	local templateName = RESOURCE_TEMPLATES[itemName] or FALLBACK_TEMPLATE
-	local template = findTemplate(templateName)
-	if not template then
-		template = findTemplate(FALLBACK_TEMPLATE)
-	end
-	if not template then return end
-
-	-- Determine spawn position
-	local spawnPos
-	if dropPosition and (dropPosition - hrp.Position).Magnitude < MAX_DROP_DISTANCE then
-		spawnPos = dropPosition + Vector3.new(0, 2, 0)
-	else
-		local lookDir = hrp.CFrame.LookVector
-		spawnPos = hrp.Position + lookDir * 4 + Vector3.new(0, -1, 0)
-	end
-
-	local clone = template:Clone()
-
-	-- Ensure the model has a PrimaryPart
-	if clone:IsA("Model") and not clone.PrimaryPart then
-		local first = clone:FindFirstChildWhichIsA("BasePart")
-		if first then
-			clone.PrimaryPart = first
-		end
-	end
-
-	-- Set attributes so pickup knows what this is
-	clone:SetAttribute("ResourceType", itemName)
-	clone:SetAttribute("ResourceAmount", dropCount)
-	clone:SetAttribute("IsToolDrop", not isResource)
-	clone:SetAttribute("DropperUserId", player.UserId)
-
-	clone:PivotTo(CFrame.new(spawnPos))
-	clone.Parent = workspace
-
-	-- Unanchor and set up physics (Massless so they don't affect raft speed)
-	for _, part in clone:GetDescendants() do
-		if part:IsA("BasePart") then
-			part.Anchored = false
-			part.Massless = true
-			part:SetNetworkOwner(nil)
-		end
-	end
-
-	-- Inherit the raft's velocity so the item stays with the raft long enough
-	-- to be detected by on-raft systems (e.g. the sawmill log polling). The
-	-- raft cruises at 25 studs/s; without this, a freshly dropped log has
-	-- zero horizontal velocity and the raft slides out from under it within
-	-- a single detection cycle.
-	local raft = workspace:FindFirstChild("Raft")
-	local primaryClonePart = clone:IsA("BasePart") and clone or (clone:IsA("Model") and clone.PrimaryPart)
-	if raft and raft.PrimaryPart and primaryClonePart then
-		primaryClonePart.AssemblyLinearVelocity = raft.PrimaryPart.AssemblyLinearVelocity
-	end
-
-	-- Tag as DroppedItem for E-key instant pickup
-	CollectionService:AddTag(clone, "DroppedItem")
-
-	-- Auto-despawn after lifetime
-	task.delay(DROPPED_LIFETIME, function()
-		if clone and clone.Parent then
-			clone:Destroy()
-		end
-	end)
+	spawnPhysicalDrop(player, itemName, dropCount, not isResource, dropPosition)
 
 	-- Sync inventory to client
 	if _G.SendInventory then
@@ -257,19 +272,26 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		if not backpack then return end
 		local toolClone = toolTemplate:Clone()
 		toolClone.Parent = backpack
+
+		droppedItem:Destroy()
+		if _G.SendInventory then _G.SendInventory(player) end
 	else
-		-- Resource pickup: add to inventory count
-		local inv = _G.GetInventory and _G.GetInventory(player)
-		if not inv then return end
-		inv[resType] = (inv[resType] or 0) + resAmount
-	end
+		-- Resource pickup: route through AddResourceToInventory so a
+		-- full inventory sends the overflow back into the world instead
+		-- of silently consuming this pile.
+		if not _G.AddResourceToInventory then return end
+		local added, overflow = _G.AddResourceToInventory(player, resType, resAmount, itemPos)
+		if added <= 0 then
+			-- Inventory had no room at all; leave the pile where it is
+			-- so the player can free space and pick it up again.
+			return
+		end
 
-	-- Destroy the dropped item
-	droppedItem:Destroy()
-
-	-- Sync inventory to client
-	if _G.SendInventory then
-		_G.SendInventory(player)
+		droppedItem:Destroy()
+		-- AddResourceToInventory already calls SendInventory; nothing to do.
+		-- If we dropped overflow, SpawnResourceDrop spawned a new pile
+		-- to represent the leftovers.
+		_ = overflow
 	end
 end)
 

@@ -87,16 +87,12 @@ end
 
 local function grantCatchToPlayer(player, resourceName)
 	if not player then return end
-	if _G.GetInventory then
-		local inv = _G.GetInventory(player)
-		if inv then
-			inv[resourceName] = (inv[resourceName] or 0) + 1
-			if _G.SendInventory then
-				_G.SendInventory(player)
-			end
-			if _G.OnQuestResource then
-				_G.OnQuestResource(player, resourceName, 1)
-			end
+	-- Route through AddResourceToInventory so fish don't disappear into
+	-- a full inventory — overflow lands on the ground next to the player.
+	if _G.AddResourceToInventory then
+		_G.AddResourceToInventory(player, resourceName, 1, nil)
+		if _G.OnQuestResource then
+			_G.OnQuestResource(player, resourceName, 1)
 		end
 	end
 end

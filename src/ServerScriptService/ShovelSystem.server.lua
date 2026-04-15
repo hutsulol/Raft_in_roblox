@@ -64,11 +64,14 @@ digDirtEvent.OnServerEvent:Connect(function(player, part)
 
 	if health <= 0 then
 		local digType = part:GetAttribute("DigType") or "Sand"
-		local inv = _G.GetInventory and _G.GetInventory(player) or {}
-		inv[digType] = (inv[digType] or 0) + 1
-
-		if _G.SendInventory then
-			_G.SendInventory(player)
+		-- Route through AddResourceToInventory so a full inventory
+		-- overflows into a world drop instead of being invisibly stored.
+		if _G.AddResourceToInventory then
+			_G.AddResourceToInventory(player, digType, 1, part.Position)
+		else
+			local inv = _G.GetInventory and _G.GetInventory(player) or {}
+			inv[digType] = (inv[digType] or 0) + 1
+			if _G.SendInventory then _G.SendInventory(player) end
 		end
 		if _G.OnQuestResource then
 			_G.OnQuestResource(player, digType, 1)

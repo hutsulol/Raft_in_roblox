@@ -256,7 +256,13 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 		end
 
 	elseif recipe.craftType == "resource" then
-		inv[recipe.name] = (inv[recipe.name] or 0) + 1
+		-- Route through AddResourceToInventory so full-inventory
+		-- overflow spills to the ground instead of being silently stored.
+		if _G.AddResourceToInventory then
+			_G.AddResourceToInventory(player, recipe.name, 1, nil)
+		else
+			inv[recipe.name] = (inv[recipe.name] or 0) + 1
+		end
 
 	elseif recipe.craftType == "place" then
 		if template then

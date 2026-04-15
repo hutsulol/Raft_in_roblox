@@ -89,6 +89,107 @@ _G.SendInventory = function(player)
 	inventoryEvent:FireClient(player, _G.GetInventory(player))
 end
 
+-- ─── Inventory capacity ────────────────────────────────────────────────
+-- The client lays out inventory as slots of MAX_STACK, constrained by
+-- the player's UnlockedInventorySlots (driven by the Strength stat).
+-- Without a matching server-side capacity check, picks-ups on a full
+-- inventory silently incremented the flat count; the client couldn't
+-- render those extra stacks (they fell past the unlocked slot budget)
+-- and they'd become "invisible" items that popped into view whenever a
+-- visible slot freed up. The helpers below mirror the client's layout
+-- math so overflow is redirected to a world drop instead.
+local MAX_STACK = 30
+local DEFAULT_HOTBAR_SLOTS = 8
+local DEFAULT_BASE_GRID_SLOTS = 5
+
+local function getUnlockedSlots(player)
+	local chars = player and player:FindFirstChild("Characteristics")
+	if chars then
+		local unlocked = chars:FindFirstChild("UnlockedInventorySlots")
+		if unlocked and typeof(unlocked.Value) == "number" then
+			return unlocked.Value
+		end
+	end
+	return DEFAULT_HOTBAR_SLOTS + DEFAULT_BASE_GRID_SLOTS
+end
+
+local function countToolSlots(player)
+	local n = 0
+	local backpack = player and player:FindFirstChild("Backpack")
+	if backpack then
+		for _, tool in backpack:GetChildren() do
+			if tool:IsA("Tool") then n = n + 1 end
+		end
+	end
+	local char = player and player.Character
+	if char then
+		for _, tool in char:GetChildren() do
+			if tool:IsA("Tool") then n = n + 1 end
+		end
+	end
+	return n
+end
+
+local function countResourceStacks(inv, excludeName)
+	local n = 0
+	for name, count in pairs(inv) do
+		if name ~= excludeName and type(count) == "number" and count > 0 then
+			n = n + math.ceil(count / MAX_STACK)
+		end
+	end
+	return n
+end
+
+-- How many more units of `itemName` can this player accept without
+-- overflowing the visible (unlocked) inventory? Accounts for room left
+-- in the partial stack of the same item plus any fully-empty slots.
+_G.GetInventoryCapacity = function(player, itemName)
+	local inv = _G.GetInventory(player)
+	local unlocked = getUnlockedSlots(player)
+	local tools = countToolSlots(player)
+
+	local existing = (itemName and inv[itemName]) or 0
+	local existingStacks = existing > 0 and math.ceil(existing / MAX_STACK) or 0
+	local partialSpace = existingStacks > 0
+		and (existingStacks * MAX_STACK - existing)
+		or 0
+
+	local otherStacks = countResourceStacks(inv, itemName)
+	local usedSlots   = tools + existingStacks + otherStacks
+	local emptySlots  = math.max(0, unlocked - usedSlots)
+
+	return emptySlots * MAX_STACK + partialSpace
+end
+
+-- Canonical "player gained a resource" entry point. Adds what fits and
+-- spawns the overflow as a physical drop next to the player (via
+-- _G.SpawnResourceDrop, defined by DropItem.server.lua). Callers that
+-- previously wrote `inv[x] = (inv[x] or 0) + amount` should use this.
+--
+-- Returns (added, overflow). `dropPosition` is optional; if nil, the
+-- overflow spawns in front of the player.
+_G.AddResourceToInventory = function(player, itemName, amount, dropPosition)
+	if type(itemName) ~= "string" or itemName == "" then return 0, 0 end
+	amount = tonumber(amount) or 0
+	if amount <= 0 then return 0, 0 end
+
+	local inv = _G.GetInventory(player)
+	local capacity = _G.GetInventoryCapacity(player, itemName)
+	local toAdd    = math.min(amount, math.max(0, capacity))
+	local overflow = amount - toAdd
+
+	if toAdd > 0 then
+		inv[itemName] = (inv[itemName] or 0) + toAdd
+	end
+
+	if overflow > 0 and _G.SpawnResourceDrop then
+		_G.SpawnResourceDrop(player, itemName, overflow, dropPosition)
+	end
+
+	_G.SendInventory(player)
+	return toAdd, overflow
+end
+
 -- Spawn cycle counter for different spawn rates
 local spawnCycle = 0
 
@@ -156,16 +257,16 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 	local hp = damageResource(resource, 1)
 
 	if hp <= 0 then
-		-- Collected by player click: give reward
-		local inv = _G.GetInventory(player)
-
+		-- Collected by player click: give reward. Routes through
+		-- AddResourceToInventory so a full inventory doesn't silently
+		-- eat the reward — overflow spawns as a world drop next to
+		-- where the resource was.
 		local resType = resource:GetAttribute("ResourceType") or "Log"
 		local resAmount = resource:GetAttribute("ResourceAmount") or 1
 
-		inv[resType] = (inv[resType] or 0) + resAmount
+		_G.AddResourceToInventory(player, resType, resAmount, resourcePos)
 		collectNotify:FireClient(player, "collected", resource, resType, resAmount)
 		collectNotify:FireAllClients("broke", resource, resType)
-		_G.SendInventory(player)
 
 		if _G.OnQuestResource then
 			_G.OnQuestResource(player, resType, resAmount)

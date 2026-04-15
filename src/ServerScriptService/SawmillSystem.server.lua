@@ -73,18 +73,19 @@ local function processLog(sawmill, droppedLog)
 	if not parts.hexagonPlacer or not parts.sawBlade or not parts.hexagonClaimer then return end
 
 	-- Take only one log; return any extras to the dropper's inventory
+	-- (overflow falls to the ground if they're full).
 	local stackAmount = droppedLog:GetAttribute("ResourceAmount") or 1
 	if stackAmount > 1 then
 		local dropperId = droppedLog:GetAttribute("DropperUserId")
 		local dropper = dropperId and Players:GetPlayerByUserId(dropperId) or nil
-		if dropper and _G.GetInventory then
-			local inv = _G.GetInventory(dropper)
-			if inv then
-				inv["Log"] = (inv["Log"] or 0) + (stackAmount - 1)
-				if _G.SendInventory then
-					_G.SendInventory(dropper)
-				end
+		if dropper and _G.AddResourceToInventory then
+			local dropPos
+			if droppedLog:IsA("Model") then
+				dropPos = droppedLog:GetPivot().Position
+			elseif droppedLog:IsA("BasePart") then
+				dropPos = droppedLog.Position
 			end
+			_G.AddResourceToInventory(dropper, "Log", stackAmount - 1, dropPos)
 		end
 	end
 
