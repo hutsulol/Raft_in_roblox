@@ -388,9 +388,15 @@ local function buildMercViewport(parent, mercName, weaponId)
 			grip.Name  = "RightGrip"
 			grip.Part0 = rightArm
 			grip.Part1 = handle
-			-- Exact value Roblox's engine writes into RightGrip.C0 when a
-			-- Tool is equipped on an R6 character in a live game.
-			grip.C0    = CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
+			-- Engine-canonical RightGrip.C0 rotated 90° to the right around
+			-- the arm's grip-up axis so the blade / rod points forward
+			-- (out in front of the pirate) instead of across his body.
+			-- In a live game Roblox relies on the Tool's own orientation +
+			-- the equip animation to land the weapon pointing forward;
+			-- inside a WorldModel preview we have to bake the rotation
+			-- into C0 ourselves.
+			local baseGripC0 = CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
+			grip.C0    = baseGripC0 * CFrame.Angles(0, -math.pi / 2, 0)
 			grip.C1    = toolGripC1
 			grip.Parent = rightArm
 
