@@ -82,9 +82,28 @@ local hiddenPanels = {}    -- panels hidden while mercenaries page is open
 local currentMercNames = {}  -- remembered across page switches
 local currentSelectedMerc = nil
 
+-- Persistent viewport cache so switching between the character page and the
+-- equipment page (and swapping weapons within the equipment page) doesn't
+-- tear down the rig and restart the idle animation. Keyed by merc name —
+-- we detach the ViewportFrame from the outgoing page *before* the page
+-- itself is destroyed, then reparent it to the new page.
+--   [mercName] = { vp = ViewportFrame, clone = Model, weaponId = string }
+local viewportCache = {}
+
 -- Forward declarations so character page and equipment page can call each other
 local buildPage
 local buildEquipmentPage
+
+-- Detach every cached viewport from its current parent. Call BEFORE
+-- destroying a page so the viewport survives the teardown and can be
+-- reparented to the new page.
+local function detachCachedViewports()
+	for _, entry in viewportCache do
+		if entry.vp and entry.vp.Parent then
+			entry.vp.Parent = nil
+		end
+	end
+end
 
 -- Hide all phone-menu panels (direct children of root) except the
 -- mercenaries page itself.
@@ -110,7 +129,132 @@ end
 
 -- ─── Build the 3D viewport for a mercenary model ────────────────────────
 
+-- Rebuild only the weapon inside an already-constructed clone. Called at
+-- viewport creation time and on every equipment change so swapping
+-- between Sword and FishingRod doesn't restart the idle animation.
+local function applyWeaponToClone(clone, weaponId)
+	local requestedTool = weaponId
+	if not requestedTool or requestedTool == "Sword" then
+		requestedTool = "ClassicSword"
+	end
+
+	local rightArm = clone:FindFirstChild("Right Arm")
+
+	-- Strip any Tool we previously flattened into the clone so only the
+	-- picked weapon remains.
+	for _, child in clone:GetChildren() do
+		if child:IsA("Tool") then
+			child:Destroy()
+		end
+	end
+	-- Remove the previous grip + anything we previously parented directly
+	-- into the clone (Handle + any aux parts from a flattened Tool).
+	-- Identify previously-flattened weapon parts by their AccessoryWeld /
+	-- RightGrip attachments — but simpler: tag them with an attribute when
+	-- we flatten so we can find and remove them on swap.
+	if rightArm then
+		for _, d in rightArm:GetChildren() do
+			if (d:IsA("Motor6D") or d:IsA("Weld")) and d.Name == "RightGrip" then
+				d:Destroy()
+			end
+		end
+	end
+	for _, child in clone:GetChildren() do
+		if child:IsA("BasePart") and child:GetAttribute("MercWeaponPart") then
+			child:Destroy()
+		elseif (child:IsA("Model") or child:IsA("Folder"))
+			and child:GetAttribute("MercWeaponPart")
+		then
+			child:Destroy()
+		end
+	end
+
+	local hasWeapon = false
+	local weaponTemplate = ReplicatedStorage:FindFirstChild(requestedTool)
+		or ReplicatedStorage:FindFirstChild(requestedTool, true)
+	if weaponTemplate and rightArm then
+		local wArchivable = weaponTemplate.Archivable
+		weaponTemplate.Archivable = true
+		local wClone = weaponTemplate:Clone()
+		weaponTemplate.Archivable = wArchivable
+
+		for _, d in wClone:GetDescendants() do
+			if d:IsA("Script") or d:IsA("LocalScript") then
+				d:Destroy()
+			elseif d:IsA("BasePart") then
+				d.Transparency = 0
+				d.CanCollide   = false
+				d.Anchored     = false
+				d.Massless     = true
+			end
+		end
+
+		local handle = wClone:FindFirstChild("Handle")
+			or wClone:FindFirstChildWhichIsA("BasePart", true)
+		local toolGripC1 = wClone:IsA("Tool") and wClone.Grip or CFrame.new()
+
+		if handle then
+			for _, w in handle:GetChildren() do
+				if w:IsA("Motor6D") or w:IsA("Weld") then
+					local p0 = w.Part0
+					if not p0 or not p0:IsDescendantOf(wClone) then
+						w:Destroy()
+					end
+				end
+			end
+
+			local grip = Instance.new("Motor6D")
+			grip.Name  = "RightGrip"
+			grip.Part0 = rightArm
+			grip.Part1 = handle
+			-- Engine-canonical RightGrip.C0 composed with two 90° rotations
+			-- dialed in by iteration: the X-axis pitch pivots the weapon
+			-- forward out of the hand, and the Z-axis roll flips the blade
+			-- from pointing down at the ground to pointing up — the "ready"
+			-- pose the pirate uses in-game.
+			local baseGripC0 = CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
+			grip.C0    = baseGripC0 * CFrame.Angles(-math.pi / 2, 0, math.pi / 2)
+			grip.C1    = toolGripC1
+			grip.Parent = rightArm
+
+			-- Tag the weapon parts so we can find and remove them on the
+			-- next swap without touching rig parts (Head, Torso, arms, etc.)
+			-- or accessories.
+			if wClone:IsA("Tool") then
+				for _, child in wClone:GetChildren() do
+					child.Parent = clone
+					pcall(function() child:SetAttribute("MercWeaponPart", true) end)
+				end
+				wClone:Destroy()
+			else
+				wClone.Parent = clone
+				pcall(function() wClone:SetAttribute("MercWeaponPart", true) end)
+			end
+			hasWeapon = true
+		else
+			wClone:Destroy()
+		end
+	end
+
+	return hasWeapon
+end
+
 local function buildMercViewport(parent, mercName, weaponId)
+	-- Cache hit: reparent the existing viewport to the new page, swap the
+	-- weapon if needed, and return. No rig rebuild, no animation restart.
+	local cached = viewportCache[mercName]
+	if cached and cached.vp and cached.vp.Parent ~= parent then
+		cached.vp.Parent = parent
+	end
+	if cached and cached.vp then
+		if cached.weaponId ~= weaponId then
+			applyWeaponToClone(cached.clone, weaponId)
+			cached.weaponId = weaponId
+		end
+		return cached.vp
+	end
+
+	-- Cache miss: build the full viewport (rig + hat welding + lights).
 	local vp = Instance.new("ViewportFrame")
 	vp.Name = "MercViewport"
 	vp.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -316,111 +460,12 @@ local function buildMercViewport(parent, mercName, weaponId)
 	-- Position and rotate to face camera
 	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
 
-	-- ── Weapon swap in viewport ─────────────────────────────────────
-	-- Mirror MercenarySpawner exactly so the menu preview matches the
-	-- in-game pirate: strip every Tool that ships with the template,
-	-- clone the requested one from ReplicatedStorage, weld its Handle
-	-- into the right hand with the engine-canonical R6 RightGrip
-	-- (C0 = CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0), C1 =
-	-- Tool.Grip), then play the pirate's own `toolnone` idle animation
-	-- so the arm is raised the same way it is in gameplay. The earlier
-	-- "reuse the template's baked weld" path worked for sword only
-	-- because the template didn't bake one for the rod.
-	local requestedTool = weaponId
-	if not requestedTool or requestedTool == "Sword" then
-		requestedTool = "ClassicSword"
-	end
-
-	-- Wipe any template-supplied Tools (ClassicSword / FishingRod / etc.)
-	-- and any grip Motor6D linking Right Arm → Tool.Handle that the
-	-- template baked in. We rebuild both from scratch to match the in-game
-	-- equip flow.
-	local rightArm = clone:FindFirstChild("Right Arm")
-	for _, child in clone:GetChildren() do
-		if child:IsA("Tool") then child:Destroy() end
-	end
-	if rightArm then
-		for _, d in rightArm:GetChildren() do
-			if (d:IsA("Motor6D") or d:IsA("Weld")) and d.Name == "RightGrip" then
-				d:Destroy()
-			end
-		end
-	end
-
-	local hasWeapon = false
-	local weaponTemplate = ReplicatedStorage:FindFirstChild(requestedTool)
-		or ReplicatedStorage:FindFirstChild(requestedTool, true)
-	if weaponTemplate and rightArm then
-		local wArchivable = weaponTemplate.Archivable
-		weaponTemplate.Archivable = true
-		local wClone = weaponTemplate:Clone()
-		weaponTemplate.Archivable = wArchivable
-
-		for _, d in wClone:GetDescendants() do
-			if d:IsA("Script") or d:IsA("LocalScript") then
-				d:Destroy()
-			elseif d:IsA("BasePart") then
-				d.Transparency = 0
-				d.CanCollide   = false
-				d.Anchored     = false
-				d.Massless     = true
-			end
-		end
-
-		local handle = wClone:FindFirstChild("Handle")
-			or wClone:FindFirstChildWhichIsA("BasePart", true)
-		local toolGripC1 = wClone:IsA("Tool") and wClone.Grip or CFrame.new()
-
-		if handle then
-			-- Strip welds linking Handle to anything OUTSIDE the weapon
-			-- (stale grip welds baked into the asset). Keep internal welds
-			-- so multi-part tools like FishingRod stay assembled.
-			for _, w in handle:GetChildren() do
-				if w:IsA("Motor6D") or w:IsA("Weld") then
-					local p0 = w.Part0
-					if not p0 or not p0:IsDescendantOf(wClone) then
-						w:Destroy()
-					end
-				end
-			end
-
-			local grip = Instance.new("Motor6D")
-			grip.Name  = "RightGrip"
-			grip.Part0 = rightArm
-			grip.Part1 = handle
-			-- Engine-canonical RightGrip.C0 composed with two 90° rotations
-			-- dialed in by iteration: the X-axis pitch pivots the weapon
-			-- forward out of the hand, and the added Z-axis roll flips the
-			-- blade from pointing down at the ground to pointing up — the
-			-- "ready" pose the pirate uses in-game.
-			local baseGripC0 = CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
-			grip.C0    = baseGripC0 * CFrame.Angles(-math.pi / 2, 0, math.pi / 2)
-			grip.C1    = toolGripC1
-			grip.Parent = rightArm
-
-			-- Move the Tool's children into the clone so the ViewportFrame
-			-- renders them (a Tool's contents don't render as "held"
-			-- without a live Humanoid:EquipTool pass).
-			if wClone:IsA("Tool") then
-				for _, child in wClone:GetChildren() do
-					child.Parent = clone
-				end
-				wClone:Destroy()
-			else
-				wClone.Parent = clone
-			end
-			hasWeapon = true
-		else
-			wClone:Destroy()
-		end
-	end
+	-- Set up the picked weapon (sword / rod) on the rig.
+	applyWeaponToClone(clone, weaponId)
 
 	-- Play the plain body idle so the pirate has its breathing / sway in
-	-- the preview. We tried layering the pirate's `toolnone` tool-hold
-	-- animation on top when a weapon was equipped (to match the raised-arm
-	-- pose seen in-game) but it posed the arm statically and clobbered the
-	-- idle, so we dropped it. The weapon just hangs from the hand here —
-	-- same way the template's baked sword used to display.
+	-- the preview. Runs once during the initial build; subsequent equipment
+	-- swaps keep this track alive via the persistent viewport cache.
 	if animator then
 		pcall(function()
 			local anim = Instance.new("Animation")
@@ -471,12 +516,24 @@ local function buildMercViewport(parent, mercName, weaponId)
 		fillLight.Parent = fillAtt
 	end
 
+	-- Remember this viewport so future page switches / weapon swaps can
+	-- reuse it instead of tearing down the rig (which restarts the idle
+	-- animation and blinks the preview for a frame).
+	viewportCache[mercName] = {
+		vp       = vp,
+		clone    = clone,
+		weaponId = weaponId,
+	}
+
 	return vp
 end
 
 -- ─── Build the full page ────────────────────────────────────────────────
 
 buildPage = function(mercNames)
+	-- Detach cached viewports from the outgoing page so :Destroy() below
+	-- doesn't take them (and the rig + animation tracks) down with it.
+	detachCachedViewports()
 	if page then page:Destroy() end
 
 	currentMercNames = mercNames
@@ -806,6 +863,9 @@ local EQUIP_ITEMS = {
 -- ─── Build equipment page ───────────────────────────────────────────────
 
 buildEquipmentPage = function(mercName, mercNames)
+	-- Detach cached viewports from the outgoing page so :Destroy() below
+	-- doesn't take them (and the rig + animation tracks) down with it.
+	detachCachedViewports()
 	if page then page:Destroy() end
 
 	currentSelectedMerc = mercName
@@ -1053,7 +1113,9 @@ buildEquipmentPage = function(mercName, mercNames)
 	local currentViewport = nil
 
 	local function rebuildViewport()
-		if currentViewport then currentViewport:Destroy() end
+		-- Don't destroy the cached viewport — buildMercViewport reuses the
+		-- existing rig + animator and only swaps the weapon in-place, so the
+		-- preview doesn't blink and the idle track keeps playing.
 		-- Pass the selected weapon so the pirate holds it in the viewport
 		local weaponToShow = selectedItemId
 		if activeCategory ~= "Weapons" then
