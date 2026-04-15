@@ -19,12 +19,12 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 local MANA_ICON_ASSET = "rbxassetid://131647230431306"
 
-local COLOR_ICON_BG     = Color3.fromRGB(90, 60, 30)
-local COLOR_ICON_STROKE = Color3.fromRGB(60, 40, 20)
-local COLOR_BAR_BG      = Color3.fromRGB(160, 130, 85)
-local COLOR_BAR_STROKE  = Color3.fromRGB(90, 60, 30)
+local COLOR_ICON_BG     = Color3.fromRGB(10, 25, 55)
+local COLOR_ICON_STROKE = Color3.fromRGB(80, 180, 255)
+local COLOR_BAR_BG      = Color3.fromRGB(15, 35, 70)
+local COLOR_BAR_STROKE  = Color3.fromRGB(80, 180, 255)
 local COLOR_FILL        = Color3.fromRGB(80, 160, 255)
-local COLOR_TEXT        = Color3.fromRGB(255, 255, 255)
+local COLOR_TEXT        = Color3.fromRGB(220, 240, 255)
 
 local TWEEN_TIME = 0.25
 
@@ -49,19 +49,19 @@ task.spawn(function()
 end)
 
 -- Container — top slot of the left HUD stack (mana / hunger+water / health).
--- Bottom sits 68px above HungerUI's bottom (0.5, 220 -> 152 -> 84).
+-- Bottom sits 42px above HungerUI's bottom (36 tall + 6 gap).
 local container = Instance.new("Frame")
 container.Name = "ManaContainer"
 container.AnchorPoint = Vector2.new(0, 1)
-container.Position = UDim2.new(0, 20, 0.5, 84)
-container.Size = UDim2.new(0, 400, 0, 56)
+container.Position = UDim2.new(0, 14, 1, -102)
+container.Size = UDim2.new(0, 260, 0, 36)
 container.BackgroundTransparency = 1
 container.Parent = screenGui
 
 -- ─── Icon badge ─────────────────────────────────────────────────────────
 local iconBg = Instance.new("Frame")
 iconBg.Name = "IconBg"
-iconBg.Size = UDim2.new(0, 56, 0, 56)
+iconBg.Size = UDim2.new(0, 36, 0, 36)
 iconBg.Position = UDim2.new(0, 0, 0, 0)
 iconBg.BackgroundColor3 = COLOR_ICON_BG
 iconBg.BorderSizePixel = 0
@@ -73,7 +73,7 @@ iconBgCorner.Parent = iconBg
 
 local iconBgStroke = Instance.new("UIStroke")
 iconBgStroke.Color = COLOR_ICON_STROKE
-iconBgStroke.Thickness = 3
+iconBgStroke.Thickness = 2
 iconBgStroke.Parent = iconBg
 
 local iconImage = Instance.new("ImageLabel")
@@ -82,15 +82,15 @@ iconImage.BackgroundTransparency = 1
 iconImage.Image = MANA_ICON_ASSET
 iconImage.AnchorPoint = Vector2.new(0.5, 0.5)
 iconImage.Position = UDim2.fromScale(0.5, 0.5)
-iconImage.Size = UDim2.fromOffset(44, 44)
+iconImage.Size = UDim2.fromOffset(28, 28)
 iconImage.Parent = iconBg
 
 -- ─── Bar background + fill ──────────────────────────────────────────────
 local barBg = Instance.new("Frame")
 barBg.Name = "BarBg"
 barBg.AnchorPoint = Vector2.new(0, 0.5)
-barBg.Position = UDim2.new(0, 68, 0.5, 0)
-barBg.Size = UDim2.new(0, 320, 0, 40)
+barBg.Position = UDim2.new(0, 40, 0.5, 0)
+barBg.Size = UDim2.new(0, 216, 0, 26)
 barBg.BackgroundColor3 = COLOR_BAR_BG
 barBg.BorderSizePixel = 0
 -- Don't clip: we want the text to stay readable even when the fill is
@@ -100,12 +100,12 @@ barBg.ClipsDescendants = false
 barBg.Parent = container
 
 local barBgCorner = Instance.new("UICorner")
-barBgCorner.CornerRadius = UDim.new(0, 8)
+barBgCorner.CornerRadius = UDim.new(0, 6)
 barBgCorner.Parent = barBg
 
 local barBgStroke = Instance.new("UIStroke")
 barBgStroke.Color = COLOR_BAR_STROKE
-barBgStroke.Thickness = 4
+barBgStroke.Thickness = 2
 barBgStroke.Parent = barBg
 
 local barFill = Instance.new("Frame")
@@ -117,7 +117,7 @@ barFill.ZIndex = 1
 barFill.Parent = barBg
 
 local fillCorner = Instance.new("UICorner")
-fillCorner.CornerRadius = UDim.new(0, 8)
+fillCorner.CornerRadius = UDim.new(0, 6)
 fillCorner.Parent = barFill
 
 -- Numeric label — parented to the bar bg (not the fill) so its X
@@ -127,13 +127,13 @@ local manaText = Instance.new("TextLabel")
 manaText.Name = "ManaText"
 manaText.BackgroundTransparency = 1
 manaText.Font = Enum.Font.GothamBold
-manaText.TextSize = 26
+manaText.TextSize = 16
 manaText.TextColor3 = COLOR_TEXT
 manaText.TextStrokeTransparency = 0.25
 manaText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
 manaText.AnchorPoint = Vector2.new(0.5, 0.5)
 manaText.Position = UDim2.fromScale(0.5, 0.5)
-manaText.Size = UDim2.fromOffset(120, 32)
+manaText.Size = UDim2.fromOffset(80, 20)
 manaText.Text = "0"
 manaText.ZIndex = 2
 manaText.Parent = barBg

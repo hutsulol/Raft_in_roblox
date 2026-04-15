@@ -31,23 +31,21 @@ task.spawn(function()
 end)
 
 -- Container — bottom bar of the three (thirst, hunger, health).
--- Anchored to the vertical centre of the screen so its bottom lines
--- up with the inventory panel's bottom edge (panel height = 440,
--- centered -> bottom at 0.5 + 220).
+-- Anchored bottom-left, sits at the same vertical level as the hotbar.
 local container = Instance.new("Frame")
 container.Name = "HealthContainer"
 container.AnchorPoint = Vector2.new(0, 1)
-container.Position = UDim2.new(0, 20, 0.5, 220)
-container.Size = UDim2.new(0, 400, 0, 56)
+container.Position = UDim2.new(0, 14, 1, -18)
+container.Size = UDim2.new(0, 260, 0, 36)
 container.BackgroundTransparency = 1
 container.Parent = screenGui
 
--- Icon background (brown circle)
+-- Icon background (dark-navy circle, cyan stroke — matches inventory theme)
 local iconBg = Instance.new("Frame")
 iconBg.Name = "IconBg"
-iconBg.Size = UDim2.new(0, 56, 0, 56)
+iconBg.Size = UDim2.new(0, 36, 0, 36)
 iconBg.Position = UDim2.new(0, 0, 0, 0)
-iconBg.BackgroundColor3 = Color3.fromRGB(90, 60, 30)
+iconBg.BackgroundColor3 = Color3.fromRGB(10, 25, 55)
 iconBg.BorderSizePixel = 0
 iconBg.Parent = container
 
@@ -56,8 +54,8 @@ iconBgCorner.CornerRadius = UDim.new(1, 0)
 iconBgCorner.Parent = iconBg
 
 local iconBgStroke = Instance.new("UIStroke")
-iconBgStroke.Color = Color3.fromRGB(60, 40, 20)
-iconBgStroke.Thickness = 3
+iconBgStroke.Color = Color3.fromRGB(80, 180, 255)
+iconBgStroke.Thickness = 2
 iconBgStroke.Parent = iconBg
 
 -- Icon
@@ -66,40 +64,40 @@ icon.Name = "Icon"
 icon.Size = UDim2.new(1, 0, 1, 0)
 icon.BackgroundTransparency = 1
 icon.Text = "\u{2764}"
-icon.TextSize = 32
+icon.TextSize = 20
 icon.Font = Enum.Font.GothamBold
-icon.TextColor3 = Color3.fromRGB(255, 255, 255)
+icon.TextColor3 = Color3.fromRGB(220, 240, 255)
 icon.Parent = iconBg
 
--- Bar background (tan/wooden)
+-- Bar background (dark-navy track with cyan stroke)
 local barBg = Instance.new("Frame")
 barBg.Name = "BarBg"
 barBg.AnchorPoint = Vector2.new(0, 0.5)
-barBg.Position = UDim2.new(0, 68, 0.5, 0)
-barBg.Size = UDim2.new(0, 320, 0, 40)
-barBg.BackgroundColor3 = Color3.fromRGB(160, 130, 85)
+barBg.Position = UDim2.new(0, 40, 0.5, 0)
+barBg.Size = UDim2.new(0, 216, 0, 26)
+barBg.BackgroundColor3 = Color3.fromRGB(15, 35, 70)
 barBg.BorderSizePixel = 0
 barBg.Parent = container
 
 local barBgCorner = Instance.new("UICorner")
-barBgCorner.CornerRadius = UDim.new(0, 8)
+barBgCorner.CornerRadius = UDim.new(0, 6)
 barBgCorner.Parent = barBg
 
 local barBgStroke = Instance.new("UIStroke")
-barBgStroke.Color = Color3.fromRGB(90, 60, 30)
-barBgStroke.Thickness = 4
+barBgStroke.Color = Color3.fromRGB(80, 180, 255)
+barBgStroke.Thickness = 2
 barBgStroke.Parent = barBg
 
 -- Bar fill
 local barFill = Instance.new("Frame")
 barFill.Name = "Fill"
 barFill.Size = UDim2.new(1, 0, 1, 0)
-barFill.BackgroundColor3 = Color3.fromRGB(180, 45, 40)
+barFill.BackgroundColor3 = Color3.fromRGB(210, 60, 70)
 barFill.BorderSizePixel = 0
 barFill.Parent = barBg
 
 local fillCorner = Instance.new("UICorner")
-fillCorner.CornerRadius = UDim.new(0, 8)
+fillCorner.CornerRadius = UDim.new(0, 6)
 fillCorner.Parent = barFill
 
 -- ─── Update from Humanoid Health ───
@@ -112,11 +110,11 @@ local function updateBar(health, maxHealth)
 
 	local color
 	if ratio > 0.5 then
-		color = Color3.fromRGB(180, 45, 40)
+		color = Color3.fromRGB(210, 60, 70)
 	elseif ratio > 0.25 then
-		color = Color3.fromRGB(200, 100, 30)
+		color = Color3.fromRGB(220, 120, 60)
 	else
-		color = Color3.fromRGB(150, 20, 20)
+		color = Color3.fromRGB(170, 40, 50)
 	end
 
 	TweenService:Create(barFill, TweenInfo.new(0.3), {
@@ -140,6 +138,6 @@ end
 player.CharacterAdded:Connect(function(newChar)
 	-- Reset to full on respawn
 	barFill.Size = UDim2.new(1, 0, 1, 0)
-	barFill.BackgroundColor3 = Color3.fromRGB(180, 45, 40)
+	barFill.BackgroundColor3 = Color3.fromRGB(210, 60, 70)
 	onCharacterAdded(newChar)
 end)
