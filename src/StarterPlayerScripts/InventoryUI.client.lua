@@ -82,8 +82,11 @@ local TOOL_ICONS = {
 }
 
 -- ── Item rarity ────────────────────────────────────────────────────────
--- Each rarity has its own inventory-slot background frame. Items not
--- listed in ITEM_RARITY default to "common".
+-- Each rarity has its own inventory-slot background frame. Only tools
+-- (machete, pickaxe, shovel, grapes, fishing rod, phone) get a rarity
+-- background — regular resources render without any frame so the slot
+-- stays clean. Items not in ITEM_RARITY therefore return nil and
+-- renderSlot skips the frame entirely.
 local RARITY_FRAMES = {
 	common = "rbxassetid://134988922333958",
 	rare = "rbxassetid://79767754854530",
@@ -91,16 +94,26 @@ local RARITY_FRAMES = {
 }
 
 local ITEM_RARITY = {
-	FishingRod = "rare",
+	-- Common tools
+	["Machete"]  = "common",
+	["Pick-Axe"] = "common",
+	["Shovel"]   = "common",
+	["Grapes"]   = "common",
+	["[GRAPES]"] = "common",
+	-- Rare
+	["FishingRod"] = "rare",
+	-- Super rare
+	["Phone"] = "super_rare",
 }
 
 local function getItemRarity(itemName)
-	return (itemName and ITEM_RARITY[itemName]) or "common"
+	-- Returns nil for items that should render without a rarity frame.
+	return itemName and ITEM_RARITY[itemName] or nil
 end
 
 _G.GetItemRarity = getItemRarity
 _G.GetRarityFrameAsset = function(rarity)
-	return RARITY_FRAMES[rarity] or RARITY_FRAMES.common
+	return RARITY_FRAMES[rarity] or ""
 end
 
 -- Exposed so the mercenary backpack UI can reuse the same icons.
@@ -669,16 +682,21 @@ local function renderSlot(slot, data)
 	if not data then return end
 
 	-- Rarity background fills the slot; item icon sits on top of it.
-	local rarityFrame = Instance.new("ImageLabel")
-	rarityFrame.Name = "RarityFrame"
-	rarityFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-	rarityFrame.Size = UDim2.new(1, 0, 1, 0)
-	rarityFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-	rarityFrame.BackgroundTransparency = 1
-	rarityFrame.Image = RARITY_FRAMES[getItemRarity(data.name)] or RARITY_FRAMES.common
-	rarityFrame.ScaleType = Enum.ScaleType.Stretch
-	rarityFrame.ZIndex = 1
-	rarityFrame.Parent = slot
+	-- Regular resources (items not listed in ITEM_RARITY) get no frame,
+	-- so the slot renders with just its default slot background.
+	local rarityAsset = RARITY_FRAMES[getItemRarity(data.name)]
+	if rarityAsset then
+		local rarityFrame = Instance.new("ImageLabel")
+		rarityFrame.Name = "RarityFrame"
+		rarityFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+		rarityFrame.Size = UDim2.new(1, 0, 1, 0)
+		rarityFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+		rarityFrame.BackgroundTransparency = 1
+		rarityFrame.Image = rarityAsset
+		rarityFrame.ScaleType = Enum.ScaleType.Stretch
+		rarityFrame.ZIndex = 1
+		rarityFrame.Parent = slot
+	end
 
 	local img = Instance.new("ImageLabel")
 	img.Name = "ItemIcon"

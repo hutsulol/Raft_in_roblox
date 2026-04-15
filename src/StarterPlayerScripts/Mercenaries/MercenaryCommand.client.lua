@@ -464,7 +464,7 @@ local function openMercInventory(mercModel)
 		gStroke.Thickness = 2
 		gStroke.Parent = ghost
 
-		local rarity = (_G.GetItemRarity and _G.GetItemRarity(itemName)) or "common"
+		local rarity = _G.GetItemRarity and _G.GetItemRarity(itemName) or nil
 		local frameAsset = (_G.GetRarityFrameAsset and _G.GetRarityFrameAsset(rarity)) or ""
 		local iconAsset = (_G.GetItemIcon and _G.GetItemIcon(itemName)) or ""
 
@@ -595,7 +595,7 @@ local function openMercInventory(mercModel)
 				local count = mercEntry:GetAttribute("Slot" .. i .. "_Count")
 				if typeof(itemName) == "string" and itemName ~= ""
 					and typeof(count) == "number" and count > 0 then
-					local rarity = (_G.GetItemRarity and _G.GetItemRarity(itemName)) or "common"
+					local rarity = _G.GetItemRarity and _G.GetItemRarity(itemName) or nil
 					local frameAsset = (_G.GetRarityFrameAsset and _G.GetRarityFrameAsset(rarity)) or ""
 					local iconAsset = (_G.GetItemIcon and _G.GetItemIcon(itemName)) or ""
 					slot.rarityFrame.Image = frameAsset
