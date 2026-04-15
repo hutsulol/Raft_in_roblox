@@ -1,4 +1,5 @@
 local rs = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 
 -- Measure grid size from Raft_part template
 local raftPartTemplate = rs:WaitForChild("Raft_part")
@@ -139,6 +140,12 @@ local function spawnPirateRaft()
 			if pirate:IsA("Model") then
 				pirate:PivotTo(CFrame.new(piratePos))
 			end
+
+			-- Tag BEFORE parenting to workspace (which starts the baked
+			-- ZombieScript) so SearchForTarget sees the hostile role on
+			-- its very first tick, and so mercenaries recognize these
+			-- pirates as enemies.
+			CollectionService:AddTag(pirate, "HostilePirate")
 
 			pirate.Parent = workspace
 

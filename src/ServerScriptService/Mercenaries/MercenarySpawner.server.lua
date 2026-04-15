@@ -89,26 +89,33 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local equipScript = clone:FindFirstChild("EquipFishingRod")
 	if equipScript then equipScript:Destroy() end
 
-	-- Remove Zombie AI so the mercenary doesn't attack the player.
-	-- Match any of the names the script has shipped under over time
-	-- ("Zombie", "MonsterScript", "ZombieScript") so the restored pirate
-	-- template doesn't keep its hostile AI after being recruited.
-	for _, child in clone:GetChildren() do
-		if (child:IsA("Script") or child:IsA("LocalScript"))
-			and (child.Name == "Zombie"
-				or child.Name == "ZombieScript"
-				or child.Name == "MonsterScript"
-				or child.Name == "Ragdoller") then
-			child:Destroy()
-		end
+	-- Keep the ZombieScript alive on the mercenary so it can fight back
+	-- against hostile pirates — the script's SearchForTarget is now
+	-- role-aware (it checks the "SpawnedMercenary" tag and will only
+	-- pick enemies tagged "HostilePirate", never players).
+	--
+	-- Strip only the legacy Ragdoller so a dying merc doesn't run the
+	-- old R6 ragdoll-cloning path, and disable CanRespawn so a killed
+	-- merc stays dead instead of respawning at its spawn point.
+	local ragdoller = clone:FindFirstChild("Ragdoller")
+	if ragdoller and (ragdoller:IsA("Script") or ragdoller:IsA("LocalScript")) then
+		ragdoller:Destroy()
 	end
+
+	local configs = clone:FindFirstChild("Configurations")
+	if configs then
+		local canRespawn = configs:FindFirstChild("CanRespawn")
+		if canRespawn then canRespawn.Value = false end
+	end
+
+	-- Tag BEFORE the script runs (clone.Parent = workspace starts it) so
+	-- SearchForTarget sees the mercenary role on its very first tick.
+	CollectionService:AddTag(clone, "SpawnedMercenary")
 
 	local spawnCF = hrp.CFrame * CFrame.new(0, 0, -8)
 	clone:PivotTo(spawnCF)
 	clone.Parent = workspace
 
-	-- Tag for identification by other scripts (movement, client hover)
-	CollectionService:AddTag(clone, "SpawnedMercenary")
 	clone:SetAttribute("OwnerUserId", player.UserId)
 	clone:SetAttribute("MercName", mercName)
 	clone:SetAttribute("EquippedWeapon", equippedWeapon or "Sword")

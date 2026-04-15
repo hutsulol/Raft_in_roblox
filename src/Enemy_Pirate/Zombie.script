@@ -125,37 +125,78 @@ function Monster:GetMaximumDetectionDistance()
 	end
 end
 
+-- Role-aware target search. This script is shared by hostile pirates
+-- (tagged "HostilePirate") and recruited mercenaries (tagged
+-- "SpawnedMercenary"). The two roles look for different enemies:
+--
+--   * Hostile pirate → nearest player OR nearest SpawnedMercenary
+--   * Mercenary      → nearest HostilePirate (never attacks a player)
+local CollectionService = Game:GetService('CollectionService')
+
+local function GetSearchTorso(humanoid)
+	-- Keep the candidate filter aligned with TargetIsValid (which only
+	-- accepts humanoids whose .Torso is a BasePart). This is the legacy
+	-- R6 path; R15 players are deliberately not supported so we don't
+	-- latch onto them and then idle. Mercenaries and hostile pirates are
+	-- both cloned from R6 templates so they always satisfy this.
+	if humanoid == nil then return nil end
+	return humanoid.Torso
+end
+
 function Monster:SearchForTarget()
-	-- Finds the closest player and sets the target
+	-- Build the candidate humanoid list based on this unit's role.
+	local isMercenary = CollectionService:HasTag(Self, 'SpawnedMercenary')
 
-	local players = Info.Players:GetPlayers()
-	local closestCharacter, closestCharacterDistance
+	local candidates = {}
 
-	for i=1, #players do
-		local player = players[i]
-		
-		if player.Neutral or player.TeamColor ~= Settings.FriendlyTeam.Value then
-			local character = player.Character
-	
-			if character ~= nil and character:FindFirstChild('Humanoid') ~= nil and character.Humanoid:IsA('Humanoid') then
-				local distance = player:DistanceFromCharacter(Monster:GetCFrame().p)
-	
-				if distance < Monster:GetMaximumDetectionDistance() then
-					if closestCharacter == nil then
-						closestCharacter, closestCharacterDistance = character, distance
-					else
-						if closestCharacterDistance > distance then
-							closestCharacter, closestCharacterDistance = character, distance
-						end
-					end
+	if isMercenary then
+		-- Mercenary: only hunt hostile pirates.
+		for _, pirate in CollectionService:GetTagged('HostilePirate') do
+			if pirate:IsDescendantOf(workspace) then
+				local hum = pirate:FindFirstChildOfClass('Humanoid')
+				if hum then table.insert(candidates, hum) end
+			end
+		end
+	else
+		-- Hostile pirate: target non-friendly players AND any mercenary.
+		local players = Info.Players:GetPlayers()
+		for i = 1, #players do
+			local player = players[i]
+			if player.Neutral or player.TeamColor ~= Settings.FriendlyTeam.Value then
+				local character = player.Character
+				if character ~= nil then
+					local hum = character:FindFirstChildOfClass('Humanoid')
+					if hum then table.insert(candidates, hum) end
+				end
+			end
+		end
+		for _, merc in CollectionService:GetTagged('SpawnedMercenary') do
+			if merc:IsDescendantOf(workspace) and merc ~= Self then
+				local hum = merc:FindFirstChildOfClass('Humanoid')
+				if hum then table.insert(candidates, hum) end
+			end
+		end
+	end
+
+	-- Pick the closest live candidate within detection range.
+	local myPos = Monster:GetCFrame().p
+	local maxDist = Monster:GetMaximumDetectionDistance()
+	local closestHumanoid, closestDistance = nil, math.huge
+
+	for _, hum in ipairs(candidates) do
+		if hum ~= Self.Humanoid and hum.Health > 0 then
+			local torso = GetSearchTorso(hum)
+			if torso and torso:IsA('BasePart') then
+				local distance = (torso.Position - myPos).magnitude
+				if distance < maxDist and distance < closestDistance then
+					closestHumanoid, closestDistance = hum, distance
 				end
 			end
 		end
 	end
 
-
-	if closestCharacter ~= nil then
-		Mind.CurrentTargetHumanoid.Value = closestCharacter.Humanoid
+	if closestHumanoid ~= nil then
+		Mind.CurrentTargetHumanoid.Value = closestHumanoid
 	end
 end
 
