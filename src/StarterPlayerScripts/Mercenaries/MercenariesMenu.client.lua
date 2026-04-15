@@ -234,6 +234,32 @@ local function buildMercViewport(parent, mercName, weaponId)
 		end
 	end
 
+	-- Standard R6 Head attachment offsets. The Pirate_2 template's Head
+	-- ships with NO attachments at all (the Output shows "Head has no
+	-- Attachment at all"), so the PirateHat's HatAttachment has nothing
+	-- to align to. Create whichever attachment a clothing handle asks for
+	-- on demand, using the canonical R6 position.
+	local DEFAULT_HEAD_ATTACHMENTS = {
+		HatAttachment         = CFrame.new(0, 0.6, 0),
+		HairAttachment        = CFrame.new(0, 0.6, 0),
+		FaceFrontAttachment   = CFrame.new(0, 0, -0.6),
+		FaceCenterAttachment  = CFrame.new(0, 0, 0),
+		NeckAttachment        = CFrame.new(0, -0.5, 0),
+	}
+
+	local function ensureHeadAttachment(name)
+		if not head then return nil end
+		local existing = headAttachments[name]
+		if existing then return existing end
+		local cf = DEFAULT_HEAD_ATTACHMENTS[name] or CFrame.new(0, 0.6, 0)
+		local att = Instance.new("Attachment")
+		att.Name = name
+		att.CFrame = cf
+		att.Parent = head
+		headAttachments[name] = att
+		return att
+	end
+
 	local function weldHandleToHead(handle, sourceName)
 		if not head or not handle then return end
 		local handleAtt
@@ -247,16 +273,9 @@ local function buildMercViewport(parent, mercName, weaponId)
 			warn("[MercenariesMenu] "..sourceName..".Handle has no Attachment — cannot weld")
 			return
 		end
-		local headAtt = headAttachments[handleAtt.Name]
+		local headAtt = ensureHeadAttachment(handleAtt.Name)
 		if not headAtt then
-			-- Fall back to any head attachment so the hat at least follows
-			for _, att in pairs(headAttachments) do
-				headAtt = att
-				break
-			end
-		end
-		if not headAtt then
-			warn("[MercenariesMenu] Head has no Attachment at all — "..sourceName.." will float")
+			warn("[MercenariesMenu] could not create Head attachment for "..sourceName)
 			return
 		end
 		for _, w in handle:GetChildren() do
