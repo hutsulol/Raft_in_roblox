@@ -36,6 +36,18 @@ screenGui.IgnoreGuiInset = true
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
+-- Share the inventory's responsive UIScale so this HUD shrinks on
+-- phones / narrow screens instead of overflowing next to the hotbar.
+task.spawn(function()
+	local deadline = os.clock() + 5
+	while not _G.AttachInventoryUIScale and os.clock() < deadline do
+		task.wait()
+	end
+	if _G.AttachInventoryUIScale then
+		_G.AttachInventoryUIScale(screenGui)
+	end
+end)
+
 -- Container — top slot of the left HUD stack (mana / hunger+water / health).
 local container = Instance.new("Frame")
 container.Name = "ManaContainer"
