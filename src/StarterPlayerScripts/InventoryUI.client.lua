@@ -1900,6 +1900,17 @@ local function toggleInventory()
 	end
 end
 
+-- Expose an open hook so other scripts (e.g. the mercenary backpack
+-- UI) can force the main inventory open alongside their own UI.
+_G.OpenInventory = function()
+	if not isOpen then
+		isOpen = true
+		inventoryCraftEvent:FireServer("requestRecipes")
+		buildUI()
+	end
+end
+_G.IsInventoryOpen = function() return isOpen end
+
 -- ─── Input ───
 
 local numberKeys = {

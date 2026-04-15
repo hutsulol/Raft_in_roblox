@@ -123,6 +123,37 @@ local function closeMercInventory()
 		if c and typeof(c) == "RBXScriptConnection" then c:Disconnect() end
 	end
 	mercInvConns = {}
+	-- Clear any leftover drag ghost
+	local ghost = playerGui:FindFirstChild("MercDragGhost")
+	if ghost then ghost:Destroy() end
+end
+
+-- ── Hit-test helpers for drag-and-drop ─────────────────────────────────
+local function mouseOverFrame(frame, mx, my)
+	if not frame or not frame.Parent then return false end
+	local pos = frame.AbsolutePosition
+	local size = frame.AbsoluteSize
+	return mx >= pos.X and mx <= pos.X + size.X
+		and my >= pos.Y and my <= pos.Y + size.Y
+end
+
+-- Locate the player inventory's main panel (created by InventoryUI.client.lua).
+-- Returns nil if the inventory UI isn't currently open.
+local function findPlayerInventoryPanel()
+	local invGui = playerGui:FindFirstChild("InventoryGui")
+	if not invGui then return nil end
+	return invGui:FindFirstChild("CenterPanel")
+end
+
+-- Wait briefly for the InventoryGui to appear after _G.OpenInventory().
+local function waitForInventoryPanel(timeout)
+	local deadline = os.clock() + (timeout or 1)
+	while os.clock() < deadline do
+		local panel = findPlayerInventoryPanel()
+		if panel then return panel end
+		RunService.Heartbeat:Wait()
+	end
+	return findPlayerInventoryPanel()
 end
 
 local function openMercInventory(mercModel)
@@ -135,6 +166,14 @@ local function openMercInventory(mercModel)
 	local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
 	if not mercEntry then return end
 
+	-- Open the player's main inventory alongside the backpack.
+	if _G.OpenInventory then
+		_G.OpenInventory()
+	end
+
+	-- Wait (briefly) for the player inventory panel so we can anchor to it.
+	local playerPanel = waitForInventoryPanel(1)
+
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "MercInventory"
 	gui.ResetOnSpawn = false
@@ -142,7 +181,7 @@ local function openMercInventory(mercModel)
 	gui.IgnoreGuiInset = true
 	gui.Parent = playerGui
 
-	-- Left-side panel (does not overlap the centred player inventory)
+	-- Panel dimensions (single column of SLOTS slots)
 	local SLOT_SIZE = 56
 	local SLOT_PAD = 6
 	local HEADER_H = 30
@@ -153,13 +192,34 @@ local function openMercInventory(mercModel)
 
 	local panel = Instance.new("Frame")
 	panel.Name = "Panel"
-	panel.AnchorPoint = Vector2.new(0, 0.5)
-	panel.Position = UDim2.new(0, 14, 0.5, 0)
 	panel.Size = UDim2.fromOffset(panelW, panelH)
 	panel.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
 	panel.BackgroundTransparency = 0.15
 	panel.BorderSizePixel = 0
 	panel.Parent = gui
+
+	-- Position: directly to the left of the player's inventory CenterPanel.
+	-- Fallback: 14px from screen left, vertically centred.
+	local GAP = 8
+	local function repositionPanel()
+		local pp = findPlayerInventoryPanel()
+		if pp and pp.Parent then
+			local pos = pp.AbsolutePosition
+			local size = pp.AbsoluteSize
+			local x = pos.X - panelW - GAP
+			local y = pos.Y + (size.Y - panelH) / 2
+			panel.AnchorPoint = Vector2.new(0, 0)
+			panel.Position = UDim2.fromOffset(math.max(x, 4), y)
+		else
+			panel.AnchorPoint = Vector2.new(0, 0.5)
+			panel.Position = UDim2.new(0, 14, 0.5, 0)
+		end
+	end
+	repositionPanel()
+	if playerPanel then
+		table.insert(mercInvConns, playerPanel:GetPropertyChangedSignal("AbsolutePosition"):Connect(repositionPanel))
+		table.insert(mercInvConns, playerPanel:GetPropertyChangedSignal("AbsoluteSize"):Connect(repositionPanel))
+	end
 
 	local panelCorner = Instance.new("UICorner")
 	panelCorner.CornerRadius = UDim.new(0, 10)
@@ -261,20 +321,169 @@ local function openMercInventory(mercModel)
 		countLbl.Text = ""
 		countLbl.Parent = btn
 
-		btn.MouseButton1Click:Connect(function()
-			local itemName = mercEntry:GetAttribute("Slot" .. i .. "_Name")
-			local count = mercEntry:GetAttribute("Slot" .. i .. "_Count")
-			if typeof(itemName) ~= "string" or itemName == "" then return end
-			if typeof(count) ~= "number" or count <= 0 then return end
-			equipEvent:FireServer("takeItem", mercName, i)
-		end)
-
-		slotButtons[i] = { button = btn, nameLbl = nameLbl, countLbl = countLbl }
+		slotButtons[i] = { button = btn, nameLbl = nameLbl, countLbl = countLbl, slotIndex = i }
 	end
+
+	-- ── Drag-and-drop state ────────────────────────────────────────────
+	-- Dragging a merc slot over the player inventory transfers the stack.
+	-- A plain click (no movement) also transfers.
+	local DRAG_THRESHOLD = 6
+	local drag = {
+		active = false,
+		moved = false,
+		slotIndex = nil,
+		startX = 0,
+		startY = 0,
+		ghostGui = nil,
+	}
+
+	local function destroyGhost()
+		if drag.ghostGui then
+			drag.ghostGui:Destroy()
+			drag.ghostGui = nil
+		end
+	end
+
+	local function slotHasItem(i)
+		local itemName = mercEntry:GetAttribute("Slot" .. i .. "_Name")
+		local count = mercEntry:GetAttribute("Slot" .. i .. "_Count")
+		return typeof(itemName) == "string" and itemName ~= ""
+			and typeof(count) == "number" and count > 0, itemName, count
+	end
+
+	local function createGhost(i, mx, my)
+		destroyGhost()
+		local has, itemName, count = slotHasItem(i)
+		if not has then return end
+
+		local ghostGui = Instance.new("ScreenGui")
+		ghostGui.Name = "MercDragGhost"
+		ghostGui.ResetOnSpawn = false
+		ghostGui.DisplayOrder = 50
+		ghostGui.IgnoreGuiInset = true
+		ghostGui.Parent = playerGui
+
+		local ghost = Instance.new("Frame")
+		ghost.Size = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE)
+		ghost.Position = UDim2.fromOffset(mx - SLOT_SIZE / 2, my - SLOT_SIZE / 2)
+		ghost.BackgroundColor3 = Color3.fromRGB(80, 85, 110)
+		ghost.BackgroundTransparency = 0.15
+		ghost.BorderSizePixel = 0
+		ghost.Parent = ghostGui
+
+		local gCorner = Instance.new("UICorner")
+		gCorner.CornerRadius = UDim.new(0, 6)
+		gCorner.Parent = ghost
+
+		local gStroke = Instance.new("UIStroke")
+		gStroke.Color = Color3.fromRGB(200, 200, 220)
+		gStroke.Thickness = 1.5
+		gStroke.Parent = ghost
+
+		local gName = Instance.new("TextLabel")
+		gName.Size = UDim2.new(1, -4, 0, 14)
+		gName.Position = UDim2.new(0, 2, 0, 2)
+		gName.BackgroundTransparency = 1
+		gName.TextColor3 = Color3.fromRGB(240, 240, 240)
+		gName.Font = Enum.Font.Gotham
+		gName.TextSize = 10
+		gName.TextXAlignment = Enum.TextXAlignment.Left
+		gName.TextTruncate = Enum.TextTruncate.AtEnd
+		gName.Text = itemName:gsub("_", " ")
+		gName.Parent = ghost
+
+		local gCount = Instance.new("TextLabel")
+		gCount.AnchorPoint = Vector2.new(1, 1)
+		gCount.Size = UDim2.new(0, 28, 0, 14)
+		gCount.Position = UDim2.new(1, -4, 1, -2)
+		gCount.BackgroundTransparency = 1
+		gCount.TextColor3 = Color3.fromRGB(255, 220, 100)
+		gCount.Font = Enum.Font.GothamBold
+		gCount.TextSize = 12
+		gCount.TextXAlignment = Enum.TextXAlignment.Right
+		gCount.Text = "x" .. tostring(count)
+		gCount.Parent = ghost
+
+		drag.ghostGui = ghostGui
+	end
+
+	local function resetDrag()
+		destroyGhost()
+		drag.active = false
+		drag.moved = false
+		drag.slotIndex = nil
+	end
+
+	local function transferSlot(i)
+		if not slotHasItem(i) then return end
+		equipEvent:FireServer("takeItem", mercName, i)
+	end
+
+	for _, info in slotButtons do
+		local i = info.slotIndex
+		local btn = info.button
+		btn.MouseButton1Down:Connect(function()
+			if not slotHasItem(i) then return end
+			local m = UserInputService:GetMouseLocation()
+			drag.active = true
+			drag.moved = false
+			drag.slotIndex = i
+			drag.startX = m.X
+			drag.startY = m.Y
+		end)
+	end
+
+	table.insert(mercInvConns, UserInputService.InputChanged:Connect(function(input)
+		if not drag.active then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement
+			and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		local mx, my = input.Position.X, input.Position.Y
+		if not drag.moved then
+			local dx = mx - drag.startX
+			local dy = my - drag.startY
+			if dx * dx + dy * dy >= DRAG_THRESHOLD * DRAG_THRESHOLD then
+				drag.moved = true
+				createGhost(drag.slotIndex, mx, my)
+			end
+		end
+		if drag.moved and drag.ghostGui then
+			local ghost = drag.ghostGui:FindFirstChildWhichIsA("Frame")
+			if ghost then
+				ghost.Position = UDim2.fromOffset(mx - SLOT_SIZE / 2, my - SLOT_SIZE / 2)
+			end
+		end
+	end))
+
+	table.insert(mercInvConns, UserInputService.InputEnded:Connect(function(input)
+		if not drag.active then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1
+			and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		local i = drag.slotIndex
+		local wasDrag = drag.moved
+		local mx, my = input.Position.X, input.Position.Y
+		resetDrag()
+		if not i then return end
+
+		if not wasDrag then
+			-- Treat as a click: transfer the stack.
+			transferSlot(i)
+			return
+		end
+
+		-- Drag: transfer only if released over the player inventory.
+		local pp = findPlayerInventoryPanel()
+		if pp and mouseOverFrame(pp, mx, my) then
+			transferSlot(i)
+		end
+	end))
 
 	local function refreshSlots()
 		local hasBackpack = (mercEntry:GetAttribute("EquippedBackpack") or "") ~= ""
-		hintLabel.Text = hasBackpack and "Click a slot to take items" or "Equip a backpack first"
+		hintLabel.Text = hasBackpack and "Click or drag to take" or "Equip a backpack first"
 
 		for i = 1, MERC_INVENTORY_SLOTS do
 			local slot = slotButtons[i]
