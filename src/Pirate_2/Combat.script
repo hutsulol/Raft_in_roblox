@@ -29,13 +29,19 @@ local RunService          = game:GetService("RunService")
 local Self = script.Parent
 
 -- ── Tunables ──────────────────────────────────────────────────────────
+-- Reference: hostile pirates (Enemy_Pirate) ship with MaxHealth ~100 and
+-- roughly 8 damage per ~1s swing. Mercenaries are paid muscle, so they
+-- outclass a hostile 1v1: more HP, faster swings, bigger hits, slightly
+-- faster footwork so they can close the gap.
 local ATTR = {
-	MaximumDetectionDistance = 120,
-	AttackDamage             = 8,
-	AttackFrequency          = 1,   -- swings per second
-	AttackRange              = 5.5, -- studs
-	RecomputePathFrequency   = 1,   -- path recomputes per second
-	JumpCheckFrequency       = 1,   -- jump checks per second
+	MaximumDetectionDistance = 140,
+	MaxHealth                = 250,  -- ~2.5× a hostile pirate
+	WalkSpeed                = 18,   -- slightly faster than the default 16
+	AttackDamage             = 18,   -- ~2× hostile damage
+	AttackFrequency          = 1.8,  -- swings per second (~2× hostile)
+	AttackRange              = 6,    -- studs
+	RecomputePathFrequency   = 1,
+	JumpCheckFrequency       = 1,
 }
 
 -- ── Wait for the rig to be in the world ───────────────────────────────
@@ -80,12 +86,16 @@ else
 	warn("[Pirate_2/Combat] no child Animation named 'Attack' — swings will be animation-less")
 end
 
--- Wake the rig up. The MercenarySpawner already does this, but double up
--- here for safety in case the script runs before the spawner gets to it.
+-- Wake the rig up and buff its stats. MercenarySpawner already unanchors
+-- and clears PlatformStand, but we also own the combat stats here so the
+-- mercenary is definitively stronger than the hostile template it was
+-- cloned from (which is stuck on whatever the base humanoid defaults to).
 for _, d in Self:GetDescendants() do
 	if d:IsA("BasePart") then d.Anchored = false end
 end
-if humanoid.WalkSpeed <= 0 then humanoid.WalkSpeed = 14 end
+humanoid.MaxHealth  = ATTR.MaxHealth
+humanoid.Health     = ATTR.MaxHealth
+humanoid.WalkSpeed  = ATTR.WalkSpeed
 humanoid.PlatformStand = false
 humanoid.Sit = false
 pcall(function()
