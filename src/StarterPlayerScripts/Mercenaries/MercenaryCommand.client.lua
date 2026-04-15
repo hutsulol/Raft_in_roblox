@@ -111,6 +111,17 @@ end
 
 -- ── Mercenary inventory UI (left-side panel) ────────────────────────────
 
+-- Colours matched to the player inventory's wooden theme
+local INV_COLORS = {
+	panelBg = Color3.fromRGB(139, 109, 63),
+	panelBorder = Color3.fromRGB(100, 75, 40),
+	slotBg = Color3.fromRGB(175, 145, 95),
+	slotBorder = Color3.fromRGB(120, 90, 50),
+	titleText = Color3.fromRGB(50, 35, 15),
+	separator = Color3.fromRGB(200, 185, 150),
+	closeBg = Color3.fromRGB(180, 60, 50),
+}
+
 local mercInvGui = nil
 local mercInvConns = {}
 
@@ -184,10 +195,35 @@ local function openMercInventory(mercModel)
 	local playerPanel = waitForInventoryPanel(1)
 
 	-- Hide the crafting panel while the merc inventory is open so the
-	-- two UIs don't compete for the left-side of the screen.
+	-- two UIs don't compete for the left-side of the screen. Also listen
+	-- for any later rebuild so it stays hidden.
+	local function hideCraftPanel()
+		local ig = playerGui:FindFirstChild("InventoryGui")
+		if not ig then return end
+		local cp = ig:FindFirstChild("CraftPanel")
+		if cp then cp.Visible = false end
+	end
+	hideCraftPanel()
 	local invGui = playerGui:FindFirstChild("InventoryGui")
-	local craftPanel = invGui and invGui:FindFirstChild("CraftPanel")
-	if craftPanel then craftPanel.Visible = false end
+	if invGui then
+		table.insert(mercInvConns, invGui.ChildAdded:Connect(function(child)
+			if child.Name == "CraftPanel" then
+				child.Visible = false
+			end
+		end))
+	end
+	table.insert(mercInvConns, playerGui.ChildAdded:Connect(function(child)
+		if child.Name == "InventoryGui" then
+			-- Rebuild happened while merc inventory is open; hide craft panel
+			-- once it materialises.
+			task.defer(hideCraftPanel)
+			local conn
+			conn = child.ChildAdded:Connect(function(c)
+				if c.Name == "CraftPanel" then c.Visible = false end
+			end)
+			table.insert(mercInvConns, conn)
+		end
+	end))
 
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "MercInventory"
@@ -196,22 +232,21 @@ local function openMercInventory(mercModel)
 	gui.IgnoreGuiInset = true
 	gui.Parent = playerGui
 
-	-- Panel dimensions (3 cols × 2 rows)
+	-- Panel dimensions (3 cols × 2 rows), spacing mirrors InventoryUI
 	local COLS = 3
 	local ROWS = math.ceil(MERC_INVENTORY_SLOTS / COLS)
 	local SLOT_SIZE = 60
 	local SLOT_PAD = 6
-	local HEADER_H = 30
+	local GRID_Y = 52       -- matches InventoryUI.CenterPanel grid offset
 	local FOOTER_H = 28
 	local PAD = 10
 	local panelW = PAD * 2 + COLS * SLOT_SIZE + (COLS - 1) * SLOT_PAD
-	local panelH = PAD * 2 + HEADER_H + SLOT_PAD + ROWS * (SLOT_SIZE + SLOT_PAD) + FOOTER_H
+	local panelH = GRID_Y + ROWS * (SLOT_SIZE + SLOT_PAD) + FOOTER_H
 
 	local panel = Instance.new("Frame")
 	panel.Name = "Panel"
 	panel.Size = UDim2.fromOffset(panelW, panelH)
-	panel.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
-	panel.BackgroundTransparency = 0.15
+	panel.BackgroundColor3 = INV_COLORS.panelBg
 	panel.BorderSizePixel = 0
 	panel.Parent = gui
 
@@ -243,46 +278,53 @@ local function openMercInventory(mercModel)
 	panelCorner.Parent = panel
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(90, 90, 110)
-	stroke.Thickness = 1
+	stroke.Color = INV_COLORS.panelBorder
+	stroke.Thickness = 3
 	stroke.Parent = panel
 
-	-- Header
+	-- Header (title + separator, matching the player inventory style)
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -PAD * 2, 0, HEADER_H)
-	title.Position = UDim2.new(0, PAD, 0, 4)
+	title.Size = UDim2.new(1, -80, 0, 30)
+	title.Position = UDim2.new(0, PAD, 0, 8)
 	title.BackgroundTransparency = 1
-	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.TextColor3 = INV_COLORS.titleText
 	title.Text = "Backpack"
 	title.Font = Enum.Font.GothamBold
-	title.TextSize = 14
+	title.TextSize = 22
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = panel
 
-	-- Close (X) button
+	local sep = Instance.new("Frame")
+	sep.Size = UDim2.new(1, -PAD * 2, 0, 2)
+	sep.Position = UDim2.new(0, PAD, 0, 42)
+	sep.BackgroundColor3 = INV_COLORS.separator
+	sep.BorderSizePixel = 0
+	sep.Parent = panel
+
+	-- Close (X) button matching the inventory's close button
 	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.fromOffset(20, 20)
-	closeBtn.Position = UDim2.new(1, -24, 0, 6)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
-	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	closeBtn.Text = "×"
+	closeBtn.Size = UDim2.fromOffset(28, 28)
+	closeBtn.Position = UDim2.new(1, -32, 0, 6)
+	closeBtn.BackgroundColor3 = INV_COLORS.closeBg
+	closeBtn.TextColor3 = Color3.new(1, 1, 1)
+	closeBtn.Text = "X"
 	closeBtn.Font = Enum.Font.GothamBold
 	closeBtn.TextSize = 16
 	closeBtn.BorderSizePixel = 0
 	closeBtn.Parent = panel
 	local closeCorner = Instance.new("UICorner")
-	closeCorner.CornerRadius = UDim.new(0, 4)
+	closeCorner.CornerRadius = UDim.new(0, 6)
 	closeCorner.Parent = closeBtn
 	closeBtn.MouseButton1Click:Connect(closeMercInventory)
 
-	-- Empty / no-backpack hint (only visible when no backpack is equipped)
+	-- Footer hint (empty backpack or help text)
 	local hintLabel = Instance.new("TextLabel")
 	hintLabel.Size = UDim2.new(1, -PAD * 2, 0, FOOTER_H)
 	hintLabel.Position = UDim2.new(0, PAD, 1, -FOOTER_H - 2)
 	hintLabel.BackgroundTransparency = 1
-	hintLabel.TextColor3 = Color3.fromRGB(200, 180, 120)
+	hintLabel.TextColor3 = INV_COLORS.titleText
 	hintLabel.Font = Enum.Font.Gotham
-	hintLabel.TextSize = 11
+	hintLabel.TextSize = 12
 	hintLabel.TextWrapped = true
 	hintLabel.Text = ""
 	hintLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -294,36 +336,37 @@ local function openMercInventory(mercModel)
 		local col = (i - 1) % COLS
 		local row = math.floor((i - 1) / COLS)
 		local x = PAD + col * (SLOT_SIZE + SLOT_PAD)
-		local y = PAD + HEADER_H + SLOT_PAD + row * (SLOT_SIZE + SLOT_PAD)
+		local y = GRID_Y + row * (SLOT_SIZE + SLOT_PAD)
 
 		local btn = Instance.new("TextButton")
 		btn.Name = "Slot" .. i
 		btn.Size = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE)
 		btn.Position = UDim2.new(0, x, 0, y)
-		btn.BackgroundColor3 = Color3.fromRGB(55, 55, 68)
+		btn.BackgroundColor3 = INV_COLORS.slotBg
+		btn.BackgroundTransparency = 0.05
 		btn.BorderSizePixel = 0
 		btn.AutoButtonColor = false
 		btn.Text = ""
 		btn.Parent = panel
 
 		local btnCorner = Instance.new("UICorner")
-		btnCorner.CornerRadius = UDim.new(0, 6)
+		btnCorner.CornerRadius = UDim.new(0, 5)
 		btnCorner.Parent = btn
 
 		local btnStroke = Instance.new("UIStroke")
-		btnStroke.Color = Color3.fromRGB(85, 85, 100)
-		btnStroke.Thickness = 1
+		btnStroke.Color = INV_COLORS.slotBorder
+		btnStroke.Thickness = 1.5
 		btnStroke.Parent = btn
 
-		-- Item name label
+		-- Item name label (centred)
 		local nameLbl = Instance.new("TextLabel")
-		nameLbl.Size = UDim2.new(1, -4, 0, 14)
-		nameLbl.Position = UDim2.new(0, 2, 0, 2)
+		nameLbl.Size = UDim2.new(1, -4, 0, 16)
+		nameLbl.Position = UDim2.new(0, 2, 0, 4)
 		nameLbl.BackgroundTransparency = 1
-		nameLbl.TextColor3 = Color3.fromRGB(240, 240, 240)
-		nameLbl.Font = Enum.Font.Gotham
-		nameLbl.TextSize = 10
-		nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+		nameLbl.TextColor3 = INV_COLORS.titleText
+		nameLbl.Font = Enum.Font.GothamMedium
+		nameLbl.TextSize = 11
+		nameLbl.TextXAlignment = Enum.TextXAlignment.Center
 		nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
 		nameLbl.Text = ""
 		nameLbl.Parent = btn
@@ -331,12 +374,12 @@ local function openMercInventory(mercModel)
 		-- Count label (bottom-right)
 		local countLbl = Instance.new("TextLabel")
 		countLbl.AnchorPoint = Vector2.new(1, 1)
-		countLbl.Size = UDim2.new(0, 28, 0, 14)
+		countLbl.Size = UDim2.new(0, 30, 0, 16)
 		countLbl.Position = UDim2.new(1, -4, 1, -2)
 		countLbl.BackgroundTransparency = 1
-		countLbl.TextColor3 = Color3.fromRGB(255, 220, 100)
+		countLbl.TextColor3 = INV_COLORS.titleText
 		countLbl.Font = Enum.Font.GothamBold
-		countLbl.TextSize = 12
+		countLbl.TextSize = 14
 		countLbl.TextXAlignment = Enum.TextXAlignment.Right
 		countLbl.Text = ""
 		countLbl.Parent = btn
@@ -386,40 +429,40 @@ local function openMercInventory(mercModel)
 		local ghost = Instance.new("Frame")
 		ghost.Size = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE)
 		ghost.Position = UDim2.fromOffset(mx - SLOT_SIZE / 2, my - SLOT_SIZE / 2)
-		ghost.BackgroundColor3 = Color3.fromRGB(80, 85, 110)
-		ghost.BackgroundTransparency = 0.15
+		ghost.BackgroundColor3 = INV_COLORS.slotBg
+		ghost.BackgroundTransparency = 0.1
 		ghost.BorderSizePixel = 0
 		ghost.Parent = ghostGui
 
 		local gCorner = Instance.new("UICorner")
-		gCorner.CornerRadius = UDim.new(0, 6)
+		gCorner.CornerRadius = UDim.new(0, 5)
 		gCorner.Parent = ghost
 
 		local gStroke = Instance.new("UIStroke")
-		gStroke.Color = Color3.fromRGB(200, 200, 220)
-		gStroke.Thickness = 1.5
+		gStroke.Color = INV_COLORS.slotBorder
+		gStroke.Thickness = 2
 		gStroke.Parent = ghost
 
 		local gName = Instance.new("TextLabel")
-		gName.Size = UDim2.new(1, -4, 0, 14)
-		gName.Position = UDim2.new(0, 2, 0, 2)
+		gName.Size = UDim2.new(1, -4, 0, 16)
+		gName.Position = UDim2.new(0, 2, 0, 4)
 		gName.BackgroundTransparency = 1
-		gName.TextColor3 = Color3.fromRGB(240, 240, 240)
-		gName.Font = Enum.Font.Gotham
-		gName.TextSize = 10
-		gName.TextXAlignment = Enum.TextXAlignment.Left
+		gName.TextColor3 = INV_COLORS.titleText
+		gName.Font = Enum.Font.GothamMedium
+		gName.TextSize = 11
+		gName.TextXAlignment = Enum.TextXAlignment.Center
 		gName.TextTruncate = Enum.TextTruncate.AtEnd
 		gName.Text = itemName:gsub("_", " ")
 		gName.Parent = ghost
 
 		local gCount = Instance.new("TextLabel")
 		gCount.AnchorPoint = Vector2.new(1, 1)
-		gCount.Size = UDim2.new(0, 28, 0, 14)
+		gCount.Size = UDim2.new(0, 30, 0, 16)
 		gCount.Position = UDim2.new(1, -4, 1, -2)
 		gCount.BackgroundTransparency = 1
-		gCount.TextColor3 = Color3.fromRGB(255, 220, 100)
+		gCount.TextColor3 = INV_COLORS.titleText
 		gCount.Font = Enum.Font.GothamBold
-		gCount.TextSize = 12
+		gCount.TextSize = 14
 		gCount.TextXAlignment = Enum.TextXAlignment.Right
 		gCount.Text = "x" .. tostring(count)
 		gCount.Parent = ghost
@@ -513,11 +556,13 @@ local function openMercInventory(mercModel)
 				if typeof(itemName) == "string" and itemName ~= "" and typeof(count) == "number" and count > 0 then
 					slot.nameLbl.Text = itemName:gsub("_", " ")
 					slot.countLbl.Text = "x" .. tostring(count)
-					slot.button.BackgroundColor3 = Color3.fromRGB(70, 75, 90)
+					slot.button.BackgroundColor3 = INV_COLORS.slotBg
+					slot.button.BackgroundTransparency = 0
 				else
 					slot.nameLbl.Text = ""
 					slot.countLbl.Text = ""
-					slot.button.BackgroundColor3 = Color3.fromRGB(55, 55, 68)
+					slot.button.BackgroundColor3 = INV_COLORS.slotBg
+					slot.button.BackgroundTransparency = 0.4
 				end
 			end
 		end
