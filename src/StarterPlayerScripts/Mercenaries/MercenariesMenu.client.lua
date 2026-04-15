@@ -41,6 +41,13 @@ local FONT_BODY        = Enum.Font.Gotham
 
 local IDLE_ANIMATION_ID = "rbxassetid://107139405334393"
 
+-- Pirate tool-hold idle. Taken from Enemy_Pirate/Animate.script's
+-- `toolnone` table — this is the exact animation the in-game pirate
+-- plays when a Tool is equipped. Without it the arm hangs straight down
+-- and the blade points at the ground; playing it raises the arm so the
+-- sword/rod is presented the way it looks during gameplay.
+local TOOL_HOLD_ANIMATION_ID = "rbxassetid://182393478"
+
 -- Per-mercenary data
 local MERC_THEMES = {
 	["Pirate lvl1"] = {
@@ -316,120 +323,113 @@ local function buildMercViewport(parent, mercName, weaponId)
 	-- Position and rotate to face camera
 	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
 
-	-- Play idle animation
-	if animator then
-		pcall(function()
-			local anim = Instance.new("Animation")
-			anim.AnimationId = IDLE_ANIMATION_ID
-			local track = animator:LoadAnimation(anim)
-			track.Looped = true
-			track.Priority = Enum.AnimationPriority.Action
-			track:Play(0)
-		end)
-	end
-
 	-- ── Weapon swap in viewport ─────────────────────────────────────
-	-- The Pirate_2 template ships with BOTH ClassicSword and FishingRod as
-	-- child Tools, and only the sword is welded into the right hand. For
-	-- the default Sword case we leave everything alone — that weld is
-	-- hand-authored in the .rbxl and produces the correct display.
-	--
-	-- For the swap case, reuse the template's own weld transform verbatim:
-	-- capture the Motor6D's C0 AND C1 (C1 may bake the grip offset instead
-	-- of using Tool.Grip), retarget Part1 to the picked tool's Handle, and
-	-- destroy the tool we're swapping away from. Cloning a fresh weapon
-	-- from ReplicatedStorage and layering Tool.Grip on top was double-
-	-- rotating the handle, which is why every matrix I tried was off.
+	-- Mirror MercenarySpawner exactly so the menu preview matches the
+	-- in-game pirate: strip every Tool that ships with the template,
+	-- clone the requested one from ReplicatedStorage, weld its Handle
+	-- into the right hand with the engine-canonical R6 RightGrip
+	-- (C0 = CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0), C1 =
+	-- Tool.Grip), then play the pirate's own `toolnone` idle animation
+	-- so the arm is raised the same way it is in gameplay. The earlier
+	-- "reuse the template's baked weld" path worked for sword only
+	-- because the template didn't bake one for the rod.
 	local requestedTool = weaponId
 	if not requestedTool or requestedTool == "Sword" then
 		requestedTool = "ClassicSword"
 	end
 
-	-- Find the tool in the clone that matches what the UI asked for, and
-	-- any other Tool children (to be removed).
-	local targetTool, otherTools = nil, {}
-	for _, child in clone:GetChildren() do
-		if child:IsA("Tool") then
-			if not targetTool and child.Name == requestedTool then
-				targetTool = child
-			else
-				table.insert(otherTools, child)
-			end
-		end
-	end
-
-	-- Locate the template's grip weld (Motor6D or Weld connecting Right Arm
-	-- to any Tool's Handle). The shoulder joint has Part1 = Right Arm, so a
-	-- Part0-side match avoids picking it up.
+	-- Wipe any template-supplied Tools (ClassicSword / FishingRod / etc.)
+	-- and any grip Motor6D linking Right Arm → Tool.Handle that the
+	-- template baked in. We rebuild both from scratch to match the in-game
+	-- equip flow.
 	local rightArm = clone:FindFirstChild("Right Arm")
-	local gripWeld
+	for _, child in clone:GetChildren() do
+		if child:IsA("Tool") then child:Destroy() end
+	end
 	if rightArm then
-		local named = rightArm:FindFirstChild("RightGrip")
-		if named and named:IsA("JointInstance") then
-			gripWeld = named
-		else
-			for _, d in clone:GetDescendants() do
-				if (d:IsA("Motor6D") or d:IsA("Weld")) and d.Part0 == rightArm then
-					gripWeld = d
-					break
-				end
+		for _, d in rightArm:GetChildren() do
+			if (d:IsA("Motor6D") or d:IsA("Weld")) and d.Name == "RightGrip" then
+				d:Destroy()
 			end
 		end
 	end
 
-	if targetTool and rightArm then
-		local newHandle = targetTool:FindFirstChild("Handle")
-			or targetTool:FindFirstChildWhichIsA("BasePart")
+	local hasWeapon = false
+	local weaponTemplate = ReplicatedStorage:FindFirstChild(requestedTool)
+		or ReplicatedStorage:FindFirstChild(requestedTool, true)
+	if weaponTemplate and rightArm then
+		local wArchivable = weaponTemplate.Archivable
+		weaponTemplate.Archivable = true
+		local wClone = weaponTemplate:Clone()
+		weaponTemplate.Archivable = wArchivable
 
-		if newHandle then
-			-- Strip scripts / set display props on the target tool's parts.
-			for _, d in targetTool:GetDescendants() do
-				if d:IsA("Script") or d:IsA("LocalScript") then
-					d:Destroy()
-				elseif d:IsA("BasePart") then
-					d.Transparency = 0
-					d.CanCollide   = false
-					d.Anchored     = false
-					d.Massless     = true
+		for _, d in wClone:GetDescendants() do
+			if d:IsA("Script") or d:IsA("LocalScript") then
+				d:Destroy()
+			elseif d:IsA("BasePart") then
+				d.Transparency = 0
+				d.CanCollide   = false
+				d.Anchored     = false
+				d.Massless     = true
+			end
+		end
+
+		local handle = wClone:FindFirstChild("Handle")
+			or wClone:FindFirstChildWhichIsA("BasePart", true)
+		local toolGripC1 = wClone:IsA("Tool") and wClone.Grip or CFrame.new()
+
+		if handle then
+			-- Strip welds linking Handle to anything OUTSIDE the weapon
+			-- (stale grip welds baked into the asset). Keep internal welds
+			-- so multi-part tools like FishingRod stay assembled.
+			for _, w in handle:GetChildren() do
+				if w:IsA("Motor6D") or w:IsA("Weld") then
+					local p0 = w.Part0
+					if not p0 or not p0:IsDescendantOf(wClone) then
+						w:Destroy()
+					end
 				end
 			end
 
-			-- Retarget the existing weld to the new handle. Keep C0 + C1
-			-- exactly as the template authored them — that transform is
-			-- the one producing the correct sword display, and it works
-			-- for the rod as long as both tools' handles follow the same
-			-- local convention (which they do: both are authored for the
-			-- same R6 pirate rig).
-			if gripWeld then
-				gripWeld.Part0 = rightArm
-				gripWeld.Part1 = newHandle
+			local grip = Instance.new("Motor6D")
+			grip.Name  = "RightGrip"
+			grip.Part0 = rightArm
+			grip.Part1 = handle
+			-- Exact value Roblox's engine writes into RightGrip.C0 when a
+			-- Tool is equipped on an R6 character in a live game.
+			grip.C0    = CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
+			grip.C1    = toolGripC1
+			grip.Parent = rightArm
+
+			-- Move the Tool's children into the clone so the ViewportFrame
+			-- renders them (a Tool's contents don't render as "held"
+			-- without a live Humanoid:EquipTool pass).
+			if wClone:IsA("Tool") then
+				for _, child in wClone:GetChildren() do
+					child.Parent = clone
+				end
+				wClone:Destroy()
 			else
-				-- No template weld found (shouldn't happen on this rig,
-				-- but be safe): build one with the engine's canonical R6
-				-- grip + Tool.Grip as C1.
-				local motor = Instance.new("Motor6D")
-				motor.Name  = "RightGrip"
-				motor.Part0 = rightArm
-				motor.Part1 = newHandle
-				motor.C0    = CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
-				motor.C1    = targetTool.Grip
-				motor.Parent = rightArm
+				wClone.Parent = clone
 			end
-
-			-- Flatten the Tool: move its children into the clone so a
-			-- ViewportFrame (which can't "equip" tools via a live Humanoid)
-			-- still renders the handle as held.
-			for _, child in targetTool:GetChildren() do
-				child.Parent = clone
-			end
-			targetTool:Destroy()
+			hasWeapon = true
+		else
+			wClone:Destroy()
 		end
 	end
 
-	-- Remove weapons the player didn't pick so they don't float in the
-	-- template model.
-	for _, t in otherTools do
-		t:Destroy()
+	-- Play idle animation. When a weapon is held, use the pirate's
+	-- `toolnone` hold pose so the arm is raised the same way as in game;
+	-- otherwise play the plain body idle.
+	if animator then
+		pcall(function()
+			local anim = Instance.new("Animation")
+			anim.AnimationId = hasWeapon and TOOL_HOLD_ANIMATION_ID or IDLE_ANIMATION_ID
+			local track = animator:LoadAnimation(anim)
+			track.Looped = true
+			track.Priority = Enum.AnimationPriority.Action
+			track:Play(0)
+		end)
 	end
 
 	clone.Parent = world
