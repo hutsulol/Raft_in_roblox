@@ -47,7 +47,9 @@ local MERC_THEMES = {
 		accent      = Color3.fromRGB(255, 80, 80),
 		displayName = "Pirate",
 		stars       = 1,
-		stats       = { hp = 100, damage = 15, mana = "20/min" },
+		-- Stats mirror src/Pirate_2/Combat.script ATTR so the card doesn't
+		-- lie to the player about how tough their merc actually is.
+		stats       = { hp = 250, damage = 18, mana = "20/min" },
 		spawnModel  = "Pirate_2",
 	},
 }
@@ -176,15 +178,17 @@ local function buildMercViewport(parent, mercName, weaponId)
 	end
 
 	-- Configure humanoid for animation (keep it — AnimationController
-	-- alone doesn't work for R6 in ViewportFrame)
+	-- alone doesn't work for R6 in ViewportFrame). We used to disable
+	-- every HumanoidStateType to stop the rig from falling inside the
+	-- WorldModel, but that also prevents the Animator from evaluating
+	-- tracks (and skips the accessory auto-weld pass). Instead, just
+	-- anchor HumanoidRootPart below — that's enough to keep the rig in
+	-- place while leaving state / Animator intact so the idle animation
+	-- actually plays.
 	local humanoid = clone:FindFirstChildOfClass("Humanoid")
 	local animator
 	if humanoid then
 		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-		pcall(function() humanoid.EvaluateStateMachine = false end)
-		for _, state in Enum.HumanoidStateType:GetEnumItems() do
-			pcall(function() humanoid:SetStateEnabled(state, false) end)
-		end
 		animator = humanoid:FindFirstChildOfClass("Animator")
 		if not animator then
 			animator = Instance.new("Animator")
@@ -207,13 +211,13 @@ local function buildMercViewport(parent, mercName, weaponId)
 		end
 	end
 
-	-- Manually weld accessories to the head. Roblox normally auto-welds
-	-- each Accessory's Handle to the matching named attachment on the
-	-- character once the Humanoid's state machine processes it — but we
-	-- disabled every HumanoidStateType above, so the pirate hat was just
-	-- floating above the head. Match Handle attachments (HatAttachment,
-	-- FaceFrontAttachment, etc.) to their peers on the Head and weld by
-	-- attachment CFrame so the hat sits flush and moves with the rig.
+	-- Manually weld accessories to the head. Roblox's auto-weld pass on
+	-- Accessory-added usually handles this for live characters, but we're
+	-- cloning into a WorldModel (not a real character) where that pass
+	-- doesn't always fire in time for the preview. Match Handle
+	-- attachments (HatAttachment, FaceFrontAttachment, etc.) to their
+	-- peers on the Head and weld by attachment CFrame so the hat sits
+	-- flush and moves with the rig.
 	local head = clone:FindFirstChild("Head")
 	if head then
 		for _, acc in clone:GetChildren() do
