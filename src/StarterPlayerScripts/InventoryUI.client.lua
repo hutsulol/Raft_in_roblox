@@ -1663,9 +1663,9 @@ local function buildHotbar()
 		end)
 	end
 
-	-- ─── Mana bar ──────────────────────────────────────────────────────
-	-- Lives in its own script at StarterPlayerScripts/ManaUI/ManaUI.client.lua
-	-- (it builds its own ScreenGui; nothing to do from here).
+	-- ─── Mana / health / hunger / thirst bars ──────────────────────────
+	-- All four stat bars live together in StarterPlayerScripts/
+	-- UIManager.client.lua. Nothing to build from here.
 end
 
 -- ─── Build Inventory UI ───
