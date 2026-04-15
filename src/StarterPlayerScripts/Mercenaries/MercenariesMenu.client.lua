@@ -938,9 +938,14 @@ buildEquipmentPage = function(mercName, mercNames)
 		detailDesc.Text = item.description
 		equipBtn.Visible = unlockedSet[item.id] == true
 
-		-- Update equip button text
+		-- Update equip button text (Artifacts use a separate slot from Weapons)
 		local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
-		local currentEquip = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+		local currentEquip
+		if activeCategory == "Artifacts" then
+			currentEquip = mercEntry and mercEntry:GetAttribute("EquippedBackpack") or ""
+		else
+			currentEquip = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+		end
 		if currentEquip == selectedItemId then
 			equipBtn.Text = "EQUIPPED"
 			equipBtn.BackgroundColor3 = COLOR_BAR_BG
@@ -1147,10 +1152,14 @@ buildEquipmentPage = function(mercName, mercNames)
 		if equipEvent then
 			equipEvent:FireServer("equip", mercName, selectedItemId)
 		end
-		-- Optimistic update
+		-- Optimistic update (Artifacts use a separate slot so the weapon is preserved)
 		local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
 		if mercEntry then
-			mercEntry:SetAttribute("EquippedWeapon", selectedItemId)
+			if activeCategory == "Artifacts" then
+				mercEntry:SetAttribute("EquippedBackpack", selectedItemId)
+			else
+				mercEntry:SetAttribute("EquippedWeapon", selectedItemId)
+			end
 		end
 		refreshDetails()
 		rebuildViewport()

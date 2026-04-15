@@ -18,6 +18,25 @@ local EQUIPPABLE_TOOLS = {
 	FishingRod = true,
 }
 
+-- Items that occupy the "backpack" slot (a separate equipment slot from
+-- the weapon slot, and which enables a 6-slot mercenary inventory).
+local EQUIPPABLE_BACKPACKS = {
+	Backpack = true,
+}
+
+local MERC_INVENTORY_SLOTS = 6
+
+-- ── Backpack inventory helpers ──────────────────────────────────────────
+
+local function initBackpackSlots(mercEntry)
+	for i = 1, MERC_INVENTORY_SLOTS do
+		if mercEntry:GetAttribute("Slot" .. i .. "_Name") == nil then
+			mercEntry:SetAttribute("Slot" .. i .. "_Name", "")
+			mercEntry:SetAttribute("Slot" .. i .. "_Count", 0)
+		end
+	end
+end
+
 -- ── Per-player folder ───────────────────────────────────────────────────
 
 local function ensureFolder(player)
@@ -95,11 +114,11 @@ for _, player in Players:GetPlayers() do
 	end)
 end
 
--- ── Equip request ───────────────────────────────────────────────────────
+-- ── Equip / inventory request ──────────────────────────────────────────
 
-equipEvent.OnServerEvent:Connect(function(player, action, mercName, weaponId)
-	if action ~= "equip" then return end
-	if typeof(mercName) ~= "string" or typeof(weaponId) ~= "string" then return end
+equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
+	if typeof(action) ~= "string" then return end
+	if typeof(mercName) ~= "string" then return end
 
 	-- Verify player owns the mercenary
 	local mercFolder = player:FindFirstChild("Mercenaries")
@@ -107,24 +126,59 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, weaponId)
 	local mercEntry = mercFolder:FindFirstChild(mercName)
 	if not mercEntry then return end
 
-	-- Verify weapon is unlocked (check folder, then fallback to Backpack/Character)
-	local eqFolder = ensureFolder(player)
-	if not eqFolder:FindFirstChild(weaponId) then
-		-- Fallback: check if the player has the tool right now
-		local found = false
-		local backpack = player:FindFirstChild("Backpack")
-		if backpack and backpack:FindFirstChild(weaponId) then found = true end
-		if not found and player.Character and player.Character:FindFirstChild(weaponId) then
-			found = true
+	if action == "equip" then
+		if typeof(arg) ~= "string" then return end
+		local itemId = arg
+
+		-- Verify item is unlocked (folder, then fallback to Backpack/Character)
+		local eqFolder = ensureFolder(player)
+		if not eqFolder:FindFirstChild(itemId) then
+			local found = false
+			local backpack = player:FindFirstChild("Backpack")
+			if backpack and backpack:FindFirstChild(itemId) then found = true end
+			if not found and player.Character and player.Character:FindFirstChild(itemId) then
+				found = true
+			end
+			if not found and itemId ~= "Sword" and itemId ~= "Backpack" then return end
+			if found then
+				tryUnlock(player, backpack:FindFirstChild(itemId) or player.Character:FindFirstChild(itemId))
+			end
 		end
-		if not found and weaponId ~= "Sword" then return end
-		-- Auto-unlock since they have it
-		if found then tryUnlock(player, backpack:FindFirstChild(weaponId) or player.Character:FindFirstChild(weaponId)) end
+
+		-- Split: backpack vs weapon (they occupy separate slots)
+		if EQUIPPABLE_BACKPACKS[itemId] then
+			mercEntry:SetAttribute("EquippedBackpack", itemId)
+			initBackpackSlots(mercEntry)
+		else
+			mercEntry:SetAttribute("EquippedWeapon", itemId)
+		end
+
+		equipEvent:FireClient(player, "equipped", mercName, itemId)
+
+	elseif action == "takeItem" then
+		-- Transfer one slot's contents from mercenary inventory to player inventory
+		local slotIndex = arg
+		if typeof(slotIndex) ~= "number" then return end
+		slotIndex = math.floor(slotIndex)
+		if slotIndex < 1 or slotIndex > MERC_INVENTORY_SLOTS then return end
+
+		local itemName = mercEntry:GetAttribute("Slot" .. slotIndex .. "_Name")
+		local count = mercEntry:GetAttribute("Slot" .. slotIndex .. "_Count")
+		if typeof(itemName) ~= "string" or itemName == "" then return end
+		if typeof(count) ~= "number" or count <= 0 then return end
+
+		if _G.GetInventory then
+			local inv = _G.GetInventory(player)
+			if inv then
+				inv[itemName] = (inv[itemName] or 0) + count
+				if _G.SendInventory then
+					_G.SendInventory(player)
+				end
+			end
+		end
+
+		-- Clear the slot
+		mercEntry:SetAttribute("Slot" .. slotIndex .. "_Name", "")
+		mercEntry:SetAttribute("Slot" .. slotIndex .. "_Count", 0)
 	end
-
-	-- Store equipped weapon as attribute (replicated to client)
-	mercEntry:SetAttribute("EquippedWeapon", weaponId)
-
-	-- Confirm to client
-	equipEvent:FireClient(player, "equipped", mercName, weaponId)
 end)

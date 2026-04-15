@@ -14,6 +14,9 @@ local mouse = player:GetMouse()
 local camera = workspace.CurrentCamera
 
 local commandEvent = ReplicatedStorage:WaitForChild("MercenaryCommand")
+local equipEvent = ReplicatedStorage:WaitForChild("MercenaryEquipment")
+
+local MERC_INVENTORY_SLOTS = 6
 
 -- ── State ───────────────────────────────────────────────────────────────
 local targetMerc = nil           -- model currently under crosshair
@@ -106,6 +109,207 @@ local function createPrompt(model)
 	promptBillboard = bb
 end
 
+-- ── Mercenary inventory UI (left-side panel) ────────────────────────────
+
+local mercInvGui = nil
+local mercInvConns = {}
+
+local function closeMercInventory()
+	if mercInvGui then
+		mercInvGui:Destroy()
+		mercInvGui = nil
+	end
+	for _, c in mercInvConns do
+		if c and typeof(c) == "RBXScriptConnection" then c:Disconnect() end
+	end
+	mercInvConns = {}
+end
+
+local function openMercInventory(mercModel)
+	closeMercInventory()
+
+	local mercName = mercModel:GetAttribute("MercName")
+	if not mercName then return end
+
+	local mercFolder = player:FindFirstChild("Mercenaries")
+	local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
+	if not mercEntry then return end
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name = "MercInventory"
+	gui.ResetOnSpawn = false
+	gui.DisplayOrder = 31
+	gui.IgnoreGuiInset = true
+	gui.Parent = playerGui
+
+	-- Left-side panel (does not overlap the centred player inventory)
+	local SLOT_SIZE = 56
+	local SLOT_PAD = 6
+	local HEADER_H = 30
+	local FOOTER_H = 28
+	local PAD = 10
+	local panelW = PAD * 2 + SLOT_SIZE
+	local panelH = PAD * 2 + HEADER_H + SLOT_PAD + MERC_INVENTORY_SLOTS * (SLOT_SIZE + SLOT_PAD) + FOOTER_H
+
+	local panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.AnchorPoint = Vector2.new(0, 0.5)
+	panel.Position = UDim2.new(0, 14, 0.5, 0)
+	panel.Size = UDim2.fromOffset(panelW, panelH)
+	panel.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+	panel.BackgroundTransparency = 0.15
+	panel.BorderSizePixel = 0
+	panel.Parent = gui
+
+	local panelCorner = Instance.new("UICorner")
+	panelCorner.CornerRadius = UDim.new(0, 10)
+	panelCorner.Parent = panel
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(90, 90, 110)
+	stroke.Thickness = 1
+	stroke.Parent = panel
+
+	-- Header
+	local title = Instance.new("TextLabel")
+	title.Size = UDim2.new(1, -PAD * 2, 0, HEADER_H)
+	title.Position = UDim2.new(0, PAD, 0, 4)
+	title.BackgroundTransparency = 1
+	title.TextColor3 = Color3.fromRGB(255, 255, 255)
+	title.Text = "Backpack"
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 14
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.Parent = panel
+
+	-- Close (X) button
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Size = UDim2.fromOffset(20, 20)
+	closeBtn.Position = UDim2.new(1, -24, 0, 6)
+	closeBtn.BackgroundColor3 = Color3.fromRGB(120, 40, 40)
+	closeBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	closeBtn.Text = "×"
+	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.TextSize = 16
+	closeBtn.BorderSizePixel = 0
+	closeBtn.Parent = panel
+	local closeCorner = Instance.new("UICorner")
+	closeCorner.CornerRadius = UDim.new(0, 4)
+	closeCorner.Parent = closeBtn
+	closeBtn.MouseButton1Click:Connect(closeMercInventory)
+
+	-- Empty / no-backpack hint (only visible when no backpack is equipped)
+	local hintLabel = Instance.new("TextLabel")
+	hintLabel.Size = UDim2.new(1, -PAD * 2, 0, FOOTER_H)
+	hintLabel.Position = UDim2.new(0, PAD, 1, -FOOTER_H - 2)
+	hintLabel.BackgroundTransparency = 1
+	hintLabel.TextColor3 = Color3.fromRGB(200, 180, 120)
+	hintLabel.Font = Enum.Font.Gotham
+	hintLabel.TextSize = 11
+	hintLabel.TextWrapped = true
+	hintLabel.Text = ""
+	hintLabel.TextXAlignment = Enum.TextXAlignment.Center
+	hintLabel.Parent = panel
+
+	-- Slot buttons
+	local slotButtons = {}
+	for i = 1, MERC_INVENTORY_SLOTS do
+		local y = PAD + HEADER_H + SLOT_PAD + (i - 1) * (SLOT_SIZE + SLOT_PAD)
+
+		local btn = Instance.new("TextButton")
+		btn.Name = "Slot" .. i
+		btn.Size = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE)
+		btn.Position = UDim2.new(0, PAD, 0, y)
+		btn.BackgroundColor3 = Color3.fromRGB(55, 55, 68)
+		btn.BorderSizePixel = 0
+		btn.AutoButtonColor = false
+		btn.Text = ""
+		btn.Parent = panel
+
+		local btnCorner = Instance.new("UICorner")
+		btnCorner.CornerRadius = UDim.new(0, 6)
+		btnCorner.Parent = btn
+
+		local btnStroke = Instance.new("UIStroke")
+		btnStroke.Color = Color3.fromRGB(85, 85, 100)
+		btnStroke.Thickness = 1
+		btnStroke.Parent = btn
+
+		-- Item name label
+		local nameLbl = Instance.new("TextLabel")
+		nameLbl.Size = UDim2.new(1, -4, 0, 14)
+		nameLbl.Position = UDim2.new(0, 2, 0, 2)
+		nameLbl.BackgroundTransparency = 1
+		nameLbl.TextColor3 = Color3.fromRGB(240, 240, 240)
+		nameLbl.Font = Enum.Font.Gotham
+		nameLbl.TextSize = 10
+		nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+		nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+		nameLbl.Text = ""
+		nameLbl.Parent = btn
+
+		-- Count label (bottom-right)
+		local countLbl = Instance.new("TextLabel")
+		countLbl.AnchorPoint = Vector2.new(1, 1)
+		countLbl.Size = UDim2.new(0, 28, 0, 14)
+		countLbl.Position = UDim2.new(1, -4, 1, -2)
+		countLbl.BackgroundTransparency = 1
+		countLbl.TextColor3 = Color3.fromRGB(255, 220, 100)
+		countLbl.Font = Enum.Font.GothamBold
+		countLbl.TextSize = 12
+		countLbl.TextXAlignment = Enum.TextXAlignment.Right
+		countLbl.Text = ""
+		countLbl.Parent = btn
+
+		btn.MouseButton1Click:Connect(function()
+			local itemName = mercEntry:GetAttribute("Slot" .. i .. "_Name")
+			local count = mercEntry:GetAttribute("Slot" .. i .. "_Count")
+			if typeof(itemName) ~= "string" or itemName == "" then return end
+			if typeof(count) ~= "number" or count <= 0 then return end
+			equipEvent:FireServer("takeItem", mercName, i)
+		end)
+
+		slotButtons[i] = { button = btn, nameLbl = nameLbl, countLbl = countLbl }
+	end
+
+	local function refreshSlots()
+		local hasBackpack = (mercEntry:GetAttribute("EquippedBackpack") or "") ~= ""
+		hintLabel.Text = hasBackpack and "Click a slot to take items" or "Equip a backpack first"
+
+		for i = 1, MERC_INVENTORY_SLOTS do
+			local slot = slotButtons[i]
+			if slot then
+				local itemName = mercEntry:GetAttribute("Slot" .. i .. "_Name")
+				local count = mercEntry:GetAttribute("Slot" .. i .. "_Count")
+				if typeof(itemName) == "string" and itemName ~= "" and typeof(count) == "number" and count > 0 then
+					slot.nameLbl.Text = itemName:gsub("_", " ")
+					slot.countLbl.Text = "x" .. tostring(count)
+					slot.button.BackgroundColor3 = Color3.fromRGB(70, 75, 90)
+				else
+					slot.nameLbl.Text = ""
+					slot.countLbl.Text = ""
+					slot.button.BackgroundColor3 = Color3.fromRGB(55, 55, 68)
+				end
+			end
+		end
+	end
+
+	refreshSlots()
+
+	-- Live-refresh when server updates attributes
+	table.insert(mercInvConns, mercEntry.AttributeChanged:Connect(function()
+		refreshSlots()
+	end))
+	-- Close if the mercenary entry is removed
+	table.insert(mercInvConns, mercEntry.AncestryChanged:Connect(function()
+		if not mercEntry:IsDescendantOf(player) then
+			closeMercInventory()
+		end
+	end))
+
+	mercInvGui = gui
+end
+
 -- ── Command menu (ScreenGui) ────────────────────────────────────────────
 
 local function closeCommandMenu()
@@ -142,8 +346,8 @@ local function openCommandMenu(model)
 	-- Central panel
 	local panel = Instance.new("Frame")
 	panel.Name = "Panel"
-	panel.Size = UDim2.new(0, 260, 0, 160)
-	panel.Position = UDim2.new(0.5, -130, 0.5, -80)
+	panel.Size = UDim2.new(0, 260, 0, 216)
+	panel.Position = UDim2.new(0.5, -130, 0.5, -108)
 	panel.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
 	panel.BorderSizePixel = 0
 	panel.Parent = gui
@@ -189,6 +393,28 @@ local function openCommandMenu(model)
 			end
 		end)
 	end
+
+	-- "Inventory" button (open the mercenary's 6-slot backpack inventory)
+	local invBtn = Instance.new("TextButton")
+	invBtn.Name = "InventoryBtn"
+	invBtn.Size = UDim2.new(0.85, 0, 0, 42)
+	invBtn.Position = UDim2.new(0.075, 0, 0, 104)
+	invBtn.BackgroundColor3 = Color3.fromRGB(70, 90, 150)
+	invBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
+	invBtn.Text = "Inventory"
+	invBtn.Font = Enum.Font.GothamBold
+	invBtn.TextScaled = true
+	invBtn.BorderSizePixel = 0
+	invBtn.Parent = panel
+
+	local invBtnCorner = Instance.new("UICorner")
+	invBtnCorner.CornerRadius = UDim.new(0, 8)
+	invBtnCorner.Parent = invBtn
+
+	invBtn.MouseButton1Click:Connect(function()
+		closeCommandMenu()
+		openMercInventory(model)
+	end)
 
 	-- Close button
 	local closeBtn = Instance.new("TextButton")
@@ -494,7 +720,7 @@ end
 -- ── Hover detection: show "[E] Command" prompt ──────────────────────────
 
 RunService.RenderStepped:Connect(function()
-	if isPlacingLocation or isPlacingCast or commandMenuOpen then
+	if isPlacingLocation or isPlacingCast or commandMenuOpen or mercInvGui then
 		if promptBillboard then destroyPrompt() end
 		return
 	end
@@ -504,7 +730,6 @@ RunService.RenderStepped:Connect(function()
 
 	if mercModel
 		and isOwnedMercenary(mercModel)
-		and hasFishingRod(mercModel)
 		and distanceToModel(mercModel) <= MAX_INTERACT_DISTANCE
 	then
 		if mercModel ~= targetMerc then
@@ -528,6 +753,12 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	-- Close the command menu if it's already open
 	if commandMenuOpen then
 		closeCommandMenu()
+		return
+	end
+
+	-- Close the mercenary inventory if it's open
+	if mercInvGui then
+		closeMercInventory()
 		return
 	end
 
