@@ -152,6 +152,70 @@ local SLOT_PAD = 8
 local COLS = 5
 local BASE_UNLOCKED_SLOTS = HOTBAR_SLOTS + 5 -- hotbar + first grid row until Strength unlocks more
 
+-- ── Responsive UI scaling ─────────────────────────────────────────────
+-- The inventory / hotbar / crafting UI is laid out in pixel offsets at a
+-- reference resolution. On smaller screens (phones, vertical windows,
+-- studio emulator) we attach a `UIScale` that shrinks everything so the
+-- combined block + hotbar always fit. On large screens we never scale
+-- above 1.0 so the UI doesn't grow absurdly large on 4K monitors.
+local UI_REF_WIDTH  = 1280   -- combined UI (craft + inventory) is ~700 wide
+local UI_REF_HEIGHT = 720    -- hotbar + inventory panel comfortably fit
+local UI_MIN_SCALE  = 0.45
+local UI_MAX_SCALE  = 1.0
+
+local function computeUIScale()
+	local camera = workspace.CurrentCamera
+	local vp = camera and camera.ViewportSize or Vector2.new(UI_REF_WIDTH, UI_REF_HEIGHT)
+	local s = math.min(vp.X / UI_REF_WIDTH, vp.Y / UI_REF_HEIGHT)
+	return math.clamp(s, UI_MIN_SCALE, UI_MAX_SCALE)
+end
+
+-- Every ScreenGui that holds part of the inventory UI should be
+-- registered here so the scale stays in sync when the viewport resizes.
+local scaledGuis = setmetatable({}, { __mode = "k" })
+
+local function attachResponsiveScale(gui)
+	if not gui then return end
+	local scaleObj = gui:FindFirstChildOfClass("UIScale")
+	if not scaleObj then
+		scaleObj = Instance.new("UIScale")
+		scaleObj.Parent = gui
+	end
+	scaleObj.Scale = computeUIScale()
+	scaledGuis[gui] = scaleObj
+end
+
+-- Exposed so other client scripts (e.g. the mercenary backpack window)
+-- can share the same responsive scaling.
+_G.AttachInventoryUIScale = attachResponsiveScale
+
+do
+	local camera = workspace.CurrentCamera
+	if camera then
+		camera:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+			local s = computeUIScale()
+			for gui, scaleObj in pairs(scaledGuis) do
+				if gui and gui.Parent and scaleObj then
+					scaleObj.Scale = s
+				end
+			end
+		end)
+	end
+	workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		local newCam = workspace.CurrentCamera
+		if newCam then
+			newCam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+				local s = computeUIScale()
+				for gui, scaleObj in pairs(scaledGuis) do
+					if gui and gui.Parent and scaleObj then
+						scaleObj.Scale = s
+					end
+				end
+			end)
+		end
+	end)
+end
+
 -- How many total slots (hotbar + grid) the player currently has unlocked.
 -- Driven by `Characteristics.UnlockedInventorySlots` which is computed from
 -- the player's Strength stat by Strength.server.lua. Defaults to the
@@ -1326,8 +1390,8 @@ function rebuildCraftList()
 			btnCorner.Parent = btn
 
 			local icon = Instance.new("ImageLabel")
-			icon.Size = UDim2.new(0, 32, 0, 32)
-			icon.Position = UDim2.new(0, 6, 0.5, -16)
+			icon.Size = UDim2.new(0, 64, 0, 64)
+			icon.Position = UDim2.new(0, 12, 0.5, -32)
 			icon.BackgroundTransparency = 1
 			icon.Image = recipe.icon or ""
 			icon.ScaleType = Enum.ScaleType.Fit
@@ -1335,13 +1399,13 @@ function rebuildCraftList()
 			icon.Parent = btn
 
 			local nameLabel = Instance.new("TextLabel")
-			nameLabel.Size = UDim2.new(1, -50, 0, 20)
-			nameLabel.Position = UDim2.new(0, 44, 0, 3)
+			nameLabel.Size = UDim2.new(1, -96, 0, 26)
+			nameLabel.Position = UDim2.new(0, 86, 0, 14)
 			nameLabel.BackgroundTransparency = 1
 			nameLabel.Text = recipe.displayName or recipe.name
 			nameLabel.TextColor3 = COLORS.titleText
 			nameLabel.Font = Enum.Font.Gotham
-			nameLabel.TextSize = 14
+			nameLabel.TextSize = 18
 			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 			nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 			nameLabel.ZIndex = 18
@@ -1354,13 +1418,13 @@ function rebuildCraftList()
 
 			local costLabel = Instance.new("TextLabel")
 			costLabel.Name = "CostLabel"
-			costLabel.Size = UDim2.new(1, -50, 0, 16)
-			costLabel.Position = UDim2.new(0, 44, 0, 24)
+			costLabel.Size = UDim2.new(1, -96, 0, 22)
+			costLabel.Position = UDim2.new(0, 86, 0, 48)
 			costLabel.BackgroundTransparency = 1
 			costLabel.Text = costText
 			costLabel.TextColor3 = canAfford(recipe) and COLORS.affordable or COLORS.notAffordable
 			costLabel.Font = Enum.Font.Gotham
-			costLabel.TextSize = 11
+			costLabel.TextSize = 15
 			costLabel.TextXAlignment = Enum.TextXAlignment.Left
 			costLabel.ZIndex = 18
 			costLabel.Parent = btn
@@ -1502,6 +1566,7 @@ local function buildHotbar()
 	hotbarGui.ResetOnSpawn = false
 	hotbarGui.DisplayOrder = 5
 	hotbarGui.Parent = playerGui
+	attachResponsiveScale(hotbarGui)
 
 	local barWidth = HOTBAR_SLOTS * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
 	local bar = Instance.new("Frame")
@@ -1611,6 +1676,7 @@ local function buildUI()
 	screenGui.ResetOnSpawn = false
 	screenGui.DisplayOrder = 10
 	screenGui.Parent = playerGui
+	attachResponsiveScale(screenGui)
 
 	local gridWidth = COLS * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
 	local gridHeight = 4 * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
@@ -1870,8 +1936,8 @@ local function buildUI()
 		if iconId then
 			local icon = Instance.new("ImageLabel")
 			icon.Name = "Icon"
-			icon.Size = UDim2.new(0, 24, 0, 24)
-			icon.Position = UDim2.new(0, 8, 0.5, -12)
+			icon.Size = UDim2.new(0, 44, 0, 44)
+			icon.Position = UDim2.new(0, 10, 0.5, -22)
 			icon.BackgroundTransparency = 1
 			icon.Image = iconId
 			icon.ScaleType = Enum.ScaleType.Fit
@@ -1881,13 +1947,13 @@ local function buildUI()
 		-- Text label to the right of the icon
 		local label = Instance.new("TextLabel")
 		label.Name = "Label"
-		label.Size = UDim2.new(1, -42, 1, 0)
-		label.Position = UDim2.new(0, 38, 0, 0)
+		label.Size = UDim2.new(1, -66, 1, 0)
+		label.Position = UDim2.new(0, 62, 0, 0)
 		label.BackgroundTransparency = 1
 		label.Text = cat
 		label.TextColor3 = COLORS.titleText
 		label.Font = Enum.Font.GothamMedium
-		label.TextSize = 14
+		label.TextSize = 18
 		label.TextXAlignment = Enum.TextXAlignment.Left
 		label.Parent = tab
 

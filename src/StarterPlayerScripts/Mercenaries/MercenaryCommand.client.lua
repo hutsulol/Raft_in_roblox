@@ -231,6 +231,9 @@ local function openMercInventory(mercModel)
 	gui.DisplayOrder = 31
 	gui.IgnoreGuiInset = true
 	gui.Parent = playerGui
+	if _G.AttachInventoryUIScale then
+		_G.AttachInventoryUIScale(gui)
+	end
 
 	-- Panel dimensions (3 cols × 2 rows), spacing mirrors InventoryUI
 	local COLS = 3
@@ -652,6 +655,9 @@ local function openCommandMenu(model)
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 30
 	gui.Parent = playerGui
+	if _G.AttachInventoryUIScale then
+		_G.AttachInventoryUIScale(gui)
+	end
 
 	-- Semi-transparent background to indicate menu mode
 	local bg = Instance.new("Frame")
