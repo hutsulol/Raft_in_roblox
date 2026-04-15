@@ -394,7 +394,7 @@ local function buildMercViewport(parent, mercName, weaponId)
 			-- blade from pointing down at the ground to pointing up — the
 			-- "ready" pose the pirate uses in-game.
 			local baseGripC0 = CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
-			grip.C0    = baseGripC0 * CFrame.Angles(-math.pi / 2, 0, -math.pi / 2)
+			grip.C0    = baseGripC0 * CFrame.Angles(-math.pi / 2, 0, math.pi / 2)
 			grip.C1    = toolGripC1
 			grip.Parent = rightArm
 
