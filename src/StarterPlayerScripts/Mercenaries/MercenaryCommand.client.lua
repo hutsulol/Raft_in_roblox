@@ -126,6 +126,11 @@ local function closeMercInventory()
 	-- Clear any leftover drag ghost
 	local ghost = playerGui:FindFirstChild("MercDragGhost")
 	if ghost then ghost:Destroy() end
+	-- Restore the player inventory's CraftPanel (hidden while the
+	-- merc inventory was open).
+	local invGui = playerGui:FindFirstChild("InventoryGui")
+	local craftPanel = invGui and invGui:FindFirstChild("CraftPanel")
+	if craftPanel then craftPanel.Visible = true end
 end
 
 -- ── Hit-test helpers for drag-and-drop ─────────────────────────────────
@@ -166,6 +171,10 @@ local function openMercInventory(mercModel)
 	local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
 	if not mercEntry then return end
 
+	-- Gate: only open if a backpack is equipped.
+	local equippedBp = mercEntry:GetAttribute("EquippedBackpack")
+	if typeof(equippedBp) ~= "string" or equippedBp == "" then return end
+
 	-- Open the player's main inventory alongside the backpack.
 	if _G.OpenInventory then
 		_G.OpenInventory()
@@ -174,6 +183,12 @@ local function openMercInventory(mercModel)
 	-- Wait (briefly) for the player inventory panel so we can anchor to it.
 	local playerPanel = waitForInventoryPanel(1)
 
+	-- Hide the crafting panel while the merc inventory is open so the
+	-- two UIs don't compete for the left-side of the screen.
+	local invGui = playerGui:FindFirstChild("InventoryGui")
+	local craftPanel = invGui and invGui:FindFirstChild("CraftPanel")
+	if craftPanel then craftPanel.Visible = false end
+
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "MercInventory"
 	gui.ResetOnSpawn = false
@@ -181,14 +196,16 @@ local function openMercInventory(mercModel)
 	gui.IgnoreGuiInset = true
 	gui.Parent = playerGui
 
-	-- Panel dimensions (single column of SLOTS slots)
-	local SLOT_SIZE = 56
+	-- Panel dimensions (3 cols × 2 rows)
+	local COLS = 3
+	local ROWS = math.ceil(MERC_INVENTORY_SLOTS / COLS)
+	local SLOT_SIZE = 60
 	local SLOT_PAD = 6
 	local HEADER_H = 30
 	local FOOTER_H = 28
 	local PAD = 10
-	local panelW = PAD * 2 + SLOT_SIZE
-	local panelH = PAD * 2 + HEADER_H + SLOT_PAD + MERC_INVENTORY_SLOTS * (SLOT_SIZE + SLOT_PAD) + FOOTER_H
+	local panelW = PAD * 2 + COLS * SLOT_SIZE + (COLS - 1) * SLOT_PAD
+	local panelH = PAD * 2 + HEADER_H + SLOT_PAD + ROWS * (SLOT_SIZE + SLOT_PAD) + FOOTER_H
 
 	local panel = Instance.new("Frame")
 	panel.Name = "Panel"
@@ -274,12 +291,15 @@ local function openMercInventory(mercModel)
 	-- Slot buttons
 	local slotButtons = {}
 	for i = 1, MERC_INVENTORY_SLOTS do
-		local y = PAD + HEADER_H + SLOT_PAD + (i - 1) * (SLOT_SIZE + SLOT_PAD)
+		local col = (i - 1) % COLS
+		local row = math.floor((i - 1) / COLS)
+		local x = PAD + col * (SLOT_SIZE + SLOT_PAD)
+		local y = PAD + HEADER_H + SLOT_PAD + row * (SLOT_SIZE + SLOT_PAD)
 
 		local btn = Instance.new("TextButton")
 		btn.Name = "Slot" .. i
 		btn.Size = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE)
-		btn.Position = UDim2.new(0, PAD, 0, y)
+		btn.Position = UDim2.new(0, x, 0, y)
 		btn.BackgroundColor3 = Color3.fromRGB(55, 55, 68)
 		btn.BorderSizePixel = 0
 		btn.AutoButtonColor = false
@@ -603,27 +623,41 @@ local function openCommandMenu(model)
 		end)
 	end
 
-	-- "Inventory" button (open the mercenary's 6-slot backpack inventory)
+	-- "Inventory" button (open the mercenary's 6-slot backpack inventory).
+	-- Only enabled when the mercenary actually has a backpack equipped.
+	local mercFolder = player:FindFirstChild("Mercenaries")
+	local mercEntryCmd = mercFolder and mercFolder:FindFirstChild(mercName)
+	local equippedBp = mercEntryCmd and mercEntryCmd:GetAttribute("EquippedBackpack") or ""
+	local hasBackpack = typeof(equippedBp) == "string" and equippedBp ~= ""
+
 	local invBtn = Instance.new("TextButton")
 	invBtn.Name = "InventoryBtn"
 	invBtn.Size = UDim2.new(0.85, 0, 0, 42)
 	invBtn.Position = UDim2.new(0.075, 0, 0, 104)
-	invBtn.BackgroundColor3 = Color3.fromRGB(70, 90, 150)
-	invBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	invBtn.Text = "Inventory"
+	invBtn.BackgroundColor3 = hasBackpack
+		and Color3.fromRGB(70, 90, 150)
+		or Color3.fromRGB(70, 70, 80)
+	invBtn.TextColor3 = hasBackpack
+		and Color3.fromRGB(255, 255, 255)
+		or Color3.fromRGB(170, 170, 180)
+	invBtn.Text = hasBackpack and "Inventory" or "Inventory (no backpack)"
 	invBtn.Font = Enum.Font.GothamBold
 	invBtn.TextScaled = true
 	invBtn.BorderSizePixel = 0
+	invBtn.AutoButtonColor = hasBackpack
+	invBtn.Active = hasBackpack
 	invBtn.Parent = panel
 
 	local invBtnCorner = Instance.new("UICorner")
 	invBtnCorner.CornerRadius = UDim.new(0, 8)
 	invBtnCorner.Parent = invBtn
 
-	invBtn.MouseButton1Click:Connect(function()
-		closeCommandMenu()
-		openMercInventory(model)
-	end)
+	if hasBackpack then
+		invBtn.MouseButton1Click:Connect(function()
+			closeCommandMenu()
+			openMercInventory(model)
+		end)
+	end
 
 	-- Close button
 	local closeBtn = Instance.new("TextButton")
