@@ -108,6 +108,37 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 		if canRespawn then canRespawn.Value = false end
 	end
 
+	-- Force the rig into a live, walkable state before it hits workspace.
+	-- The Pirate_2 template ships in a static/"wooden" pose (anchored parts,
+	-- no AI script wakes the Humanoid up), which is why the clone just
+	-- stands there while being hit. Unanchor every BasePart, restore any
+	-- dropped Motor6Ds won't return — but at minimum we can clear anchors,
+	-- set a sane WalkSpeed, and clear PlatformStand so MoveTo actually
+	-- drives the character.
+	for _, d in clone:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = false
+		end
+	end
+
+	local mercHum = clone:FindFirstChildOfClass("Humanoid")
+	if mercHum then
+		if mercHum.WalkSpeed <= 0 then
+			mercHum.WalkSpeed = 12
+		end
+		mercHum.PlatformStand = false
+		mercHum.Sit = false
+		mercHum.JumpPower = 0
+		mercHum.JumpHeight = 0
+		pcall(function()
+			mercHum:SetStateEnabled(Enum.HumanoidStateType.Running, true)
+			mercHum:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, true)
+			mercHum:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
+		end)
+	else
+		warn("[MercenarySpawner] Pirate_2 clone has no Humanoid — AI will not run")
+	end
+
 	-- Tag BEFORE the script runs (clone.Parent = workspace starts it) so
 	-- SearchForTarget sees the mercenary role on its very first tick.
 	CollectionService:AddTag(clone, "SpawnedMercenary")
@@ -115,6 +146,15 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local spawnCF = hrp.CFrame * CFrame.new(0, 0, -8)
 	clone:PivotTo(spawnCF)
 	clone.Parent = workspace
+
+	-- After parenting, make the server authoritative for physics so
+	-- Humanoid:MoveTo is actually honored (default ownership on a
+	-- newly-parented character can fall to the nearest client).
+	for _, d in clone:GetDescendants() do
+		if d:IsA("BasePart") then
+			pcall(function() d:SetNetworkOwner(nil) end)
+		end
+	end
 
 	clone:SetAttribute("OwnerUserId", player.UserId)
 	clone:SetAttribute("MercName", mercName)
