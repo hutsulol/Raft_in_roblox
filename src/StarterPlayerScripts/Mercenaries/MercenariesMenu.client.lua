@@ -41,13 +41,6 @@ local FONT_BODY        = Enum.Font.Gotham
 
 local IDLE_ANIMATION_ID = "rbxassetid://107139405334393"
 
--- Pirate tool-hold idle. Taken from Enemy_Pirate/Animate.script's
--- `toolnone` table — this is the exact animation the in-game pirate
--- plays when a Tool is equipped. Without it the arm hangs straight down
--- and the blade points at the ground; playing it raises the arm so the
--- sword/rod is presented the way it looks during gameplay.
-local TOOL_HOLD_ANIMATION_ID = "rbxassetid://182393478"
-
 -- Per-mercenary data
 local MERC_THEMES = {
 	["Pirate lvl1"] = {
@@ -418,13 +411,16 @@ local function buildMercViewport(parent, mercName, weaponId)
 		end
 	end
 
-	-- Play idle animation. When a weapon is held, use the pirate's
-	-- `toolnone` hold pose so the arm is raised the same way as in game;
-	-- otherwise play the plain body idle.
+	-- Play the plain body idle so the pirate has its breathing / sway in
+	-- the preview. We tried layering the pirate's `toolnone` tool-hold
+	-- animation on top when a weapon was equipped (to match the raised-arm
+	-- pose seen in-game) but it posed the arm statically and clobbered the
+	-- idle, so we dropped it. The weapon just hangs from the hand here —
+	-- same way the template's baked sword used to display.
 	if animator then
 		pcall(function()
 			local anim = Instance.new("Animation")
-			anim.AnimationId = hasWeapon and TOOL_HOLD_ANIMATION_ID or IDLE_ANIMATION_ID
+			anim.AnimationId = IDLE_ANIMATION_ID
 			local track = animator:LoadAnimation(anim)
 			track.Looped = true
 			track.Priority = Enum.AnimationPriority.Action
