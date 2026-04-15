@@ -1182,6 +1182,9 @@ local function openCategoryOverlay(cat)
 	craftList.BackgroundTransparency = 1
 	craftList.BorderSizePixel = 0
 	craftList.ScrollBarThickness = 6
+	-- Matches the detail-overlay scroll bar; darker than the tan panel
+	-- so it stands out against the wooden background.
+	craftList.ScrollBarImageColor3 = COLORS.panelBorder
 	craftList.CanvasSize = UDim2.new(0, 0, 0, 0)
 	craftList.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	craftList.ZIndex = 17
