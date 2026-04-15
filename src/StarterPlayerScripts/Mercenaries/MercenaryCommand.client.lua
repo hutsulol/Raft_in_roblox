@@ -111,14 +111,14 @@ end
 
 -- ── Mercenary inventory UI (left-side panel) ────────────────────────────
 
--- Colours matched to the player inventory's wooden theme
+-- Colours matched to the player inventory / phone menu theme
 local INV_COLORS = {
-	panelBg = Color3.fromRGB(139, 109, 63),
-	panelBorder = Color3.fromRGB(100, 75, 40),
-	slotBg = Color3.fromRGB(175, 145, 95),
-	slotBorder = Color3.fromRGB(120, 90, 50),
-	titleText = Color3.fromRGB(50, 35, 15),
-	separator = Color3.fromRGB(200, 185, 150),
+	panelBg = Color3.fromRGB(10, 25, 55),
+	panelBorder = Color3.fromRGB(80, 180, 255),
+	slotBg = Color3.fromRGB(15, 35, 70),
+	slotBorder = Color3.fromRGB(80, 180, 255),
+	titleText = Color3.fromRGB(220, 240, 255),
+	separator = Color3.fromRGB(80, 180, 255),
 	closeBg = Color3.fromRGB(180, 60, 50),
 }
 
@@ -667,13 +667,18 @@ local function openCommandMenu(model)
 	panel.Name = "Panel"
 	panel.Size = UDim2.new(0, 260, 0, 216)
 	panel.Position = UDim2.new(0.5, -130, 0.5, -108)
-	panel.BackgroundColor3 = Color3.fromRGB(40, 40, 50)
+	panel.BackgroundColor3 = INV_COLORS.panelBg
 	panel.BorderSizePixel = 0
 	panel.Parent = gui
 
 	local panelCorner = Instance.new("UICorner")
 	panelCorner.CornerRadius = UDim.new(0, 12)
 	panelCorner.Parent = panel
+
+	local panelStroke = Instance.new("UIStroke")
+	panelStroke.Color = INV_COLORS.panelBorder
+	panelStroke.Thickness = 2
+	panelStroke.Parent = panel
 
 	-- Title
 	local title = Instance.new("TextLabel")

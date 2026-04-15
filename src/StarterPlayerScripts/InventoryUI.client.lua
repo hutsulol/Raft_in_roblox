@@ -126,21 +126,22 @@ local isOpen = false
 local screenGui = nil
 local hotbarGui = nil
 
+-- Palette mirrors the Phone menu (dark navy + cyan accents).
 local COLORS = {
-	panelBg = Color3.fromRGB(139, 109, 63),
-	panelBorder = Color3.fromRGB(100, 75, 40),
-	slotBg = Color3.fromRGB(175, 145, 95),
-	slotBorder = Color3.fromRGB(120, 90, 50),
-	titleText = Color3.fromRGB(50, 35, 15),
-	lightText = Color3.fromRGB(255, 245, 220),
-	craftPanelBg = Color3.fromRGB(220, 205, 175),
-	craftItemBg = Color3.fromRGB(200, 180, 140),
-	craftItemHover = Color3.fromRGB(180, 160, 120),
-	affordable = Color3.fromRGB(60, 160, 60),
-	notAffordable = Color3.fromRGB(160, 60, 60),
-	hotbarBg = Color3.fromRGB(139, 109, 63),
-	separator = Color3.fromRGB(200, 185, 150),
-	equipped = Color3.fromRGB(200, 170, 100),
+	panelBg = Color3.fromRGB(10, 25, 55),
+	panelBorder = Color3.fromRGB(80, 180, 255),
+	slotBg = Color3.fromRGB(15, 35, 70),
+	slotBorder = Color3.fromRGB(80, 180, 255),
+	titleText = Color3.fromRGB(220, 240, 255),
+	lightText = Color3.fromRGB(220, 240, 255),
+	craftPanelBg = Color3.fromRGB(10, 25, 55),
+	craftItemBg = Color3.fromRGB(15, 35, 70),
+	craftItemHover = Color3.fromRGB(30, 60, 110),
+	affordable = Color3.fromRGB(70, 180, 120),
+	notAffordable = Color3.fromRGB(200, 80, 80),
+	hotbarBg = Color3.fromRGB(10, 25, 55),
+	separator = Color3.fromRGB(80, 180, 255),
+	equipped = Color3.fromRGB(120, 210, 255),
 }
 
 local HOTBAR_SLOTS = 8
@@ -280,10 +281,10 @@ local function ensureTooltipGui()
 	tooltipLabel.Name = "Label"
 	tooltipLabel.AutomaticSize = Enum.AutomaticSize.XY
 	tooltipLabel.Size = UDim2.new(0, 0, 0, 0)
-	tooltipLabel.BackgroundColor3 = Color3.fromRGB(30, 22, 10)
+	tooltipLabel.BackgroundColor3 = COLORS.panelBg
 	tooltipLabel.BackgroundTransparency = 0.1
 	tooltipLabel.BorderSizePixel = 0
-	tooltipLabel.TextColor3 = Color3.fromRGB(255, 245, 220)
+	tooltipLabel.TextColor3 = COLORS.titleText
 	tooltipLabel.Font = Enum.Font.GothamMedium
 	tooltipLabel.TextSize = 14
 	tooltipLabel.Text = ""
@@ -301,7 +302,7 @@ local function ensureTooltipGui()
 	corner.Parent = tooltipLabel
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(120, 90, 50)
+	stroke.Color = COLORS.panelBorder
 	stroke.Thickness = 1
 	stroke.Parent = tooltipLabel
 end
