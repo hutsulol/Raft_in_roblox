@@ -40,11 +40,13 @@ task.spawn(function()
 end)
 
 -- Container — middle slot of the left HUD stack.
+-- Bottom sits 68px above HealthUI's bottom (which is anchored to
+-- 0.5, 220 so it lines up with the inventory panel's bottom).
 local container = Instance.new("Frame")
 container.Name = "HungerContainer"
 container.AnchorPoint = Vector2.new(0, 1)
-container.Position = UDim2.new(0, 12, 1, -118)
-container.Size = UDim2.new(0, 200, 0, 28)
+container.Position = UDim2.new(0, 20, 0.5, 152)
+container.Size = UDim2.new(0, 400, 0, 56)
 container.BackgroundTransparency = 1
 container.Parent = screenGui
 
@@ -55,7 +57,7 @@ container.Parent = screenGui
 local function buildIconBg(name, x, emoji)
 	local iconBg = Instance.new("Frame")
 	iconBg.Name = name
-	iconBg.Size = UDim2.new(0, 28, 0, 28)
+	iconBg.Size = UDim2.new(0, 56, 0, 56)
 	iconBg.Position = UDim2.new(0, x, 0, 0)
 	iconBg.BackgroundColor3 = Color3.fromRGB(90, 60, 30)
 	iconBg.BorderSizePixel = 0
@@ -67,7 +69,7 @@ local function buildIconBg(name, x, emoji)
 
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Color3.fromRGB(60, 40, 20)
-	stroke.Thickness = 1.5
+	stroke.Thickness = 3
 	stroke.Parent = iconBg
 
 	local icon = Instance.new("TextLabel")
@@ -75,7 +77,7 @@ local function buildIconBg(name, x, emoji)
 	icon.Size = UDim2.new(1, 0, 1, 0)
 	icon.BackgroundTransparency = 1
 	icon.Text = emoji
-	icon.TextSize = 16
+	icon.TextSize = 32
 	icon.Font = Enum.Font.GothamBold
 	icon.TextColor3 = Color3.fromRGB(255, 255, 255)
 	icon.Parent = iconBg
@@ -88,31 +90,31 @@ local function buildBarBg(name, x)
 	bg.Name = name
 	bg.AnchorPoint = Vector2.new(0, 0.5)
 	bg.Position = UDim2.new(0, x, 0.5, 0)
-	bg.Size = UDim2.new(0, 66, 0, 20)
+	bg.Size = UDim2.new(0, 132, 0, 40)
 	bg.BackgroundColor3 = Color3.fromRGB(160, 130, 85)
 	bg.BorderSizePixel = 0
 	bg.Parent = container
 
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 4)
+	corner.CornerRadius = UDim.new(0, 8)
 	corner.Parent = bg
 
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Color3.fromRGB(90, 60, 30)
-	stroke.Thickness = 2
+	stroke.Thickness = 4
 	stroke.Parent = bg
 	return bg
 end
 
 -- ─── Layout ──────────────────────────────────────────────────────────────
--- Container is 200px wide. Pixels used left-to-right:
---   [0..28]   hunger icon
---   [32..98]  hunger bar       (66 wide)
---   [102..168] water bar       (66 wide)
---   [172..200] water icon
--- Gaps of 4px between icon and its bar and between the two bars.
+-- Container is 400px wide. Pixels used left-to-right (all doubled):
+--   [0..56]    hunger icon
+--   [64..196]  hunger bar      (132 wide)
+--   [204..336] water bar       (132 wide)
+--   [344..400] water icon
+-- Gaps of 8px between icon and its bar and between the two bars.
 buildIconBg("HungerIconBg", 0, "\u{1F356}")  -- 🍖
-local hungerBg = buildBarBg("HungerBarBg", 32)
+local hungerBg = buildBarBg("HungerBarBg", 64)
 
 local hungerFill = Instance.new("Frame")
 hungerFill.Name = "Fill"
@@ -124,10 +126,10 @@ hungerFill.BorderSizePixel = 0
 hungerFill.Parent = hungerBg
 
 local hungerFillCorner = Instance.new("UICorner")
-hungerFillCorner.CornerRadius = UDim.new(0, 4)
+hungerFillCorner.CornerRadius = UDim.new(0, 8)
 hungerFillCorner.Parent = hungerFill
 
-local thirstBg = buildBarBg("ThirstBarBg", 102)
+local thirstBg = buildBarBg("ThirstBarBg", 204)
 
 -- Water fill is mirrored: anchored to the RIGHT edge of the track and
 -- grows leftward. At 100% water the fill covers the whole right half;
@@ -143,10 +145,10 @@ thirstFill.BorderSizePixel = 0
 thirstFill.Parent = thirstBg
 
 local thirstFillCorner = Instance.new("UICorner")
-thirstFillCorner.CornerRadius = UDim.new(0, 4)
+thirstFillCorner.CornerRadius = UDim.new(0, 8)
 thirstFillCorner.Parent = thirstFill
 
-buildIconBg("ThirstIconBg", 172, "\u{1F4A7}")  -- 💧
+buildIconBg("ThirstIconBg", 344, "\u{1F4A7}")  -- 💧
 
 -- ─── Update handlers ────────────────────────────────────────────────────
 local function updateHunger(hunger, max)
