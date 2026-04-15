@@ -106,6 +106,13 @@ end
 
 local function tickMercenary(merc)
 	if not merc:IsDescendantOf(workspace) then return end
+
+	-- If the mercenary ships with its own embedded Combat script (the
+	-- Pirate_2 template does, after src/Pirate_2/Combat.script is synced),
+	-- let that script drive the rig instead — otherwise we'd swing twice
+	-- per cooldown and deal double damage.
+	if merc:FindFirstChild("Combat") then return end
+
 	local alive, hum = isAlive(merc)
 	if not alive or not hum then return end
 

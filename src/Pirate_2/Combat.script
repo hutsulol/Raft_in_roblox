@@ -1,0 +1,121 @@
+-- Combat.script
+-- Lives inside the Pirate_2 model. When the model is cloned as a
+-- mercenary and parented to workspace, this script wakes up, finds the
+-- nearest "HostilePirate"-tagged enemy, walks over, and swings.
+--
+-- This mirrors the role hostile pirates have via Enemy_Pirate/Zombie.
+-- We intentionally do NOT target players — mercenaries are friendly.
+-- Targets are discovered through CollectionService tags only.
+
+local CollectionService = game:GetService("CollectionService")
+
+local Self = script.Parent
+
+local DETECTION_RANGE = 80    -- studs; how far we'll notice an enemy
+local ATTACK_RANGE    = 5.5   -- studs; close enough to swing
+local ATTACK_DAMAGE   = 8
+local ATTACK_COOLDOWN = 1.2   -- seconds between swings
+local TICK_INTERVAL   = 0.15  -- seconds between AI ticks
+
+-- ── Wait until we're actually in the world ────────────────────────────
+-- The menu viewport strips scripts from its preview clone, but belt-and-
+-- suspenders: don't run unless we're a descendant of workspace.
+while not Self:IsDescendantOf(workspace) do
+	Self.AncestryChanged:Wait()
+end
+
+local humanoid = Self:FindFirstChildOfClass("Humanoid")
+local waitedFor = 0
+while humanoid == nil and waitedFor < 5 do
+	task.wait(0.1)
+	waitedFor = waitedFor + 0.1
+	humanoid = Self:FindFirstChildOfClass("Humanoid")
+end
+if humanoid == nil then return end
+
+-- The Pirate_2 template has historically shipped anchored / with a
+-- "wooden" Humanoid (WalkSpeed = 0, Running state disabled). Force a
+-- sane movement config so MoveTo actually drives us.
+for _, d in Self:GetDescendants() do
+	if d:IsA("BasePart") then
+		d.Anchored = false
+	end
+end
+
+if humanoid.WalkSpeed <= 0 then
+	humanoid.WalkSpeed = 12
+end
+humanoid.PlatformStand = false
+humanoid.Sit = false
+pcall(function()
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
+end)
+
+-- ── Helpers ───────────────────────────────────────────────────────────
+
+local function getTorso(model)
+	return model:FindFirstChild("Torso")
+		or model:FindFirstChild("HumanoidRootPart")
+		or model:FindFirstChild("UpperTorso")
+end
+
+local function findNearestHostile(myPos)
+	local closest, closestDist = nil, nil
+	for _, pirate in CollectionService:GetTagged("HostilePirate") do
+		if pirate ~= Self and pirate:IsDescendantOf(workspace) then
+			local hum = pirate:FindFirstChildOfClass("Humanoid")
+			if hum and hum.Health > 0 then
+				local torso = getTorso(pirate)
+				if torso then
+					local d = (torso.Position - myPos).Magnitude
+					if d < DETECTION_RANGE and (closestDist == nil or d < closestDist) then
+						closest, closestDist = pirate, d
+					end
+				end
+			end
+		end
+	end
+	return closest, closestDist
+end
+
+local lastAttack = 0
+
+local function swing(targetHumanoid)
+	targetHumanoid:TakeDamage(ATTACK_DAMAGE)
+	local tool = Self:FindFirstChildWhichIsA("Tool")
+	if tool then
+		pcall(function() tool:Activate() end)
+	end
+end
+
+-- ── Main loop ─────────────────────────────────────────────────────────
+
+while Self.Parent and humanoid.Health > 0 do
+	local myTorso = getTorso(Self)
+	if not myTorso then
+		task.wait(TICK_INTERVAL)
+		continue
+	end
+
+	local target, dist = findNearestHostile(myTorso.Position)
+	if target then
+		local targetTorso = getTorso(target)
+		local targetHum = target:FindFirstChildOfClass("Humanoid")
+		if targetTorso and targetHum then
+			if dist > ATTACK_RANGE then
+				humanoid:MoveTo(targetTorso.Position)
+			else
+				humanoid:MoveTo(myTorso.Position)
+				local now = tick()
+				if now - lastAttack >= ATTACK_COOLDOWN then
+					lastAttack = now
+					swing(targetHum)
+				end
+			end
+		end
+	end
+
+	task.wait(TICK_INTERVAL)
+end

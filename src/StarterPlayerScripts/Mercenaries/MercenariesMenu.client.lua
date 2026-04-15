@@ -130,10 +130,16 @@ local function buildMercViewport(parent, mercName, weaponId)
 	cam.Parent = vp
 	vp.CurrentCamera = cam
 
-	-- Clone pirate template from ReplicatedStorage
-	local template = ReplicatedStorage:FindFirstChild(mercName)
+	-- Clone the spawn template from ReplicatedStorage. The recruited
+	-- mercenary name ("Pirate lvl1") is a roster identifier, not a model
+	-- name — the actual rig is mapped via MERC_THEMES[mercName].spawnModel
+	-- (e.g. "Pirate_2"). Fall back to mercName for any theme that doesn't
+	-- set a dedicated spawnModel.
+	local theme = MERC_THEMES[mercName] or DEFAULT_THEME
+	local templateName = theme.spawnModel or mercName
+	local template = ReplicatedStorage:FindFirstChild(templateName)
 	if not template then
-		warn("[MercenariesMenu] Template not found:", mercName)
+		warn("[MercenariesMenu] Template not found:", templateName)
 		return vp
 	end
 
