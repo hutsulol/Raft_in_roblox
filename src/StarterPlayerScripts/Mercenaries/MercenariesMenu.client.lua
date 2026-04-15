@@ -388,15 +388,13 @@ local function buildMercViewport(parent, mercName, weaponId)
 			grip.Name  = "RightGrip"
 			grip.Part0 = rightArm
 			grip.Part1 = handle
-			-- Engine-canonical RightGrip.C0 rotated 90° to the right around
-			-- the arm's grip-up axis so the blade / rod points forward
-			-- (out in front of the pirate) instead of across his body.
-			-- In a live game Roblox relies on the Tool's own orientation +
-			-- the equip animation to land the weapon pointing forward;
-			-- inside a WorldModel preview we have to bake the rotation
-			-- into C0 ourselves.
+			-- Engine-canonical RightGrip.C0. A previous attempt composed
+			-- this with CFrame.Angles(0, -pi/2, 0) (rotation around grip-Y /
+			-- arm-local Y) but that rotated the weapon on the wrong axis
+			-- and the wrong direction. Try the grip-X axis (pitch) instead —
+			-- that pivots the weapon forward out of the hand.
 			local baseGripC0 = CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
-			grip.C0    = baseGripC0 * CFrame.Angles(0, -math.pi / 2, 0)
+			grip.C0    = baseGripC0 * CFrame.Angles(-math.pi / 2, 0, 0)
 			grip.C1    = toolGripC1
 			grip.Parent = rightArm
 
