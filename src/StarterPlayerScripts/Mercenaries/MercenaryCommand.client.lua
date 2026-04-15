@@ -315,7 +315,12 @@ local function openMercInventory(mercModel)
 	local closeCorner = Instance.new("UICorner")
 	closeCorner.CornerRadius = UDim.new(0, 6)
 	closeCorner.Parent = closeBtn
-	closeBtn.MouseButton1Click:Connect(closeMercInventory)
+	closeBtn.MouseButton1Click:Connect(function()
+		closeMercInventory()
+		if _G.CloseInventory then
+			_G.CloseInventory()
+		end
+	end)
 
 	-- Footer hint (empty backpack or help text)
 	local hintLabel = Instance.new("TextLabel")
