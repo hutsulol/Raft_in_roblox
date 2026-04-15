@@ -329,60 +329,64 @@ local function buildMercViewport(parent, mercName, weaponId)
 	end
 
 	-- ── Weapon swap in viewport ─────────────────────────────────────
-	-- For the default sword ("Sword" / nil): DON'T TOUCH anything. The
-	-- Pirate_2 template in the .rbxl already ships with its sword welded
-	-- into the right hand at a known-good grip — every rotation hack we
-	-- tried rebuilding this ourselves (custom C0, 180° flip, canonical C0,
-	-- +90° Y) ended up twisted because Tool.Grip's expected base frame
-	-- isn't reproducible inside a WorldModel without the live Humanoid
-	-- equip flow. Leaving the template weapon alone is what was working
-	-- before, and it's what we go back to.
+	-- The Pirate_2 template ships with BOTH ClassicSword and FishingRod as
+	-- child Tools, and only the sword is welded into the right hand. For
+	-- the default Sword case we leave everything alone — that weld is
+	-- hand-authored in the .rbxl and produces the correct display.
 	--
-	-- Only swap when the player picks a different weapon (e.g. FishingRod).
-	-- In that case we reuse the template's own RightGrip.C0 as the base —
-	-- that's a proven orientation from the asset itself, not a guess.
-	if weaponId and weaponId ~= "Sword" then
-		local rightArm = clone:FindFirstChild("Right Arm")
+	-- For the swap case, reuse the template's own weld transform verbatim:
+	-- capture the Motor6D's C0 AND C1 (C1 may bake the grip offset instead
+	-- of using Tool.Grip), retarget Part1 to the picked tool's Handle, and
+	-- destroy the tool we're swapping away from. Cloning a fresh weapon
+	-- from ReplicatedStorage and layering Tool.Grip on top was double-
+	-- rotating the handle, which is why every matrix I tried was off.
+	local requestedTool = weaponId
+	if not requestedTool or requestedTool == "Sword" then
+		requestedTool = "ClassicSword"
+	end
 
-		-- Capture the template's existing grip orientation before we tear
-		-- anything down. Check RightGrip on the arm first, then fall back
-		-- to any Motor6D/Weld in the clone whose Part0 is the right arm
-		-- (NPC rigs sometimes use a differently-named weld).
-		local priorGripC0
-		if rightArm then
-			local existing = rightArm:FindFirstChild("RightGrip")
-			if existing and existing:IsA("JointInstance") then
-				priorGripC0 = existing.C0
-				existing:Destroy()
+	-- Find the tool in the clone that matches what the UI asked for, and
+	-- any other Tool children (to be removed).
+	local targetTool, otherTools = nil, {}
+	for _, child in clone:GetChildren() do
+		if child:IsA("Tool") then
+			if not targetTool and child.Name == requestedTool then
+				targetTool = child
 			else
-				for _, d in clone:GetDescendants() do
-					if (d:IsA("Motor6D") or d:IsA("Weld")) and d.Part0 == rightArm then
-						priorGripC0 = d.C0
-						break
-					end
+				table.insert(otherTools, child)
+			end
+		end
+	end
+
+	-- Locate the template's grip weld (Motor6D or Weld connecting Right Arm
+	-- to any Tool's Handle). The shoulder joint has Part1 = Right Arm, so a
+	-- Part0-side match avoids picking it up.
+	local rightArm = clone:FindFirstChild("Right Arm")
+	local gripWeld
+	if rightArm then
+		local named = rightArm:FindFirstChild("RightGrip")
+		if named and named:IsA("JointInstance") then
+			gripWeld = named
+		else
+			for _, d in clone:GetDescendants() do
+				if (d:IsA("Motor6D") or d:IsA("Weld")) and d.Part0 == rightArm then
+					gripWeld = d
+					break
 				end
 			end
 		end
+	end
 
-		-- Remove template-supplied Tools so only the picked weapon remains.
-		for _, child in clone:GetChildren() do
-			if child:IsA("Tool") then child:Destroy() end
-		end
+	if targetTool and rightArm then
+		local newHandle = targetTool:FindFirstChild("Handle")
+			or targetTool:FindFirstChildWhichIsA("BasePart")
 
-		local weaponTemplate = ReplicatedStorage:FindFirstChild(weaponId)
-			or ReplicatedStorage:FindFirstChild(weaponId, true)
-
-		if weaponTemplate and rightArm then
-			local wArchivable = weaponTemplate.Archivable
-			weaponTemplate.Archivable = true
-			local wClone = weaponTemplate:Clone()
-			weaponTemplate.Archivable = wArchivable
-
-			for _, d in wClone:GetDescendants() do
-				if d:IsA("Script") or d:IsA("LocalScript") then d:Destroy() end
-			end
-			for _, d in wClone:GetDescendants() do
-				if d:IsA("BasePart") then
+		if newHandle then
+			-- Strip scripts / set display props on the target tool's parts.
+			for _, d in targetTool:GetDescendants() do
+				if d:IsA("Script") or d:IsA("LocalScript") then
+					d:Destroy()
+				elseif d:IsA("BasePart") then
 					d.Transparency = 0
 					d.CanCollide   = false
 					d.Anchored     = false
@@ -390,49 +394,42 @@ local function buildMercViewport(parent, mercName, weaponId)
 				end
 			end
 
-			local handle = wClone:FindFirstChild("Handle")
-			if not handle then
-				handle = wClone:FindFirstChildWhichIsA("BasePart", true)
-			end
-
-			local toolGripC1 = CFrame.new()
-			if wClone:IsA("Tool") then
-				toolGripC1 = wClone.Grip
-			end
-
-			if handle then
-				-- Only purge welds that link the Handle to parts OUTSIDE
-				-- the weapon — internal welds (e.g. FishingRod's multi-part
-				-- assembly) have to stay or the rod falls apart.
-				for _, w in handle:GetChildren() do
-					if w:IsA("Motor6D") or w:IsA("Weld") then
-						local p0 = w.Part0
-						if not p0 or not p0:IsDescendantOf(wClone) then
-							w:Destroy()
-						end
-					end
-				end
-
-				local newGrip = Instance.new("Motor6D")
-				newGrip.Name  = "RightGrip"
-				newGrip.Part0 = rightArm
-				newGrip.Part1 = handle
-				newGrip.C0    = priorGripC0 or CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
-				newGrip.C1    = toolGripC1
-				newGrip.Parent = rightArm
-
-				if wClone:IsA("Tool") then
-					for _, child in wClone:GetChildren() do
-						child.Parent = clone
-					end
-					wClone:Destroy()
-				else
-					wClone.Parent = clone
-				end
+			-- Retarget the existing weld to the new handle. Keep C0 + C1
+			-- exactly as the template authored them — that transform is
+			-- the one producing the correct sword display, and it works
+			-- for the rod as long as both tools' handles follow the same
+			-- local convention (which they do: both are authored for the
+			-- same R6 pirate rig).
+			if gripWeld then
+				gripWeld.Part0 = rightArm
+				gripWeld.Part1 = newHandle
 			else
-				wClone:Destroy()
+				-- No template weld found (shouldn't happen on this rig,
+				-- but be safe): build one with the engine's canonical R6
+				-- grip + Tool.Grip as C1.
+				local motor = Instance.new("Motor6D")
+				motor.Name  = "RightGrip"
+				motor.Part0 = rightArm
+				motor.Part1 = newHandle
+				motor.C0    = CFrame.new(0, -1, 0, 0, 1, 0, 0, 0, 1, 1, 0, 0)
+				motor.C1    = targetTool.Grip
+				motor.Parent = rightArm
 			end
+
+			-- Flatten the Tool: move its children into the clone so a
+			-- ViewportFrame (which can't "equip" tools via a live Humanoid)
+			-- still renders the handle as held.
+			for _, child in targetTool:GetChildren() do
+				child.Parent = clone
+			end
+			targetTool:Destroy()
 		end
+	end
+
+	-- Remove weapons the player didn't pick so they don't float in the
+	-- template model.
+	for _, t in otherTools do
+		t:Destroy()
 	end
 
 	clone.Parent = world
