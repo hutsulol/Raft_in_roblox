@@ -1224,13 +1224,13 @@ local function openDetailOverlay(recipe)
 
 	-- Back button
 	local backBtn = Instance.new("TextButton")
-	backBtn.Size = UDim2.new(0, 60, 0, 28)
-	backBtn.Position = UDim2.new(0, 10, 0, 8)
+	backBtn.Size = UDim2.new(0, 80, 0, 36)
+	backBtn.Position = UDim2.new(0, 12, 0, 10)
 	backBtn.BackgroundColor3 = COLORS.craftItemBg
 	backBtn.Text = "< Back"
 	backBtn.TextColor3 = COLORS.titleText
 	backBtn.Font = Enum.Font.GothamBold
-	backBtn.TextSize = 13
+	backBtn.TextSize = 18
 	backBtn.BorderSizePixel = 0
 	backBtn.ZIndex = 21
 	backBtn.Parent = detailOverlay
@@ -1243,45 +1243,46 @@ local function openDetailOverlay(recipe)
 
 	-- Item name
 	local itemTitle = Instance.new("TextLabel")
-	itemTitle.Size = UDim2.new(1, -20, 0, 30)
-	itemTitle.Position = UDim2.new(0, 10, 0, 45)
+	itemTitle.Size = UDim2.new(1, -24, 0, 44)
+	itemTitle.Position = UDim2.new(0, 12, 0, 54)
 	itemTitle.BackgroundTransparency = 1
 	itemTitle.Text = recipe.displayName or recipe.name
 	itemTitle.TextColor3 = COLORS.titleText
 	itemTitle.Font = Enum.Font.GothamBold
-	itemTitle.TextSize = 22
+	itemTitle.TextSize = 32
 	itemTitle.TextXAlignment = Enum.TextXAlignment.Left
 	itemTitle.ZIndex = 21
 	itemTitle.Parent = detailOverlay
 
 	-- Separator
 	local sep = Instance.new("Frame")
-	sep.Size = UDim2.new(1, -20, 0, 2)
-	sep.Position = UDim2.new(0, 10, 0, 80)
+	sep.Size = UDim2.new(1, -24, 0, 2)
+	sep.Position = UDim2.new(0, 12, 0, 104)
 	sep.BackgroundColor3 = COLORS.separator
 	sep.BorderSizePixel = 0
 	sep.ZIndex = 21
 	sep.Parent = detailOverlay
 
-	-- Icon
+	-- Icon — enlarged so the crafted item is clearly legible.
 	local iconFrame = Instance.new("ImageLabel")
-	iconFrame.Size = UDim2.new(0, 64, 0, 64)
-	iconFrame.Position = UDim2.new(0, 20, 0, 95)
+	iconFrame.Size = UDim2.new(0, 110, 0, 110)
+	iconFrame.Position = UDim2.new(0, 20, 0, 118)
 	iconFrame.BackgroundTransparency = 1
 	iconFrame.Image = recipe.icon or ""
 	iconFrame.ScaleType = Enum.ScaleType.Fit
 	iconFrame.ZIndex = 21
 	iconFrame.Parent = detailOverlay
 
-	-- Description
+	-- Description — sits to the right of the icon, vertical extent
+	-- matches the icon's height so wrapped text has room to breathe.
 	local descLabel = Instance.new("TextLabel")
-	descLabel.Size = UDim2.new(1, -110, 0, 70)
-	descLabel.Position = UDim2.new(0, 95, 0, 95)
+	descLabel.Size = UDim2.new(1, -160, 0, 110)
+	descLabel.Position = UDim2.new(0, 145, 0, 118)
 	descLabel.BackgroundTransparency = 1
 	descLabel.Text = recipe.description or ""
 	descLabel.TextColor3 = COLORS.titleText
 	descLabel.Font = Enum.Font.Gotham
-	descLabel.TextSize = 13
+	descLabel.TextSize = 20
 	descLabel.TextXAlignment = Enum.TextXAlignment.Left
 	descLabel.TextYAlignment = Enum.TextYAlignment.Top
 	descLabel.TextWrapped = true
@@ -1290,35 +1291,35 @@ local function openDetailOverlay(recipe)
 
 	-- Materials section
 	local matTitle = Instance.new("TextLabel")
-	matTitle.Size = UDim2.new(1, -20, 0, 22)
-	matTitle.Position = UDim2.new(0, 10, 0, 175)
+	matTitle.Size = UDim2.new(1, -24, 0, 30)
+	matTitle.Position = UDim2.new(0, 12, 0, 240)
 	matTitle.BackgroundTransparency = 1
 	matTitle.Text = "Materials:"
 	matTitle.TextColor3 = COLORS.titleText
 	matTitle.Font = Enum.Font.GothamBold
-	matTitle.TextSize = 14
+	matTitle.TextSize = 22
 	matTitle.TextXAlignment = Enum.TextXAlignment.Left
 	matTitle.ZIndex = 21
 	matTitle.Parent = detailOverlay
 
 	-- Material items
-	local matY = 200
+	local matY = 278
 	for item, amount in recipe.costs do
 		local matRow = Instance.new("Frame")
-		matRow.Size = UDim2.new(1, -30, 0, 30)
-		matRow.Position = UDim2.new(0, 15, 0, matY)
+		matRow.Size = UDim2.new(1, -34, 0, 48)
+		matRow.Position = UDim2.new(0, 17, 0, matY)
 		matRow.BackgroundColor3 = COLORS.craftItemBg
 		matRow.BorderSizePixel = 0
 		matRow.ZIndex = 21
 		matRow.Parent = detailOverlay
 
 		local matCorner = Instance.new("UICorner")
-		matCorner.CornerRadius = UDim.new(0, 5)
+		matCorner.CornerRadius = UDim.new(0, 6)
 		matCorner.Parent = matRow
 
 		local matIcon = Instance.new("ImageLabel")
-		matIcon.Size = UDim2.new(0, 22, 0, 22)
-		matIcon.Position = UDim2.new(0, 6, 0.5, -11)
+		matIcon.Size = UDim2.new(0, 36, 0, 36)
+		matIcon.Position = UDim2.new(0, 8, 0.5, -18)
 		matIcon.BackgroundTransparency = 1
 		matIcon.Image = RESOURCE_ICONS[item] or ""
 		matIcon.ScaleType = Enum.ScaleType.Fit
@@ -1327,30 +1328,30 @@ local function openDetailOverlay(recipe)
 
 		local have = inventory[item] or 0
 		local matLabel = Instance.new("TextLabel")
-		matLabel.Size = UDim2.new(1, -40, 1, 0)
-		matLabel.Position = UDim2.new(0, 34, 0, 0)
+		matLabel.Size = UDim2.new(1, -60, 1, 0)
+		matLabel.Position = UDim2.new(0, 52, 0, 0)
 		matLabel.BackgroundTransparency = 1
 		matLabel.Text = item .. ": " .. have .. " / " .. amount
 		matLabel.TextColor3 = have >= amount and COLORS.affordable or COLORS.notAffordable
 		matLabel.Font = Enum.Font.GothamBold
-		matLabel.TextSize = 13
+		matLabel.TextSize = 20
 		matLabel.TextXAlignment = Enum.TextXAlignment.Left
 		matLabel.ZIndex = 22
 		matLabel.Parent = matRow
 
-		matY = matY + 36
+		matY = matY + 54
 	end
 
 	-- Craft button at bottom
 	local craftBtn = Instance.new("TextButton")
 	craftBtn.Name = "DetailCraftButton"
-	craftBtn.Size = UDim2.new(1, -30, 0, 38)
-	craftBtn.Position = UDim2.new(0, 15, 1, -50)
+	craftBtn.Size = UDim2.new(1, -34, 0, 54)
+	craftBtn.Position = UDim2.new(0, 17, 1, -68)
 	craftBtn.BackgroundColor3 = canAfford(recipe) and COLORS.affordable or Color3.fromRGB(120, 120, 120)
 	craftBtn.Text = "Craft " .. (recipe.displayName or recipe.name)
 	craftBtn.TextColor3 = Color3.new(1, 1, 1)
 	craftBtn.Font = Enum.Font.GothamBold
-	craftBtn.TextSize = 16
+	craftBtn.TextSize = 24
 	craftBtn.BorderSizePixel = 0
 	craftBtn.ZIndex = 21
 	craftBtn.Parent = detailOverlay
