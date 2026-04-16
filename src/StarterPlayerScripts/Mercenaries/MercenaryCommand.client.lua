@@ -978,64 +978,7 @@ local function stopAllPlacement()
 	if cancelConn then cancelConn:Disconnect(); cancelConn = nil end
 end
 
--- ── Phase 2: pick water cast target ─────────────────────────────────────
-
-local function startCastPlacementMode()
-	-- Disconnect old connections from phase 1
-	if renderConn then renderConn:Disconnect(); renderConn = nil end
-	if inputConn then inputConn:Disconnect(); inputConn = nil end
-	if cancelConn then cancelConn:Disconnect(); cancelConn = nil end
-
-	isPlacingLocation = false
-	isPlacingCast = true
-	placementValid = false
-
-	destroyPreviewCircle()
-	createPreviewCircle()
-	showHint("Click on the water to cast the fishing line  |  Esc to cancel")
-
-	renderConn = RunService.RenderStepped:Connect(function()
-		if not isPlacingCast or not previewCircle then return end
-
-		local hitPos, isWater = raycastWaterFromMouse()
-		if hitPos then
-			moveCircleTo(hitPos + Vector3.new(0, 0.1, 0))
-			previewCircle.Transparency = 0.4
-			placementValid = isWater
-			previewCircle.Color = isWater and Color3.fromRGB(80, 140, 220) or CIRCLE_COLOR_INVALID
-		else
-			previewCircle.Transparency = 1
-			placementValid = false
-		end
-	end)
-
-	inputConn = UserInputService.InputBegan:Connect(function(input, processed)
-		if processed then return end
-		if input.UserInputType ~= Enum.UserInputType.MouseButton1
-			and input.UserInputType ~= Enum.UserInputType.Touch then
-			return
-		end
-		if not placementValid then return end
-
-		local hitPos, isWater = raycastWaterFromMouse()
-		if not hitPos or not isWater then return end
-
-		-- Send both the raft location and the cast target to the server
-		commandEvent:FireServer(
-			"setFishingLocation", placingMercName,
-			pendingRaftPart, pendingRaftOffset, hitPos
-		)
-		stopAllPlacement()
-	end)
-
-	cancelConn = UserInputService.InputBegan:Connect(function(input, _)
-		if input.KeyCode == Enum.KeyCode.Escape then
-			stopAllPlacement()
-		end
-	end)
-end
-
--- ── Phase 1: pick raft spot ─────────────────────────────────────────────
+-- ── Pick raft spot and send command ────────────────────────────────────
 
 function startPlacementMode(mercName)
 	if isPlacingLocation or isPlacingCast then stopAllPlacement() end
@@ -1074,10 +1017,12 @@ function startPlacementMode(mercName)
 		local hitPos, onRaft, hitPart, localOffset = raycastFromMouse()
 		if not hitPos or not onRaft or not hitPart then return end
 
-		-- Save raft data and transition to phase 2
-		pendingRaftPart = hitPart
-		pendingRaftOffset = localOffset
-		startCastPlacementMode()
+		-- Send the raft position to the server
+		commandEvent:FireServer(
+			"setFishingLocation", placingMercName,
+			hitPart, localOffset
+		)
+		stopAllPlacement()
 	end)
 
 	cancelConn = UserInputService.InputBegan:Connect(function(input, _)
