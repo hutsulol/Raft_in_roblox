@@ -143,6 +143,15 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	-- SearchForTarget sees the mercenary role on its very first tick.
 	CollectionService:AddTag(clone, "SpawnedMercenary")
 
+	-- Set attributes BEFORE parenting to workspace. Parenting starts all
+	-- scripts inside the model (Combat, Fishing, Animate) and they read
+	-- these attributes on their first tick — if the attributes aren't set
+	-- yet the scripts make wrong decisions (e.g. Fishing.script exits
+	-- because EquippedWeapon is nil → defaults to "Sword").
+	clone:SetAttribute("OwnerUserId", player.UserId)
+	clone:SetAttribute("MercName", mercName)
+	clone:SetAttribute("EquippedWeapon", equippedWeapon or "Sword")
+
 	local spawnCF = hrp.CFrame * CFrame.new(0, 0, -8)
 	clone:PivotTo(spawnCF)
 	clone.Parent = workspace
@@ -155,10 +164,6 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 			pcall(function() d:SetNetworkOwner(nil) end)
 		end
 	end
-
-	clone:SetAttribute("OwnerUserId", player.UserId)
-	clone:SetAttribute("MercName", mercName)
-	clone:SetAttribute("EquippedWeapon", equippedWeapon or "Sword")
 
 	-- Track active mercenary
 	if not activeMercs[player] then
