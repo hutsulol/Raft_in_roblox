@@ -437,9 +437,14 @@ function move(time)
   		jumpAnimTime = jumpAnimTime - deltaTime
   	end
 
-	-- When the model is fishing, don't override with idle / walk — the
-	-- Fishing script owns the animation while IsFishing is true.
+	-- When the model is fishing, stop all Animate-managed tracks so they
+	-- don't compete with the Fishing script's animation on any joint.
+	-- The idle track in particular keeps looping and overrides the left arm.
 	if Figure:GetAttribute("IsFishing") then
+		if currentAnim ~= "" then
+			stopAllAnimations()
+		end
+		stopToolAnimations()
 		return
 	end
 

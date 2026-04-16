@@ -2,6 +2,10 @@ local npc = script.Parent
 local hum = npc:FindFirstChildOfClass("Humanoid")
 local anim = hum:WaitForChild("Animator")
 
+-- Tell the Animate script to stop its idle/walk tracks so they don't
+-- compete with our fishing animation on any joint (especially left arm).
+npc:SetAttribute("IsFishing", true)
+
 local idleAnim = anim:LoadAnimation(script:WaitForChild("Fishing"))
 
 idleAnim.Looped = true
