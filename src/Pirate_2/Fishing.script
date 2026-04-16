@@ -1,12 +1,27 @@
 local npc = script.Parent
+
+-- Only relevant for fishing-rod mercenaries
+local equippedWeapon = npc:GetAttribute("EquippedWeapon") or "Sword"
+if equippedWeapon ~= "FishingRod" then
+	return
+end
+
 local hum = npc:FindFirstChildOfClass("Humanoid")
 local anim = hum:WaitForChild("Animator")
 
--- Tell the Animate script to stop its idle/walk tracks so they don't
--- compete with our fishing animation on any joint (especially left arm).
-npc:SetAttribute("IsFishing", true)
-
 local idleAnim = anim:LoadAnimation(script:WaitForChild("Fishing"))
-
 idleAnim.Looped = true
-idleAnim:Play()
+
+-- Wait for MercenaryMovement to fire Start_Fishing when the pirate
+-- reaches the player-specified fishing spot.
+local startEvent = npc:WaitForChild("Start_Fishing")
+
+startEvent.Event:Connect(function(shouldFish)
+	if shouldFish then
+		npc:SetAttribute("IsFishing", true)
+		idleAnim:Play()
+	else
+		npc:SetAttribute("IsFishing", false)
+		idleAnim:Stop()
+	end
+end)
