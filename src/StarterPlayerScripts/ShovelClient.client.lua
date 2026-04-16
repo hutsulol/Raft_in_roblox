@@ -201,6 +201,13 @@ mouse.Button1Down:Connect(function()
 
 	diggingCooldown = true
 	playDigAnimation()
+
+	-- Play the shoveling sound from the tool
+	if currentTool then
+		local snd = currentTool:FindFirstChild("Shoveling")
+		if snd and snd:IsA("Sound") then snd:Play() end
+	end
+
 	digDirtEvent:FireServer(highlightedPart)
 
 	task.delay(0.5, function()
