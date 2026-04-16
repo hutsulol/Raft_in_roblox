@@ -287,7 +287,7 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		-- Resource pickup: check capacity first, then pick up only what
 		-- fits. If there's leftover, shrink the existing pile rather than
 		-- spawning a new one (which would duplicate the item).
-		if not _G.GetInventory or not _G.GetInventoryCapacity then return end
+		if not _G.AddResourceToInventory or not _G.GetInventoryCapacity then return end
 
 		local cap = _G.GetInventoryCapacity(player, resType)
 		if cap <= 0 then
@@ -299,9 +299,10 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		local toPickup = math.min(resAmount, cap)
 		local leftover = resAmount - toPickup
 
-		local inv = _G.GetInventory(player)
-		inv[resType] = (inv[resType] or 0) + toPickup
-		if _G.SendInventory then _G.SendInventory(player) end
+		-- Route through AddResourceToInventory for consistent capacity
+		-- enforcement. Since toPickup <= cap, overflow will be 0 and no
+		-- extra physical drop is spawned.
+		_G.AddResourceToInventory(player, resType, toPickup, nil)
 
 		if leftover > 0 then
 			-- Shrink the existing pile instead of creating a new one
