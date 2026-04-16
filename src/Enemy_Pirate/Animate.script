@@ -82,7 +82,10 @@ local animNames = {
 				{ id = "http://www.roblox.com/asset/?id=129423131", weight = 10 } 
 			},
 	cheer = {
-				{ id = "http://www.roblox.com/asset/?id=129423030", weight = 10 } 
+				{ id = "http://www.roblox.com/asset/?id=129423030", weight = 10 }
+			},
+	fishing = {
+				{ id = "http://www.roblox.com/asset/?id=78830292804063", weight = 10 }
 			},
 }
 
@@ -433,6 +436,12 @@ function move(time)
   	if (jumpAnimTime > 0) then
   		jumpAnimTime = jumpAnimTime - deltaTime
   	end
+
+	-- When the model is fishing, don't override with idle / walk — the
+	-- Fishing script owns the animation while IsFishing is true.
+	if Figure:GetAttribute("IsFishing") then
+		return
+	end
 
 	if (pose == "FreeFall" and jumpAnimTime <= 0) then
 		playAnimation("fall", fallTransitionTime, Humanoid)

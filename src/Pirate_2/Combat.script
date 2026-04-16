@@ -52,6 +52,15 @@ while not Self:IsDescendantOf(workspace) do
 	Self.AncestryChanged:Wait()
 end
 
+-- ── Skip combat for non-weapon mercenaries ────────────────────────────
+-- When the mercenary is equipped with a FishingRod (instead of a Sword),
+-- it should fish peacefully, not attack other pirates. The Fishing script
+-- handles the fishing behaviour; this script has nothing to do.
+local equippedWeapon = Self:GetAttribute("EquippedWeapon") or "Sword"
+if equippedWeapon == "FishingRod" then
+	return
+end
+
 local humanoid = Self:FindFirstChildOfClass("Humanoid")
 local waited = 0
 while humanoid == nil and waited < 5 do

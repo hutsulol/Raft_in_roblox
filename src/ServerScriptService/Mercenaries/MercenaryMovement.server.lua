@@ -187,41 +187,13 @@ local function waitSeconds(model, token, seconds)
 	return activeTokens[model] == token
 end
 
--- ── Fishing animation ───────────────────────────────────────────────────
+-- ── Fishing state ───────────────────────────────────────────────────────
+-- Animation is handled by Pirate_2/Fishing.script (which watches the
+-- IsFishing attribute). We just set the flag here so the model-side
+-- script can react.
 
-local FISHING_ANIM_ID = "rbxassetid://78830292804063"
-
-local function playFishingAnimation(model)
-	local humanoid = model:FindFirstChildOfClass("Humanoid")
-	if not humanoid then return nil end
-	local animator = humanoid:FindFirstChildOfClass("Animator")
-	if not animator then
-		animator = Instance.new("Animator")
-		animator.Parent = humanoid
-	end
-
-	-- Try to load the Animation from the model's Fishing script child,
-	-- matching the pattern Combat.script uses for its Attack animation.
-	-- The Fishing script has a child Animation named "Fishing" placed
-	-- in Studio.
-	local fishingScript = model:FindFirstChild("Fishing")
-	local fishingAnim = fishingScript and fishingScript:FindFirstChild("Fishing")
-
-	if not fishingAnim or not fishingAnim:IsA("Animation") then
-		-- Fallback: create the animation dynamically with a hardcoded ID
-		fishingAnim = Instance.new("Animation")
-		fishingAnim.AnimationId = FISHING_ANIM_ID
-	end
-
-	local ok, track = pcall(function()
-		return animator:LoadAnimation(fishingAnim)
-	end)
-	if ok and track then
-		track.Looped = true
-		track:Play()
-		return track
-	end
-	return nil
+local function setFishingState(model, isFishing)
+	model:SetAttribute("IsFishing", isFishing)
 end
 
 -- ── NPC fishing cycle ───────────────────────────────────────────────────
@@ -232,8 +204,8 @@ local function runFishingLoop(model, token, castTarget, ownerUserId)
 	bobber.CFrame = CFrame.new(getRodTipPosition(model))
 	bobber.Transparency = 1
 
-	-- Play fishing animation
-	local fishingTrack = playFishingAnimation(model)
+	-- Signal the model's Fishing.script to start the animation
+	setFishingState(model, true)
 
 	local player = getPlayerByUserId(ownerUserId)
 
@@ -323,11 +295,8 @@ local function runFishingLoop(model, token, castTarget, ownerUserId)
 		if not waitSeconds(model, token, 1.5) then break end
 	end
 
-	-- Stop fishing animation
-	if fishingTrack then
-		fishingTrack:Stop()
-		fishingTrack:Destroy()
-	end
+	-- Signal the model's Fishing.script to stop the animation
+	setFishingState(model, false)
 
 	-- Clean up bobber
 	if bobber and bobber.Parent then
