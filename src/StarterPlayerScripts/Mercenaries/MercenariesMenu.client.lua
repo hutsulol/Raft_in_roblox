@@ -1357,9 +1357,6 @@ buildEquipmentPage = function(mercName, mercNames)
 				selectedItemId = item.id
 				highlightCard(item.id)
 				refreshDetails()
-				if activeCategory == "Weapons" then
-					rebuildViewport()
-				end
 			end)
 		end
 
