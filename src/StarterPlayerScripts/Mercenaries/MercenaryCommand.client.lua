@@ -18,7 +18,12 @@ local camera = workspace.CurrentCamera
 local commandEvent = ReplicatedStorage:WaitForChild("MercenaryCommand")
 local equipEvent = ReplicatedStorage:WaitForChild("MercenaryEquipment")
 
-local MERC_INVENTORY_SLOTS = 6
+-- Slot counts per backpack type
+local BACKPACK_SLOT_COUNTS = {
+	Backpack = 6,
+	BackPack_lvl2 = 9,
+}
+local DEFAULT_SLOTS = 6
 
 -- ── State ───────────────────────────────────────────────────────────────
 local targetMerc = nil           -- model currently under crosshair
@@ -191,6 +196,8 @@ local function openMercInventory(mercModel)
 	-- Gate: only open if a backpack is equipped.
 	local equippedBp = mercEntry:GetAttribute("EquippedBackpack")
 	if typeof(equippedBp) ~= "string" or equippedBp == "" then return end
+
+	local MERC_INVENTORY_SLOTS = BACKPACK_SLOT_COUNTS[equippedBp] or DEFAULT_SLOTS
 
 	-- Open the player's main inventory alongside the backpack.
 	if _G.OpenInventory then

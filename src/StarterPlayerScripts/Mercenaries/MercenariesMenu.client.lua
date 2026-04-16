@@ -240,22 +240,25 @@ local function applyWeaponToClone(clone, weaponId)
 	return hasWeapon
 end
 
+-- All backpack model names on the pirate rig
+local BACKPACK_MODELS = { "Backpack", "BackPack_lvl2" }
+
 -- Sync the Backpack accessory visibility on a viewport clone based on
--- whether the player has a backpack equipped for this mercenary.
+-- which backpack the player has equipped for this mercenary.
 local function syncBackpackVisibility(clone, mercName)
-	local bpPart = clone:FindFirstChild("Backpack")
-	if not bpPart then return end
 	local mFolder = player:FindFirstChild("Mercenaries")
 	local mEntry = mFolder and mFolder:FindFirstChild(mercName)
 	local equipped = mEntry and mEntry:GetAttribute("EquippedBackpack") or ""
-	local show = (equipped ~= "" and equipped ~= nil)
-	local t = show and 0 or 1
-	if bpPart:IsA("BasePart") then
-		bpPart.Transparency = t
-	end
-	for _, desc in bpPart:GetDescendants() do
-		if desc:IsA("BasePart") then
-			desc.Transparency = t
+
+	for _, bpName in BACKPACK_MODELS do
+		local bpPart = clone:FindFirstChild(bpName)
+		if bpPart then
+			local show = (equipped == bpName)
+			local t = show and 0 or 1
+			if bpPart:IsA("BasePart") then bpPart.Transparency = t end
+			for _, desc in bpPart:GetDescendants() do
+				if desc:IsA("BasePart") then desc.Transparency = t end
+			end
 		end
 	end
 end
@@ -886,6 +889,15 @@ local EQUIP_ITEMS = {
 			description   = "A sturdy pirate backpack. Free starter gear given to all captains.",
 			icon          = "rbxassetid://87410058497044",
 			alwaysUnlocked = true,
+		},
+		{
+			id            = "BackPack_lvl2",
+			displayName   = "Backpack Lvl 2",
+			typeName      = "Artifact",
+			stars         = 2,
+			baseAttack    = 0,
+			description   = "An upgraded pirate backpack with extra storage. Holds 9 items.",
+			icon          = "rbxassetid://85728179321673",
 		},
 	},
 }

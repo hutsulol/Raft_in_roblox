@@ -19,17 +19,32 @@ local EQUIPPABLE_TOOLS = {
 }
 
 -- Items that occupy the "backpack" slot (a separate equipment slot from
--- the weapon slot, and which enables a 6-slot mercenary inventory).
+-- the weapon slot, and which enables a mercenary inventory).
 local EQUIPPABLE_BACKPACKS = {
 	Backpack = true,
+	BackPack_lvl2 = true,
 }
 
-local MERC_INVENTORY_SLOTS = 6
+-- Slot counts per backpack type
+local BACKPACK_SLOT_COUNTS = {
+	Backpack = 6,
+	BackPack_lvl2 = 9,
+}
+local DEFAULT_SLOTS = 6
+
+-- All backpack model names on the pirate rig (for visibility toggling)
+local BACKPACK_MODELS = { "Backpack", "BackPack_lvl2" }
+
+local function getSlotCount(mercEntry)
+	local bp = mercEntry:GetAttribute("EquippedBackpack") or ""
+	return BACKPACK_SLOT_COUNTS[bp] or DEFAULT_SLOTS
+end
 
 -- ── Backpack inventory helpers ──────────────────────────────────────────
 
 local function initBackpackSlots(mercEntry)
-	for i = 1, MERC_INVENTORY_SLOTS do
+	local slots = getSlotCount(mercEntry)
+	for i = 1, slots do
 		if mercEntry:GetAttribute("Slot" .. i .. "_Name") == nil then
 			mercEntry:SetAttribute("Slot" .. i .. "_Name", "")
 			mercEntry:SetAttribute("Slot" .. i .. "_Count", 0)
@@ -150,21 +165,20 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
 			mercEntry:SetAttribute("EquippedBackpack", itemId)
 			initBackpackSlots(mercEntry)
 
-			-- Make the Backpack part visible on the spawned model so
-			-- the player sees it appear immediately.
+			-- Toggle visibility: hide all backpack models, show only the equipped one.
 			local CollectionService = game:GetService("CollectionService")
 			for _, model in CollectionService:GetTagged("SpawnedMercenary") do
 				if model:GetAttribute("OwnerUserId") == player.UserId
 					and model:GetAttribute("MercName") == mercName
 					and model.Parent then
-					local bp = model:FindFirstChild("Backpack")
-					if bp then
-						if bp:IsA("BasePart") then
-							bp.Transparency = 0
-						end
-						for _, desc in bp:GetDescendants() do
-							if desc:IsA("BasePart") then
-								desc.Transparency = 0
+					for _, bpName in BACKPACK_MODELS do
+						local bp = model:FindFirstChild(bpName)
+						if bp then
+							local show = (bpName == itemId)
+							local t = show and 0 or 1
+							if bp:IsA("BasePart") then bp.Transparency = t end
+							for _, desc in bp:GetDescendants() do
+								if desc:IsA("BasePart") then desc.Transparency = t end
 							end
 						end
 					end
@@ -181,7 +195,8 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
 		local slotIndex = arg
 		if typeof(slotIndex) ~= "number" then return end
 		slotIndex = math.floor(slotIndex)
-		if slotIndex < 1 or slotIndex > MERC_INVENTORY_SLOTS then return end
+		local maxSlots = getSlotCount(mercEntry)
+		if slotIndex < 1 or slotIndex > maxSlots then return end
 
 		local itemName = mercEntry:GetAttribute("Slot" .. slotIndex .. "_Name")
 		local count = mercEntry:GetAttribute("Slot" .. slotIndex .. "_Count")

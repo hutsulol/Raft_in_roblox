@@ -37,7 +37,18 @@ local CATCH_ITEMS = {
 
 local FISH_BITE_CHANCE = 0.5
 local CATCH_INTERVAL = 60 -- seconds between catches (matches animation cycle)
-local MERC_INVENTORY_SLOTS = 6
+
+-- Slot counts per backpack type
+local BACKPACK_SLOT_COUNTS = {
+	Backpack = 6,
+	BackPack_lvl2 = 9,
+}
+local DEFAULT_SLOTS = 6
+
+local function getSlotCount(mercEntry)
+	local bp = mercEntry:GetAttribute("EquippedBackpack") or ""
+	return BACKPACK_SLOT_COUNTS[bp] or DEFAULT_SLOTS
+end
 
 local function pickFromPool(pool)
 	local total = 0
@@ -86,8 +97,9 @@ end
 -- ── Mercenary backpack inventory ────────────────────────────────────────
 
 local function addToMercBackpack(mercEntry, itemName)
+	local slots = getSlotCount(mercEntry)
 	-- Try to stack on an existing slot with the same item
-	for i = 1, MERC_INVENTORY_SLOTS do
+	for i = 1, slots do
 		local name = mercEntry:GetAttribute("Slot" .. i .. "_Name")
 		if name == itemName then
 			local count = mercEntry:GetAttribute("Slot" .. i .. "_Count") or 0
@@ -96,7 +108,7 @@ local function addToMercBackpack(mercEntry, itemName)
 		end
 	end
 	-- Find an empty slot
-	for i = 1, MERC_INVENTORY_SLOTS do
+	for i = 1, slots do
 		local name = mercEntry:GetAttribute("Slot" .. i .. "_Name")
 		if name == nil or name == "" then
 			mercEntry:SetAttribute("Slot" .. i .. "_Name", itemName)
