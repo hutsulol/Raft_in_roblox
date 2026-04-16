@@ -814,7 +814,12 @@ buildPage = function(mercNames)
 	end)
 
 	-- ── Center: 3D character viewport ────────────────────────────────
-	buildMercViewport(page, selectedName)
+	-- Show the mercenary's currently equipped weapon (not always the
+	-- default sword). Fall back to "Sword" when no weapon is equipped.
+	local mercFolder = player:FindFirstChild("Mercenaries")
+	local mercEntry = mercFolder and mercFolder:FindFirstChild(selectedName)
+	local equippedWeapon = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+	buildMercViewport(page, selectedName, equippedWeapon)
 
 	-- ── Back button handler ──────────────────────────────────────────
 	backBtn.MouseButton1Click:Connect(function()
