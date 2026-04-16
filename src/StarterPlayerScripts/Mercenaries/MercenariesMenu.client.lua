@@ -1413,17 +1413,29 @@ buildEquipmentPage = function(mercName, mercNames)
 		-- Optimistic update (Artifacts use a separate slot so the weapon is preserved)
 		local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
 		if mercEntry then
+			local equipSoundsFolder = SoundService:FindFirstChild("Items_equip")
 			if activeCategory == "Artifacts" then
 				local alreadyEquipped = mercEntry:GetAttribute("EquippedBackpack") == selectedItemId
 				mercEntry:SetAttribute("EquippedBackpack", selectedItemId)
-				if not alreadyEquipped then
-					local bpSound = SoundService:FindFirstChild("backpack_equip")
-					if bpSound then
-						bpSound:Play()
-					end
+				if not alreadyEquipped and equipSoundsFolder then
+					local bpSound = equipSoundsFolder:FindFirstChild("backpack_equip")
+					if bpSound then bpSound:Play() end
 				end
 			else
+				local alreadyEquipped = mercEntry:GetAttribute("EquippedWeapon") == selectedItemId
 				mercEntry:SetAttribute("EquippedWeapon", selectedItemId)
+				if not alreadyEquipped and equipSoundsFolder then
+					local soundName = nil
+					if selectedItemId == "Sword" then
+						soundName = "Sword_pirate_equip"
+					elseif selectedItemId == "FishingRod" then
+						soundName = "FishingRod_1lvl_equip"
+					end
+					if soundName then
+						local snd = equipSoundsFolder:FindFirstChild(soundName)
+						if snd then snd:Play() end
+					end
+				end
 			end
 		end
 		refreshDetails()
