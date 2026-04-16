@@ -114,8 +114,10 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 		local resType = resource:GetAttribute("ResourceType") or "Log"
 		local resAmount = resource:GetAttribute("ResourceAmount") or 1
 
-		_G.AddResourceToInventory(player, resType, resAmount, resourcePos)
-		collectNotify:FireClient(player, "collected", resource, resType, resAmount)
+		local added = _G.AddResourceToInventory(player, resType, resAmount, resourcePos)
+		if added > 0 then
+			collectNotify:FireClient(player, "collected", resource, resType, added)
+		end
 		collectNotify:FireAllClients("broke", resource, resType)
 
 		if _G.OnQuestResource then
