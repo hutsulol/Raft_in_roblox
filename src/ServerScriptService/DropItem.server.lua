@@ -284,22 +284,30 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		droppedItem:Destroy()
 		if _G.SendInventory then _G.SendInventory(player) end
 	else
-		-- Resource pickup: route through AddResourceToInventory so a
-		-- full inventory sends the overflow back into the world instead
-		-- of silently consuming this pile.
-		if not _G.AddResourceToInventory then return end
-		local added, overflow = _G.AddResourceToInventory(player, resType, resAmount, itemPos)
-		if added <= 0 then
-			-- Inventory had no room at all; leave the pile where it is
-			-- so the player can free space and pick it up again.
+		-- Resource pickup: check capacity first, then pick up only what
+		-- fits. If there's leftover, shrink the existing pile rather than
+		-- spawning a new one (which would duplicate the item).
+		if not _G.GetInventory or not _G.GetInventoryCapacity then return end
+
+		local cap = _G.GetInventoryCapacity(player, resType)
+		if cap <= 0 then
+			-- No room at all; leave the pile where it is
 			return
 		end
 
-		droppedItem:Destroy()
-		-- AddResourceToInventory already calls SendInventory; nothing to do.
-		-- If we dropped overflow, SpawnResourceDrop spawned a new pile
-		-- to represent the leftovers.
-		_ = overflow
+		local toPickup = math.min(resAmount, cap)
+		local leftover = resAmount - toPickup
+
+		local inv = _G.GetInventory(player)
+		inv[resType] = (inv[resType] or 0) + toPickup
+		if _G.SendInventory then _G.SendInventory(player) end
+
+		if leftover > 0 then
+			-- Shrink the existing pile instead of creating a new one
+			droppedItem:SetAttribute("ResourceAmount", leftover)
+		else
+			droppedItem:Destroy()
+		end
 	end
 end)
 
