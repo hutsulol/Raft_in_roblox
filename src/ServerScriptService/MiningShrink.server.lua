@@ -212,11 +212,12 @@ mineOreEvent.OnServerEvent:Connect(function(player, orePart)
 		mineOreEvent:FireClient(player, "hit", health)
 	else
 		-- Destroyed: give Iron_Ore reward
-		local inv = _G.GetInventory and _G.GetInventory(player) or {}
-		inv.Iron_Ore = (inv.Iron_Ore or 0) + IRON_REWARD
-
-		if _G.SendInventory then
-			_G.SendInventory(player)
+		if _G.AddResourceToInventory then
+			_G.AddResourceToInventory(player, "Iron_Ore", IRON_REWARD, orePart.Position)
+		else
+			local inv = _G.GetInventory and _G.GetInventory(player) or {}
+			inv.Iron_Ore = (inv.Iron_Ore or 0) + IRON_REWARD
+			if _G.SendInventory then _G.SendInventory(player) end
 		end
 
 		mineOreEvent:FireClient(player, "destroyed", IRON_REWARD, "Iron_Ore")

@@ -357,10 +357,13 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 
 		-- data = count to remove (nil or 0 = all)
 		local removeCount = (typeof(data) == "number" and data >= 1) and math.min(math.floor(data), state.fuelCount) or state.fuelCount
-		inv.Log = (inv.Log or 0) + removeCount
+		if _G.AddResourceToInventory then
+			_G.AddResourceToInventory(player, "Log", removeCount, nil)
+		else
+			inv.Log = (inv.Log or 0) + removeCount
+			if _G.SendInventory then _G.SendInventory(player) end
+		end
 		state.fuelCount = state.fuelCount - removeCount
-
-		if _G.SendInventory then _G.SendInventory(player) end
 		furnaceEvent:FireClient(player, "stateUpdate", state)
 
 	elseif action == "collectOutput" then

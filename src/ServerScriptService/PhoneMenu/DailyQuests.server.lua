@@ -426,13 +426,17 @@ local function grantRewards(player, save)
 	-- _G.GetInventory / _G.SendInventory hooks (same path Furnace
 	-- smelting uses).
 	if save.rewardIronIngots and save.rewardIronIngots > 0 then
-		local getInv = _G.GetInventory
-		local sendInv = _G.SendInventory
-		if getInv then
-			local inv = getInv(player)
-			if inv then
-				inv.Iron_Ingot = (inv.Iron_Ingot or 0) + save.rewardIronIngots
-				if sendInv then sendInv(player) end
+		if _G.AddResourceToInventory then
+			_G.AddResourceToInventory(player, "Iron_Ingot", save.rewardIronIngots, nil)
+		else
+			local getInv = _G.GetInventory
+			local sendInv = _G.SendInventory
+			if getInv then
+				local inv = getInv(player)
+				if inv then
+					inv.Iron_Ingot = (inv.Iron_Ingot or 0) + save.rewardIronIngots
+					if sendInv then sendInv(player) end
+				end
 			end
 		end
 	end

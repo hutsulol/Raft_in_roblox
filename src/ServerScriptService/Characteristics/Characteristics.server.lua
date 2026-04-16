@@ -117,10 +117,15 @@ local function setupPlayer(player)
 		local newLevel = level.Value
 		if newLevel > oldLevel then
 			-- Grant bonus log reward
-			local inv = _G.GetInventory and _G.GetInventory(player)
-			if inv then
-				inv.Log = (inv.Log or 0) + LEVELUP_LOG_REWARD * (newLevel - oldLevel)
-				if _G.SendInventory then _G.SendInventory(player) end
+			local logReward = LEVELUP_LOG_REWARD * (newLevel - oldLevel)
+			if _G.AddResourceToInventory then
+				_G.AddResourceToInventory(player, "Log", logReward, nil)
+			else
+				local inv = _G.GetInventory and _G.GetInventory(player)
+				if inv then
+					inv.Log = (inv.Log or 0) + logReward
+					if _G.SendInventory then _G.SendInventory(player) end
+				end
 			end
 			-- Notify client for the level-up screen
 			levelUpEvent:FireClient(player, oldLevel, newLevel)

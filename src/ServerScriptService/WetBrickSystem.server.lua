@@ -147,10 +147,12 @@ local function transitionToDry(brickModel)
 			if not hrp then return end
 			if (hrp.Position - anchorDry.Position).Magnitude > PICKUP_RANGE then return end
 
-			local inv = _G.GetInventory and _G.GetInventory(player) or {}
-			inv.Dry_Brick = (inv.Dry_Brick or 0) + 1
-			if _G.SendInventory then
-				_G.SendInventory(player)
+			if _G.AddResourceToInventory then
+				_G.AddResourceToInventory(player, "Dry_Brick", 1, anchorDry.Position)
+			else
+				local inv = _G.GetInventory and _G.GetInventory(player) or {}
+				inv.Dry_Brick = (inv.Dry_Brick or 0) + 1
+				if _G.SendInventory then _G.SendInventory(player) end
 			end
 			dryModel:Destroy()
 		end)
