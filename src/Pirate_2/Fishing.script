@@ -1,7 +1,7 @@
 -- Fishing.script (Pirate_2 -- Mercenary fishing animation controller)
 --
 -- Lives inside the mercenary model alongside Combat.script. When
--- MercenaryMovement.server.lua sets the IsFishing attribute to true
+-- MercenaryMovement.server.lua fires the Start_Fishing BindableEvent
 -- (i.e. the pirate has reached its fishing spot), this script loads the
 -- child Animation named "Fishing" and plays it on the rig's Animator --
 -- the same pattern Combat.script uses for its Attack animation.
@@ -14,12 +14,6 @@ local Self = script.Parent
 -- Don't run inside the menu preview or ReplicatedStorage
 while not Self:IsDescendantOf(workspace) do
 	Self.AncestryChanged:Wait()
-end
-
--- Only relevant for fishing-rod mercenaries
-local equippedWeapon = Self:GetAttribute("EquippedWeapon") or "Sword"
-if equippedWeapon ~= "FishingRod" then
-	return
 end
 
 local humanoid = Self:FindFirstChildOfClass("Humanoid")
@@ -55,22 +49,22 @@ else
 	return
 end
 
--- React to the IsFishing attribute set by MercenaryMovement.server.lua.
--- Play the animation when the pirate reaches the fishing spot; stop it
--- when fishing is cancelled or the merc is reassigned.
-local function onFishingChanged()
-	local isFishing = Self:GetAttribute("IsFishing")
+-- Wait for the Start_Fishing BindableEvent placed in the model.
+local startEvent = Self:WaitForChild("Start_Fishing", 30)
+if not startEvent then
+	warn("[Pirate_2/Fishing] Start_Fishing event not found")
+	return
+end
+
+-- When Start_Fishing fires, the argument is true (start) or false (stop).
+startEvent.Event:Connect(function(isFishing)
+	Self:SetAttribute("IsFishing", isFishing)
 	if isFishing then
 		fishingTrack:Play(0.3)
 	else
 		fishingTrack:Stop(0.3)
 	end
-end
-
-Self:GetAttributeChangedSignal("IsFishing"):Connect(onFishingChanged)
-
--- Check initial state in case the attribute was set before this script ran
-onFishingChanged()
+end)
 
 -- Keep alive while the model exists
 while Self.Parent and humanoid.Health > 0 do

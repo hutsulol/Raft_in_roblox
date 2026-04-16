@@ -188,11 +188,15 @@ local function waitSeconds(model, token, seconds)
 end
 
 -- ── Fishing state ───────────────────────────────────────────────────────
--- Animation is handled by Pirate_2/Fishing.script (which watches the
--- IsFishing attribute). We just set the flag here so the model-side
--- script can react.
+-- Animation is handled by Pirate_2/Fishing.script which listens for the
+-- Start_Fishing BindableEvent inside the model. We fire that event here
+-- so the model-side script can play/stop the animation locally.
 
 local function setFishingState(model, isFishing)
+	local event = model:FindFirstChild("Start_Fishing")
+	if event and event:IsA("BindableEvent") then
+		event:Fire(isFishing)
+	end
 	model:SetAttribute("IsFishing", isFishing)
 end
 
