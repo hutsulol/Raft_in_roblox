@@ -610,41 +610,61 @@ local function updateResourceSlots(name, count, icon)
 	end
 end
 
+local function fullRebuildSlotData(tools)
+	for i = 1, TOTAL_SLOTS do slotData[i] = nil end
+
+	for resName, resIcon in RESOURCE_ICONS do
+		local count = inventory[resName] or 0
+		if count > 0 then
+			distributeResource(resName, count, resIcon)
+		end
+	end
+
+	local toolCounts = {}
+	for _, tool in tools do
+		toolCounts[tool.Name] = (toolCounts[tool.Name] or 0) + 1
+	end
+
+	local slot = 2
+	local addedTools = {}
+	for _, tool in tools do
+		if not addedTools[tool.Name] then
+			addedTools[tool.Name] = true
+			while slot <= HOTBAR_SLOTS and slotData[slot] do
+				slot = slot + 1
+			end
+			if slot > HOTBAR_SLOTS then break end
+			local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+			slotData[slot] = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon, count = toolCounts[tool.Name]}
+			slot = slot + 1
+		end
+	end
+
+	slotsInitialized = true
+end
+
+local function slotDataMatchesInventory()
+	for resName, _ in RESOURCE_ICONS do
+		local serverCount = inventory[resName] or 0
+		local slotCount = 0
+		for i = 1, TOTAL_SLOTS do
+			local d = slotData[i]
+			if d and d.type == "resource" and d.name == resName then
+				slotCount = slotCount + (d.count or 0)
+			end
+		end
+		if slotCount ~= serverCount then
+			return false
+		end
+	end
+	return true
+end
+
 local function rebuildSlotData()
 	local tools = getToolList()
 
 	if not slotsInitialized then
-		for i = 1, TOTAL_SLOTS do slotData[i] = nil end
-
-		for resName, resIcon in RESOURCE_ICONS do
-			local count = inventory[resName] or 0
-			if count > 0 then
-				distributeResource(resName, count, resIcon)
-			end
-		end
-
-		-- Count duplicate tools for stacking
-		local toolCounts = {}
-		for _, tool in tools do
-			toolCounts[tool.Name] = (toolCounts[tool.Name] or 0) + 1
-		end
-
-		local slot = 2
-		local addedTools = {}
-		for _, tool in tools do
-			if not addedTools[tool.Name] then
-				addedTools[tool.Name] = true
-				while slot <= HOTBAR_SLOTS and slotData[slot] do
-					slot = slot + 1
-				end
-				if slot > HOTBAR_SLOTS then break end
-				local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
-				slotData[slot] = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon, count = toolCounts[tool.Name]}
-				slot = slot + 1
-			end
-		end
-
-		slotsInitialized = true
+		fullRebuildSlotData(tools)
 		return
 	end
 
@@ -674,7 +694,6 @@ local function rebuildSlotData()
 	for _, tool in tools do
 		local existing = findItemSlot("tool", tool.Name)
 		if existing then
-			-- Update count for stackable tools
 			slotData[existing].count = toolCounts[tool.Name]
 		else
 			local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
@@ -682,6 +701,10 @@ local function rebuildSlotData()
 			local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, maxWritableSlot())
 			if empty then slotData[empty] = entry end
 		end
+	end
+
+	if not slotDataMatchesInventory() then
+		fullRebuildSlotData(tools)
 	end
 end
 
