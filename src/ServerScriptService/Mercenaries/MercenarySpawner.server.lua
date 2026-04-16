@@ -189,6 +189,32 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 		activeMercs[player] = {}
 	end
 	activeMercs[player][mercName] = clone
+
+	-- Clean up body when mercenary dies
+	if mercHum then
+		mercHum.Died:Connect(function()
+			task.wait(5)
+			if not clone or not clone.Parent then return end
+			-- Fade out over 1.5 seconds
+			local steps = 30
+			for step = 1, steps do
+				if not clone or not clone.Parent then break end
+				local alpha = step / steps
+				for _, desc in clone:GetDescendants() do
+					if desc:IsA("BasePart") or desc:IsA("Decal") then
+						desc.Transparency = alpha
+					end
+				end
+				task.wait(0.05)
+			end
+			if clone and clone.Parent then
+				clone:Destroy()
+			end
+			if activeMercs[player] and activeMercs[player][mercName] == clone then
+				activeMercs[player][mercName] = nil
+			end
+		end)
+	end
 end)
 
 Players.PlayerRemoving:Connect(function(player)
