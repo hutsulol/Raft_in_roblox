@@ -1574,7 +1574,7 @@ end
 
 -- ─── Close ───
 
-local function closeUI()
+local function closeUI(isRebuild)
 	closeDetailOverlay()
 	if categoryOverlay then
 		categoryOverlay:Destroy()
@@ -1592,8 +1592,9 @@ local function closeUI()
 	selectedRecipe = nil
 	selectedCategory = nil
 	if hotbarGui then hotbarGui.DisplayOrder = 5 end
-	-- Also close the mercenary backpack panel if it was open.
-	if _G.CloseMercInventory then
+	-- Also close the mercenary backpack panel if it was open,
+	-- but NOT during a rebuild (recipe refresh) — only on a real close.
+	if not isRebuild and _G.CloseMercInventory then
 		_G.CloseMercInventory()
 	end
 end
@@ -2168,7 +2169,7 @@ inventoryCraftEvent.OnClientEvent:Connect(function(action, data, inv)
 		end
 		if inv then inventory = inv end
 		if isOpen then
-			closeUI()
+			closeUI(true)
 			isOpen = true
 			buildUI()
 		end
