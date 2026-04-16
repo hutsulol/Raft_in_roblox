@@ -192,7 +192,11 @@ end
 -- same-type slots". Returns nil if the layout hasn't been synced yet.
 local function computeLayoutCapacity(player, itemName)
 	local layout = _G.GetClientSlotLayout and _G.GetClientSlotLayout(player)
-	if not layout then return nil end
+	if not layout then
+		-- No layout synced yet — block all pickups rather than falling back
+		-- to the permissive quantity-based math that can't see split stacks.
+		return { emptySlots = 0, partialSpace = 0, capacity = 0 }
+	end
 
 	local unlocked = getUnlockedSlots(player)
 	local occupied = 0

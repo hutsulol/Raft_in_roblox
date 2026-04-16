@@ -806,8 +806,11 @@ Players.PlayerAdded:Connect(function(player)
 			restoreInventory(player, saveData)
 			restoreTools(player, saveData)
 
-			-- Send saved slot layout to client
+			-- Send saved slot layout to client AND pre-populate the
+			-- server cache so capacity checks work immediately (before
+			-- the client round-trips the layout back via FireServer).
 			if saveData.slotLayout and next(saveData.slotLayout) then
+				cachedSlotLayouts[player] = saveData.slotLayout
 				task.wait(0.5)
 				slotLayoutEvent:FireClient(player, "restore", saveData.slotLayout)
 				print("[RaftSave] Sent slot layout to " .. player.Name)
