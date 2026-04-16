@@ -188,14 +188,31 @@ local function waitSeconds(model, token, seconds)
 end
 
 -- ── Fishing state ───────────────────────────────────────────────────────
--- Animation is handled by Pirate_2/Fishing.script which listens for the
--- Start_Fishing BindableEvent inside the model. We fire that event here
--- so the model-side script can play/stop the animation locally.
+-- When the pirate reaches the fishing spot, swap the FishingRod_Fake for
+-- the real FishingRod_ForPirate and set the IsFishing attribute so the
+-- model-side Fishing.script plays the animation.
+
+local function swapToRealRod(model)
+	-- Remove the fake rod
+	for _, child in model:GetChildren() do
+		if child:IsA("Tool") then
+			child:Destroy()
+		end
+	end
+	-- Equip the real fishing rod
+	local realRod = ReplicatedStorage:FindFirstChild("FishingRod_ForPirate", true)
+	if realRod then
+		local archivable = realRod.Archivable
+		realRod.Archivable = true
+		local clone = realRod:Clone()
+		realRod.Archivable = archivable
+		clone.Parent = model
+	end
+end
 
 local function setFishingState(model, isFishing)
-	local event = model:FindFirstChild("Start_Fishing")
-	if event and event:IsA("BindableEvent") then
-		event:Fire(isFishing)
+	if isFishing then
+		swapToRealRod(model)
 	end
 	model:SetAttribute("IsFishing", isFishing)
 end

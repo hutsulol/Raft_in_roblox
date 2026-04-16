@@ -66,11 +66,15 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 		end
 	end
 
-	-- Equip the chosen weapon from ReplicatedStorage
+	-- Equip the chosen weapon from ReplicatedStorage.
+	-- FishingRod mercs spawn with a fake (visual-only) rod so they can walk
+	-- around holding it. The real rod is swapped in by MercenaryMovement
+	-- when the pirate reaches the fishing spot.
 	local weaponName = equippedWeapon
-	-- For default sword, try common names
 	if weaponName == "Sword" then
 		weaponName = "ClassicSword"
+	elseif weaponName == "FishingRod" then
+		weaponName = "FishingRod_Fake"
 	end
 
 	local weaponTemplate = ReplicatedStorage:FindFirstChild(weaponName)

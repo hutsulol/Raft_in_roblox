@@ -10,8 +10,14 @@ local hum = npc:FindFirstChildOfClass("Humanoid")
 local anim = hum:WaitForChild("Animator")
 
 local idleAnim = anim:LoadAnimation(script:WaitForChild("Fishing"))
-
-npc:SetAttribute("IsFishing", true)
-
 idleAnim.Looped = true
-idleAnim:Play()
+
+-- Wait for MercenaryMovement to set IsFishing = true (pirate reached
+-- the fishing spot and the fake rod was swapped for the real one).
+while npc.Parent and not npc:GetAttribute("IsFishing") do
+	task.wait(0.5)
+end
+
+if npc.Parent and npc:GetAttribute("IsFishing") then
+	idleAnim:Play()
+end
