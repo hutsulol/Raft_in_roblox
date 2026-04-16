@@ -80,6 +80,14 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 	if typeof(targetPart) ~= "Instance" then return end
 	if not targetPart:IsDescendantOf(workspace) then return end
 
+	-- Ignore dropped items — they use the DropItem pickup system which
+	-- enforces slot-level fullness. Without this guard, a dropped log
+	-- whose template carried a "Resource" tag could be collected here,
+	-- bypassing the empty-slot check.
+	if CollectionService:HasTag(targetPart, "DroppedItem") then return end
+	local parentModel = targetPart:FindFirstAncestorOfClass("Model")
+	if parentModel and CollectionService:HasTag(parentModel, "DroppedItem") then return end
+
 	local resource = getResourceFromPart(targetPart)
 	if not resource then return end
 

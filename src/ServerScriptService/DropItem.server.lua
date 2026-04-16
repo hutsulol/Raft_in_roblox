@@ -167,6 +167,13 @@ local function spawnPhysicalDrop(player, itemName, amount, isToolDrop, dropPosit
 		primaryClonePart.AssemblyLinearVelocity = raft.PrimaryPart.AssemblyLinearVelocity
 	end
 
+	-- Strip any "Resource" tags the template may carry so the
+	-- ResourceSpawner click-to-collect system ignores dropped items.
+	CollectionService:RemoveTag(clone, "Resource")
+	for _, desc in clone:GetDescendants() do
+		CollectionService:RemoveTag(desc, "Resource")
+	end
+
 	CollectionService:AddTag(clone, "DroppedItem")
 
 	task.delay(DROPPED_LIFETIME, function()
