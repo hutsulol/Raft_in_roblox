@@ -13,22 +13,17 @@ local START_LEAVES = 60
 local Players = game:GetService("Players")
 
 -- Wait for inventory system to be ready
-while not _G.GetInventory do
+while not _G.AddResourceToInventory do
 	task.wait(0.5)
 end
 
 local function giveStartResources(player)
 	task.wait(3)
 
-	local inv = _G.GetInventory(player)
-	if START_LOG > 0 then inv.Log = (inv.Log or 0) + START_LOG end
-	if START_PLASTIC > 0 then inv.Plastic = (inv.Plastic or 0) + START_PLASTIC end
-	if START_STONE > 0 then inv.Stone = (inv.Stone or 0) + START_STONE end
-	if START_LEAVES > 0 then inv.Leaves = (inv.Leaves or 0) + START_LEAVES end
-
-	if _G.SendInventory then
-		_G.SendInventory(player)
-	end
+	if START_LOG > 0 then _G.AddResourceToInventory(player, "Log", START_LOG, nil) end
+	if START_PLASTIC > 0 then _G.AddResourceToInventory(player, "Plastic", START_PLASTIC, nil) end
+	if START_STONE > 0 then _G.AddResourceToInventory(player, "Stone", START_STONE, nil) end
+	if START_LEAVES > 0 then _G.AddResourceToInventory(player, "Leaves", START_LEAVES, nil) end
 end
 
 Players.PlayerAdded:Connect(function(player)

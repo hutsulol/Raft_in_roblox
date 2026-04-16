@@ -163,13 +163,7 @@ mineRockEvent.OnServerEvent:Connect(function(player, rockPart)
 	if health <= 0 then
 		local stoneAmount = math.random(STONE_REWARD_MIN, STONE_REWARD_MAX)
 
-		if _G.AddResourceToInventory then
-			_G.AddResourceToInventory(player, "Stone", stoneAmount, rockPart.Position)
-		else
-			local inv = _G.GetInventory and _G.GetInventory(player) or {}
-			inv.Stone = (inv.Stone or 0) + stoneAmount
-			if _G.SendInventory then _G.SendInventory(player) end
-		end
+		_G.AddResourceToInventory(player, "Stone", stoneAmount, rockPart.Position)
 		if _G.OnQuestResource then
 			_G.OnQuestResource(player, "Stone", stoneAmount)
 		end

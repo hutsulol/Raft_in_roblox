@@ -210,14 +210,8 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
 		if typeof(itemName) ~= "string" or itemName == "" then return end
 		if typeof(count) ~= "number" or count <= 0 then return end
 
-		if _G.GetInventory then
-			local inv = _G.GetInventory(player)
-			if inv then
-				inv[itemName] = (inv[itemName] or 0) + count
-				if _G.SendInventory then
-					_G.SendInventory(player)
-				end
-			end
+		if _G.AddResourceToInventory then
+			_G.AddResourceToInventory(player, itemName, count, nil)
 		end
 
 		-- Clear the slot

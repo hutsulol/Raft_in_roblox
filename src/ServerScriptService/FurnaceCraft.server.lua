@@ -318,12 +318,7 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 
 		-- Return the ore via AddResourceToInventory so overflow drops
 		-- on the ground instead of being invisibly stored.
-		if _G.AddResourceToInventory then
-			_G.AddResourceToInventory(player, state.oreType, 1, nil)
-		else
-			inv[state.oreType] = (inv[state.oreType] or 0) + 1
-			if _G.SendInventory then _G.SendInventory(player) end
-		end
+		_G.AddResourceToInventory(player, state.oreType, 1, nil)
 		state.oreType = nil
 
 		furnaceEvent:FireClient(player, "stateUpdate", state)
@@ -357,12 +352,7 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 
 		-- data = count to remove (nil or 0 = all)
 		local removeCount = (typeof(data) == "number" and data >= 1) and math.min(math.floor(data), state.fuelCount) or state.fuelCount
-		if _G.AddResourceToInventory then
-			_G.AddResourceToInventory(player, "Log", removeCount, nil)
-		else
-			inv.Log = (inv.Log or 0) + removeCount
-			if _G.SendInventory then _G.SendInventory(player) end
-		end
+		_G.AddResourceToInventory(player, "Log", removeCount, nil)
 		state.fuelCount = state.fuelCount - removeCount
 		furnaceEvent:FireClient(player, "stateUpdate", state)
 
@@ -372,11 +362,7 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		local outType = state.outputType or "Iron_Ingot"
 		-- data = count to collect (nil or 0 = all)
 		local collectCount = (typeof(data) == "number" and data >= 1) and math.min(math.floor(data), state.outputAmount) or state.outputAmount
-		if _G.AddResourceToInventory then
-			_G.AddResourceToInventory(player, outType, collectCount, nil)
-		else
-			inv[outType] = (inv[outType] or 0) + collectCount
-		end
+		_G.AddResourceToInventory(player, outType, collectCount, nil)
 		state.outputAmount = state.outputAmount - collectCount
 
 		if state.outputAmount <= 0 then
