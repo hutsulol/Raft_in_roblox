@@ -53,6 +53,10 @@ _G.GetClientSlotLayout = function(player)
 	return cachedSlotLayouts[player]
 end
 
+_G.SetClientSlotLayout = function(player, layout)
+	cachedSlotLayouts[player] = layout
+end
+
 -- ─── CFrame serialization ───
 local function serializeCFrame(cf)
 	return {cf:GetComponents()} -- 12 numbers

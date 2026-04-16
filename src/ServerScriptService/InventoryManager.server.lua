@@ -183,18 +183,86 @@ _G.GetInventory = function(player)
 	return inv
 end
 
--- Compute slot-level capacity from the client's ACTUAL layout. The client
--- lets players split stacks (e.g. 30 stones across 28+1+1 slots), which
--- the server's quantity-based math can't see — it only sees Stone=30 and
--- counts it as 1 stack, but the client may be using 3 visual slots for it.
--- Using the layout directly is the only way to correctly enforce "no
--- pickup when visual slots are full" and "only same-type into partial
--- same-type slots". Returns nil if the layout hasn't been synced yet.
+-- ─── Server-side layout helpers ───
+-- The cached layout is the source of truth for capacity checks. After
+-- every inventory change on the server, we must update the layout
+-- immediately so the next check sees the correct occupancy — waiting
+-- for the client round-trip creates a race window.
+
+local function getLayout(player)
+	return _G.GetClientSlotLayout and _G.GetClientSlotLayout(player)
+end
+
+local function setLayout(player, layout)
+	if _G.SetClientSlotLayout then
+		_G.SetClientSlotLayout(player, layout)
+	end
+end
+
+local function addItemToLayout(player, itemName, amount)
+	local layout = getLayout(player)
+	if not layout or amount <= 0 then return end
+
+	local unlocked = getUnlockedSlots(player)
+	local remaining = amount
+
+	for idx = 1, unlocked do
+		if remaining <= 0 then break end
+		local slot = layout[tostring(idx)]
+		if slot and slot.type == "resource" and slot.name == itemName then
+			local space = MAX_STACK - (slot.count or 0)
+			if space > 0 then
+				local toAdd = math.min(remaining, space)
+				slot.count = slot.count + toAdd
+				remaining = remaining - toAdd
+			end
+		end
+	end
+
+	for idx = 1, unlocked do
+		if remaining <= 0 then break end
+		if not layout[tostring(idx)] then
+			local toAdd = math.min(remaining, MAX_STACK)
+			layout[tostring(idx)] = {
+				type = "resource",
+				name = itemName,
+				count = toAdd,
+			}
+			remaining = remaining - toAdd
+		end
+	end
+
+	setLayout(player, layout)
+end
+
+local function removeItemFromLayout(player, itemName, amount)
+	local layout = getLayout(player)
+	if not layout or amount <= 0 then return end
+
+	local unlocked = getUnlockedSlots(player)
+	local remaining = amount
+
+	for idx = unlocked, 1, -1 do
+		if remaining <= 0 then break end
+		local slot = layout[tostring(idx)]
+		if slot and slot.type == "resource" and slot.name == itemName then
+			local count = slot.count or 0
+			if remaining >= count then
+				layout[tostring(idx)] = nil
+				remaining = remaining - count
+			else
+				slot.count = count - remaining
+				remaining = 0
+			end
+		end
+	end
+
+	setLayout(player, layout)
+end
+
 local function computeLayoutCapacity(player, itemName)
-	local layout = _G.GetClientSlotLayout and _G.GetClientSlotLayout(player)
+	local layout = getLayout(player)
 	if not layout then
-		-- No layout synced yet — block all pickups rather than falling back
-		-- to the permissive quantity-based math that can't see split stacks.
 		return { emptySlots = 0, partialSpace = 0, capacity = 0 }
 	end
 
@@ -279,6 +347,36 @@ _G.GetEmptySlotCount = function(player)
 	return math.max(0, unlocked - tools - totalStacks)
 end
 
+-- Reconcile the cached layout with the actual inventory quantities.
+-- Some scripts modify inv[item] directly (crafting, furnace, etc.)
+-- and then call SendInventory. This function ensures the layout
+-- stays in sync so the next capacity check is accurate.
+local function reconcileLayout(player, inv)
+	local layout = getLayout(player)
+	if not layout then return end
+
+	local unlocked = getUnlockedSlots(player)
+
+	for _, resName in RESOURCE_NAMES do
+		local serverCount = inv[resName] or 0
+
+		local layoutCount = 0
+		for idx = 1, unlocked do
+			local slot = layout[tostring(idx)]
+			if slot and slot.type == "resource" and slot.name == resName then
+				layoutCount = layoutCount + (slot.count or 0)
+			end
+		end
+
+		local diff = serverCount - layoutCount
+		if diff > 0 then
+			addItemToLayout(player, resName, diff)
+		elseif diff < 0 then
+			removeItemFromLayout(player, resName, -diff)
+		end
+	end
+end
+
 _G.SendInventory = function(player)
 	local inv = _G.GetInventory(player)
 	local maxSlots = getMaxResourceSlots(player)
@@ -290,7 +388,6 @@ _G.SendInventory = function(player)
 		print("[InventoryManager] TRIM: totalStacks=" .. totalStacks .. " > maxSlots=" .. maxSlots .. " for " .. player.Name)
 	end
 	while totalStacks > maxSlots do
-		-- Pick the resource whose last (partial) stack is smallest
 		local trimName = nil
 		local trimAmount = MAX_STACK + 1
 		for name, count in pairs(inv) do
@@ -305,18 +402,17 @@ _G.SendInventory = function(player)
 		end
 		if not trimName then break end
 
-		-- Remove from inventory
 		inv[trimName] = inv[trimName] - trimAmount
 		if inv[trimName] <= 0 then inv[trimName] = 0 end
 		totalStacks = totalStacks - 1
 		print("[InventoryManager] TRIMMED: " .. trimName .. " x" .. trimAmount .. " dropped for " .. player.Name)
 
-		-- Spawn physical drop in front of the player
 		if trimAmount > 0 and _G.SpawnResourceDrop then
 			_G.SpawnResourceDrop(player, trimName, trimAmount, dropPos)
 		end
 	end
 
+	reconcileLayout(player, inv)
 	inventoryEvent:FireClient(player, inv)
 end
 
@@ -336,6 +432,7 @@ _G.AddResourceToInventory = function(player, itemName, amount, dropPosition)
 
 	if toAdd > 0 then
 		inv[itemName] = (inv[itemName] or 0) + toAdd
+		addItemToLayout(player, itemName, toAdd)
 	end
 
 	-- Drop overflow as physical item
@@ -345,6 +442,20 @@ _G.AddResourceToInventory = function(player, itemName, amount, dropPosition)
 
 	_G.SendInventory(player)
 	return toAdd, overflow
+end
+
+_G.RemoveResourceFromInventory = function(player, itemName, amount)
+	if type(itemName) ~= "string" or itemName == "" then return end
+	amount = tonumber(amount) or 0
+	if amount <= 0 then return end
+
+	local inv = _G.GetInventory(player)
+	local current = inv[itemName] or 0
+	local toRemove = math.min(amount, current)
+	if toRemove <= 0 then return end
+
+	inv[itemName] = current - toRemove
+	removeItemFromLayout(player, itemName, toRemove)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════

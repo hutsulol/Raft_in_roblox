@@ -212,11 +212,14 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 	local isResource = RESOURCE_ITEMS[itemName]
 
 	if isResource then
-		-- Resource drop: deduct from inventory count
 		local inv = _G.GetInventory and _G.GetInventory(player)
 		if not inv then return end
 		if (inv[itemName] or 0) < dropCount then return end
-		inv[itemName] = inv[itemName] - dropCount
+		if _G.RemoveResourceFromInventory then
+			_G.RemoveResourceFromInventory(player, itemName, dropCount)
+		else
+			inv[itemName] = inv[itemName] - dropCount
+		end
 	else
 		-- Tool drop: find and remove the tool from backpack or character
 		local tool = nil
@@ -292,21 +295,12 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		droppedItem:Destroy()
 		if _G.SendInventory then _G.SendInventory(player) end
 	else
-		-- Resource pickup: delegate to InventoryManager which consults
-		-- the client's actual slot layout. The layout is the source of
-		-- truth for visual fullness — user-driven stack splitting (e.g.
-		-- 30 stones across 28+1+1 slots) can't be inferred from server
-		-- quantities alone, so we must use the client's view.
-		if not _G.GetInventory or not _G.GetEmptySlotCount or not _G.GetInventoryCapacity then
+		if not _G.AddResourceToInventory or not _G.GetInventoryCapacity then
 			print("[DropItem] PICKUP BLOCKED: InventoryManager globals missing")
 			return
 		end
 
-		local emptySlots = _G.GetEmptySlotCount(player)
 		local cap = _G.GetInventoryCapacity(player, resType) or 0
-		print("[DropItem] PICKUP CHECK: empty=" .. emptySlots .. " cap=" .. cap .. " item=" .. resType .. " amount=" .. resAmount)
-
-		-- Block when neither an empty slot nor same-type partial space exists.
 		if cap <= 0 then
 			pickupEvent:FireClient(player, "inventoryFull")
 			return
@@ -315,9 +309,7 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		local toPickup = math.min(resAmount, cap)
 		local leftover = resAmount - toPickup
 
-		local inv = _G.GetInventory(player)
-		inv[resType] = (inv[resType] or 0) + toPickup
-		if _G.SendInventory then _G.SendInventory(player) end
+		_G.AddResourceToInventory(player, resType, toPickup)
 
 		if leftover > 0 then
 			droppedItem:SetAttribute("ResourceAmount", leftover)
