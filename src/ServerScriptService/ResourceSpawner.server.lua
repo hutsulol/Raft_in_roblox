@@ -85,8 +85,52 @@ _G.GetInventory = function(player)
 	return _G_Inventories[player]
 end
 
+-- ─── Centralised overflow guard ────────────────────────────────────────
+-- Every system that adds resources calls SendInventory afterward. By
+-- comparing the inventory to a snapshot taken on the previous send we can
+-- detect increases that would push the player past their slot budget and
+-- drop the excess as a physical item at the player's feet. This means
+-- individual systems never need their own capacity checks.
+local _prevInvState = {}
+
 _G.SendInventory = function(player)
-	inventoryEvent:FireClient(player, _G.GetInventory(player))
+	local inv = _G.GetInventory(player)
+	local prev = _prevInvState[player]
+
+	if prev then
+		-- For each resource that increased since the last send, verify that
+		-- the increase fits. If not, revert the excess and spawn a drop.
+		for name, count in pairs(inv) do
+			if type(count) == "number" and count > 0 then
+				local oldCount = prev[name] or 0
+				if count > oldCount then
+					-- Temporarily revert so GetInventoryCapacity sees the
+					-- state *before* this increase.
+					inv[name] = oldCount
+					local cap = _G.GetInventoryCapacity(player, name)
+					local increase = count - oldCount
+					local canAdd = math.min(increase, math.max(0, cap))
+					local overflow = increase - canAdd
+					inv[name] = oldCount + canAdd
+
+					if overflow > 0 and _G.SpawnResourceDrop then
+						_G.SpawnResourceDrop(player, name, overflow, nil)
+					end
+				end
+			end
+		end
+	end
+
+	-- Save snapshot for the next call
+	local snap = {}
+	for name, count in pairs(inv) do
+		if type(count) == "number" then
+			snap[name] = count
+		end
+	end
+	_prevInvState[player] = snap
+
+	inventoryEvent:FireClient(player, inv)
 end
 
 -- ─── Inventory capacity ────────────────────────────────────────────────
@@ -113,20 +157,23 @@ local function getUnlockedSlots(player)
 	return DEFAULT_HOTBAR_SLOTS + DEFAULT_BASE_GRID_SLOTS
 end
 
+-- Count unique tool names (matching client layout: one slot per unique name)
 local function countToolSlots(player)
-	local n = 0
+	local seen = {}
 	local backpack = player and player:FindFirstChild("Backpack")
 	if backpack then
 		for _, tool in backpack:GetChildren() do
-			if tool:IsA("Tool") then n = n + 1 end
+			if tool:IsA("Tool") then seen[tool.Name] = true end
 		end
 	end
 	local char = player and player.Character
 	if char then
 		for _, tool in char:GetChildren() do
-			if tool:IsA("Tool") then n = n + 1 end
+			if tool:IsA("Tool") then seen[tool.Name] = true end
 		end
 	end
+	local n = 0
+	for _ in pairs(seen) do n = n + 1 end
 	return n
 end
 
@@ -212,6 +259,7 @@ end
 
 Players.PlayerRemoving:Connect(function(player)
 	_G_Inventories[player] = nil
+	_prevInvState[player] = nil
 end)
 
 -- ═══════════════════════════════════════════════════════════════════════
