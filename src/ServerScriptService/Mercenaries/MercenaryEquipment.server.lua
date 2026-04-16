@@ -149,6 +149,27 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
 		if EQUIPPABLE_BACKPACKS[itemId] then
 			mercEntry:SetAttribute("EquippedBackpack", itemId)
 			initBackpackSlots(mercEntry)
+
+			-- Make the Backpack part visible on the spawned model so
+			-- the player sees it appear immediately.
+			local CollectionService = game:GetService("CollectionService")
+			for _, model in CollectionService:GetTagged("SpawnedMercenary") do
+				if model:GetAttribute("OwnerUserId") == player.UserId
+					and model:GetAttribute("MercName") == mercName
+					and model.Parent then
+					local bp = model:FindFirstChild("Backpack")
+					if bp then
+						if bp:IsA("BasePart") then
+							bp.Transparency = 0
+						end
+						for _, desc in bp:GetDescendants() do
+							if desc:IsA("BasePart") then
+								desc.Transparency = 0
+							end
+						end
+					end
+				end
+			end
 		else
 			mercEntry:SetAttribute("EquippedWeapon", itemId)
 		end

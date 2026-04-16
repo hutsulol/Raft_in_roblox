@@ -93,6 +93,24 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local equipScript = clone:FindFirstChild("EquipFishingRod")
 	if equipScript then equipScript:Destroy() end
 
+	-- Hide the Backpack accessory if the player hasn't equipped one yet.
+	-- MercenaryEquipment will make it visible when a backpack is equipped.
+	local equippedBp = mercEntry and mercEntry:GetAttribute("EquippedBackpack") or ""
+	local backpackPart = clone:FindFirstChild("Backpack")
+	if backpackPart then
+		if equippedBp == "" or equippedBp == nil then
+			-- No backpack equipped — hide it
+			if backpackPart:IsA("BasePart") then
+				backpackPart.Transparency = 1
+			end
+			for _, desc in backpackPart:GetDescendants() do
+				if desc:IsA("BasePart") then
+					desc.Transparency = 1
+				end
+			end
+		end
+	end
+
 	-- Keep the ZombieScript alive on the mercenary so it can fight back
 	-- against hostile pirates — the script's SearchForTarget is now
 	-- role-aware (it checks the "SpawnedMercenary" tag and will only
