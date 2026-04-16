@@ -264,6 +264,34 @@ collectNotify.OnClientEvent:Connect(function(action, resource, arg3, arg4)
 		if worldPos then
 			showCollectedPopup(worldPos, arg3, arg4)
 		end
+	elseif action == "inventoryFull" then
+		local screenGui = Instance.new("ScreenGui")
+		screenGui.DisplayOrder = 60
+		screenGui.IgnoreGuiInset = true
+		screenGui.Parent = playerGui
+
+		local label = Instance.new("TextLabel")
+		label.AnchorPoint = Vector2.new(0.5, 0.5)
+		label.Position = UDim2.new(0.5, 0, 0.4, 0)
+		label.Size = UDim2.new(0, 280, 0, 40)
+		label.BackgroundTransparency = 1
+		label.Text = "Inventory full!"
+		label.TextColor3 = Color3.fromRGB(255, 80, 80)
+		label.TextSize = 24
+		label.Font = Enum.Font.GothamBold
+		label.TextStrokeTransparency = 0.4
+		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		label.Parent = screenGui
+
+		task.spawn(function()
+			task.wait(1.2)
+			for i = 0, 10 do
+				label.TextTransparency = i / 10
+				label.TextStrokeTransparency = 0.4 + (i / 10) * 0.6
+				task.wait(0.04)
+			end
+			screenGui:Destroy()
+		end)
 	elseif action == "broke" then
 		-- arg3 = resType. The clicker pre-played this on prediction, so we
 		-- consume the flag and skip; everyone else plays the sound now.

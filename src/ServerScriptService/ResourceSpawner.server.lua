@@ -117,6 +117,8 @@ collectEvent.OnServerEvent:Connect(function(player, targetPart)
 		local added = _G.AddResourceToInventory(player, resType, resAmount, resourcePos)
 		if added > 0 then
 			collectNotify:FireClient(player, "collected", resource, resType, added)
+		else
+			collectNotify:FireClient(player, "inventoryFull")
 		end
 		collectNotify:FireAllClients("broke", resource, resType)
 
