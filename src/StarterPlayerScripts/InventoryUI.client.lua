@@ -1021,6 +1021,7 @@ local function endDrag(mousePos)
 	cancelDrag()
 	dragState.didDrag = true
 	renderAllSlots()
+	syncSlotLayoutToServer()
 end
 
 -- ─── Quick-transfer: Shift+click moves item between hotbar and grid ───
@@ -1081,6 +1082,7 @@ local function quickTransfer(slotIndex)
 	end
 
 	renderAllSlots()
+	syncSlotLayoutToServer()
 end
 
 -- ─── Equip ───
