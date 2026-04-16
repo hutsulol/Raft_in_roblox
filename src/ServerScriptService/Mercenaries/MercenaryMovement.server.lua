@@ -199,12 +199,29 @@ local function playFishingAnimation(model)
 		animator = Instance.new("Animator")
 		animator.Parent = humanoid
 	end
-	local anim = Instance.new("Animation")
-	anim.AnimationId = FISHING_ANIM_ID
-	local track = animator:LoadAnimation(anim)
-	track.Looped = true
-	track:Play()
-	return track
+
+	-- Try to load the Animation from the model's Fishing script child,
+	-- matching the pattern Combat.script uses for its Attack animation.
+	-- The Fishing script has a child Animation named "Fishing" placed
+	-- in Studio.
+	local fishingScript = model:FindFirstChild("Fishing")
+	local fishingAnim = fishingScript and fishingScript:FindFirstChild("Fishing")
+
+	if not fishingAnim or not fishingAnim:IsA("Animation") then
+		-- Fallback: create the animation dynamically with a hardcoded ID
+		fishingAnim = Instance.new("Animation")
+		fishingAnim.AnimationId = FISHING_ANIM_ID
+	end
+
+	local ok, track = pcall(function()
+		return animator:LoadAnimation(fishingAnim)
+	end)
+	if ok and track then
+		track.Looped = true
+		track:Play()
+		return track
+	end
+	return nil
 end
 
 -- ── NPC fishing cycle ───────────────────────────────────────────────────
