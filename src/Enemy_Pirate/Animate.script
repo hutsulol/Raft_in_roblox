@@ -85,7 +85,7 @@ local animNames = {
 				{ id = "http://www.roblox.com/asset/?id=129423030", weight = 10 }
 			},
 	fishing = {
-				{ id = "http://www.roblox.com/asset/?id=87612317388668", weight = 10 }
+				{ id = "http://www.roblox.com/asset/?id=103080686462658", weight = 10 }
 			},
 }
 
