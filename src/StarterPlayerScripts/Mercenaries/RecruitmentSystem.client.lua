@@ -7,6 +7,7 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
+local TextService = game:GetService("TextService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
@@ -23,6 +24,8 @@ local currentPirate = nil
 local uiOpen = false
 local minigameRunning = false
 local claimedLocally = {} -- client-side set; immune to server replication overwriting
+local firstDefeatShown = false
+local defeatDialogueOpen = false
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- UI construction
@@ -218,6 +221,244 @@ local function showNotification(text, color)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
+-- First-defeat dialogue (orange/white theme)
+-- ═══════════════════════════════════════════════════════════════════════
+
+local DEFEAT_ICON        = "rbxassetid://90285585534580"
+local DEFEAT_TEXT        = "You defeated me, are you not infected?"
+
+local DLG_COLOR_PANEL    = Color3.fromRGB(255, 250, 240)
+local DLG_COLOR_EDGE     = Color3.fromRGB(230, 140, 30)
+local DLG_COLOR_ACCENT   = Color3.fromRGB(235, 120, 0)
+local DLG_COLOR_TEXT     = Color3.fromRGB(60, 40, 20)
+local DLG_COLOR_TEXT_DIM = Color3.fromRGB(160, 120, 60)
+local DLG_COLOR_INNER    = Color3.fromRGB(255, 235, 200)
+
+local function showFirstDefeatDialogue(onDone)
+	local PANEL_PAD = 20
+	local ICON_SZ   = 120
+	local GAP_      = 14
+	local TXT_PAD_H = 16
+	local TXT_PAD_V = 14
+	local SPK_H     = 22
+	local SPK_GAP   = 8
+	local BTN_H_    = 38
+	local BTN_GAP_  = 12
+	local DLG_W     = 500
+
+	local textColW  = DLG_W - 2 * PANEL_PAD - ICON_SZ - GAP_
+	local textBodyW = textColW - 2 * TXT_PAD_H
+
+	local bounds = TextService:GetTextSize(
+		DEFEAT_TEXT, 15, Enum.Font.Gotham, Vector2.new(textBodyW, 9999)
+	)
+	local textBodyH = math.max(bounds.Y + 20, 20)
+	local textColH  = TXT_PAD_V + SPK_H + SPK_GAP + textBodyH + TXT_PAD_V
+	local contentH  = math.max(ICON_SZ, textColH)
+	local panelH    = 2 * PANEL_PAD + contentH + BTN_GAP_ + BTN_H_
+
+	local gui = Instance.new("ScreenGui")
+	gui.Name           = "DefeatDialogueGui"
+	gui.ResetOnSpawn   = false
+	gui.DisplayOrder   = 91
+	gui.IgnoreGuiInset = true
+	gui.Parent         = playerGui
+
+	local backdrop = Instance.new("Frame")
+	backdrop.BackgroundColor3       = Color3.fromRGB(0, 0, 0)
+	backdrop.BackgroundTransparency = 1
+	backdrop.BorderSizePixel        = 0
+	backdrop.Size                   = UDim2.new(1, 0, 1, 0)
+	backdrop.Parent                 = gui
+
+	local dlgPanel = Instance.new("Frame")
+	dlgPanel.BackgroundColor3       = DLG_COLOR_PANEL
+	dlgPanel.BackgroundTransparency = 0.05
+	dlgPanel.BorderSizePixel        = 0
+	dlgPanel.AnchorPoint            = Vector2.new(0.5, 0.5)
+	dlgPanel.Size                   = UDim2.fromOffset(DLG_W, panelH)
+	dlgPanel.Position               = UDim2.new(0.5, 0, -0.5, 0)
+	dlgPanel.Parent                 = gui
+	Instance.new("UICorner", dlgPanel).CornerRadius = UDim.new(0, 14)
+
+	local edgeStroke = Instance.new("UIStroke")
+	edgeStroke.Thickness       = 2
+	edgeStroke.Color           = DLG_COLOR_EDGE
+	edgeStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	edgeStroke.Parent          = dlgPanel
+
+	local pad = Instance.new("UIPadding")
+	pad.PaddingTop    = UDim.new(0, PANEL_PAD)
+	pad.PaddingBottom = UDim.new(0, PANEL_PAD)
+	pad.PaddingLeft   = UDim.new(0, PANEL_PAD)
+	pad.PaddingRight  = UDim.new(0, PANEL_PAD)
+	pad.Parent        = dlgPanel
+
+	-- Icon
+	local iconFrame = Instance.new("Frame")
+	iconFrame.Size                    = UDim2.fromOffset(ICON_SZ, ICON_SZ)
+	iconFrame.Position                = UDim2.fromOffset(0, 0)
+	iconFrame.BackgroundColor3        = DLG_COLOR_INNER
+	iconFrame.BackgroundTransparency  = 0.3
+	iconFrame.BorderSizePixel         = 0
+	iconFrame.Parent                  = dlgPanel
+	Instance.new("UICorner", iconFrame).CornerRadius = UDim.new(0, 8)
+	local iconEdge = Instance.new("UIStroke")
+	iconEdge.Thickness = 1
+	iconEdge.Color     = DLG_COLOR_EDGE
+	iconEdge.Parent    = iconFrame
+
+	local iconImg = Instance.new("ImageLabel")
+	iconImg.Size                    = UDim2.new(1, -12, 1, -12)
+	iconImg.AnchorPoint             = Vector2.new(0.5, 0.5)
+	iconImg.Position                = UDim2.new(0.5, 0, 0.5, 0)
+	iconImg.BackgroundTransparency  = 1
+	iconImg.Image                   = DEFEAT_ICON
+	iconImg.ScaleType               = Enum.ScaleType.Fit
+	iconImg.Parent                  = iconFrame
+
+	-- Text column
+	local textBg = Instance.new("Frame")
+	textBg.BackgroundColor3       = DLG_COLOR_INNER
+	textBg.BackgroundTransparency = 0.3
+	textBg.BorderSizePixel        = 0
+	textBg.Size                   = UDim2.fromOffset(textColW, textColH)
+	textBg.Position               = UDim2.fromOffset(ICON_SZ + GAP_, 0)
+	textBg.Parent                 = dlgPanel
+	Instance.new("UICorner", textBg).CornerRadius = UDim.new(0, 8)
+
+	local txtPad = Instance.new("UIPadding")
+	txtPad.PaddingTop    = UDim.new(0, TXT_PAD_V)
+	txtPad.PaddingBottom = UDim.new(0, TXT_PAD_V)
+	txtPad.PaddingLeft   = UDim.new(0, TXT_PAD_H)
+	txtPad.PaddingRight  = UDim.new(0, TXT_PAD_H)
+	txtPad.Parent        = textBg
+
+	local speakerLbl = Instance.new("TextLabel")
+	speakerLbl.BackgroundTransparency = 1
+	speakerLbl.Size           = UDim2.new(1, 0, 0, SPK_H)
+	speakerLbl.Font           = Enum.Font.GothamBold
+	speakerLbl.TextSize       = 17
+	speakerLbl.TextColor3     = DLG_COLOR_ACCENT
+	speakerLbl.Text           = "Defeated Pirate"
+	speakerLbl.TextXAlignment = Enum.TextXAlignment.Left
+	speakerLbl.Parent         = textBg
+
+	local dialogueLbl = Instance.new("TextLabel")
+	dialogueLbl.BackgroundTransparency = 1
+	dialogueLbl.Size           = UDim2.new(1, 0, 0, textBodyH)
+	dialogueLbl.Position       = UDim2.fromOffset(0, SPK_H + SPK_GAP)
+	dialogueLbl.Font           = Enum.Font.Gotham
+	dialogueLbl.TextSize       = 15
+	dialogueLbl.TextColor3     = DLG_COLOR_TEXT
+	dialogueLbl.Text           = ""
+	dialogueLbl.TextXAlignment = Enum.TextXAlignment.Left
+	dialogueLbl.TextYAlignment = Enum.TextYAlignment.Top
+	dialogueLbl.TextWrapped    = true
+	dialogueLbl.Parent         = textBg
+
+	-- Action button (full width)
+	local actionBtn = Instance.new("TextButton")
+	actionBtn.BackgroundColor3 = DLG_COLOR_INNER
+	actionBtn.BorderSizePixel  = 0
+	actionBtn.Size             = UDim2.new(1, 0, 0, BTN_H_)
+	actionBtn.Position         = UDim2.fromOffset(0, contentH + BTN_GAP_)
+	actionBtn.Font             = Enum.Font.GothamBold
+	actionBtn.TextSize         = 17
+	actionBtn.TextColor3       = DLG_COLOR_TEXT_DIM
+	actionBtn.Text             = "Skip"
+	actionBtn.AutoButtonColor  = true
+	actionBtn.Parent           = dlgPanel
+	Instance.new("UICorner", actionBtn).CornerRadius = UDim.new(0, 8)
+	local btnEdge = Instance.new("UIStroke")
+	btnEdge.Thickness       = 1.5
+	btnEdge.Color           = DLG_COLOR_EDGE
+	btnEdge.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	btnEdge.Parent          = actionBtn
+
+	-- Slide in
+	TweenService:Create(
+		backdrop,
+		TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ BackgroundTransparency = 0.4 }
+	):Play()
+	TweenService:Create(
+		dlgPanel,
+		TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Position = UDim2.new(0.5, 0, 0.5, 0) }
+	):Play()
+
+	local closed = false
+	local inputConn = nil
+
+	local function closeDialogue()
+		if closed then return end
+		closed = true
+
+		for _, desc in gui:GetDescendants() do
+			if desc:IsA("TextLabel") or desc:IsA("TextButton") then
+				TweenService:Create(desc, TweenInfo.new(0.2), {
+					TextTransparency = 1,
+					BackgroundTransparency = 1,
+				}):Play()
+			elseif desc:IsA("ImageLabel") then
+				TweenService:Create(desc, TweenInfo.new(0.2), {
+					ImageTransparency = 1,
+				}):Play()
+			elseif desc:IsA("Frame") then
+				TweenService:Create(desc, TweenInfo.new(0.2), {
+					BackgroundTransparency = 1,
+				}):Play()
+			elseif desc:IsA("UIStroke") then
+				TweenService:Create(desc, TweenInfo.new(0.2), {
+					Transparency = 1,
+				}):Play()
+			end
+		end
+
+		task.delay(0.25, function()
+			gui:Destroy()
+			if inputConn then inputConn:Disconnect() end
+			if onDone then onDone() end
+		end)
+	end
+
+	inputConn = UserInputService.InputBegan:Connect(function(input)
+		if input.KeyCode == Enum.KeyCode.Escape then
+			closeDialogue()
+		end
+	end)
+
+	-- Typewriter effect
+	local textFinished = false
+
+	task.spawn(function()
+		for c = 1, #DEFEAT_TEXT do
+			if textFinished then break end
+			dialogueLbl.Text = string.sub(DEFEAT_TEXT, 1, c)
+			task.wait(0.04)
+		end
+		if not textFinished then
+			textFinished = true
+			dialogueLbl.Text     = DEFEAT_TEXT
+			actionBtn.Text       = "Continue"
+			actionBtn.TextColor3 = DLG_COLOR_ACCENT
+		end
+	end)
+
+	actionBtn.MouseButton1Click:Connect(function()
+		if not textFinished then
+			textFinished = true
+			dialogueLbl.Text     = DEFEAT_TEXT
+			actionBtn.Text       = "Continue"
+			actionBtn.TextColor3 = DLG_COLOR_ACCENT
+		else
+			closeDialogue()
+		end
+	end)
+end
+
+-- ═══════════════════════════════════════════════════════════════════════
 -- Helpers
 -- ═══════════════════════════════════════════════════════════════════════
 
@@ -405,9 +646,28 @@ end)
 -- E key interaction
 -- ═══════════════════════════════════════════════════════════════════════
 
+local function openRecruitPanel(pirate)
+	currentPirate = pirate
+	uiOpen = true
+
+	local chance = pirate:GetAttribute("RecruitChance") or 100
+	greenZone.Size = UDim2.new(chance / 100, 0, 1, 0)
+	divider.Position = UDim2.new(chance / 100, -1, 0, 0)
+	chanceLabel.Text = tostring(chance) .. "%"
+
+	ball.Visible = false
+	ball.BackgroundColor3 = Color3.fromRGB(210, 40, 40)
+	recruitBtn.Visible = true
+	keepBtn.Visible = true
+	chanceLabel.Visible = true
+	resultLabel.Text = ""
+	panel.Visible = true
+end
+
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	if input.KeyCode ~= Enum.KeyCode.E then return end
+	if defeatDialogueOpen then return end
 
 	if uiOpen and not minigameRunning then
 		closeUI()
@@ -418,21 +678,24 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 	local pirate = findDownedPirateNearby()
 	if pirate then
-		currentPirate = pirate
-		uiOpen = true
-
-		local chance = pirate:GetAttribute("RecruitChance") or 100
-		greenZone.Size = UDim2.new(chance / 100, 0, 1, 0)
-		divider.Position = UDim2.new(chance / 100, -1, 0, 0)
-		chanceLabel.Text = tostring(chance) .. "%"
-
-		ball.Visible = false
-		ball.BackgroundColor3 = Color3.fromRGB(210, 40, 40)
-		recruitBtn.Visible = true
-		keepBtn.Visible = true
-		chanceLabel.Visible = true
-		resultLabel.Text = ""
-		panel.Visible = true
+		if not firstDefeatShown then
+			firstDefeatShown = true
+			defeatDialogueOpen = true
+			_G.SuppressInventoryToggle = true
+			showFirstDefeatDialogue(function()
+				defeatDialogueOpen = false
+				if pirate and pirate.Parent
+					and not pirate:GetAttribute("Claimed")
+					and not claimedLocally[pirate]
+				then
+					openRecruitPanel(pirate)
+				else
+					_G.SuppressInventoryToggle = false
+				end
+			end)
+		else
+			openRecruitPanel(pirate)
+		end
 	end
 end)
 
@@ -444,6 +707,12 @@ RunService.RenderStepped:Connect(function()
 	-- Show "[E] Recruit" hint when looking at a downed pirate nearby.
 	-- Suppress the inventory E-key toggle while the hint is visible or
 	-- the recruitment UI is open so the two systems don't fight.
+	if defeatDialogueOpen then
+		hintLabel.Visible = false
+		_G.SuppressInventoryToggle = true
+		return
+	end
+
 	if not uiOpen then
 		local pirate = findDownedPirateNearby()
 		if pirate then
