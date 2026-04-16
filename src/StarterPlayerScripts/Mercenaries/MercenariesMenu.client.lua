@@ -7,6 +7,7 @@
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
+local SoundService      = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 
@@ -1402,6 +1403,10 @@ buildEquipmentPage = function(mercName, mercNames)
 		if mercEntry then
 			if activeCategory == "Artifacts" then
 				mercEntry:SetAttribute("EquippedBackpack", selectedItemId)
+				local bpSound = SoundService:FindFirstChild("backpack_equip")
+				if bpSound then
+					bpSound:Play()
+				end
 			else
 				mercEntry:SetAttribute("EquippedWeapon", selectedItemId)
 			end
