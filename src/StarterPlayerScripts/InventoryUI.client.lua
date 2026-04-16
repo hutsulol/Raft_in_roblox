@@ -66,7 +66,7 @@ local TOOL_ICONS = {
 	["Destitalor"] = "rbxassetid://90221080738714",
 	["Furnace"] = "rbxassetid://117760352651529",
 	["bush"] = "rbxassetid://100755665041729",
-	["Wooden_Spear"] = "rbxassetid://110032041583533",
+
 	["Machete"] = "rbxassetid://114406082138691",
 	["Wood_Knife"] = "rbxassetid://110032041583533",
 	["WorkBench"] = "rbxassetid://104306543647624",
@@ -327,7 +327,7 @@ local DISPLAY_NAMES = {
 	Dry_Brick = "Dry Brick",
 	["Pick-Axe"] = "Pick-Axe",
 	WorkBench = "Workbench",
-	Wooden_Spear = "Wooden Spear",
+
 	Wood_Knife = "Wood Knife",
 }
 

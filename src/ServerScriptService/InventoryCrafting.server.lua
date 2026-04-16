@@ -9,15 +9,6 @@ end
 
 local recipes = {
 	{
-		name = "Wooden_Spear",
-		displayName = "Wooden Spear",
-		icon = "rbxassetid://110032041583533",
-		costs = {Log = 10},
-		craftType = "tool",
-		category = "Tools",
-		description = "A sharp wooden spear for fighting off pirates and defending your raft.",
-	},
-	{
 		name = "WorkBench",
 		displayName = "Work Bench",
 		icon = "rbxassetid://104306543647624",
