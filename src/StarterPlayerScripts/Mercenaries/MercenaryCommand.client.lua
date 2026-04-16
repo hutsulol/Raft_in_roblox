@@ -482,19 +482,9 @@ local function openMercInventory(mercModel)
 		local ghost = Instance.new("Frame")
 		ghost.Size = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE)
 		ghost.Position = UDim2.fromOffset(mx - SLOT_SIZE / 2, my - SLOT_SIZE / 2)
-		ghost.BackgroundColor3 = INV_COLORS.slotBg
-		ghost.BackgroundTransparency = 0.1
+		ghost.BackgroundTransparency = 1
 		ghost.BorderSizePixel = 0
 		ghost.Parent = ghostGui
-
-		local gCorner = Instance.new("UICorner")
-		gCorner.CornerRadius = UDim.new(0, 5)
-		gCorner.Parent = ghost
-
-		local gStroke = Instance.new("UIStroke")
-		gStroke.Color = INV_COLORS.slotBorder
-		gStroke.Thickness = 2
-		gStroke.Parent = ghost
 
 		local rarity = _G.GetItemRarity and _G.GetItemRarity(itemName) or nil
 		local frameAsset = (_G.GetRarityFrameAsset and _G.GetRarityFrameAsset(rarity)) or ""
@@ -620,8 +610,9 @@ local function openMercInventory(mercModel)
 		-- Drag: transfer only if released over the player inventory.
 		local pp = findPlayerInventoryPanel()
 		if pp and mouseOverFrame(pp, mx, my) then
-			-- Find the specific slot under the mouse
-			local mousePos = Vector2.new(mx, my)
+			-- FindSlotUnderMouse expects GetMouseLocation() coords (with
+			-- GUI inset), not raw input.Position screen coords.
+			local mousePos = UserInputService:GetMouseLocation()
 			local targetSlot = _G.FindSlotUnderMouse and _G.FindSlotUnderMouse(mousePos)
 			transferSlot(i, targetSlot)
 		end
