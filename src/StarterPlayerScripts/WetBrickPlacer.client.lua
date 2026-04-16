@@ -5,6 +5,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
@@ -225,6 +226,9 @@ mouse.Button1Down:Connect(function()
 	if not lastGhostValid or not lastGhostRaftOffset then return end
 
 	wetBrickAction:FireServer("placeWetBrick", lastGhostRaftOffset)
+	local folder = SoundService:FindFirstChild("Building")
+	local snd = folder and folder:FindFirstChild("Place_Block")
+	if snd then snd:Play() end
 	destroyGhost()
 	placing = false
 end)

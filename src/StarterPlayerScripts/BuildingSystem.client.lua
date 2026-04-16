@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -1051,6 +1052,12 @@ end
 player.CharacterAdded:Connect(onCharacterAdded)
 
 -- Click to place
+local function playPlaceSound()
+	local folder = SoundService:FindFirstChild("Building")
+	local snd = folder and folder:FindFirstChild("Place_Block")
+	if snd then snd:Play() end
+end
+
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	if not isBuilding or not selectedItem then return end
@@ -1066,6 +1073,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
 
 		placeBlockEvent:FireServer("raft", gx, gz)
+		playPlaceSound()
 
 	elseif selectedItem.buildType == "beam" then
 		local cx, cz, _ = getBeamCornerFromMouse()
@@ -1077,6 +1085,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
 
 		placeBlockEvent:FireServer("beam", cx, cz)
+		playPlaceSound()
 
 	elseif selectedItem.buildType == "wall_panel" then
 		local cx1, cz1, cx2, cz2, side, _ = getWallPanelFromMouse()
@@ -1088,6 +1097,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
 
 		placeBlockEvent:FireServer("wall_panel", cx1, cz1, cx2, cz2)
+		playPlaceSound()
 
 	elseif selectedItem.buildType == "wall_arch" then
 		local cx1, cz1, cx2, cz2, side, _ = getWallArchFromMouse()
@@ -1099,6 +1109,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
 
 		placeBlockEvent:FireServer("wall_arch", cx1, cz1, cx2, cz2)
+		playPlaceSound()
 
 	elseif selectedItem.buildType == "door" then
 		local cx1, cz1, cx2, cz2, side, _ = getDoorFromMouse()
@@ -1109,6 +1120,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
 
 		placeBlockEvent:FireServer("door", cx1, cz1, cx2, cz2)
+		playPlaceSound()
 	end
 end)
 

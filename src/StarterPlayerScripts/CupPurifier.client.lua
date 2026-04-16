@@ -2,6 +2,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
+local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
@@ -466,10 +467,17 @@ end)
 mouse.Button1Down:Connect(function()
 	if not currentTool then return end
 
+	local function playPlaceSound()
+		local folder = SoundService:FindFirstChild("Building")
+		local snd = folder and folder:FindFirstChild("Place_Block")
+		if snd then snd:Play() end
+	end
+
 	-- Purifier placement
 	if placingPurifier and ghost then
 		if not lastGhostValid or not lastGhostRaftOffset then return end
 		cupActionEvent:FireServer("placePurifier", lastGhostRaftOffset)
+		playPlaceSound()
 		destroyGhost()
 		placingPurifier = false
 		return
@@ -479,6 +487,7 @@ mouse.Button1Down:Connect(function()
 	if placingBush and ghost then
 		if not lastGhostValid or not lastTargetGarden then return end
 		bushActionEvent:FireServer("placeBush", lastTargetGarden)
+		playPlaceSound()
 		destroyGhost()
 		placingBush = false
 		return
@@ -488,6 +497,7 @@ mouse.Button1Down:Connect(function()
 	if placingWorkbench and ghost then
 		if not lastGhostValid or not lastGhostRaftOffset then return end
 		cupActionEvent:FireServer("placeWorkbench", lastGhostRaftOffset)
+		playPlaceSound()
 		destroyGhost()
 		placingWorkbench = false
 		return
@@ -497,6 +507,7 @@ mouse.Button1Down:Connect(function()
 	if placingGarden and ghost then
 		if not lastGhostValid or not lastGhostRaftOffset then return end
 		gardenActionEvent:FireServer("placeGarden", lastGhostRaftOffset)
+		playPlaceSound()
 		destroyGhost()
 		placingGarden = false
 		return
@@ -506,6 +517,7 @@ mouse.Button1Down:Connect(function()
 	if placingBed and ghost then
 		if not lastGhostValid or not lastGhostRaftOffset then return end
 		cupActionEvent:FireServer("placeBed", lastGhostRaftOffset)
+		playPlaceSound()
 		destroyGhost()
 		placingBed = false
 		return
@@ -515,6 +527,7 @@ mouse.Button1Down:Connect(function()
 	if placingSawmill and ghost then
 		if not lastGhostValid or not lastGhostRaftOffset then return end
 		sawmillActionEvent:FireServer("placeSawmill", lastGhostRaftOffset)
+		playPlaceSound()
 		destroyGhost()
 		placingSawmill = false
 		return
