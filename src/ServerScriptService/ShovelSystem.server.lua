@@ -4,6 +4,7 @@
 
 local rs = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local Debris = game:GetService("Debris")
 
 local DIG_HITS_REQUIRED = 5
 local DIG_RANGE = 15
@@ -11,6 +12,24 @@ local DIG_RANGE = 15
 local digDirtEvent = Instance.new("RemoteEvent")
 digDirtEvent.Name = "DigDirt"
 digDirtEvent.Parent = rs
+
+-- ─── Dig sound (from Shovel tool in ReplicatedStorage) ───
+local function playDigSound(atPart)
+	if not atPart then return end
+	local shovel = rs:FindFirstChild("Shovel")
+	if not shovel then return end
+	-- Look for Shoveling sound recursively in the Shovel tool
+	local snd = shovel:FindFirstChild("Shoveling", true)
+	if not snd or not snd:IsA("Sound") then return end
+	local attach = Instance.new("Attachment")
+	attach.WorldPosition = atPart.Position
+	attach.Parent = workspace.Terrain
+	local clone = snd:Clone()
+	clone.Parent = attach
+	clone:Play()
+	local lifetime = (clone.TimeLength > 0 and clone.TimeLength or 2) + 0.5
+	Debris:AddItem(attach, lifetime)
+end
 
 local function tagPart(part)
 	if not part:IsA("BasePart") then return end
@@ -61,6 +80,8 @@ digDirtEvent.OnServerEvent:Connect(function(player, part)
 	local health = part:GetAttribute("DigHealth") or DIG_HITS_REQUIRED
 	health = health - 1
 	part:SetAttribute("DigHealth", health)
+
+	playDigSound(part)
 
 	if health <= 0 then
 		local digType = part:GetAttribute("DigType") or "Sand"
