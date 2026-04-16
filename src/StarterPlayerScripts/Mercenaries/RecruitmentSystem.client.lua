@@ -227,12 +227,12 @@ end
 local DEFEAT_ICON        = "rbxassetid://90285585534580"
 local DEFEAT_TEXT        = "You defeated me, are you not infected?"
 
-local DLG_COLOR_PANEL    = Color3.fromRGB(255, 250, 240)
+local DLG_COLOR_PANEL    = Color3.fromRGB(245, 228, 195)
 local DLG_COLOR_EDGE     = Color3.fromRGB(230, 140, 30)
 local DLG_COLOR_ACCENT   = Color3.fromRGB(235, 120, 0)
 local DLG_COLOR_TEXT     = Color3.fromRGB(60, 40, 20)
 local DLG_COLOR_TEXT_DIM = Color3.fromRGB(160, 120, 60)
-local DLG_COLOR_INNER    = Color3.fromRGB(255, 235, 200)
+local DLG_COLOR_INNER    = Color3.fromRGB(250, 235, 205)
 
 local function showFirstDefeatDialogue(onDone)
 	local PANEL_PAD = 20
@@ -298,8 +298,7 @@ local function showFirstDefeatDialogue(onDone)
 	local iconFrame = Instance.new("Frame")
 	iconFrame.Size                    = UDim2.fromOffset(ICON_SZ, ICON_SZ)
 	iconFrame.Position                = UDim2.fromOffset(0, 0)
-	iconFrame.BackgroundColor3        = DLG_COLOR_INNER
-	iconFrame.BackgroundTransparency  = 0.3
+	iconFrame.BackgroundTransparency  = 1
 	iconFrame.BorderSizePixel         = 0
 	iconFrame.Parent                  = dlgPanel
 	Instance.new("UICorner", iconFrame).CornerRadius = UDim.new(0, 8)
@@ -309,13 +308,12 @@ local function showFirstDefeatDialogue(onDone)
 	iconEdge.Parent    = iconFrame
 
 	local iconImg = Instance.new("ImageLabel")
-	iconImg.Size                    = UDim2.new(1, -12, 1, -12)
-	iconImg.AnchorPoint             = Vector2.new(0.5, 0.5)
-	iconImg.Position                = UDim2.new(0.5, 0, 0.5, 0)
+	iconImg.Size                    = UDim2.new(1, 0, 1, 0)
 	iconImg.BackgroundTransparency  = 1
 	iconImg.Image                   = DEFEAT_ICON
-	iconImg.ScaleType               = Enum.ScaleType.Fit
+	iconImg.ScaleType               = Enum.ScaleType.Stretch
 	iconImg.Parent                  = iconFrame
+	Instance.new("UICorner", iconImg).CornerRadius = UDim.new(0, 8)
 
 	-- Text column
 	local textBg = Instance.new("Frame")
@@ -684,11 +682,12 @@ UserInputService.InputBegan:Connect(function(input, processed)
 			_G.SuppressInventoryToggle = true
 			showFirstDefeatDialogue(function()
 				defeatDialogueOpen = false
-				if pirate and pirate.Parent
-					and not pirate:GetAttribute("Claimed")
-					and not claimedLocally[pirate]
-				then
-					openRecruitPanel(pirate)
+				local p = pirate
+				if not p or not p.Parent then
+					p = findDownedPirateNearby()
+				end
+				if p then
+					openRecruitPanel(p)
 				else
 					_G.SuppressInventoryToggle = false
 				end
