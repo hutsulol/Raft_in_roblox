@@ -183,7 +183,54 @@ _G.GetInventory = function(player)
 	return inv
 end
 
+-- Compute slot-level capacity from the client's ACTUAL layout. The client
+-- lets players split stacks (e.g. 30 stones across 28+1+1 slots), which
+-- the server's quantity-based math can't see — it only sees Stone=30 and
+-- counts it as 1 stack, but the client may be using 3 visual slots for it.
+-- Using the layout directly is the only way to correctly enforce "no
+-- pickup when visual slots are full" and "only same-type into partial
+-- same-type slots". Returns nil if the layout hasn't been synced yet.
+local function computeLayoutCapacity(player, itemName)
+	local layout = _G.GetClientSlotLayout and _G.GetClientSlotLayout(player)
+	if not layout then return nil end
+
+	local unlocked = getUnlockedSlots(player)
+	local occupied = 0
+	local partialSpaceSameType = 0
+
+	for idxStr, slot in pairs(layout) do
+		local idx = tonumber(idxStr)
+		if idx and idx >= 1 and idx <= unlocked then
+			occupied = occupied + 1
+			if itemName
+				and slot.type == "resource"
+				and slot.name == itemName
+				and typeof(slot.count) == "number" then
+				local space = MAX_STACK - slot.count
+				if space > 0 then
+					partialSpaceSameType = partialSpaceSameType + space
+				end
+			end
+		end
+	end
+
+	local emptySlots = math.max(0, unlocked - occupied)
+	return {
+		emptySlots = emptySlots,
+		partialSpace = partialSpaceSameType,
+		capacity = emptySlots * MAX_STACK + partialSpaceSameType,
+	}
+end
+
 _G.GetInventoryCapacity = function(player, itemName)
+	-- Prefer the client's actual layout (source of truth for visual slots).
+	local layoutCap = computeLayoutCapacity(player, itemName)
+	if layoutCap then
+		return layoutCap.capacity
+	end
+
+	-- Fallback: quantity-based calculation (used before the client has
+	-- synced its layout, e.g. immediately after spawn).
 	local inv = _G.GetInventory(player)
 	local unlocked = getUnlockedSlots(player)
 	local tools = countToolSlots(player)
@@ -204,7 +251,6 @@ _G.GetInventoryCapacity = function(player, itemName)
 	end
 
 	local usedSlots = tools + existingStacks + otherStacks
-	-- Already over budget (historical overflow) → no room at all
 	if usedSlots > unlocked then return 0 end
 
 	local emptySlots = unlocked - usedSlots
@@ -215,6 +261,13 @@ end
 -- Used by the pickup handler to enforce slot-level fullness: if every
 -- slot is occupied (even with partial stacks), ground pickups are blocked.
 _G.GetEmptySlotCount = function(player)
+	-- Prefer the client's actual layout.
+	local layoutCap = computeLayoutCapacity(player, nil)
+	if layoutCap then
+		return layoutCap.emptySlots
+	end
+
+	-- Fallback: quantity-based calculation.
 	local inv = _G.GetInventory(player)
 	local unlocked = getUnlockedSlots(player)
 	local tools = countToolSlots(player)

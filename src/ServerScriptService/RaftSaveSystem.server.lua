@@ -42,6 +42,17 @@ slotLayoutEvent.OnServerEvent:Connect(function(player, slotLayout)
 	end
 end)
 
+-- Expose the cached client slot layout to other server scripts (notably
+-- InventoryManager, which uses it to compute capacity/empty-slot checks
+-- based on the player's actual visual layout rather than server-side
+-- quantities). User-driven stack splitting (e.g. 30 stones across
+-- 3 slots of 28+1+1) is invisible to the quantity-based math, so the
+-- layout is the only accurate source of truth for how many slots are
+-- occupied and how much same-type partial space exists.
+_G.GetClientSlotLayout = function(player)
+	return cachedSlotLayouts[player]
+end
+
 -- ─── CFrame serialization ───
 local function serializeCFrame(cf)
 	return {cf:GetComponents()} -- 12 numbers

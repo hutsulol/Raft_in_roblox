@@ -292,70 +292,21 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		droppedItem:Destroy()
 		if _G.SendInventory then _G.SendInventory(player) end
 	else
-		-- Resource pickup: only allow when there is a truly empty slot.
-		-- Partial stack space (e.g. 29/30) does NOT count — mining and
-		-- crafting fill partials via AddResourceToInventory, but ground
-		-- pickups require a free slot so that "drop one, pick one" cycling
-		-- is impossible when the inventory is visually full.
-		if not _G.GetInventory then
-			print("[DropItem] PICKUP BLOCKED: _G.GetInventory not defined")
+		-- Resource pickup: delegate to InventoryManager which consults
+		-- the client's actual slot layout. The layout is the source of
+		-- truth for visual fullness — user-driven stack splitting (e.g.
+		-- 30 stones across 28+1+1 slots) can't be inferred from server
+		-- quantities alone, so we must use the client's view.
+		if not _G.GetInventory or not _G.GetEmptySlotCount or not _G.GetInventoryCapacity then
+			print("[DropItem] PICKUP BLOCKED: InventoryManager globals missing")
 			return
 		end
 
-		-- Belt-and-suspenders: compute empty slots inline even if
-		-- _G.GetEmptySlotCount isn't available (e.g. InventoryManager
-		-- hasn't loaded yet). This duplicates the logic so pickup
-		-- ALWAYS enforces slot-level fullness.
-		local inv = _G.GetInventory(player)
-		local MAX_STACK_LOCAL = 30
-		local TOTAL_SLOTS_LOCAL = 28
-		local DEFAULT_UNLOCKED_LOCAL = 13
+		local emptySlots = _G.GetEmptySlotCount(player)
+		local cap = _G.GetInventoryCapacity(player, resType) or 0
+		print("[DropItem] PICKUP CHECK: empty=" .. emptySlots .. " cap=" .. cap .. " item=" .. resType .. " amount=" .. resAmount)
 
-		-- Count unlocked slots (same logic as InventoryManager)
-		local unlockedSlots = DEFAULT_UNLOCKED_LOCAL
-		local chars = player:FindFirstChild("Characteristics")
-		if chars then
-			local uSlots = chars:FindFirstChild("UnlockedInventorySlots")
-			if uSlots and typeof(uSlots.Value) == "number" then
-				unlockedSlots = math.clamp(uSlots.Value, DEFAULT_UNLOCKED_LOCAL, TOTAL_SLOTS_LOCAL)
-			end
-		end
-
-		-- Count tool slots (unique tool names in backpack + character)
-		local seenTools = {}
-		local backpack = player:FindFirstChild("Backpack")
-		if backpack then
-			for _, t in backpack:GetChildren() do
-				if t:IsA("Tool") then seenTools[t.Name] = true end
-			end
-		end
-		if char then
-			for _, t in char:GetChildren() do
-				if t:IsA("Tool") then seenTools[t.Name] = true end
-			end
-		end
-		local toolCount = 0
-		for _ in pairs(seenTools) do toolCount = toolCount + 1 end
-
-		-- Count total resource stacks
-		local totalStacks = 0
-		for _, count in pairs(inv) do
-			if type(count) == "number" and count > 0 then
-				totalStacks = totalStacks + math.ceil(count / MAX_STACK_LOCAL)
-			end
-		end
-
-		local emptySlots = math.max(0, unlockedSlots - toolCount - totalStacks)
-		print("[DropItem] PICKUP CHECK: unlocked=" .. unlockedSlots .. " tools=" .. toolCount .. " stacks=" .. totalStacks .. " empty=" .. emptySlots .. " item=" .. resType)
-
-		if emptySlots <= 0 then
-			pickupEvent:FireClient(player, "inventoryFull")
-			return
-		end
-
-		-- There are empty slots — pick up what fits (clamped to real capacity
-		-- so we never exceed the budget).
-		local cap = _G.GetInventoryCapacity and _G.GetInventoryCapacity(player, resType) or 0
+		-- Block when neither an empty slot nor same-type partial space exists.
 		if cap <= 0 then
 			pickupEvent:FireClient(player, "inventoryFull")
 			return
@@ -364,6 +315,7 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		local toPickup = math.min(resAmount, cap)
 		local leftover = resAmount - toPickup
 
+		local inv = _G.GetInventory(player)
 		inv[resType] = (inv[resType] or 0) + toPickup
 		if _G.SendInventory then _G.SendInventory(player) end
 
