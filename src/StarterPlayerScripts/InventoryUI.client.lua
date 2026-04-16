@@ -2329,7 +2329,7 @@ end)
 -- ─── Periodic sync: keep server layout up to date at all times ───
 task.spawn(function()
 	while true do
-		task.wait(1)
+		task.wait(0.2)
 		syncSlotLayoutToServer()
 	end
 end)
