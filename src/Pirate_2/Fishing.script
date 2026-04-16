@@ -12,16 +12,10 @@ local anim = hum:WaitForChild("Animator")
 local idleAnim = anim:LoadAnimation(script:WaitForChild("Fishing"))
 idleAnim.Looped = true
 
--- Wait for MercenaryMovement to fire Start_Fishing when the pirate
--- reaches the player-specified fishing spot.
-local startEvent = npc:WaitForChild("Start_Fishing")
+-- Wait until MercenaryMovement sets IsFishing = true (pirate reached
+-- the fishing spot the player specified).
+repeat task.wait(0.2) until npc:GetAttribute("IsFishing") or not npc.Parent
 
-startEvent.Event:Connect(function(shouldFish)
-	if shouldFish then
-		npc:SetAttribute("IsFishing", true)
-		idleAnim:Play()
-	else
-		npc:SetAttribute("IsFishing", false)
-		idleAnim:Stop()
-	end
-end)
+if npc:GetAttribute("IsFishing") then
+	idleAnim:Play()
+end
