@@ -255,8 +255,13 @@ _G.GetInventoryCapacity = function(player, itemName)
 
 	local otherStacks = countResourceStacks(inv, itemName)
 	local usedSlots   = tools + existingStacks + otherStacks
-	local emptySlots  = math.max(0, unlocked - usedSlots)
 
+	-- If already over capacity (historical overflow), no room at all
+	if usedSlots > unlocked then
+		return 0
+	end
+
+	local emptySlots = unlocked - usedSlots
 	return emptySlots * MAX_STACK + partialSpace
 end
 

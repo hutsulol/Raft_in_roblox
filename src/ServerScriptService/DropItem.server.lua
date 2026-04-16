@@ -291,7 +291,8 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 
 		local cap = _G.GetInventoryCapacity(player, resType)
 		if cap <= 0 then
-			-- No room at all; leave the pile where it is
+			-- No room at all; leave the pile, notify client
+			pickupEvent:FireClient(player, "inventoryFull")
 			return
 		end
 
