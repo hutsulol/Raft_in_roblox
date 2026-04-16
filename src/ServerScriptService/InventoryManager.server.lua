@@ -88,9 +88,13 @@ local function getUnlockedSlots(player)
 end
 
 -- ─── Helper: total resource stacks in an inventory table ───
+-- Only counts KNOWN resource names. Unknown keys (from legacy save data
+-- or bugs elsewhere) are ignored so they don't occupy invisible slots
+-- the client can't render.
 local function getTotalResourceStacks(inv)
 	local total = 0
-	for _, count in pairs(inv) do
+	for _, name in RESOURCE_NAMES do
+		local count = inv[name]
 		if type(count) == "number" and count > 0 then
 			total = total + math.ceil(count / MAX_STACK)
 		end
@@ -167,6 +171,15 @@ _G.GetInventory = function(player)
 	for _, name in RESOURCE_NAMES do
 		if inv[name] == nil then inv[name] = 0 end
 	end
+	-- Strip any unknown keys (e.g. from legacy save data or bugs elsewhere).
+	-- Without this, they would count as invisible slots because the client
+	-- can't render them but the server counts them in getTotalResourceStacks.
+	for key in pairs(inv) do
+		if not RESOURCE_SET[key] then
+			print("[InventoryManager] Stripping unknown inventory key: " .. tostring(key))
+			inv[key] = nil
+		end
+	end
 	return inv
 end
 
@@ -181,9 +194,12 @@ _G.GetInventoryCapacity = function(player, itemName)
 		and (existingStacks * MAX_STACK - existing) or 0
 
 	local otherStacks = 0
-	for name, count in pairs(inv) do
-		if name ~= itemName and type(count) == "number" and count > 0 then
-			otherStacks = otherStacks + math.ceil(count / MAX_STACK)
+	for _, name in RESOURCE_NAMES do
+		if name ~= itemName then
+			local count = inv[name]
+			if type(count) == "number" and count > 0 then
+				otherStacks = otherStacks + math.ceil(count / MAX_STACK)
+			end
 		end
 	end
 

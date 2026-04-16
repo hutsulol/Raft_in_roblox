@@ -634,8 +634,13 @@ local function restoreInventory(player, saveData)
 	local inv = _G.GetInventory and _G.GetInventory(player)
 	if not inv then return end
 
+	-- Only restore keys that already exist in the inventory table.
+	-- _G.GetInventory() guarantees every known RESOURCE_NAMES key exists
+	-- and strips any unknown keys, so this naturally rejects legacy/bad
+	-- keys that would otherwise create invisible slots on the server
+	-- (counted toward capacity but never rendered by the client).
 	for key, value in saveData.inventory do
-		if typeof(value) == "number" then
+		if typeof(value) == "number" and inv[key] ~= nil then
 			inv[key] = value
 		end
 	end
