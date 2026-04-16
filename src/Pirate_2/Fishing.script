@@ -1,77 +1,8 @@
--- Fishing.script (Pirate_2 -- Mercenary fishing animation controller)
---
--- Lives inside the mercenary model alongside Combat.script. When
--- MercenaryMovement.server.lua fires the Start_Fishing BindableEvent
--- (i.e. the pirate has reached its fishing spot), this script loads the
--- child Animation named "Fishing" and plays it on the rig's Animator --
--- the same pattern Combat.script uses for its Attack animation.
---
--- The Animate script yields its idle/walk loop while IsFishing is true
--- so this animation isn't overridden.
+local npc = script.Parent
+local hum = npc:FindFirstChildOfClass("Humanoid")
+local anim = hum:WaitForChild("Animator")
 
-local Self = script.Parent
+local idleAnim = anim:LoadAnimation(script:WaitForChild("Fishing"))
 
--- Don't run inside the menu preview or ReplicatedStorage
-while not Self:IsDescendantOf(workspace) do
-	Self.AncestryChanged:Wait()
-end
-
-local humanoid = Self:FindFirstChildOfClass("Humanoid")
-if not humanoid then
-	warn("[Pirate_2/Fishing] no Humanoid")
-	return
-end
-
-local animator = humanoid:FindFirstChildOfClass("Animator")
-if not animator then
-	animator = Instance.new("Animator")
-	animator.Parent = humanoid
-end
-
--- Load the fishing animation from the child Animation instance placed
--- in Studio (same pattern as Combat's Attack animation).
-local fishingAnim = script:FindFirstChild("Fishing")
-if not fishingAnim or not fishingAnim:IsA("Animation") then
-	warn("[Pirate_2/Fishing] no child Animation named 'Fishing' -- cannot play fishing pose")
-	return
-end
-
-local fishingTrack = nil
-local ok, track = pcall(function()
-	return animator:LoadAnimation(fishingAnim)
-end)
-if ok and track then
-	fishingTrack = track
-	fishingTrack.Looped = true
-	fishingTrack.Priority = Enum.AnimationPriority.Action
-else
-	warn("[Pirate_2/Fishing] failed to load fishing animation")
-	return
-end
-
--- Wait for the Start_Fishing BindableEvent placed in the model.
-local startEvent = Self:WaitForChild("Start_Fishing", 30)
-if not startEvent then
-	warn("[Pirate_2/Fishing] Start_Fishing event not found")
-	return
-end
-
--- When Start_Fishing fires, the argument is true (start) or false (stop).
-startEvent.Event:Connect(function(isFishing)
-	Self:SetAttribute("IsFishing", isFishing)
-	if isFishing then
-		fishingTrack:Play(0.3)
-	else
-		fishingTrack:Stop(0.3)
-	end
-end)
-
--- Keep alive while the model exists
-while Self.Parent and humanoid.Health > 0 do
-	task.wait(1)
-end
-
--- Clean up
-if fishingTrack and fishingTrack.IsPlaying then
-	fishingTrack:Stop(0)
-end
+idleAnim.Looped = true
+idleAnim:Play()
