@@ -310,14 +310,19 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 	elseif action == "removeOre" then
 		if not state.oreType then return end
 
+		-- Check capacity before returning ore to inventory
+		local cap = _G.GetInventoryCapacity and _G.GetInventoryCapacity(player, state.oreType) or 0
+		if cap <= 0 then
+			furnaceEvent:FireClient(player, "inventoryFull")
+			return
+		end
+
 		-- Cancel smelting if in progress (ore returned, smelt aborted)
 		if state.smelting then
 			state.smelting = false
 			state.smeltPlayer = nil
 		end
 
-		-- Return the ore via AddResourceToInventory so overflow drops
-		-- on the ground instead of being invisibly stored.
 		_G.AddResourceToInventory(player, state.oreType, 1, nil)
 		state.oreType = nil
 
@@ -350,8 +355,17 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		if state.smelting or state.outputReady then return end
 		if state.fuelCount <= 0 then return end
 
+		-- Check capacity before returning fuel to inventory
+		local cap = _G.GetInventoryCapacity and _G.GetInventoryCapacity(player, "Log") or 0
+		if cap <= 0 then
+			furnaceEvent:FireClient(player, "inventoryFull")
+			return
+		end
+
 		-- data = count to remove (nil or 0 = all)
 		local removeCount = (typeof(data) == "number" and data >= 1) and math.min(math.floor(data), state.fuelCount) or state.fuelCount
+		-- Only return what fits in inventory
+		removeCount = math.min(removeCount, cap)
 		_G.AddResourceToInventory(player, "Log", removeCount, nil)
 		state.fuelCount = state.fuelCount - removeCount
 		furnaceEvent:FireClient(player, "stateUpdate", state)
@@ -360,8 +374,19 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		if not state.outputReady or (state.outputAmount or 0) <= 0 then return end
 
 		local outType = state.outputType or "Iron_Ingot"
-		-- data = count to collect (nil or 0 = all)
+
+		-- Check capacity before collecting — if inventory is full, refuse
+		-- and keep the output in the furnace instead of force-dropping it.
+		local cap = _G.GetInventoryCapacity and _G.GetInventoryCapacity(player, outType) or 0
+		if cap <= 0 then
+			furnaceEvent:FireClient(player, "inventoryFull")
+			return
+		end
+
+		-- data = count to collect (nil or 0 = all); clamp to what fits
 		local collectCount = (typeof(data) == "number" and data >= 1) and math.min(math.floor(data), state.outputAmount) or state.outputAmount
+		collectCount = math.min(collectCount, cap)
+
 		_G.AddResourceToInventory(player, outType, collectCount, nil)
 		state.outputAmount = state.outputAmount - collectCount
 
@@ -371,7 +396,6 @@ furnaceEvent.OnServerEvent:Connect(function(player, action, data, data2)
 			state.outputAmount = 0
 		end
 
-		if _G.SendInventory then _G.SendInventory(player) end
 		if _G.OnQuestResource then _G.OnQuestResource(player, outType, collectCount) end
 		furnaceEvent:FireClient(player, "stateUpdate", state)
 
