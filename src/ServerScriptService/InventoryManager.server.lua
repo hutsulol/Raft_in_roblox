@@ -210,6 +210,47 @@ end
 
 _G.ClearPendingDeltas = clearPendingDeltas
 
+-- Called when the client syncs a fresh layout.  Instead of blindly
+-- clearing deltas we compare the layout totals against the server's
+-- actual inventory.  If the layout is short (client couldn't fit items
+-- into slotData), we keep a positive delta for the difference so
+-- capacity checks still block further pickups.
+_G.ReconcilePendingDeltas = function(player)
+	local inv = inventories[player]
+	if not inv then
+		clearPendingDeltas(player)
+		return
+	end
+
+	local layout = _G.GetClientSlotLayout and _G.GetClientSlotLayout(player)
+	if not layout then
+		clearPendingDeltas(player)
+		return
+	end
+
+	local unlocked = getUnlockedSlots(player)
+	local newDeltas = nil
+
+	for _, resName in RESOURCE_NAMES do
+		local serverCount = inv[resName] or 0
+		local layoutCount = 0
+		for idx = 1, unlocked do
+			local slot = layout[tostring(idx)]
+			if slot and slot.type == "resource" and slot.name == resName
+				and typeof(slot.count) == "number" then
+				layoutCount = layoutCount + slot.count
+			end
+		end
+		local diff = serverCount - layoutCount
+		if diff > 0 then
+			if not newDeltas then newDeltas = {} end
+			newDeltas[resName] = diff
+		end
+	end
+
+	pendingDeltas[player] = newDeltas
+end
+
 local function getLayout(player)
 	return _G.GetClientSlotLayout and _G.GetClientSlotLayout(player)
 end

@@ -39,10 +39,12 @@ local cachedSlotLayouts = {} -- [player] = slotData table
 slotLayoutEvent.OnServerEvent:Connect(function(player, slotLayout)
 	if typeof(slotLayout) == "table" then
 		cachedSlotLayouts[player] = slotLayout
-		-- The client just synced its real layout, so any pending deltas
-		-- the server was tracking are now baked into this fresh layout.
-		if _G.ClearPendingDeltas then
-			_G.ClearPendingDeltas(player)
+		-- Reconcile pending deltas: compare layout totals against the
+		-- server's actual inventory.  If the layout is missing items
+		-- (client couldn't fit them into slotData), keep a delta so
+		-- the server still knows those slots are "spoken for".
+		if _G.ReconcilePendingDeltas then
+			_G.ReconcilePendingDeltas(player)
 		end
 	end
 end)
