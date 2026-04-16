@@ -43,9 +43,10 @@ local isHovering        = false
 local dialogueOpen      = false
 
 -- ─── Wait for Robot ──────────────────────────────────────────────────────
-local robot = workspace:WaitForChild("Robot", 60)
+local raft = workspace:WaitForChild("Raft", 60)
+local robot = raft and raft:WaitForChild("Robot", 60)
 if not robot then
-	warn("[RobotInteract] Robot not found in workspace")
+	warn("[RobotInteract] Robot not found in workspace.Raft")
 	return
 end
 

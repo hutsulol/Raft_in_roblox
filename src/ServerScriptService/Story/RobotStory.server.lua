@@ -16,7 +16,8 @@ storyEvent.OnServerEvent:Connect(function(player, action)
 	if player:GetAttribute("RobotQuest1Done") then return end
 
 	-- Distance check: player must be near the Robot
-	local robot = workspace:FindFirstChild("Robot")
+	local raft = workspace:FindFirstChild("Raft")
+	local robot = raft and raft:FindFirstChild("Robot")
 	if robot then
 		local char = player.Character
 		if not char or not char:FindFirstChild("HumanoidRootPart") then return end
