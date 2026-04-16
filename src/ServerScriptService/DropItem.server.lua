@@ -140,6 +140,16 @@ local function spawnPhysicalDrop(player, itemName, amount, isToolDrop, dropPosit
 	clone:SetAttribute("IsToolDrop", isToolDrop and true or false)
 	clone:SetAttribute("DropperUserId", player.UserId)
 
+	-- Strip "Resource" tags and add "DroppedItem" BEFORE parenting to
+	-- workspace. This closes the race window where a client could detect
+	-- the clone with a stale "Resource" tag and fire CollectResource,
+	-- bypassing the empty-slot pickup check.
+	CollectionService:RemoveTag(clone, "Resource")
+	for _, desc in clone:GetDescendants() do
+		CollectionService:RemoveTag(desc, "Resource")
+	end
+	CollectionService:AddTag(clone, "DroppedItem")
+
 	clone:PivotTo(CFrame.new(spawnPos))
 	clone.Parent = workspace
 
@@ -166,15 +176,6 @@ local function spawnPhysicalDrop(player, itemName, amount, isToolDrop, dropPosit
 	if raft and raft.PrimaryPart and primaryClonePart then
 		primaryClonePart.AssemblyLinearVelocity = raft.PrimaryPart.AssemblyLinearVelocity
 	end
-
-	-- Strip any "Resource" tags the template may carry so the
-	-- ResourceSpawner click-to-collect system ignores dropped items.
-	CollectionService:RemoveTag(clone, "Resource")
-	for _, desc in clone:GetDescendants() do
-		CollectionService:RemoveTag(desc, "Resource")
-	end
-
-	CollectionService:AddTag(clone, "DroppedItem")
 
 	task.delay(DROPPED_LIFETIME, function()
 		if clone and clone.Parent then
