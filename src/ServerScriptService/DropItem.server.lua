@@ -284,14 +284,23 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		droppedItem:Destroy()
 		if _G.SendInventory then _G.SendInventory(player) end
 	else
-		-- Resource pickup: check capacity first, then pick up only what
-		-- fits. If there's leftover, shrink the existing pile rather than
-		-- spawning a new one (which would duplicate the item).
-		if not _G.GetInventory or not _G.GetInventoryCapacity then return end
+		-- Resource pickup: only allow when there is a truly empty slot.
+		-- Partial stack space (e.g. 29/30) does NOT count — mining and
+		-- crafting fill partials via AddResourceToInventory, but ground
+		-- pickups require a free slot so that "drop one, pick one" cycling
+		-- is impossible when the inventory is visually full.
+		if not _G.GetInventory or not _G.GetEmptySlotCount then return end
 
-		local cap = _G.GetInventoryCapacity(player, resType)
+		local emptySlots = _G.GetEmptySlotCount(player)
+		if emptySlots <= 0 then
+			pickupEvent:FireClient(player, "inventoryFull")
+			return
+		end
+
+		-- There are empty slots — pick up what fits (clamped to real capacity
+		-- so we never exceed the budget).
+		local cap = _G.GetInventoryCapacity and _G.GetInventoryCapacity(player, resType) or 0
 		if cap <= 0 then
-			-- No room at all; leave the pile, notify client
 			pickupEvent:FireClient(player, "inventoryFull")
 			return
 		end
@@ -299,17 +308,11 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		local toPickup = math.min(resAmount, cap)
 		local leftover = resAmount - toPickup
 
-		-- Add directly to the canonical inventory table. We already
-		-- clamped toPickup to capacity, so this cannot overflow. We
-		-- avoid AddResourceToInventory here because it would spawn a
-		-- NEW physical drop for any overflow, while the original pile
-		-- is still alive — that would duplicate items.
 		local inv = _G.GetInventory(player)
 		inv[resType] = (inv[resType] or 0) + toPickup
 		if _G.SendInventory then _G.SendInventory(player) end
 
 		if leftover > 0 then
-			-- Shrink the existing pile instead of creating a new one
 			droppedItem:SetAttribute("ResourceAmount", leftover)
 		else
 			droppedItem:Destroy()

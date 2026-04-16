@@ -191,6 +191,17 @@ _G.GetInventoryCapacity = function(player, itemName)
 	return emptySlots * MAX_STACK + partialSpace
 end
 
+-- How many completely empty inventory slots does this player have?
+-- Used by the pickup handler to enforce slot-level fullness: if every
+-- slot is occupied (even with partial stacks), ground pickups are blocked.
+_G.GetEmptySlotCount = function(player)
+	local inv = _G.GetInventory(player)
+	local unlocked = getUnlockedSlots(player)
+	local tools = countToolSlots(player)
+	local totalStacks = getTotalResourceStacks(inv)
+	return math.max(0, unlocked - tools - totalStacks)
+end
+
 _G.SendInventory = function(player)
 	local inv = _G.GetInventory(player)
 	local maxSlots = getMaxResourceSlots(player)
