@@ -75,6 +75,13 @@ local function ensureFolder(player)
 		sv.Value = "Backpack"
 		sv.Parent = folder
 	end
+	-- BackPack_lvl2 unlocked for testing
+	if not folder:FindFirstChild("BackPack_lvl2") then
+		local sv = Instance.new("StringValue")
+		sv.Name = "BackPack_lvl2"
+		sv.Value = "BackPack_lvl2"
+		sv.Parent = folder
+	end
 	return folder
 end
 
