@@ -4,6 +4,7 @@
 
 local Players      = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
+local SoundService = game:GetService("SoundService")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -105,6 +106,11 @@ local function showNext()
 	local label = table.remove(queue, 1)
 	local panel, subtitle = buildToast()
 	subtitle.Text = label
+
+	-- Play completion sound
+	local soundFolder = SoundService:FindFirstChild("Sound_Menu")
+	local questSound = soundFolder and soundFolder:FindFirstChild("Completed_Quest")
+	if questSound then questSound:Play() end
 
 	-- Slide in from the right
 	local slideIn = TweenService:Create(
