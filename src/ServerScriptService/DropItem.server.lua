@@ -146,9 +146,17 @@ local function spawnPhysicalDrop(player, itemName, amount, isToolDrop, dropPosit
 	for _, part in clone:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
+			part.CanCollide = true
 			part.Massless = true
 			part:SetNetworkOwner(nil)
 		end
+	end
+	-- Also handle the clone itself if it's a BasePart (not a Model)
+	if clone:IsA("BasePart") then
+		clone.Anchored = false
+		clone.CanCollide = true
+		clone.Massless = true
+		clone:SetNetworkOwner(nil)
 	end
 
 	-- Inherit the raft's velocity so the item stays with the raft long
