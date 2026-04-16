@@ -535,17 +535,40 @@ local function distributeResource(name, totalCount, icon)
 	if diff == 0 then return end
 
 	if diff > 0 then
-		-- Adding items: fill last non-full slot first, then create new slots
 		local added = 0
-		-- Try to add to existing slots that aren't full (last ones first for natural stacking)
+
+		-- Priority: if there's a pending target slot (merc backpack drag),
+		-- place items there first before falling back to default logic.
+		local pending = _G.PendingTargetSlot
+		if pending and pending.name == name then
+			local tgt = pending.slot
+			_G.PendingTargetSlot = nil
+			if tgt and tgt >= 1 and tgt <= TOTAL_SLOTS and not isSlotLocked(tgt) then
+				local dst = slotData[tgt]
+				if dst and dst.type == "resource" and dst.name == name then
+					local space = MAX_STACK - dst.count
+					if space > 0 then
+						local toAdd = math.min(diff - added, space)
+						dst.count = dst.count + toAdd
+						added = added + toAdd
+					end
+				elseif not dst then
+					local amount = math.min(diff - added, MAX_STACK)
+					slotData[tgt] = {type = "resource", name = name, count = amount, icon = icon}
+					added = added + amount
+				end
+			end
+		end
+
+		-- Fill existing non-full slots (last ones first for natural stacking)
 		for j = #existingSlots, 1, -1 do
+			if added >= diff then break end
 			local idx = existingSlots[j]
 			local space = MAX_STACK - slotData[idx].count
 			if space > 0 then
 				local toAdd = math.min(diff - added, space)
 				slotData[idx].count = slotData[idx].count + toAdd
 				added = added + toAdd
-				if added >= diff then break end
 			end
 		end
 
@@ -2070,36 +2093,9 @@ _G.FindSlotUnderMouse = function(mousePos)
 	return findSlotUnderMouse(mousePos)
 end
 
--- Place a resource item directly into a specific slot (used when the
--- merc backpack drag lands on a particular inventory slot).  Returns
--- true if the item was placed / stacked, false otherwise.
-_G.PlaceItemInSlot = function(targetSlot, itemName, count, icon)
-	if targetSlot < 1 or targetSlot > TOTAL_SLOTS then return false end
-	if isSlotLocked(targetSlot) then return false end
-
-	local dst = slotData[targetSlot]
-	if dst then
-		-- Slot occupied: stack only if same resource
-		if dst.type == "resource" and dst.name == itemName then
-			local space = MAX_STACK - dst.count
-			if space >= count then
-				dst.count = dst.count + count
-				return true
-			end
-			return false
-		end
-		return false -- different item, can't stack
-	end
-
-	-- Empty slot
-	slotData[targetSlot] = {
-		type = "resource",
-		name = itemName,
-		count = math.min(count, MAX_STACK),
-		icon = icon or (_G.GetItemIcon and _G.GetItemIcon(itemName)) or "",
-	}
-	return true
-end
+-- Queue a preferred target slot for the next distributeResource call.
+-- Used by the merc backpack drag so items land where the user drops them.
+_G.PendingTargetSlot = nil
 
 -- ─── Input ───
 

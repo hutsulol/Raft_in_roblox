@@ -550,18 +550,16 @@ local function openMercInventory(mercModel)
 	end
 
 	local function transferSlot(i, targetInvSlot)
-		local has, itemName, count = slotHasItem(i)
+		local has, itemName = slotHasItem(i)
 		if not has then return end
 
-		-- If a specific target slot was provided, pre-place the item there
-		-- on the client so it lands in the right position.
-		if targetInvSlot and _G.PlaceItemInSlot then
-			local icon = (_G.GetItemIcon and _G.GetItemIcon(itemName)) or ""
-			local placed = _G.PlaceItemInSlot(targetInvSlot, itemName, count, icon)
-			if not placed then return end
+		-- Queue the target slot so distributeResource places items there
+		-- when the server inventory update arrives.
+		if targetInvSlot then
+			_G.PendingTargetSlot = { name = itemName, slot = targetInvSlot }
 		end
 
-		equipEvent:FireServer("takeItem", mercName, i, targetInvSlot)
+		equipEvent:FireServer("takeItem", mercName, i)
 	end
 
 	for _, info in slotButtons do
