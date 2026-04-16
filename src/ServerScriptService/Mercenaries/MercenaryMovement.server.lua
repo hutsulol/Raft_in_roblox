@@ -1,7 +1,6 @@
 -- MercenaryMovement.server.lua
--- Handles movement commands for spawned mercenaries.
--- The client sends a raft part + local offset. The pirate walks there
--- and, if it has a fishing rod, swaps the fake rod for the real one.
+-- Handles movement commands for spawned mercenaries and the automatic
+-- fishing catch loop for FishingRod mercenaries.
 
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
@@ -12,7 +11,57 @@ local commandEvent = Instance.new("RemoteEvent")
 commandEvent.Name = "MercenaryCommand"
 commandEvent.Parent = ReplicatedStorage
 
+-- Remote used to tell the owning client about a catch (for the +1 popup).
+local catchNotifyEvent = Instance.new("RemoteEvent")
+catchNotifyEvent.Name = "MercFishingCatch"
+catchNotifyEvent.Parent = ReplicatedStorage
+
 local activeTokens = {} -- [model] = token
+
+-- ── Catch pools (same as the player's FishingRod) ──────────────────────
+
+local CATCH_FISH = {
+	{ inventoryName = "Blue_Fish",      weight = 3 },
+	{ inventoryName = "Carp_Fish",      weight = 3 },
+	{ inventoryName = "Tilapia_Fish",   weight = 3 },
+	{ inventoryName = "Seabass_Fish",   weight = 2 },
+	{ inventoryName = "Foil_Fish",      weight = 2 },
+	{ inventoryName = "Jelly_Fish",     weight = 2 },
+	{ inventoryName = "Fish_Bones",     weight = 2 },
+	{ inventoryName = "Legendary_Fish", weight = 1 },
+}
+
+local CATCH_ITEMS = {
+	{ inventoryName = "Log", weight = 1 },
+}
+
+local FISH_BITE_CHANCE = 0.5
+local CATCH_INTERVAL = 60 -- seconds between catches (matches animation cycle)
+local MERC_INVENTORY_SLOTS = 6
+
+local function pickFromPool(pool)
+	local total = 0
+	for _, entry in pool do total = total + (entry.weight or 0) end
+	if total <= 0 then return nil end
+	local roll = math.random() * total
+	local acc = 0
+	for _, entry in pool do
+		acc = acc + (entry.weight or 0)
+		if roll <= acc then return entry end
+	end
+	return pool[#pool]
+end
+
+local function rollCatch()
+	local preferFish = math.random() < FISH_BITE_CHANCE
+	local primary = preferFish and CATCH_FISH or CATCH_ITEMS
+	local pick = pickFromPool(primary)
+	if not pick then
+		local fallback = preferFish and CATCH_ITEMS or CATCH_FISH
+		pick = pickFromPool(fallback)
+	end
+	return pick
+end
 
 -- ── Helpers ─────────────────────────────────────────────────────────────
 
@@ -27,9 +76,99 @@ local function findMercenary(player, mercName)
 	return nil
 end
 
+local function getPlayerByUserId(userId)
+	for _, p in Players:GetPlayers() do
+		if p.UserId == userId then return p end
+	end
+	return nil
+end
+
+-- ── Mercenary backpack inventory ────────────────────────────────────────
+
+local function addToMercBackpack(mercEntry, itemName)
+	-- Try to stack on an existing slot with the same item
+	for i = 1, MERC_INVENTORY_SLOTS do
+		local name = mercEntry:GetAttribute("Slot" .. i .. "_Name")
+		if name == itemName then
+			local count = mercEntry:GetAttribute("Slot" .. i .. "_Count") or 0
+			mercEntry:SetAttribute("Slot" .. i .. "_Count", count + 1)
+			return true
+		end
+	end
+	-- Find an empty slot
+	for i = 1, MERC_INVENTORY_SLOTS do
+		local name = mercEntry:GetAttribute("Slot" .. i .. "_Name")
+		if name == nil or name == "" then
+			mercEntry:SetAttribute("Slot" .. i .. "_Name", itemName)
+			mercEntry:SetAttribute("Slot" .. i .. "_Count", 1)
+			return true
+		end
+	end
+	return false -- backpack is full
+end
+
+-- ── Fishing catch loop ─────────────────────────────────────────────────
+
+local function startFishingLoop(model)
+	local ownerUserId = model:GetAttribute("OwnerUserId")
+	local mercName = model:GetAttribute("MercName")
+	if not ownerUserId or not mercName then return end
+
+	task.spawn(function()
+		while model.Parent do
+			task.wait(CATCH_INTERVAL)
+			if not model.Parent then break end
+
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			if not humanoid or humanoid.Health <= 0 then break end
+
+			-- Roll a catch
+			local catch = rollCatch()
+			if not catch then continue end
+
+			-- Find the owning player and merc entry
+			local player = getPlayerByUserId(ownerUserId)
+			if not player then continue end
+			local mercFolder = player:FindFirstChild("Mercenaries")
+			local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
+			if not mercEntry then continue end
+
+			-- Only deposit into backpack if one is equipped
+			local equippedBp = mercEntry:GetAttribute("EquippedBackpack")
+			if not equippedBp or equippedBp == "" then continue end
+
+			-- Add to the mercenary's backpack
+			local added = addToMercBackpack(mercEntry, catch.inventoryName)
+			if added then
+				-- Notify the client so it can show the +1 popup and sound
+				catchNotifyEvent:FireClient(player, model, catch.inventoryName)
+			end
+		end
+	end)
+end
+
+-- Start the fishing loop for any FishingRod merc that spawns
+CollectionService:GetInstanceAddedSignal("SpawnedMercenary"):Connect(function(model)
+	-- Wait a frame for attributes to be set by the spawner
+	task.defer(function()
+		local weapon = model:GetAttribute("EquippedWeapon")
+		if weapon == "FishingRod" then
+			startFishingLoop(model)
+		end
+	end)
+end)
+
+-- Also check mercs that are already tagged (in case this script loads late)
+for _, model in CollectionService:GetTagged("SpawnedMercenary") do
+	task.defer(function()
+		local weapon = model:GetAttribute("EquippedWeapon")
+		if weapon == "FishingRod" then
+			startFishingLoop(model)
+		end
+	end)
+end
+
 -- ── Rod swap ────────────────────────────────────────────────────────────
--- When the pirate reaches its position, swap the visual-only
--- FishingRod_Fake for the real FishingRod_ForPirate.
 
 local function swapToRealRod(model)
 	for _, child in model:GetChildren() do
@@ -59,7 +198,6 @@ local function walkToPosition(model, raftPart, localOffset)
 	activeTokens[model] = token
 
 	task.spawn(function()
-		-- Walk to the raft point
 		while activeTokens[model] == token do
 			if not humanoid or not humanoid.Parent or humanoid.Health <= 0 then return end
 			if not raftPart or not raftPart.Parent then return end
@@ -78,7 +216,6 @@ local function walkToPosition(model, raftPart, localOffset)
 
 		if activeTokens[model] ~= token then return end
 
-		-- Stop walking
 		if humanoid and humanoid.Parent then
 			local hrp = model:FindFirstChild("HumanoidRootPart")
 			if hrp then
@@ -86,7 +223,6 @@ local function walkToPosition(model, raftPart, localOffset)
 			end
 		end
 
-		-- If this is a fishing-rod merc, swap to the real rod
 		local equippedWeapon = model:GetAttribute("EquippedWeapon") or "Sword"
 		if equippedWeapon == "FishingRod" then
 			swapToRealRod(model)

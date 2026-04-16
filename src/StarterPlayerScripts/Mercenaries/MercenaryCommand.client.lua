@@ -7,6 +7,8 @@ local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
+local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -1085,3 +1087,86 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		destroyPrompt()
 	end
 end)
+
+-- ── Fishing catch +1 popup ─────────────────────────────────────────────
+-- When the server tells us the mercenary caught something, show a +1
+-- label that floats up from the pirate's head and fades out, and play
+-- the pickup sound.
+
+local PICKUP_SOUND_ID = "rbxassetid://6946986098"
+
+-- Friendly display names for inventory IDs
+local CATCH_DISPLAY = {
+	Blue_Fish      = "Blue Fish",
+	Carp_Fish      = "Carp Fish",
+	Tilapia_Fish   = "Tilapia Fish",
+	Seabass_Fish   = "Seabass Fish",
+	Foil_Fish      = "Foil Fish",
+	Jelly_Fish     = "Jelly Fish",
+	Fish_Bones     = "Fish Bones",
+	Legendary_Fish = "Legendary Fish",
+	Log            = "Log",
+}
+
+local function showCatchPopup(model, itemName)
+	local head = model:FindFirstChild("Head")
+	if not head then return end
+
+	local displayName = CATCH_DISPLAY[itemName] or itemName
+
+	-- Play the pickup sound at the pirate's position
+	local sound = Instance.new("Sound")
+	sound.SoundId = PICKUP_SOUND_ID
+	sound.Volume = 0.8
+	sound.Parent = head
+	sound:Play()
+	sound.Ended:Once(function()
+		sound:Destroy()
+	end)
+
+	-- Create a BillboardGui that floats up and fades
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "CatchPopup"
+	bb.Adornee = head
+	bb.Size = UDim2.fromOffset(200, 50)
+	bb.StudsOffset = Vector3.new(0, 3, 0)
+	bb.AlwaysOnTop = true
+	bb.Parent = playerGui
+
+	local label = Instance.new("TextLabel")
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Text = "+1 " .. displayName
+	label.TextColor3 = Color3.fromRGB(255, 255, 100)
+	label.TextStrokeColor3 = Color3.new(0, 0, 0)
+	label.TextStrokeTransparency = 0.3
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 22
+	label.TextScaled = false
+	label.Parent = bb
+
+	-- Tween: float up + fade out over 2 seconds
+	local tweenInfo = TweenInfo.new(2, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local tween = TweenService:Create(bb, tweenInfo, {
+		StudsOffset = Vector3.new(0, 6, 0),
+	})
+	local fadeTween = TweenService:Create(label, tweenInfo, {
+		TextTransparency = 1,
+		TextStrokeTransparency = 1,
+	})
+	tween:Play()
+	fadeTween:Play()
+
+	fadeTween.Completed:Once(function()
+		bb:Destroy()
+	end)
+end
+
+local catchNotifyEvent = ReplicatedStorage:WaitForChild("MercFishingCatch", 30)
+if catchNotifyEvent then
+	catchNotifyEvent.OnClientEvent:Connect(function(model, itemName)
+		if model and model.Parent and typeof(itemName) == "string" then
+			showCatchPopup(model, itemName)
+		end
+	end)
+end
