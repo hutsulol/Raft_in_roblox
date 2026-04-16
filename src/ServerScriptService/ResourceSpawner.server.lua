@@ -186,17 +186,11 @@ _G.SendInventory = function(player)
 					local canAdd = math.min(increase, math.max(0, cap))
 					local overflow = increase - canAdd
 
+					-- Always enforce the cap — never keep invisible items
+					inv[name] = oldCount + canAdd
+
 					if overflow > 0 and _G.SpawnResourceDrop then
-						local dropped = _G.SpawnResourceDrop(player, name, overflow, dropPos)
-						if dropped then
-							-- Drop succeeded — keep only what fits
-							inv[name] = oldCount + canAdd
-						else
-							-- Drop failed — keep all items rather than lose them
-							inv[name] = count
-						end
-					else
-						inv[name] = oldCount + canAdd
+						_G.SpawnResourceDrop(player, name, overflow, dropPos)
 					end
 				end
 			end
@@ -223,18 +217,13 @@ _G.SendInventory = function(player)
 		end
 		if not trimName then break end
 
-		-- Only trim if the physical drop succeeds
+		-- Always trim — never keep invisible items
+		inv[trimName] = inv[trimName] - trimAmount
+		if inv[trimName] <= 0 then inv[trimName] = 0 end
+		totalStacks = totalStacks - 1
+
 		if trimAmount > 0 and _G.SpawnResourceDrop then
-			local dropped = _G.SpawnResourceDrop(player, trimName, trimAmount, dropPos)
-			if dropped then
-				inv[trimName] = inv[trimName] - trimAmount
-				if inv[trimName] <= 0 then inv[trimName] = 0 end
-				totalStacks = totalStacks - 1
-			else
-				break -- can't drop, stop trimming to avoid losing items
-			end
-		else
-			break
+			_G.SpawnResourceDrop(player, trimName, trimAmount, dropPos)
 		end
 	end
 
@@ -288,17 +277,12 @@ _G.AddResourceToInventory = function(player, itemName, amount, dropPosition)
 	local toAdd    = math.min(amount, math.max(0, capacity))
 	local overflow = amount - toAdd
 
-	if overflow > 0 and _G.SpawnResourceDrop then
-		local dropped = _G.SpawnResourceDrop(player, itemName, overflow, dropPosition)
-		if not dropped then
-			-- Drop failed — add everything to inventory rather than lose items
-			toAdd = amount
-			overflow = 0
-		end
-	end
-
 	if toAdd > 0 then
 		inv[itemName] = (inv[itemName] or 0) + toAdd
+	end
+
+	if overflow > 0 and _G.SpawnResourceDrop then
+		_G.SpawnResourceDrop(player, itemName, overflow, dropPosition)
 	end
 
 	_G.SendInventory(player)
