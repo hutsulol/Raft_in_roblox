@@ -142,6 +142,9 @@ local function startFishingLoop(model)
 			if added then
 				-- Notify the client so it can show the +1 popup and sound
 				catchNotifyEvent:FireClient(player, model, catch.inventoryName)
+			else
+				-- Backpack is full — tell the client so it can show a warning
+				catchNotifyEvent:FireClient(player, model, "__BACKPACK_FULL__")
 			end
 		end
 	end)

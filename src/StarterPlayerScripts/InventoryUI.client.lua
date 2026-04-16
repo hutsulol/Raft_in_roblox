@@ -2064,6 +2064,43 @@ _G.OpenInventory = function()
 end
 _G.IsInventoryOpen = function() return isOpen end
 
+-- Expose slot hit-testing so external UIs (merc backpack drag) can find
+-- which player-inventory slot the mouse is over.
+_G.FindSlotUnderMouse = function(mousePos)
+	return findSlotUnderMouse(mousePos)
+end
+
+-- Place a resource item directly into a specific slot (used when the
+-- merc backpack drag lands on a particular inventory slot).  Returns
+-- true if the item was placed / stacked, false otherwise.
+_G.PlaceItemInSlot = function(targetSlot, itemName, count, icon)
+	if targetSlot < 1 or targetSlot > TOTAL_SLOTS then return false end
+	if isSlotLocked(targetSlot) then return false end
+
+	local dst = slotData[targetSlot]
+	if dst then
+		-- Slot occupied: stack only if same resource
+		if dst.type == "resource" and dst.name == itemName then
+			local space = MAX_STACK - dst.count
+			if space >= count then
+				dst.count = dst.count + count
+				return true
+			end
+			return false
+		end
+		return false -- different item, can't stack
+	end
+
+	-- Empty slot
+	slotData[targetSlot] = {
+		type = "resource",
+		name = itemName,
+		count = math.min(count, MAX_STACK),
+		icon = icon or (_G.GetItemIcon and _G.GetItemIcon(itemName)) or "",
+	}
+	return true
+end
+
 -- ─── Input ───
 
 local numberKeys = {

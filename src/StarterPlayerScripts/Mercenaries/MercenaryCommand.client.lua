@@ -549,9 +549,19 @@ local function openMercInventory(mercModel)
 		drag.slotIndex = nil
 	end
 
-	local function transferSlot(i)
-		if not slotHasItem(i) then return end
-		equipEvent:FireServer("takeItem", mercName, i)
+	local function transferSlot(i, targetInvSlot)
+		local has, itemName, count = slotHasItem(i)
+		if not has then return end
+
+		-- If a specific target slot was provided, pre-place the item there
+		-- on the client so it lands in the right position.
+		if targetInvSlot and _G.PlaceItemInSlot then
+			local icon = (_G.GetItemIcon and _G.GetItemIcon(itemName)) or ""
+			local placed = _G.PlaceItemInSlot(targetInvSlot, itemName, count, icon)
+			if not placed then return end
+		end
+
+		equipEvent:FireServer("takeItem", mercName, i, targetInvSlot)
 	end
 
 	for _, info in slotButtons do
@@ -604,7 +614,7 @@ local function openMercInventory(mercModel)
 		if not i then return end
 
 		if not wasDrag then
-			-- Treat as a click: transfer the stack.
+			-- Treat as a click: transfer without targeting a slot.
 			transferSlot(i)
 			return
 		end
@@ -612,7 +622,10 @@ local function openMercInventory(mercModel)
 		-- Drag: transfer only if released over the player inventory.
 		local pp = findPlayerInventoryPanel()
 		if pp and mouseOverFrame(pp, mx, my) then
-			transferSlot(i)
+			-- Find the specific slot under the mouse
+			local mousePos = Vector2.new(mx, my)
+			local targetSlot = _G.FindSlotUnderMouse and _G.FindSlotUnderMouse(mousePos)
+			transferSlot(i, targetSlot)
 		end
 	end))
 
@@ -1117,17 +1130,28 @@ local function showCatchPopup(model, itemName)
 	local head = model:FindFirstChild("Head")
 	if not head then return end
 
-	local displayName = CATCH_DISPLAY[itemName] or itemName
+	local isBackpackFull = (itemName == "__BACKPACK_FULL__")
+	local displayText, textColor
+	if isBackpackFull then
+		displayText = "Backpack full!"
+		textColor = Color3.fromRGB(255, 80, 80)
+	else
+		local displayName = CATCH_DISPLAY[itemName] or itemName
+		displayText = "+1 " .. displayName
+		textColor = Color3.fromRGB(255, 255, 100)
+	end
 
-	-- Play the pickup sound at the pirate's position
-	local sound = Instance.new("Sound")
-	sound.SoundId = PICKUP_SOUND_ID
-	sound.Volume = 0.8
-	sound.Parent = head
-	sound:Play()
-	sound.Ended:Once(function()
-		sound:Destroy()
-	end)
+	-- Play the pickup sound at the pirate's position (skip for full warning)
+	if not isBackpackFull then
+		local sound = Instance.new("Sound")
+		sound.SoundId = PICKUP_SOUND_ID
+		sound.Volume = 0.8
+		sound.Parent = head
+		sound:Play()
+		sound.Ended:Once(function()
+			sound:Destroy()
+		end)
+	end
 
 	-- Create a BillboardGui that floats up and fades
 	local bb = Instance.new("BillboardGui")
@@ -1141,8 +1165,8 @@ local function showCatchPopup(model, itemName)
 	local label = Instance.new("TextLabel")
 	label.Size = UDim2.fromScale(1, 1)
 	label.BackgroundTransparency = 1
-	label.Text = "+1 " .. displayName
-	label.TextColor3 = Color3.fromRGB(255, 255, 100)
+	label.Text = displayText
+	label.TextColor3 = textColor
 	label.TextStrokeColor3 = Color3.new(0, 0, 0)
 	label.TextStrokeTransparency = 0.3
 	label.Font = Enum.Font.GothamBold
