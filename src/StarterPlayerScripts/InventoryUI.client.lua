@@ -1592,6 +1592,10 @@ local function closeUI()
 	selectedRecipe = nil
 	selectedCategory = nil
 	if hotbarGui then hotbarGui.DisplayOrder = 5 end
+	-- Also close the mercenary backpack panel if it was open.
+	if _G.CloseMercInventory then
+		_G.CloseMercInventory()
+	end
 end
 
 -- Expose a force-close hook so other scripts (e.g. the phone menu) can

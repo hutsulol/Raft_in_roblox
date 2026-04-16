@@ -120,6 +120,7 @@ local INV_COLORS = {
 	slotBg = Color3.fromRGB(175, 145, 95),
 	slotBorder = Color3.fromRGB(120, 90, 50),
 	titleText = Color3.fromRGB(50, 35, 15),
+	lightText = Color3.fromRGB(255, 245, 220),
 	separator = Color3.fromRGB(200, 185, 150),
 	closeBg = Color3.fromRGB(180, 60, 50),
 }
@@ -145,6 +146,9 @@ local function closeMercInventory()
 	local craftPanel = invGui and invGui:FindFirstChild("CraftPanel")
 	if craftPanel then craftPanel.Visible = true end
 end
+
+-- Expose so InventoryUI can close the merc backpack when its own UI closes.
+_G.CloseMercInventory = closeMercInventory
 
 -- ── Hit-test helpers for drag-and-drop ─────────────────────────────────
 local function mouseOverFrame(frame, mx, my)
@@ -417,17 +421,17 @@ local function openMercInventory(mercModel)
 		iconLbl.ZIndex = 2
 		iconLbl.Parent = btn
 
-		-- Count label (bottom-right)
+		-- Count label (bottom-right) — matches regular inventory styling
 		local countLbl = Instance.new("TextLabel")
 		countLbl.AnchorPoint = Vector2.new(1, 1)
 		countLbl.Size = UDim2.new(0, 30, 0, 16)
 		countLbl.Position = UDim2.new(1, -4, 1, -2)
 		countLbl.BackgroundTransparency = 1
-		countLbl.TextColor3 = INV_COLORS.titleText
+		countLbl.TextColor3 = INV_COLORS.lightText
 		countLbl.Font = Enum.Font.GothamBold
-		countLbl.TextSize = 14
+		countLbl.TextSize = 13
 		countLbl.TextXAlignment = Enum.TextXAlignment.Right
-		countLbl.TextStrokeTransparency = 0.5
+		countLbl.TextStrokeTransparency = 0.3
 		countLbl.TextStrokeColor3 = Color3.new(0, 0, 0)
 		countLbl.Text = ""
 		countLbl.ZIndex = 3
@@ -524,11 +528,11 @@ local function openMercInventory(mercModel)
 			gCount.Size = UDim2.new(0, 30, 0, 16)
 			gCount.Position = UDim2.new(1, -4, 1, -2)
 			gCount.BackgroundTransparency = 1
-			gCount.TextColor3 = INV_COLORS.titleText
+			gCount.TextColor3 = INV_COLORS.lightText
 			gCount.Font = Enum.Font.GothamBold
-			gCount.TextSize = 14
+			gCount.TextSize = 13
 			gCount.TextXAlignment = Enum.TextXAlignment.Right
-			gCount.TextStrokeTransparency = 0.5
+			gCount.TextStrokeTransparency = 0.3
 			gCount.TextStrokeColor3 = Color3.new(0, 0, 0)
 			gCount.Text = tostring(count)
 			gCount.ZIndex = 3
