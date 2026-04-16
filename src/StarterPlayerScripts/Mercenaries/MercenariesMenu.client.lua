@@ -1402,10 +1402,13 @@ buildEquipmentPage = function(mercName, mercNames)
 		local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
 		if mercEntry then
 			if activeCategory == "Artifacts" then
+				local alreadyEquipped = mercEntry:GetAttribute("EquippedBackpack") == selectedItemId
 				mercEntry:SetAttribute("EquippedBackpack", selectedItemId)
-				local bpSound = SoundService:FindFirstChild("backpack_equip")
-				if bpSound then
-					bpSound:Play()
+				if not alreadyEquipped then
+					local bpSound = SoundService:FindFirstChild("backpack_equip")
+					if bpSound then
+						bpSound:Play()
+					end
 				end
 			else
 				mercEntry:SetAttribute("EquippedWeapon", selectedItemId)
