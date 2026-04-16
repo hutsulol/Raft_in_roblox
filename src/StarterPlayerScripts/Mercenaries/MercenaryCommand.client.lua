@@ -686,6 +686,7 @@ local function openCommandMenu(model)
 	gui.Name = "MercCommandMenu"
 	gui.ResetOnSpawn = false
 	gui.DisplayOrder = 30
+	gui.IgnoreGuiInset = true
 	gui.Parent = playerGui
 	if _G.AttachInventoryUIScale then
 		_G.AttachInventoryUIScale(gui)
