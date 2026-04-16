@@ -209,6 +209,9 @@ _G.SendInventory = function(player)
 
 	-- ── ENFORCE: trim until total resource stacks fit the budget ──
 	local totalStacks = getTotalResourceStacks(inv)
+	if totalStacks > maxSlots then
+		print("[InventoryManager] TRIM: totalStacks=" .. totalStacks .. " > maxSlots=" .. maxSlots .. " for " .. player.Name)
+	end
 	while totalStacks > maxSlots do
 		-- Pick the resource whose last (partial) stack is smallest
 		local trimName = nil
@@ -304,3 +307,5 @@ for _, player in Players:GetPlayers() do
 		loadInventory(player)
 	end
 end
+
+print("[InventoryManager] Loaded — _G API defined (GetInventory, SendInventory, AddResourceToInventory, GetInventoryCapacity, GetEmptySlotCount)")

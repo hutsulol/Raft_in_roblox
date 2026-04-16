@@ -783,10 +783,22 @@ function renderAllSlots()
 			end
 		end
 
+		-- Sum resource counts from slotData (what's actually in visible slots)
+		-- instead of raw inventory values, so the counter matches the UI.
+		local function countResourceInSlots(resName)
+			local total = 0
+			for i = 1, TOTAL_SLOTS do
+				local d = slotData[i]
+				if d and d.type == "resource" and d.name == resName then
+					total = total + (d.count or 0)
+				end
+			end
+			return total
+		end
 		local lc = screenGui:FindFirstChild("LogCount", true)
-		if lc then lc.Text = tostring(inventory.Log or 0) end
+		if lc then lc.Text = tostring(countResourceInSlots("Log")) end
 		local pc = screenGui:FindFirstChild("PlasticCount", true)
-		if pc then pc.Text = tostring(inventory.Plastic or 0) end
+		if pc then pc.Text = tostring(countResourceInSlots("Plastic")) end
 	end
 end
 
@@ -1812,7 +1824,7 @@ local function buildUI()
 	logCount.Size = UDim2.new(0, 30, 0, 20)
 	logCount.Position = UDim2.new(1, -108, 0, 13)
 	logCount.BackgroundTransparency = 1
-	logCount.Text = tostring(inventory.Log or 0)
+	logCount.Text = "0" -- updated by renderAllSlots from slotData
 	logCount.TextColor3 = COLORS.titleText
 	logCount.Font = Enum.Font.GothamBold
 	logCount.TextSize = 14
@@ -1833,7 +1845,7 @@ local function buildUI()
 	plasticCount.Size = UDim2.new(0, 30, 0, 20)
 	plasticCount.Position = UDim2.new(1, -48, 0, 13)
 	plasticCount.BackgroundTransparency = 1
-	plasticCount.Text = tostring(inventory.Plastic or 0)
+	plasticCount.Text = "0" -- updated by renderAllSlots from slotData
 	plasticCount.TextColor3 = COLORS.titleText
 	plasticCount.Font = Enum.Font.GothamBold
 	plasticCount.TextSize = 14
