@@ -85,63 +85,11 @@ _G.GetInventory = function(player)
 	return _G_Inventories[player]
 end
 
--- ─── Centralised overflow guard ────────────────────────────────────────
--- Every system that adds resources calls SendInventory afterward. By
--- comparing the inventory to a snapshot taken on the previous send we can
--- detect increases that would push the player past their slot budget and
--- drop the excess as a physical item at the player's feet. This means
--- individual systems never need their own capacity checks.
-local _prevInvState = {}
-
-_G.SendInventory = function(player)
-	local inv = _G.GetInventory(player)
-	local prev = _prevInvState[player]
-
-	if prev then
-		-- For each resource that increased since the last send, verify that
-		-- the increase fits. If not, revert the excess and spawn a drop.
-		for name, count in pairs(inv) do
-			if type(count) == "number" and count > 0 then
-				local oldCount = prev[name] or 0
-				if count > oldCount then
-					-- Temporarily revert so GetInventoryCapacity sees the
-					-- state *before* this increase.
-					inv[name] = oldCount
-					local cap = _G.GetInventoryCapacity(player, name)
-					local increase = count - oldCount
-					local canAdd = math.min(increase, math.max(0, cap))
-					local overflow = increase - canAdd
-					inv[name] = oldCount + canAdd
-
-					if overflow > 0 and _G.SpawnResourceDrop then
-						_G.SpawnResourceDrop(player, name, overflow, nil)
-					end
-				end
-			end
-		end
-	end
-
-	-- Save snapshot for the next call
-	local snap = {}
-	for name, count in pairs(inv) do
-		if type(count) == "number" then
-			snap[name] = count
-		end
-	end
-	_prevInvState[player] = snap
-
-	inventoryEvent:FireClient(player, inv)
-end
-
--- ─── Inventory capacity ────────────────────────────────────────────────
+-- ─── Inventory capacity helpers ────────────────────────────────────────
 -- The client lays out inventory as slots of MAX_STACK, constrained by
 -- the player's UnlockedInventorySlots (driven by the Strength stat).
--- Without a matching server-side capacity check, picks-ups on a full
--- inventory silently incremented the flat count; the client couldn't
--- render those extra stacks (they fell past the unlocked slot budget)
--- and they'd become "invisible" items that popped into view whenever a
--- visible slot freed up. The helpers below mirror the client's layout
--- math so overflow is redirected to a world drop instead.
+-- The helpers below mirror the client's layout math so overflow is
+-- redirected to a world drop instead of becoming invisible items.
 local MAX_STACK = 30
 local DEFAULT_HOTBAR_SLOTS = 8
 local DEFAULT_BASE_GRID_SLOTS = 5
@@ -185,6 +133,106 @@ local function countResourceStacks(inv, excludeName)
 		end
 	end
 	return n
+end
+
+-- Total resource stacks in the inventory
+local function getTotalResourceStacks(inv)
+	local total = 0
+	for _, count in pairs(inv) do
+		if type(count) == "number" and count > 0 then
+			total = total + math.ceil(count / MAX_STACK)
+		end
+	end
+	return total
+end
+
+-- Get the player's HumanoidRootPart position (for drop location)
+local function getPlayerPosition(player)
+	local char = player and player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	return hrp and hrp.Position or nil
+end
+
+-- ─── Centralised overflow guard ────────────────────────────────────────
+-- Every system that adds resources calls SendInventory afterward. This
+-- guard ensures the inventory NEVER contains more resource stacks than
+-- the player's unlocked slot budget allows. Any excess is dropped as a
+-- physical item at the player's feet.
+--
+-- Two passes:
+--  1) Recently-added resources that don't fit → drop the increase
+--  2) Historical overflow (invisible items from before this fix) → trim
+local _prevInvState = {}
+
+_G.SendInventory = function(player)
+	local inv = _G.GetInventory(player)
+	local unlocked = getUnlockedSlots(player)
+	local tools = countToolSlots(player)
+	local maxResourceSlots = math.max(0, unlocked - tools)
+	local dropPos = getPlayerPosition(player)
+
+	-- ── Pass 1: cap recently-increased resources ──────────────────────
+	local prev = _prevInvState[player]
+	if prev then
+		for name, count in pairs(inv) do
+			if type(count) == "number" and count > 0 then
+				local oldCount = prev[name] or 0
+				if count > oldCount then
+					-- Temporarily revert so capacity is computed from the
+					-- state *before* this increase.
+					inv[name] = oldCount
+					local cap = _G.GetInventoryCapacity(player, name)
+					local increase = count - oldCount
+					local canAdd = math.min(increase, math.max(0, cap))
+					local overflow = increase - canAdd
+					inv[name] = oldCount + canAdd
+
+					if overflow > 0 and _G.SpawnResourceDrop then
+						_G.SpawnResourceDrop(player, name, overflow, dropPos)
+					end
+				end
+			end
+		end
+	end
+
+	-- ── Pass 2: trim any historical overflow ──────────────────────────
+	-- Handles data that was already overflowing before the guard existed.
+	local totalStacks = getTotalResourceStacks(inv)
+	while totalStacks > maxResourceSlots do
+		-- Find the resource whose last (partial) stack is smallest —
+		-- dropping it frees one slot with the fewest items lost.
+		local trimName = nil
+		local trimAmount = MAX_STACK + 1
+		for name, count in pairs(inv) do
+			if type(count) == "number" and count > 0 then
+				local stacks = math.ceil(count / MAX_STACK)
+				local lastStack = count - (stacks - 1) * MAX_STACK
+				if lastStack < trimAmount then
+					trimAmount = lastStack
+					trimName = name
+				end
+			end
+		end
+		if not trimName then break end
+
+		inv[trimName] = inv[trimName] - trimAmount
+		if inv[trimName] <= 0 then inv[trimName] = 0 end
+		if trimAmount > 0 and _G.SpawnResourceDrop then
+			_G.SpawnResourceDrop(player, trimName, trimAmount, dropPos)
+		end
+		totalStacks = totalStacks - 1
+	end
+
+	-- Save snapshot for the next call
+	local snap = {}
+	for name, count in pairs(inv) do
+		if type(count) == "number" then
+			snap[name] = count
+		end
+	end
+	_prevInvState[player] = snap
+
+	inventoryEvent:FireClient(player, inv)
 end
 
 -- How many more units of `itemName` can this player accept without
