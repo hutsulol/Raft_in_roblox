@@ -103,11 +103,15 @@ local function getMaxResourceSlots(player)
 	return math.max(0, getUnlockedSlots(player) - countToolSlots(player))
 end
 
--- ─── Helper: player position for drop spawning ───
+-- ─── Helper: drop position in front of the player ───
+-- Used by the trim guard and overflow drops. Returns a point ~5 studs
+-- ahead of the character so items land on the ground in front of the
+-- player instead of spawning inside the character's head.
 local function getDropPosition(player)
 	local char = player and player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	return hrp and hrp.Position or nil
+	if not hrp then return nil end
+	return hrp.Position + hrp.CFrame.LookVector * 5
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
@@ -232,8 +236,9 @@ _G.SendInventory = function(player)
 		inv[trimName] = inv[trimName] - trimAmount
 		if inv[trimName] <= 0 then inv[trimName] = 0 end
 		totalStacks = totalStacks - 1
+		print("[InventoryManager] TRIMMED: " .. trimName .. " x" .. trimAmount .. " dropped for " .. player.Name)
 
-		-- Spawn physical drop at player's feet
+		-- Spawn physical drop in front of the player
 		if trimAmount > 0 and _G.SpawnResourceDrop then
 			_G.SpawnResourceDrop(player, trimName, trimAmount, dropPos)
 		end
@@ -251,6 +256,10 @@ _G.AddResourceToInventory = function(player, itemName, amount, dropPosition)
 	local cap = _G.GetInventoryCapacity(player, itemName)
 	local toAdd = math.min(amount, math.max(0, cap))
 	local overflow = amount - toAdd
+
+	if overflow > 0 then
+		print("[InventoryManager] OVERFLOW: " .. itemName .. " add=" .. toAdd .. " overflow=" .. overflow .. " cap=" .. cap .. " for " .. player.Name)
+	end
 
 	if toAdd > 0 then
 		inv[itemName] = (inv[itemName] or 0) + toAdd
