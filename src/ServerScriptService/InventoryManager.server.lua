@@ -183,81 +183,35 @@ _G.GetInventory = function(player)
 	return inv
 end
 
--- ─── Server-side layout helpers ───
--- The cached layout is the source of truth for capacity checks. After
--- every inventory change on the server, we must update the layout
--- immediately so the next check sees the correct occupancy — waiting
--- for the client round-trip creates a race window.
+-- ─── Layout-based capacity ───
+-- The client's cached layout is the source of truth for slot positions.
+-- The server NEVER modifies it — only reads it.  Between client syncs,
+-- we track how many items were added/removed per resource so the
+-- capacity check stays accurate without touching the layout itself.
+
+local pendingDeltas = {}  -- [player] = { [resName] = number }
+
+local function getPendingDelta(player, resName)
+	local pd = pendingDeltas[player]
+	if not pd then return 0 end
+	return pd[resName] or 0
+end
+
+local function addPendingDelta(player, resName, amount)
+	if not pendingDeltas[player] then
+		pendingDeltas[player] = {}
+	end
+	pendingDeltas[player][resName] = (pendingDeltas[player][resName] or 0) + amount
+end
+
+local function clearPendingDeltas(player)
+	pendingDeltas[player] = nil
+end
+
+_G.ClearPendingDeltas = clearPendingDeltas
 
 local function getLayout(player)
 	return _G.GetClientSlotLayout and _G.GetClientSlotLayout(player)
-end
-
-local function setLayout(player, layout)
-	if _G.SetClientSlotLayout then
-		_G.SetClientSlotLayout(player, layout)
-	end
-end
-
-local function addItemToLayout(player, itemName, amount)
-	local layout = getLayout(player)
-	if not layout or amount <= 0 then return end
-
-	local unlocked = getUnlockedSlots(player)
-	local remaining = amount
-
-	for idx = 1, unlocked do
-		if remaining <= 0 then break end
-		local slot = layout[tostring(idx)]
-		if slot and slot.type == "resource" and slot.name == itemName then
-			local space = MAX_STACK - (slot.count or 0)
-			if space > 0 then
-				local toAdd = math.min(remaining, space)
-				slot.count = slot.count + toAdd
-				remaining = remaining - toAdd
-			end
-		end
-	end
-
-	for idx = 1, unlocked do
-		if remaining <= 0 then break end
-		if not layout[tostring(idx)] then
-			local toAdd = math.min(remaining, MAX_STACK)
-			layout[tostring(idx)] = {
-				type = "resource",
-				name = itemName,
-				count = toAdd,
-			}
-			remaining = remaining - toAdd
-		end
-	end
-
-	setLayout(player, layout)
-end
-
-local function removeItemFromLayout(player, itemName, amount)
-	local layout = getLayout(player)
-	if not layout or amount <= 0 then return end
-
-	local unlocked = getUnlockedSlots(player)
-	local remaining = amount
-
-	for idx = unlocked, 1, -1 do
-		if remaining <= 0 then break end
-		local slot = layout[tostring(idx)]
-		if slot and slot.type == "resource" and slot.name == itemName then
-			local count = slot.count or 0
-			if remaining >= count then
-				layout[tostring(idx)] = nil
-				remaining = remaining - count
-			else
-				slot.count = count - remaining
-				remaining = 0
-			end
-		end
-	end
-
-	setLayout(player, layout)
 end
 
 local function computeLayoutCapacity(player, itemName)
@@ -267,18 +221,81 @@ local function computeLayoutCapacity(player, itemName)
 	end
 
 	local unlocked = getUnlockedSlots(player)
-	local occupied = 0
+
+	-- Build per-resource totals from the layout, then apply pending
+	-- deltas to get the effective counts.  This lets us figure out
+	-- which slots are now empty (count dropped to 0 after removals)
+	-- and which gained items (count increased after additions).
+	local slotInfo = {}          -- [idx] = { name, count } (resource only)
 	local partialSpaceSameType = 0
+	local occupied = 0
 
 	for idxStr, slot in pairs(layout) do
 		local idx = tonumber(idxStr)
 		if idx and idx >= 1 and idx <= unlocked then
 			occupied = occupied + 1
-			if itemName
-				and slot.type == "resource"
-				and slot.name == itemName
-				and typeof(slot.count) == "number" then
-				local space = MAX_STACK - slot.count
+			if slot.type == "resource" and typeof(slot.count) == "number" then
+				slotInfo[idx] = { name = slot.name, count = slot.count }
+			end
+		end
+	end
+
+	-- Apply pending deltas to slot counts so we get accurate occupancy.
+	local pd = pendingDeltas[player]
+	if pd then
+		for resName, delta in pairs(pd) do
+			if delta > 0 then
+				-- Items added: fill partial same-type slots, then empty slots
+				local rem = delta
+				for idx = 1, unlocked do
+					if rem <= 0 then break end
+					local si = slotInfo[idx]
+					if si and si.name == resName then
+						local space = MAX_STACK - si.count
+						if space > 0 then
+							local fit = math.min(rem, space)
+							si.count = si.count + fit
+							rem = rem - fit
+						end
+					end
+				end
+				-- Remaining goes into new (empty) slots
+				for idx = 1, unlocked do
+					if rem <= 0 then break end
+					if not slotInfo[idx] and not layout[tostring(idx)] then
+						local fit = math.min(rem, MAX_STACK)
+						slotInfo[idx] = { name = resName, count = fit }
+						occupied = occupied + 1
+						rem = rem - fit
+					end
+				end
+			elseif delta < 0 then
+				-- Items removed: drain from last slots first
+				local rem = -delta
+				for idx = unlocked, 1, -1 do
+					if rem <= 0 then break end
+					local si = slotInfo[idx]
+					if si and si.name == resName then
+						if rem >= si.count then
+							rem = rem - si.count
+							slotInfo[idx] = nil
+							occupied = occupied - 1
+						else
+							si.count = si.count - rem
+							rem = 0
+						end
+					end
+				end
+			end
+		end
+	end
+
+	-- Now compute final capacity from the adjusted slot picture
+	local emptySlots = math.max(0, unlocked - occupied)
+	if itemName then
+		for _, si in pairs(slotInfo) do
+			if si.name == itemName then
+				local space = MAX_STACK - si.count
 				if space > 0 then
 					partialSpaceSameType = partialSpaceSameType + space
 				end
@@ -286,7 +303,6 @@ local function computeLayoutCapacity(player, itemName)
 		end
 	end
 
-	local emptySlots = math.max(0, unlocked - occupied)
 	return {
 		emptySlots = emptySlots,
 		partialSpace = partialSpaceSameType,
@@ -295,86 +311,11 @@ local function computeLayoutCapacity(player, itemName)
 end
 
 _G.GetInventoryCapacity = function(player, itemName)
-	-- Prefer the client's actual layout (source of truth for visual slots).
-	local layoutCap = computeLayoutCapacity(player, itemName)
-	if layoutCap then
-		return layoutCap.capacity
-	end
-
-	-- Fallback: quantity-based calculation (used before the client has
-	-- synced its layout, e.g. immediately after spawn).
-	local inv = _G.GetInventory(player)
-	local unlocked = getUnlockedSlots(player)
-	local tools = countToolSlots(player)
-
-	local existing = (itemName and inv[itemName]) or 0
-	local existingStacks = existing > 0 and math.ceil(existing / MAX_STACK) or 0
-	local partialSpace = existingStacks > 0
-		and (existingStacks * MAX_STACK - existing) or 0
-
-	local otherStacks = 0
-	for _, name in RESOURCE_NAMES do
-		if name ~= itemName then
-			local count = inv[name]
-			if type(count) == "number" and count > 0 then
-				otherStacks = otherStacks + math.ceil(count / MAX_STACK)
-			end
-		end
-	end
-
-	local usedSlots = tools + existingStacks + otherStacks
-	if usedSlots > unlocked then return 0 end
-
-	local emptySlots = unlocked - usedSlots
-	return emptySlots * MAX_STACK + partialSpace
+	return computeLayoutCapacity(player, itemName).capacity
 end
 
--- How many completely empty inventory slots does this player have?
--- Used by the pickup handler to enforce slot-level fullness: if every
--- slot is occupied (even with partial stacks), ground pickups are blocked.
 _G.GetEmptySlotCount = function(player)
-	-- Prefer the client's actual layout.
-	local layoutCap = computeLayoutCapacity(player, nil)
-	if layoutCap then
-		return layoutCap.emptySlots
-	end
-
-	-- Fallback: quantity-based calculation.
-	local inv = _G.GetInventory(player)
-	local unlocked = getUnlockedSlots(player)
-	local tools = countToolSlots(player)
-	local totalStacks = getTotalResourceStacks(inv)
-	return math.max(0, unlocked - tools - totalStacks)
-end
-
--- Reconcile the cached layout with the actual inventory quantities.
--- Some scripts modify inv[item] directly (crafting, furnace, etc.)
--- and then call SendInventory. This function ensures the layout
--- stays in sync so the next capacity check is accurate.
-local function reconcileLayout(player, inv)
-	local layout = getLayout(player)
-	if not layout then return end
-
-	local unlocked = getUnlockedSlots(player)
-
-	for _, resName in RESOURCE_NAMES do
-		local serverCount = inv[resName] or 0
-
-		local layoutCount = 0
-		for idx = 1, unlocked do
-			local slot = layout[tostring(idx)]
-			if slot and slot.type == "resource" and slot.name == resName then
-				layoutCount = layoutCount + (slot.count or 0)
-			end
-		end
-
-		local diff = serverCount - layoutCount
-		if diff > 0 then
-			addItemToLayout(player, resName, diff)
-		elseif diff < 0 then
-			removeItemFromLayout(player, resName, -diff)
-		end
-	end
+	return computeLayoutCapacity(player, nil).emptySlots
 end
 
 _G.SendInventory = function(player)
@@ -382,7 +323,6 @@ _G.SendInventory = function(player)
 	local maxSlots = getMaxResourceSlots(player)
 	local dropPos = getDropPosition(player)
 
-	-- ── ENFORCE: trim until total resource stacks fit the budget ──
 	local totalStacks = getTotalResourceStacks(inv)
 	if totalStacks > maxSlots then
 		print("[InventoryManager] TRIM: totalStacks=" .. totalStacks .. " > maxSlots=" .. maxSlots .. " for " .. player.Name)
@@ -412,7 +352,11 @@ _G.SendInventory = function(player)
 		end
 	end
 
-	reconcileLayout(player, inv)
+	-- Pending deltas are NOT cleared here — they stay until the client
+	-- syncs its fresh layout back (SlotLayoutSync), at which point
+	-- RaftSaveSystem calls _G.ClearPendingDeltas.  This ensures that
+	-- between SendInventory and the client round-trip, capacity checks
+	-- still account for the items we just added/removed.
 	inventoryEvent:FireClient(player, inv)
 end
 
@@ -432,10 +376,9 @@ _G.AddResourceToInventory = function(player, itemName, amount, dropPosition)
 
 	if toAdd > 0 then
 		inv[itemName] = (inv[itemName] or 0) + toAdd
-		addItemToLayout(player, itemName, toAdd)
+		addPendingDelta(player, itemName, toAdd)
 	end
 
-	-- Drop overflow as physical item
 	if overflow > 0 and _G.SpawnResourceDrop then
 		_G.SpawnResourceDrop(player, itemName, overflow, dropPosition)
 	end
@@ -455,7 +398,7 @@ _G.RemoveResourceFromInventory = function(player, itemName, amount)
 	if toRemove <= 0 then return end
 
 	inv[itemName] = current - toRemove
-	removeItemFromLayout(player, itemName, toRemove)
+	addPendingDelta(player, itemName, -toRemove)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
@@ -475,6 +418,7 @@ end)
 Players.PlayerRemoving:Connect(function(player)
 	saveInventory(player)
 	inventories[player] = nil
+	pendingDeltas[player] = nil
 end)
 
 -- Save all on server shutdown

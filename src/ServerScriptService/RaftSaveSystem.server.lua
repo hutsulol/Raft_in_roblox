@@ -39,6 +39,11 @@ local cachedSlotLayouts = {} -- [player] = slotData table
 slotLayoutEvent.OnServerEvent:Connect(function(player, slotLayout)
 	if typeof(slotLayout) == "table" then
 		cachedSlotLayouts[player] = slotLayout
+		-- The client just synced its real layout, so any pending deltas
+		-- the server was tracking are now baked into this fresh layout.
+		if _G.ClearPendingDeltas then
+			_G.ClearPendingDeltas(player)
+		end
 	end
 end)
 
@@ -51,10 +56,6 @@ end)
 -- occupied and how much same-type partial space exists.
 _G.GetClientSlotLayout = function(player)
 	return cachedSlotLayouts[player]
-end
-
-_G.SetClientSlotLayout = function(player, layout)
-	cachedSlotLayouts[player] = layout
 end
 
 -- ─── CFrame serialization ───
