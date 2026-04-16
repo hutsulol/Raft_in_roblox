@@ -120,7 +120,7 @@ local recipes = {
 	{
 		name = "FishingRod",
 		displayName = "Fishing Rod",
-		icon = "",
+		icon = "rbxassetid://105180666555503",
 		costs = {Log = 3, Rope = 2},
 		craftType = "tool",
 		category = "Tools",
