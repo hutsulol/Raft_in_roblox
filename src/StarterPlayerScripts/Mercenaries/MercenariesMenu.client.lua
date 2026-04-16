@@ -239,6 +239,26 @@ local function applyWeaponToClone(clone, weaponId)
 	return hasWeapon
 end
 
+-- Sync the Backpack accessory visibility on a viewport clone based on
+-- whether the player has a backpack equipped for this mercenary.
+local function syncBackpackVisibility(clone, mercName)
+	local bpPart = clone:FindFirstChild("Backpack")
+	if not bpPart then return end
+	local mFolder = player:FindFirstChild("Mercenaries")
+	local mEntry = mFolder and mFolder:FindFirstChild(mercName)
+	local equipped = mEntry and mEntry:GetAttribute("EquippedBackpack") or ""
+	local show = (equipped ~= "" and equipped ~= nil)
+	local t = show and 0 or 1
+	if bpPart:IsA("BasePart") then
+		bpPart.Transparency = t
+	end
+	for _, desc in bpPart:GetDescendants() do
+		if desc:IsA("BasePart") then
+			desc.Transparency = t
+		end
+	end
+end
+
 local function buildMercViewport(parent, mercName, weaponId)
 	-- Cache hit: reparent the existing viewport to the new page, swap the
 	-- weapon if needed, and return. No rig rebuild, no animation restart.
@@ -251,6 +271,7 @@ local function buildMercViewport(parent, mercName, weaponId)
 			applyWeaponToClone(cached.clone, weaponId)
 			cached.weaponId = weaponId
 		end
+		syncBackpackVisibility(cached.clone, mercName)
 		return cached.vp
 	end
 
@@ -320,6 +341,9 @@ local function buildMercViewport(parent, mercName, weaponId)
 	if hrpPart then
 		hrpPart.Transparency = 1
 	end
+
+	-- Show or hide the Backpack accessory based on equipped state.
+	syncBackpackVisibility(clone, mercName)
 
 	-- Configure humanoid for animation (keep it — AnimationController
 	-- alone doesn't work for R6 in ViewportFrame). We used to disable
