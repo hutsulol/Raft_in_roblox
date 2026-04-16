@@ -876,6 +876,7 @@ local EQUIP_ITEMS = {
 			typeName      = "Utility",
 			stars         = 1,
 			baseAttack    = 0,
+			icon          = "rbxassetid://105180666555503",
 			description   = "Cast your line to catch fish. Equip to a mercenary for automated fishing.",
 		},
 	},
