@@ -94,12 +94,14 @@ local MAX_STACK = 30
 local DEFAULT_HOTBAR_SLOTS = 8
 local DEFAULT_BASE_GRID_SLOTS = 5
 
+local TOTAL_SLOTS = 28
+
 local function getUnlockedSlots(player)
 	local chars = player and player:FindFirstChild("Characteristics")
 	if chars then
 		local unlocked = chars:FindFirstChild("UnlockedInventorySlots")
 		if unlocked and typeof(unlocked.Value) == "number" then
-			return unlocked.Value
+			return math.clamp(unlocked.Value, DEFAULT_HOTBAR_SLOTS + DEFAULT_BASE_GRID_SLOTS, TOTAL_SLOTS)
 		end
 	end
 	return DEFAULT_HOTBAR_SLOTS + DEFAULT_BASE_GRID_SLOTS
@@ -154,15 +156,10 @@ local function getPlayerPosition(player)
 end
 
 -- ─── Centralised overflow guard ────────────────────────────────────────
--- Every system that adds resources calls SendInventory afterward. This
--- guard ensures the inventory NEVER contains more resource stacks than
--- the player's unlocked slot budget allows. Any excess is dropped as a
--- physical item at the player's feet.
---
--- Two passes:
---  1) Recently-added resources that don't fit → drop the increase
---  2) Historical overflow (invisible items from before this fix) → trim
-local _prevInvState = {}
+-- RULE: the inventory sent to the client NEVER has more resource stacks
+-- than the player's unlocked slot budget. Any excess is trimmed and
+-- dropped as a physical item at the player's feet. This runs on EVERY
+-- SendInventory call regardless of how items were added.
 
 _G.SendInventory = function(player)
 	local inv = _G.GetInventory(player)
@@ -171,38 +168,10 @@ _G.SendInventory = function(player)
 	local maxResourceSlots = math.max(0, unlocked - tools)
 	local dropPos = getPlayerPosition(player)
 
-	-- ── Pass 1: cap recently-increased resources ──────────────────────
-	local prev = _prevInvState[player]
-	if prev then
-		for name, count in pairs(inv) do
-			if type(count) == "number" and count > 0 then
-				local oldCount = prev[name] or 0
-				if count > oldCount then
-					-- Temporarily revert so capacity is computed from the
-					-- state *before* this increase.
-					inv[name] = oldCount
-					local cap = _G.GetInventoryCapacity(player, name)
-					local increase = count - oldCount
-					local canAdd = math.min(increase, math.max(0, cap))
-					local overflow = increase - canAdd
-
-					-- Always enforce the cap — never keep invisible items
-					inv[name] = oldCount + canAdd
-
-					if overflow > 0 and _G.SpawnResourceDrop then
-						_G.SpawnResourceDrop(player, name, overflow, dropPos)
-					end
-				end
-			end
-		end
-	end
-
-	-- ── Pass 2: trim any historical overflow ──────────────────────────
-	-- Handles data that was already overflowing before the guard existed.
+	-- Trim until total resource stacks fit within the budget
 	local totalStacks = getTotalResourceStacks(inv)
 	while totalStacks > maxResourceSlots do
-		-- Find the resource whose last (partial) stack is smallest —
-		-- dropping it frees one slot with the fewest items lost.
+		-- Find the resource whose last (partial) stack is smallest
 		local trimName = nil
 		local trimAmount = MAX_STACK + 1
 		for name, count in pairs(inv) do
@@ -217,7 +186,6 @@ _G.SendInventory = function(player)
 		end
 		if not trimName then break end
 
-		-- Always trim — never keep invisible items
 		inv[trimName] = inv[trimName] - trimAmount
 		if inv[trimName] <= 0 then inv[trimName] = 0 end
 		totalStacks = totalStacks - 1
@@ -226,15 +194,6 @@ _G.SendInventory = function(player)
 			_G.SpawnResourceDrop(player, trimName, trimAmount, dropPos)
 		end
 	end
-
-	-- Save snapshot for the next call
-	local snap = {}
-	for name, count in pairs(inv) do
-		if type(count) == "number" then
-			snap[name] = count
-		end
-	end
-	_prevInvState[player] = snap
 
 	inventoryEvent:FireClient(player, inv)
 end
