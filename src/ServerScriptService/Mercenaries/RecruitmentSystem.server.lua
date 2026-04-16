@@ -7,6 +7,7 @@
 --   "fail"    – minigame failed; pirate fades out after a short delay.
 
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 local rs = game:GetService("ReplicatedStorage")
 
 local recruitEvent = Instance.new("RemoteEvent")
@@ -84,6 +85,7 @@ end
 recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 	if typeof(pirate) ~= "Instance" then return end
 	if not pirate:IsDescendantOf(workspace) then return end
+	if CollectionService:HasTag(pirate, "SpawnedMercenary") then return end
 	-- Accept if Downed attribute is set, OR if the Humanoid is ragdolled
 	if not pirate:GetAttribute("Downed") then
 		local hum = pirate:FindFirstChildWhichIsA("Humanoid")

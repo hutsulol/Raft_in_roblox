@@ -8,6 +8,7 @@ local UserInputService = game:GetService("UserInputService")
 local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local TextService = game:GetService("TextService")
+local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
@@ -514,9 +515,10 @@ local function findDownedPirateNearby()
 	local closest, closestDist = nil, 15
 	for _, child in workspace:GetChildren() do
 		if child:IsA("Model")
-			and child:FindFirstChild("HumanoidRootPart") -- real character, not a dropped accessory
+			and child:FindFirstChild("HumanoidRootPart")
 			and child:FindFirstChildWhichIsA("Humanoid")
-			and not Players:GetPlayerFromCharacter(child) -- skip all player characters
+			and not Players:GetPlayerFromCharacter(child)
+			and not CollectionService:HasTag(child, "SpawnedMercenary")
 			and isModelDowned(child)
 			and not child:GetAttribute("Claimed")
 			and not claimedLocally[child]
