@@ -126,6 +126,15 @@ local recipes = {
 		category = "Tools",
 		description = "A phone for communication.",
 	},
+	{
+		name = "Injector",
+		displayName = "Injector",
+		icon = "",
+		costs = {Plastic = 3, Rope = 1},
+		craftType = "tool",
+		category = "Tools",
+		description = "A syringe used to hack a downed pirate's mind and recruit them as a mercenary.",
+	},
 }
 
 inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
