@@ -9,6 +9,7 @@ local RunService = game:GetService("RunService")
 local TweenService = game:GetService("TweenService")
 local TextService = game:GetService("TextService")
 local CollectionService = game:GetService("CollectionService")
+local SoundService = game:GetService("SoundService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
@@ -232,6 +233,13 @@ local DEFEAT_DIALOGUES = {
 	"You are strong. I am ready to serve you for the sake of humanity's rebirth!",
 }
 
+local pirateSoundsFolder = SoundService:WaitForChild("Story"):WaitForChild("Pirate")
+local DEFEAT_SOUNDS = {
+	pirateSoundsFolder:WaitForChild("1.pirate"),
+	pirateSoundsFolder:WaitForChild("2.pirate"),
+	pirateSoundsFolder:WaitForChild("3.pirate"),
+}
+
 local DLG_COLOR_PANEL    = Color3.fromRGB(245, 228, 195)
 local DLG_COLOR_EDGE     = Color3.fromRGB(230, 140, 30)
 local DLG_COLOR_ACCENT   = Color3.fromRGB(235, 120, 0)
@@ -398,9 +406,16 @@ local function showFirstDefeatDialogue(onDone)
 	local closed = false
 	local inputConn = nil
 
+	local function stopAllSounds()
+		for _, snd in DEFEAT_SOUNDS do
+			snd:Stop()
+		end
+	end
+
 	local function closeDialogue()
 		if closed then return end
 		closed = true
+		stopAllSounds()
 
 		for _, desc in gui:GetDescendants() do
 			if desc:IsA("TextLabel") or desc:IsA("TextButton") then
@@ -449,6 +464,10 @@ local function showFirstDefeatDialogue(onDone)
 		actionBtn.Text = "Skip"
 		actionBtn.TextColor3 = DLG_COLOR_TEXT_DIM
 
+		stopAllSounds()
+		local sound = DEFEAT_SOUNDS[pageIndex]
+		if sound then sound:Play() end
+
 		local text = DEFEAT_DIALOGUES[pageIndex]
 		task.spawn(function()
 			for c = 1, #text do
@@ -467,6 +486,7 @@ local function showFirstDefeatDialogue(onDone)
 
 	actionBtn.MouseButton1Click:Connect(function()
 		if not pageFinished then
+			stopAllSounds()
 			typewriterCancel = true
 			pageFinished = true
 			dialogueLbl.Text = DEFEAT_DIALOGUES[currentPage]
