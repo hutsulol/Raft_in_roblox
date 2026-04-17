@@ -61,6 +61,9 @@ humanoid.Died:Connect(function()
 	if animateScript:IsA("BaseScript") then
 		animateScript.Disabled = true
 	end
+	for _, track in animator:GetPlayingAnimationTracks() do
+		track:Stop(0)
+	end
 	dropAccessoryAndTools()
 	deathTrack:Play()
 end)
