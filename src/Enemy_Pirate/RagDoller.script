@@ -219,7 +219,7 @@ function OnDeath(Character)
 		--]]
 	end
 	Character.Parent = Gibs
-	game.Debris:AddItem(Character, 12)
+	game.Debris:AddItem(Character, 180)
 	if movevector ~= Vector3.new() then
 		for i = 1,10 do
 			wait()
