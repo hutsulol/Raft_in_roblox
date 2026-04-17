@@ -741,6 +741,10 @@ local function openRecruitPanel(pirate)
 
 	if _G.OpenBrainMaze then
 		_G.OpenBrainMaze(pirate, function(result)
+			if result == "completed" and pirate then
+				claimedLocally[pirate] = true
+				recruitEvent:FireServer("recruit", pirate)
+			end
 			uiOpen = false
 			currentPirate = nil
 			_G.SuppressInventoryToggle = false
