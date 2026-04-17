@@ -4,6 +4,13 @@ local animateScript = pirate:WaitForChild("Animate")
 local deathFolder = animateScript:WaitForChild("death")
 local deathAnim = deathFolder:WaitForChild("DeathAnim")
 
+local ragdoller = pirate:FindFirstChild("RagDoller")
+	or pirate:FindFirstChild("Ragdoller")
+if ragdoller and (ragdoller:IsA("Script") or ragdoller:IsA("LocalScript")) then
+	ragdoller.Disabled = true
+	ragdoller:Destroy()
+end
+
 humanoid.BreakJointsOnDeath = false
 
 local animator = humanoid:FindFirstChildOfClass("Animator")
