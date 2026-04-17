@@ -487,7 +487,7 @@ while true do
 			Self.Died:Fire()
 		end
 		if Data.IsDead == true then
-			if tick()-Data.TimeOfDeath > Info.RespawnWaitTime then
+			if Settings.CanRespawn.Value and tick()-Data.TimeOfDeath > Info.RespawnWaitTime then
 				Monster:Respawn()
 			end
 		end
