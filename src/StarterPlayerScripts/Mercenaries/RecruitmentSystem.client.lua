@@ -225,8 +225,12 @@ end
 -- First-defeat dialogue (orange/white theme)
 -- ═══════════════════════════════════════════════════════════════════════
 
-local DEFEAT_ICON        = "rbxassetid://90285585534580"
-local DEFEAT_TEXT        = "You defeated me, are you not infected?"
+local DEFEAT_ICON = "rbxassetid://90285585534580"
+local DEFEAT_DIALOGUES = {
+	"How did you get here?",
+	"The whole world is swarming with the infected, yet you managed to survive...",
+	"You are strong. I am ready to serve you for the sake of humanity's rebirth!",
+}
 
 local DLG_COLOR_PANEL    = Color3.fromRGB(245, 228, 195)
 local DLG_COLOR_EDGE     = Color3.fromRGB(230, 140, 30)
@@ -250,10 +254,14 @@ local function showFirstDefeatDialogue(onDone)
 	local textColW  = DLG_W - 2 * PANEL_PAD - ICON_SZ - GAP_
 	local textBodyW = textColW - 2 * TXT_PAD_H
 
-	local bounds = TextService:GetTextSize(
-		DEFEAT_TEXT, 15, Enum.Font.Gotham, Vector2.new(textBodyW, 9999)
-	)
-	local textBodyH = math.max(bounds.Y + 20, 20)
+	-- Size panel to fit the longest dialogue line
+	local textBodyH = 20
+	for _, line in DEFEAT_DIALOGUES do
+		local bounds = TextService:GetTextSize(
+			line, 15, Enum.Font.Gotham, Vector2.new(textBodyW, 9999)
+		)
+		textBodyH = math.max(textBodyH, bounds.Y + 20)
+	end
 	local textColH  = TXT_PAD_V + SPK_H + SPK_GAP + textBodyH + TXT_PAD_V
 	local contentH  = math.max(ICON_SZ, textColH)
 	local panelH    = 2 * PANEL_PAD + contentH + BTN_GAP_ + BTN_H_
@@ -428,33 +436,50 @@ local function showFirstDefeatDialogue(onDone)
 		end
 	end)
 
-	-- Typewriter effect
-	local textFinished = false
+	-- Multi-page typewriter
+	local currentPage = 1
+	local pageFinished = false
+	local typewriterCancel = false
 
-	task.spawn(function()
-		for c = 1, #DEFEAT_TEXT do
-			if textFinished then break end
-			dialogueLbl.Text = string.sub(DEFEAT_TEXT, 1, c)
-			task.wait(0.04)
-		end
-		if not textFinished then
-			textFinished = true
-			dialogueLbl.Text     = DEFEAT_TEXT
-			actionBtn.Text       = "Continue"
-			actionBtn.TextColor3 = DLG_COLOR_ACCENT
-		end
-	end)
+	local function showPage(pageIndex)
+		currentPage = pageIndex
+		pageFinished = false
+		typewriterCancel = false
+		dialogueLbl.Text = ""
+		actionBtn.Text = "Skip"
+		actionBtn.TextColor3 = DLG_COLOR_TEXT_DIM
+
+		local text = DEFEAT_DIALOGUES[pageIndex]
+		task.spawn(function()
+			for c = 1, #text do
+				if typewriterCancel then break end
+				dialogueLbl.Text = string.sub(text, 1, c)
+				task.wait(0.04)
+			end
+			if not typewriterCancel then
+				pageFinished = true
+				dialogueLbl.Text = text
+				actionBtn.Text = "Continue"
+				actionBtn.TextColor3 = DLG_COLOR_ACCENT
+			end
+		end)
+	end
 
 	actionBtn.MouseButton1Click:Connect(function()
-		if not textFinished then
-			textFinished = true
-			dialogueLbl.Text     = DEFEAT_TEXT
-			actionBtn.Text       = "Continue"
+		if not pageFinished then
+			typewriterCancel = true
+			pageFinished = true
+			dialogueLbl.Text = DEFEAT_DIALOGUES[currentPage]
+			actionBtn.Text = "Continue"
 			actionBtn.TextColor3 = DLG_COLOR_ACCENT
+		elseif currentPage < #DEFEAT_DIALOGUES then
+			showPage(currentPage + 1)
 		else
 			closeDialogue()
 		end
 	end)
+
+	showPage(1)
 end
 
 -- ═══════════════════════════════════════════════════════════════════════
