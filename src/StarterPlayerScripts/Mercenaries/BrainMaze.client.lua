@@ -544,13 +544,52 @@ local function openBrainMaze(pirate, onComplete)
 	speechLabel.Size = UDim2.new(1, -16, 1, -10)
 	speechLabel.Position = UDim2.fromOffset(8, 5)
 	speechLabel.BackgroundTransparency = 1
-	speechLabel.Text = "What are you doing in my head?!"
+	speechLabel.Text = ""
 	speechLabel.TextColor3 = COLOR_TEXT
 	speechLabel.Font = Enum.Font.GothamBold
 	speechLabel.TextSize = 13
 	speechLabel.TextWrapped = true
 	speechLabel.TextXAlignment = Enum.TextXAlignment.Left
 	speechLabel.Parent = speechBubble
+
+	-- ── Pirate voiceover + phrase-timed typewriter ────────────────
+	local DIALOGUE_PHRASES = {
+		{ text = "If you want",                t0 = 0.01, t1 = 0.80 },
+		{ text = " me to serve you…",          t0 = 0.90, t1 = 2.30 },
+		{ text = " break",                     t0 = 3.12, t1 = 3.50 },
+		{ text = " my mind.",                  t0 = 3.61, t1 = 4.71 },
+		{ text = " Reach the end of the maze", t0 = 5.80, t1 = 7.50 },
+	}
+
+	local mazeSound
+	do
+		local storyFolder = SoundService:FindFirstChild("Story")
+		local pirateFolder = storyFolder and storyFolder:FindFirstChild("Pirate")
+		mazeSound = pirateFolder and pirateFolder:FindFirstChild("pirate_in_maze")
+	end
+
+	local dialogueCancel = false
+
+	task.delay(2, function()
+		if dialogueCancel then return end
+		if mazeSound then mazeSound:Play() end
+
+		local startClock = os.clock()
+		local displayed = ""
+		for _, phrase in DIALOGUE_PHRASES do
+			if dialogueCancel then break end
+			local waitFor = phrase.t0 - (os.clock() - startClock)
+			if waitFor > 0 then task.wait(waitFor) end
+			if dialogueCancel then break end
+			local charDelay = (phrase.t1 - phrase.t0) / math.max(#phrase.text, 1)
+			for c = 1, #phrase.text do
+				if dialogueCancel then break end
+				displayed = displayed .. string.sub(phrase.text, c, c)
+				speechLabel.Text = displayed
+				if c < #phrase.text then task.wait(charDelay) end
+			end
+		end
+	end)
 
 	-- ── Skill buttons (bottom-left) ──────────────────────────────
 	local function makeSkillBtn(text, posY)
@@ -663,6 +702,8 @@ local function openBrainMaze(pirate, onComplete)
 		closed = true
 
 		ContextActionService:UnbindAction("BrainMazeMove")
+		dialogueCancel = true
+		if mazeSound then mazeSound:Stop() end
 
 		TweenService:Create(bg, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
 
