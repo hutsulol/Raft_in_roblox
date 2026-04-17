@@ -8,7 +8,7 @@ local TeleportService = game:GetService("TeleportService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DataStoreService = game:GetService("DataStoreService")
 
-local OCEAN_PLACE_ID = 128626393517258
+local OCEAN_PLACE_ID = 77272676169005
 
 -- Only run in the lobby place, NOT in the ocean sub-place
 if game.PlaceId == OCEAN_PLACE_ID then return end
