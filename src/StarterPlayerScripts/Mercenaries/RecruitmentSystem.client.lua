@@ -227,10 +227,28 @@ end
 -- ═══════════════════════════════════════════════════════════════════════
 
 local DEFEAT_ICON = "rbxassetid://90285585534580"
-local DEFEAT_DIALOGUES = {
-	"How did you get here?",
-	"The whole world is swarming with the infected, yet you managed to survive...",
-	"You are strong. I am ready to serve you for the sake of humanity's rebirth!",
+
+local DEFEAT_PAGES = {
+	{
+		phrases = {
+			{ text = "How did you get here?", t0 = 0.00, t1 = 1.40 },
+		},
+	},
+	{
+		phrases = {
+			{ text = "The whole world",                    t0 = 0.15, t1 = 1.1  },
+			{ text = " is swarming with the infected,",    t0 = 1.65, t1 = 3.66 },
+			{ text = " yet you managed to survive...",     t0 = 4.74, t1 = 6.782 },
+		},
+	},
+	{
+		phrases = {
+			{ text = "You are strong! ",                          t0 = 0.06, t1 = 1.19  },
+			{ text = "I am ready to serve you for the sak",       t0 = 1.619, t1 = 4.5  },
+			{ text = "e of humanity's ",                          t0 = 4.89, t1 = 6.23 },
+			{ text = "rebirth!",                                  t0 = 6.5,  t1 = 7.2  },
+		},
+	},
 }
 
 local pirateSoundsFolder = SoundService:WaitForChild("Story"):WaitForChild("Pirate")
@@ -262,11 +280,13 @@ local function showFirstDefeatDialogue(onDone)
 	local textColW  = DLG_W - 2 * PANEL_PAD - ICON_SZ - GAP_
 	local textBodyW = textColW - 2 * TXT_PAD_H
 
-	-- Size panel to fit the longest dialogue line
+	-- Size panel to fit the longest dialogue page
 	local textBodyH = 20
-	for _, line in DEFEAT_DIALOGUES do
+	for _, page in DEFEAT_PAGES do
+		local fullText = ""
+		for _, p in page.phrases do fullText = fullText .. p.text end
 		local bounds = TextService:GetTextSize(
-			line, 15, Enum.Font.Gotham, Vector2.new(textBodyW, 9999)
+			fullText, 15, Enum.Font.Gotham, Vector2.new(textBodyW, 9999)
 		)
 		textBodyH = math.max(textBodyH, bounds.Y + 20)
 	end
@@ -451,10 +471,18 @@ local function showFirstDefeatDialogue(onDone)
 		end
 	end)
 
-	-- Multi-page typewriter
+	-- Multi-page phrase-timed typewriter (synced to voiceover)
 	local currentPage = 1
 	local pageFinished = false
 	local typewriterCancel = false
+
+	local function getPageFullText(pageIndex)
+		local full = ""
+		for _, p in DEFEAT_PAGES[pageIndex].phrases do
+			full = full .. p.text
+		end
+		return full
+	end
 
 	local function showPage(pageIndex)
 		currentPage = pageIndex
@@ -468,16 +496,32 @@ local function showFirstDefeatDialogue(onDone)
 		local sound = DEFEAT_SOUNDS[pageIndex]
 		if sound then sound:Play() end
 
-		local text = DEFEAT_DIALOGUES[pageIndex]
+		local page = DEFEAT_PAGES[pageIndex]
 		task.spawn(function()
-			for c = 1, #text do
+			local startClock = os.clock()
+			local displayed = ""
+
+			for _, phrase in page.phrases do
 				if typewriterCancel then break end
-				dialogueLbl.Text = string.sub(text, 1, c)
-				task.wait(0.04)
+
+				local waitFor = phrase.t0 - (os.clock() - startClock)
+				if waitFor > 0 then task.wait(waitFor) end
+				if typewriterCancel then break end
+
+				local charDelay = (phrase.t1 - phrase.t0) / #phrase.text
+				for c = 1, #phrase.text do
+					if typewriterCancel then break end
+					displayed = displayed .. string.sub(phrase.text, c, c)
+					dialogueLbl.Text = displayed
+					if c < #phrase.text then
+						task.wait(charDelay)
+					end
+				end
 			end
+
 			if not typewriterCancel then
 				pageFinished = true
-				dialogueLbl.Text = text
+				dialogueLbl.Text = getPageFullText(pageIndex)
 				actionBtn.Text = "Continue"
 				actionBtn.TextColor3 = DLG_COLOR_ACCENT
 			end
@@ -489,10 +533,10 @@ local function showFirstDefeatDialogue(onDone)
 			stopAllSounds()
 			typewriterCancel = true
 			pageFinished = true
-			dialogueLbl.Text = DEFEAT_DIALOGUES[currentPage]
+			dialogueLbl.Text = getPageFullText(currentPage)
 			actionBtn.Text = "Continue"
 			actionBtn.TextColor3 = DLG_COLOR_ACCENT
-		elseif currentPage < #DEFEAT_DIALOGUES then
+		elseif currentPage < #DEFEAT_PAGES then
 			showPage(currentPage + 1)
 		else
 			closeDialogue()
