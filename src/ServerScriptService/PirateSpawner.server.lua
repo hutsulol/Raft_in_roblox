@@ -484,11 +484,13 @@ local function spawnPirateRaft()
 		if floor and floor.Parent then
 			floor:Destroy()
 		end
-		for _, pirate in pirates do
-			if pirate and pirate.Parent and not pirate:GetAttribute("Claimed") then
-				pirate:Destroy()
+		task.delay(180, function()
+			for _, pirate in pirates do
+				if pirate and pirate.Parent and not pirate:GetAttribute("Claimed") then
+					pirate:Destroy()
+				end
 			end
-		end
+		end)
 	end)
 end
 
