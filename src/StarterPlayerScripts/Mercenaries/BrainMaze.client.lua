@@ -689,10 +689,125 @@ local function openBrainMaze(pirate, onComplete)
 		end)
 	end
 
+	-- ── Recruit-success popup ────────────────────────────────────
+	local popupShown = false
+	local heldDirs = {}
+
+	local function showRecruitPopup()
+		if popupShown or closed then return end
+		popupShown = true
+
+		ContextActionService:UnbindAction("BrainMazeMove")
+		table.clear(heldDirs)
+
+		local overlay = Instance.new("Frame")
+		overlay.Name = "RecruitPopup"
+		overlay.Size = UDim2.new(1, 0, 1, 0)
+		overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		overlay.BackgroundTransparency = 1
+		overlay.BorderSizePixel = 0
+		overlay.ZIndex = 40
+		overlay.Parent = bg
+
+		local panel = Instance.new("Frame")
+		panel.Size = UDim2.fromOffset(400, 300)
+		panel.AnchorPoint = Vector2.new(0.5, 0.5)
+		panel.Position = UDim2.new(0.5, 0, -0.5, 0)
+		panel.BackgroundColor3 = COLOR_DIALOG_BG
+		panel.BorderSizePixel = 0
+		panel.ZIndex = 41
+		panel.Parent = overlay
+		Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 14)
+
+		local panelStroke = Instance.new("UIStroke")
+		panelStroke.Thickness = 2
+		panelStroke.Color = COLOR_EXIT
+		panelStroke.Transparency = 0.25
+		panelStroke.Parent = panel
+
+		local title = Instance.new("TextLabel")
+		title.Size = UDim2.new(1, -40, 0, 32)
+		title.Position = UDim2.fromOffset(20, 22)
+		title.BackgroundTransparency = 1
+		title.Font = Enum.Font.GothamBold
+		title.TextSize = 22
+		title.TextColor3 = COLOR_EXIT
+		title.Text = "Mercenary Recruited!"
+		title.TextXAlignment = Enum.TextXAlignment.Center
+		title.ZIndex = 42
+		title.Parent = panel
+
+		local iconFrame = Instance.new("Frame")
+		iconFrame.Size = UDim2.fromOffset(90, 90)
+		iconFrame.AnchorPoint = Vector2.new(0.5, 0)
+		iconFrame.Position = UDim2.new(0.5, 0, 0, 66)
+		iconFrame.BackgroundColor3 = Color3.fromRGB(12, 22, 42)
+		iconFrame.BorderSizePixel = 0
+		iconFrame.ZIndex = 42
+		iconFrame.Parent = panel
+		Instance.new("UICorner", iconFrame).CornerRadius = UDim.new(0, 8)
+
+		local iconStroke2 = Instance.new("UIStroke")
+		iconStroke2.Thickness = 1.5
+		iconStroke2.Color = COLOR_DIALOG_EDGE
+		iconStroke2.Parent = iconFrame
+
+		local iconImg = Instance.new("ImageLabel")
+		iconImg.Size = UDim2.new(1, 0, 1, 0)
+		iconImg.BackgroundTransparency = 1
+		iconImg.Image = DEFEAT_ICON
+		iconImg.ScaleType = Enum.ScaleType.Stretch
+		iconImg.ZIndex = 43
+		iconImg.Parent = iconFrame
+		Instance.new("UICorner", iconImg).CornerRadius = UDim.new(0, 8)
+
+		local subtitle = Instance.new("TextLabel")
+		subtitle.Size = UDim2.new(1, -40, 0, 40)
+		subtitle.Position = UDim2.fromOffset(20, 168)
+		subtitle.BackgroundTransparency = 1
+		subtitle.Font = Enum.Font.Gotham
+		subtitle.TextSize = 14
+		subtitle.TextColor3 = COLOR_TEXT
+		subtitle.Text = "The pirate has joined your crew."
+		subtitle.TextWrapped = true
+		subtitle.TextXAlignment = Enum.TextXAlignment.Center
+		subtitle.ZIndex = 42
+		subtitle.Parent = panel
+
+		local continueBtn = Instance.new("TextButton")
+		continueBtn.Size = UDim2.new(1, -60, 0, 42)
+		continueBtn.Position = UDim2.new(0, 30, 1, -60)
+		continueBtn.BackgroundColor3 = COLOR_SKILL
+		continueBtn.Text = "Continue"
+		continueBtn.TextColor3 = Color3.fromRGB(230, 240, 255)
+		continueBtn.Font = Enum.Font.GothamBold
+		continueBtn.TextSize = 16
+		continueBtn.BorderSizePixel = 0
+		continueBtn.AutoButtonColor = true
+		continueBtn.ZIndex = 42
+		continueBtn.Parent = panel
+		Instance.new("UICorner", continueBtn).CornerRadius = UDim.new(0, 8)
+
+		local btnStroke = Instance.new("UIStroke")
+		btnStroke.Thickness = 1.5
+		btnStroke.Color = Color3.fromRGB(60, 35, 150)
+		btnStroke.Parent = continueBtn
+
+		TweenService:Create(overlay, TweenInfo.new(0.3), {
+			BackgroundTransparency = 0.4,
+		}):Play()
+		TweenService:Create(panel, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			Position = UDim2.new(0.5, 0, 0.5, 0),
+		}):Play()
+
+		continueBtn.MouseButton1Click:Connect(function()
+			closeMaze("completed")
+		end)
+	end
+
 	-- ── WASD / arrow navigation ──────────────────────────────────
 	local playerR, playerC = spawnR, spawnC
 	local STEP_INTERVAL = 0.09
-	local heldDirs = {}
 	local activeTween
 
 	local function setDotPosition(r, c)
@@ -729,7 +844,7 @@ local function openBrainMaze(pirate, onComplete)
 		playerR, playerC = playerR + dr, playerC + dc
 		setDotPosition(playerR, playerC)
 		if playerR == exitR and playerC == exitC then
-			task.delay(0.18, function() closeMaze("completed") end)
+			task.delay(0.18, showRecruitPopup)
 		end
 		return true
 	end
@@ -759,7 +874,7 @@ local function openBrainMaze(pirate, onComplete)
 	)
 
 	task.spawn(function()
-		while not closed do
+		while not closed and not popupShown do
 			local dr, dc = 0, 0
 			if heldDirs.up then dr = -1
 			elseif heldDirs.down then dr = 1 end
