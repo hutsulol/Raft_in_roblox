@@ -23,7 +23,7 @@ local deathTrack = animator:LoadAnimation(deathAnim)
 deathTrack.Priority = Enum.AnimationPriority.Action4
 deathTrack.Looped = false
 
-local function detachPart(part)
+local function detachPart(part, velocity, angular)
 	if not part or not part:IsA("BasePart") then return end
 	for _, d in part:GetChildren() do
 		if d:IsA("Weld") or d:IsA("WeldConstraint") or d:IsA("Motor6D") or d:IsA("Snap") then
@@ -38,20 +38,42 @@ local function detachPart(part)
 	end
 	part.CanCollide = true
 	part.Parent = workspace
+	if velocity then
+		part.AssemblyLinearVelocity = velocity
+	end
+	if angular then
+		part.AssemblyAngularVelocity = angular
+	end
 	game.Debris:AddItem(part, 180)
 end
 
 local function dropAccessoryAndTools()
+	local torso = pirate:FindFirstChild("Torso")
+		or pirate:FindFirstChild("HumanoidRootPart")
+	local right = torso and torso.CFrame.RightVector or Vector3.new(1, 0, 0)
+	local up = Vector3.new(0, 1, 0)
+
 	local hat = pirate:FindFirstChild("PirateHat")
 	if hat then
-		detachPart(hat:FindFirstChild("Handle"))
+		local handle = hat:FindFirstChild("Handle")
+		local hatVel = up * 10 + right * ((math.random() - 0.5) * 8)
+		detachPart(handle, hatVel, Vector3.new(
+			(math.random() - 0.5) * 10,
+			(math.random() - 0.5) * 10,
+			(math.random() - 0.5) * 10
+		))
 		hat:Destroy()
 	end
 
 	for _, child in pirate:GetChildren() do
 		if child:IsA("Tool") then
 			local handle = child:FindFirstChild("Handle")
-			detachPart(handle)
+			local swordVel = right * 35 + up * 12
+			detachPart(handle, swordVel, Vector3.new(
+				(math.random() - 0.5) * 30,
+				(math.random() - 0.5) * 30,
+				(math.random() - 0.5) * 30
+			))
 			child:Destroy()
 		end
 	end
