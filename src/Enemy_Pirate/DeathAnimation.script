@@ -1,0 +1,20 @@
+local pirate = script.Parent
+local humanoid = pirate:WaitForChild("Humanoid")
+local animate = pirate:WaitForChild("Animate")
+local deathFolder = animate:WaitForChild("death")
+local deathAnim = deathFolder:WaitForChild("DeathAnim")
+
+humanoid.BreakJointsOnDeath = false
+
+local animator = humanoid:FindFirstChildOfClass("Animator")
+if not animator then
+	animator = Instance.new("Animator")
+	animator.Parent = humanoid
+end
+
+humanoid.Died:Connect(function()
+	local track = animator:LoadAnimation(deathAnim)
+	track.Priority = Enum.AnimationPriority.Action4
+	track.Looped = false
+	track:Play()
+end)
