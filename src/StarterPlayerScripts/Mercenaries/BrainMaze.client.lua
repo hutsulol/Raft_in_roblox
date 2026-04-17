@@ -34,8 +34,8 @@ local DEFEAT_ICON        = "rbxassetid://90285585534580"
 -- lobe, occipital area, cerebellum, brain stem, plus a subtractive notch
 -- between cerebrum and cerebellum.
 
-local GRID_COLS = 40
-local GRID_ROWS = 32
+local GRID_COLS = 28
+local GRID_ROWS = 22
 
 local function isInsideBrain(col, row)
 	local nx = (col - 0.5) / GRID_COLS
@@ -160,6 +160,36 @@ local function generateMaze()
 			table.insert(stack, nxt)
 		else
 			table.remove(stack)
+		end
+	end
+
+	local dirs = {
+		{ dr = -1, dc = 0, wall = "top", opposite = "bottom" },
+		{ dr = 1, dc = 0, wall = "bottom", opposite = "top" },
+		{ dr = 0, dc = -1, wall = "left", opposite = "right" },
+		{ dr = 0, dc = 1, wall = "right", opposite = "left" },
+	}
+
+	for _, v in valid do
+		local cell = grid[v.r][v.c]
+		local openings = 0
+		if not cell.top then openings = openings + 1 end
+		if not cell.bottom then openings = openings + 1 end
+		if not cell.left then openings = openings + 1 end
+		if not cell.right then openings = openings + 1 end
+
+		if openings <= 1 then
+			local choices = {}
+			for _, d in dirs do
+				if cell[d.wall] and cellExists(v.r + d.dr, v.c + d.dc) then
+					table.insert(choices, d)
+				end
+			end
+			if #choices > 0 then
+				local pick = choices[math.random(#choices)]
+				cell[pick.wall] = false
+				grid[v.r + pick.dr][v.c + pick.dc][pick.opposite] = false
+			end
 		end
 	end
 
