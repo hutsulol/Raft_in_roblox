@@ -95,7 +95,7 @@ local function buildToast()
 	subtitle.TextXAlignment = Enum.TextXAlignment.Left
 	subtitle.Parent = panel
 
-	return panel, subtitle
+	return panel, subtitle, title
 end
 
 -- ─── Show / queue logic ──────────────────────────────────────────────────
@@ -103,9 +103,10 @@ local function showNext()
 	if showing or #queue == 0 then return end
 	showing = true
 
-	local label = table.remove(queue, 1)
-	local panel, subtitle = buildToast()
-	subtitle.Text = label
+	local entry = table.remove(queue, 1)
+	local panel, subtitle, title = buildToast()
+	subtitle.Text = entry.subtitle
+	if entry.title then title.Text = entry.title end
 
 	-- Play completion sound
 	local soundFolder = SoundService:FindFirstChild("Sound_Menu")
@@ -135,10 +136,12 @@ local function showNext()
 	end)
 end
 
-local function notify(questLabel)
-	table.insert(queue, questLabel)
+local function notify(subtitleText, titleText)
+	table.insert(queue, { subtitle = subtitleText, title = titleText })
 	showNext()
 end
+
+_G.ShowQuestNotification = notify
 
 -- ─── Watch quest completions ─────────────────────────────────────────────
 local connections = {}

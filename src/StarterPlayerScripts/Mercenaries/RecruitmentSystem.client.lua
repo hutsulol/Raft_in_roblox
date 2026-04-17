@@ -28,6 +28,7 @@ local minigameRunning = false
 local claimedLocally = {} -- client-side set; immune to server replication overwriting
 local firstDefeatShown = false
 local defeatDialogueOpen = false
+local mercenariesUnlockShown = false
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- UI construction
@@ -744,6 +745,18 @@ local function openRecruitPanel(pirate)
 			if result == "completed" and pirate then
 				claimedLocally[pirate] = true
 				recruitEvent:FireServer("recruit", pirate)
+
+				if not mercenariesUnlockShown then
+					mercenariesUnlockShown = true
+					task.delay(2, function()
+						if typeof(_G.ShowQuestNotification) == "function" then
+							_G.ShowQuestNotification(
+								"Your device now has access to the 'Mercenaries' section.",
+								"New feature unlocked"
+							)
+						end
+					end)
+				end
 			end
 			uiOpen = false
 			currentPirate = nil
