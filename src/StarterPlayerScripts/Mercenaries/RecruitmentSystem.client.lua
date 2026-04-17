@@ -739,18 +739,13 @@ local function openRecruitPanel(pirate)
 	currentPirate = pirate
 	uiOpen = true
 
-	local chance = pirate:GetAttribute("RecruitChance") or 100
-	greenZone.Size = UDim2.new(chance / 100, 0, 1, 0)
-	divider.Position = UDim2.new(chance / 100, -1, 0, 0)
-	chanceLabel.Text = tostring(chance) .. "%"
-
-	ball.Visible = false
-	ball.BackgroundColor3 = Color3.fromRGB(210, 40, 40)
-	recruitBtn.Visible = true
-	keepBtn.Visible = true
-	chanceLabel.Visible = true
-	resultLabel.Text = ""
-	panel.Visible = true
+	if _G.OpenBrainMaze then
+		_G.OpenBrainMaze(pirate, function(result)
+			uiOpen = false
+			currentPirate = nil
+			_G.SuppressInventoryToggle = false
+		end)
+	end
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
