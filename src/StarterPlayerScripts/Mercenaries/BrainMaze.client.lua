@@ -6,6 +6,7 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -436,11 +437,12 @@ local function openBrainMaze(pirate, onComplete)
 	end
 
 	-- ── Player dot (white + cyan glow) ───────────────────────────
+	local pDot, pGlow
 	if spawnR and spawnC then
 		local px = (spawnC - 1) * cellW + cellW / 2
 		local py = (spawnR - 1) * cellH + cellH / 2
 
-		local pGlow = Instance.new("Frame")
+		pGlow = Instance.new("Frame")
 		pGlow.Size = UDim2.fromOffset(20, 20)
 		pGlow.Position = UDim2.fromOffset(px - 10, py - 10)
 		pGlow.BackgroundColor3 = COLOR_GLOW
@@ -450,7 +452,7 @@ local function openBrainMaze(pirate, onComplete)
 		pGlow.Parent = mazeFrame
 		Instance.new("UICorner", pGlow).CornerRadius = UDim.new(0.5, 0)
 
-		local pDot = Instance.new("Frame")
+		pDot = Instance.new("Frame")
 		pDot.Name = "PlayerDot"
 		pDot.Size = UDim2.fromOffset(10, 10)
 		pDot.Position = UDim2.fromOffset(px - 5, py - 5)
@@ -659,6 +661,8 @@ local function openBrainMaze(pirate, onComplete)
 		if closed then return end
 		closed = true
 
+		ContextActionService:UnbindAction("BrainMazeMove")
+
 		TweenService:Create(bg, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
 
 		for _, desc in gui:GetDescendants() do
@@ -684,6 +688,101 @@ local function openBrainMaze(pirate, onComplete)
 			end
 		end)
 	end
+
+	-- ── WASD / arrow navigation ──────────────────────────────────
+	local playerR, playerC = spawnR, spawnC
+	local STEP_INTERVAL = 0.09
+	local heldDirs = {}
+	local activeTween
+
+	local function setDotPosition(r, c)
+		if not pDot or not r or not c then return end
+		local px = (c - 1) * cellW + cellW / 2
+		local py = (r - 1) * cellH + cellH / 2
+		if activeTween then activeTween:Cancel() end
+		activeTween = TweenService:Create(pDot,
+			TweenInfo.new(STEP_INTERVAL, Enum.EasingStyle.Linear), {
+				Position = UDim2.fromOffset(px - 5, py - 5),
+			})
+		activeTween:Play()
+		TweenService:Create(pGlow,
+			TweenInfo.new(STEP_INTERVAL, Enum.EasingStyle.Linear), {
+				Position = UDim2.fromOffset(px - 10, py - 10),
+			}):Play()
+	end
+
+	local function canStep(dr, dc)
+		if not playerR or not playerC then return false end
+		local cur = grid[playerR] and grid[playerR][playerC]
+		if not cur then return false end
+		local nr, nc = playerR + dr, playerC + dc
+		if not (grid[nr] and grid[nr][nc]) then return false end
+		if dr == -1 and cur.top then return false end
+		if dr == 1 and cur.bottom then return false end
+		if dc == -1 and cur.left then return false end
+		if dc == 1 and cur.right then return false end
+		return true
+	end
+
+	local function step(dr, dc)
+		if not canStep(dr, dc) then return false end
+		playerR, playerC = playerR + dr, playerC + dc
+		setDotPosition(playerR, playerC)
+		if playerR == exitR and playerC == exitC then
+			task.delay(0.18, function() closeMaze("completed") end)
+		end
+		return true
+	end
+
+	local function handleMove(_, inputState, inputObject)
+		local kc = inputObject.KeyCode
+		local dir
+		if kc == Enum.KeyCode.W or kc == Enum.KeyCode.Up then dir = "up"
+		elseif kc == Enum.KeyCode.S or kc == Enum.KeyCode.Down then dir = "down"
+		elseif kc == Enum.KeyCode.A or kc == Enum.KeyCode.Left then dir = "left"
+		elseif kc == Enum.KeyCode.D or kc == Enum.KeyCode.Right then dir = "right"
+		end
+		if not dir then return Enum.ContextActionResult.Pass end
+		if inputState == Enum.UserInputState.Begin then
+			heldDirs[dir] = tick()
+		elseif inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
+			heldDirs[dir] = nil
+		end
+		return Enum.ContextActionResult.Sink
+	end
+
+	ContextActionService:BindActionAtPriority(
+		"BrainMazeMove", handleMove, false,
+		Enum.ContextActionPriority.High.Value,
+		Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
+		Enum.KeyCode.Up, Enum.KeyCode.Down, Enum.KeyCode.Left, Enum.KeyCode.Right
+	)
+
+	task.spawn(function()
+		while not closed do
+			local dr, dc = 0, 0
+			if heldDirs.up then dr = -1
+			elseif heldDirs.down then dr = 1 end
+			if heldDirs.left then dc = -1
+			elseif heldDirs.right then dc = 1 end
+
+			if dr ~= 0 and dc ~= 0 then
+				local upT = heldDirs.up or heldDirs.down or 0
+				local lrT = heldDirs.left or heldDirs.right or 0
+				if upT >= lrT then
+					if not step(dr, 0) then step(0, dc) end
+				else
+					if not step(0, dc) then step(dr, 0) end
+				end
+			elseif dr ~= 0 then
+				step(dr, 0)
+			elseif dc ~= 0 then
+				step(0, dc)
+			end
+
+			task.wait(STEP_INTERVAL)
+		end
+	end)
 
 	closeBtn.MouseButton1Click:Connect(function()
 		closeMaze("closed")
