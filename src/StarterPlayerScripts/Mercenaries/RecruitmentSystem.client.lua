@@ -752,7 +752,8 @@ local function openRecruitPanel(pirate)
 						if typeof(_G.ShowQuestNotification) == "function" then
 							_G.ShowQuestNotification(
 								"Your device now has access to the 'Mercenaries' section.",
-								"New feature unlocked"
+								"New feature unlocked",
+								{ icon = "📱", sound = "achievement_complete", duration = 6 }
 							)
 						end
 					end)

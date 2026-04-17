@@ -49,7 +49,9 @@ containerSizeConstraint.MaxSize = Vector2.new(420, math.huge)
 containerSizeConstraint.Parent = container
 
 -- ─── Build a toast frame ─────────────────────────────────────────────────
-local function buildToast()
+local function buildToast(opts)
+	opts = opts or {}
+
 	local panel = Instance.new("Frame")
 	panel.Name = "QuestToast"
 	panel.BackgroundColor3 = COLOR_PANEL
@@ -57,7 +59,6 @@ local function buildToast()
 	panel.BorderSizePixel = 0
 	panel.Size = UDim2.new(1, 0, 0, 0)
 	panel.AutomaticSize = Enum.AutomaticSize.Y
-	-- Start offscreen to the right
 	panel.Position = UDim2.new(1, 20, 0, 0)
 	panel.Parent = container
 
@@ -78,10 +79,59 @@ local function buildToast()
 	uiPadding.PaddingRight  = UDim.new(0, 12)
 	uiPadding.Parent = panel
 
-	local listLayout = Instance.new("UIListLayout")
-	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	listLayout.Padding = UDim.new(0, 4)
-	listLayout.Parent = panel
+	local ICON_SIZE = 36
+	local ICON_GAP = 10
+	local hasIcon = opts.icon and opts.icon ~= ""
+
+	local rowLayout = Instance.new("UIListLayout")
+	rowLayout.FillDirection = Enum.FillDirection.Horizontal
+	rowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	rowLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	rowLayout.Padding = UDim.new(0, ICON_GAP)
+	rowLayout.Parent = panel
+
+	if hasIcon then
+		local iconStr = opts.icon
+		local isAsset = typeof(iconStr) == "string"
+			and (string.sub(iconStr, 1, 11) == "rbxassetid:" or tonumber(iconStr) ~= nil)
+
+		if isAsset then
+			local img = Instance.new("ImageLabel")
+			img.Name = "Icon"
+			img.BackgroundTransparency = 1
+			img.Size = UDim2.fromOffset(ICON_SIZE, ICON_SIZE)
+			img.Image = tonumber(iconStr) and ("rbxassetid://" .. iconStr) or iconStr
+			img.ScaleType = Enum.ScaleType.Fit
+			img.LayoutOrder = 1
+			img.Parent = panel
+		else
+			local lbl = Instance.new("TextLabel")
+			lbl.Name = "Icon"
+			lbl.BackgroundTransparency = 1
+			lbl.Size = UDim2.fromOffset(ICON_SIZE, ICON_SIZE)
+			lbl.Font = Enum.Font.GothamBold
+			lbl.TextSize = 28
+			lbl.TextColor3 = COLOR_ACCENT
+			lbl.Text = iconStr
+			lbl.TextXAlignment = Enum.TextXAlignment.Center
+			lbl.TextYAlignment = Enum.TextYAlignment.Center
+			lbl.LayoutOrder = 1
+			lbl.Parent = panel
+		end
+	end
+
+	local textCol = Instance.new("Frame")
+	textCol.Name = "TextCol"
+	textCol.BackgroundTransparency = 1
+	textCol.Size = UDim2.new(1, hasIcon and -(ICON_SIZE + ICON_GAP) or 0, 0, 0)
+	textCol.AutomaticSize = Enum.AutomaticSize.Y
+	textCol.LayoutOrder = 2
+	textCol.Parent = panel
+
+	local textLayout = Instance.new("UIListLayout")
+	textLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	textLayout.Padding = UDim.new(0, 4)
+	textLayout.Parent = textCol
 
 	local title = Instance.new("TextLabel")
 	title.Name = "Title"
@@ -96,7 +146,7 @@ local function buildToast()
 	title.TextYAlignment = Enum.TextYAlignment.Top
 	title.TextWrapped = true
 	title.LayoutOrder = 1
-	title.Parent = panel
+	title.Parent = textCol
 
 	local subtitle = Instance.new("TextLabel")
 	subtitle.Name = "Subtitle"
@@ -111,7 +161,7 @@ local function buildToast()
 	subtitle.TextYAlignment = Enum.TextYAlignment.Top
 	subtitle.TextWrapped = true
 	subtitle.LayoutOrder = 2
-	subtitle.Parent = panel
+	subtitle.Parent = textCol
 
 	return panel, subtitle, title
 end
@@ -122,16 +172,15 @@ local function showNext()
 	showing = true
 
 	local entry = table.remove(queue, 1)
-	local panel, subtitle, title = buildToast()
+	local panel, subtitle, title = buildToast({ icon = entry.icon })
 	subtitle.Text = entry.subtitle
 	if entry.title then title.Text = entry.title end
 
-	-- Play completion sound
 	local soundFolder = SoundService:FindFirstChild("Sound_Menu")
-	local questSound = soundFolder and soundFolder:FindFirstChild("Completed_Quest")
-	if questSound then questSound:Play() end
+	local soundName = entry.sound or "Completed_Quest"
+	local sound = soundFolder and soundFolder:FindFirstChild(soundName)
+	if sound then sound:Play() end
 
-	-- Slide in from the right
 	local slideIn = TweenService:Create(
 		panel,
 		TweenInfo.new(SLIDE_TIME, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
@@ -139,8 +188,7 @@ local function showNext()
 	)
 	slideIn:Play()
 
-	task.delay(DISPLAY_TIME, function()
-		-- Slide out to the right
+	task.delay(entry.duration or DISPLAY_TIME, function()
 		local slideOut = TweenService:Create(
 			panel,
 			TweenInfo.new(SLIDE_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
@@ -154,8 +202,15 @@ local function showNext()
 	end)
 end
 
-local function notify(subtitleText, titleText)
-	table.insert(queue, { subtitle = subtitleText, title = titleText })
+local function notify(subtitleText, titleText, opts)
+	opts = opts or {}
+	table.insert(queue, {
+		subtitle = subtitleText,
+		title = titleText,
+		icon = opts.icon,
+		sound = opts.sound,
+		duration = opts.duration,
+	})
 	showNext()
 end
 
