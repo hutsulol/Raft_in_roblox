@@ -80,6 +80,7 @@ local TOOL_ICONS = {
 	["[GRAPES]"] = "rbxassetid://137478230275649",
 	["Grapes"] = "rbxassetid://137478230275649",
 	["FishingRod"] = "rbxassetid://105180666555503",
+	["Injector"] = "rbxassetid://81132472504693",
 }
 
 -- ── Item rarity ────────────────────────────────────────────────────────
