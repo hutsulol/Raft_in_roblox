@@ -211,6 +211,7 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 
 	local isResource = RESOURCE_ITEMS[itemName]
 
+	local savedIcon
 	if isResource then
 		local inv = _G.GetInventory and _G.GetInventory(player)
 		if not inv then return end
@@ -232,10 +233,14 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 			if tool and not tool:IsA("Tool") then tool = nil end
 		end
 		if not tool then return end
+		savedIcon = tool.TextureId
 		tool:Destroy()
 	end
 
-	spawnPhysicalDrop(player, itemName, dropCount, not isResource, dropPosition)
+	local dropped = spawnPhysicalDrop(player, itemName, dropCount, not isResource, dropPosition)
+	if dropped and savedIcon and savedIcon ~= "" then
+		dropped:SetAttribute("ToolIcon", savedIcon)
+	end
 
 	-- Sync inventory to client
 	if _G.SendInventory then
@@ -283,13 +288,30 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		-- Tool pickup: clone the tool template and give to player. Tool
 		-- templates may live under ReplicatedStorage.MainModule or other
 		-- subfolders (same pattern InventoryCrafting uses), so the lookup
-		-- must fall back to a recursive search — otherwise tools like
-		-- Phone / FishingRod silently fail to restore on pickup.
-		local toolTemplate = findTemplate(resType)
-		if not toolTemplate then return end
+		-- must fall back to a recursive search. When no template exists
+		-- (e.g. EmptyCapsule / FullCapsule), rebuild a minimal placeholder
+		-- Tool using the icon saved at drop time.
 		local backpack = player:FindFirstChild("Backpack")
 		if not backpack then return end
-		local toolClone = toolTemplate:Clone()
+
+		local toolTemplate = findTemplate(resType)
+		local toolClone
+		if toolTemplate then
+			toolClone = toolTemplate:Clone()
+		else
+			toolClone = Instance.new("Tool")
+			toolClone.Name = resType
+			toolClone.CanBeDropped = false
+			local iconAttr = droppedItem:GetAttribute("ToolIcon")
+			if iconAttr and iconAttr ~= "" then
+				toolClone.TextureId = iconAttr
+			end
+			local handle = Instance.new("Part")
+			handle.Name = "Handle"
+			handle.Size = Vector3.new(1, 1, 1)
+			handle.Transparency = 1
+			handle.Parent = toolClone
+		end
 		toolClone.Parent = backpack
 
 		droppedItem:Destroy()
