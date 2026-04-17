@@ -780,6 +780,15 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 	local pirate = findDownedPirateNearby()
 	if pirate then
+		if mercenariesUnlockShown then
+			local char = player.Character
+			local equipped = char and char:FindFirstChildOfClass("Tool")
+			if not equipped or equipped.Name ~= "Injector" then
+				showNotification("You need an Injector.", Color3.fromRGB(255, 200, 80))
+			end
+			return
+		end
+
 		if not firstDefeatShown then
 			firstDefeatShown = true
 			defeatDialogueOpen = true
