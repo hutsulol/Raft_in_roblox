@@ -785,7 +785,24 @@ UserInputService.InputBegan:Connect(function(input, processed)
 			local equipped = char and char:FindFirstChildOfClass("Tool")
 			if not equipped or equipped.Name ~= "Injector" then
 				showNotification("You need an Injector.", Color3.fromRGB(255, 200, 80))
+				return
 			end
+
+			local backpack = player:FindFirstChild("Backpack")
+			local emptyCapsule = (backpack and backpack:FindFirstChild("EmptyCapsule"))
+				or (char and char:FindFirstChild("EmptyCapsule"))
+			if not emptyCapsule then
+				showNotification("You need an Empty Capsule.", Color3.fromRGB(255, 200, 80))
+				return
+			end
+
+			local injSound = equipped:FindFirstChild("Injection")
+			if injSound and injSound:IsA("Sound") then
+				injSound:Play()
+			end
+
+			claimedLocally[pirate] = true
+			recruitEvent:FireServer("collectBlood", pirate)
 			return
 		end
 
