@@ -214,8 +214,8 @@ local function openBrainMaze(pirate, onComplete)
 	local grid = generateMaze()
 	local spawnR, spawnC, exitR, exitC = findSpawnAndExit(grid)
 
-	local MAZE_W = 700
-	local MAZE_H = 540
+	local MAZE_W = 580
+	local MAZE_H = 450
 	local cellW = MAZE_W / GRID_COLS
 	local cellH = MAZE_H / GRID_ROWS
 	local WALL_PX = 2
@@ -276,8 +276,9 @@ local function openBrainMaze(pirate, onComplete)
 
 			local x = (c - 1) * cellW
 			local y = (r - 1) * cellH
+			local isExit = (r == exitR and c == exitC)
 
-			if cell.top then
+			if cell.top and not isExit then
 				local w = Instance.new("Frame")
 				w.Size = UDim2.fromOffset(cellW + WALL_PX, WALL_PX)
 				w.Position = UDim2.fromOffset(x, y)
@@ -354,8 +355,12 @@ local function openBrainMaze(pirate, onComplete)
 				line.Parent = mazeFrame
 			end
 
+			local isExit = (r == exitR and c == exitC)
+
 			if not (grid[r - 1] and grid[r - 1][c]) then
-				drawBorder(x, y, cellW + OUTER_PX, OUTER_PX)
+				if not isExit then
+					drawBorder(x, y, cellW + OUTER_PX, OUTER_PX)
+				end
 			end
 			if not (grid[r + 1] and grid[r + 1][c]) then
 				drawBorder(x, y + cellH, cellW + OUTER_PX, OUTER_PX)
@@ -369,74 +374,35 @@ local function openBrainMaze(pirate, onComplete)
 		end
 	end
 
-	-- ── Neural node sparkles ─────────────────────────────────────
-	local nodeDots = {}
-	for r = 1, GRID_ROWS do
-		for c = 1, GRID_COLS do
-			if grid[r] and grid[r][c] and math.random() < 0.10 then
-				local nd = Instance.new("Frame")
-				nd.Size = UDim2.fromOffset(4, 4)
-				nd.Position = UDim2.fromOffset(
-					(c - 1) * cellW + cellW / 2 - 2,
-					(r - 1) * cellH + cellH / 2 - 2
-				)
-				nd.BackgroundColor3 = COLOR_NODE
-				nd.BackgroundTransparency = 0.3
-				nd.BorderSizePixel = 0
-				nd.ZIndex = 5
-				nd.Parent = mazeFrame
-				Instance.new("UICorner", nd).CornerRadius = UDim.new(0.5, 0)
-				table.insert(nodeDots, nd)
-			end
-		end
-	end
-
-	-- Pulse nodes
-	task.spawn(function()
-		while gui.Parent do
-			for _, nd in nodeDots do
-				if not nd.Parent then continue end
-				TweenService:Create(nd, TweenInfo.new(
-					0.6 + math.random() * 1.4,
-					Enum.EasingStyle.Sine,
-					Enum.EasingDirection.InOut
-				), {
-					BackgroundTransparency = math.random(25, 85) / 100,
-				}):Play()
-			end
-			task.wait(1.2)
-		end
-	end)
-
-	-- ── Exit marker (glowing green) ──────────────────────────────
+	-- ── Exit opening — small glow just outside the gap ──────────
 	if exitR and exitC then
 		local ex = (exitC - 1) * cellW + cellW / 2
-		local ey = (exitR - 1) * cellH + cellH / 2
+		local ey = (exitR - 1) * cellH - 12
 
 		local exitGlow = Instance.new("Frame")
-		exitGlow.Size = UDim2.fromOffset(22, 22)
-		exitGlow.Position = UDim2.fromOffset(ex - 11, ey - 11)
+		exitGlow.Size = UDim2.fromOffset(cellW + 4, 8)
+		exitGlow.Position = UDim2.fromOffset(ex - (cellW + 4) / 2, ey - 4)
 		exitGlow.BackgroundColor3 = COLOR_EXIT
-		exitGlow.BackgroundTransparency = 0.6
+		exitGlow.BackgroundTransparency = 0.5
 		exitGlow.BorderSizePixel = 0
 		exitGlow.ZIndex = 6
 		exitGlow.Parent = mazeFrame
 		Instance.new("UICorner", exitGlow).CornerRadius = UDim.new(0.5, 0)
 
-		local exitDot = Instance.new("Frame")
-		exitDot.Size = UDim2.fromOffset(10, 10)
-		exitDot.Position = UDim2.fromOffset(ex - 5, ey - 5)
-		exitDot.BackgroundColor3 = COLOR_EXIT
-		exitDot.BorderSizePixel = 0
-		exitDot.ZIndex = 7
-		exitDot.Parent = mazeFrame
-		Instance.new("UICorner", exitDot).CornerRadius = UDim.new(0.5, 0)
-
 		TweenService:Create(exitGlow, TweenInfo.new(1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true), {
-			BackgroundTransparency = 0.25,
-			Size = UDim2.fromOffset(28, 28),
-			Position = UDim2.fromOffset(ex - 14, ey - 14),
+			BackgroundTransparency = 0.2,
 		}):Play()
+
+		local arrow = Instance.new("TextLabel")
+		arrow.Size = UDim2.fromOffset(20, 16)
+		arrow.Position = UDim2.fromOffset(ex - 10, ey - 20)
+		arrow.BackgroundTransparency = 1
+		arrow.Text = "EXIT"
+		arrow.TextColor3 = COLOR_EXIT
+		arrow.Font = Enum.Font.GothamBold
+		arrow.TextSize = 9
+		arrow.ZIndex = 7
+		arrow.Parent = mazeFrame
 	end
 
 	-- ── Player dot (white + cyan glow) ───────────────────────────
@@ -492,7 +458,7 @@ local function openBrainMaze(pirate, onComplete)
 	-- ── Dialog box (top-left) ────────────────────────────────────
 	local dialogFrame = Instance.new("Frame")
 	dialogFrame.Size = UDim2.fromOffset(310, 90)
-	dialogFrame.Position = UDim2.fromOffset(20, 20)
+	dialogFrame.Position = UDim2.fromOffset(20, 60)
 	dialogFrame.BackgroundColor3 = COLOR_DIALOG_BG
 	dialogFrame.BorderSizePixel = 0
 	dialogFrame.Parent = bg
