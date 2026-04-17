@@ -88,15 +88,4 @@ humanoid.Died:Connect(function()
 	end
 	dropAccessoryAndTools()
 	deathTrack:Play()
-
-	deathTrack.Stopped:Connect(function()
-		deathTrack:Play()
-		deathTrack.TimePosition = deathTrack.Length
-		deathTrack:AdjustSpeed(0)
-
-		local hrp = pirate:FindFirstChild("HumanoidRootPart")
-		if hrp then
-			hrp.Anchored = true
-		end
-	end)
 end)
