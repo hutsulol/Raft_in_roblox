@@ -23,9 +23,44 @@ local deathTrack = animator:LoadAnimation(deathAnim)
 deathTrack.Priority = Enum.AnimationPriority.Action4
 deathTrack.Looped = false
 
+local function detachPart(part)
+	if not part or not part:IsA("BasePart") then return end
+	for _, d in part:GetChildren() do
+		if d:IsA("Weld") or d:IsA("WeldConstraint") or d:IsA("Motor6D") or d:IsA("Snap") then
+			d:Destroy()
+		end
+	end
+	for _, d in pirate:GetDescendants() do
+		if (d:IsA("Weld") or d:IsA("WeldConstraint") or d:IsA("Motor6D") or d:IsA("Snap"))
+			and (d.Part0 == part or d.Part1 == part) then
+			d:Destroy()
+		end
+	end
+	part.CanCollide = true
+	part.Parent = workspace
+	game.Debris:AddItem(part, 180)
+end
+
+local function dropAccessoryAndTools()
+	local hat = pirate:FindFirstChild("PirateHat")
+	if hat then
+		detachPart(hat:FindFirstChild("Handle"))
+		hat:Destroy()
+	end
+
+	for _, child in pirate:GetChildren() do
+		if child:IsA("Tool") then
+			local handle = child:FindFirstChild("Handle")
+			detachPart(handle)
+			child:Destroy()
+		end
+	end
+end
+
 humanoid.Died:Connect(function()
 	if animateScript:IsA("BaseScript") then
 		animateScript.Disabled = true
 	end
+	dropAccessoryAndTools()
 	deathTrack:Play()
 end)
