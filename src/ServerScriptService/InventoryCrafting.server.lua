@@ -135,6 +135,15 @@ local recipes = {
 		category = "Tools",
 		description = "A syringe used to hack a downed pirate's mind and recruit them as a mercenary.",
 	},
+	{
+		name = "EmptyCapsule",
+		displayName = "Empty Capsule",
+		icon = "rbxassetid://116714708119585",
+		costs = {Log = 1},
+		craftType = "tool",
+		category = "Tools",
+		description = "An empty capsule for collecting pirate blood with an Injector.",
+	},
 }
 
 inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)

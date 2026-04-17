@@ -81,6 +81,8 @@ local TOOL_ICONS = {
 	["Grapes"] = "rbxassetid://137478230275649",
 	["FishingRod"] = "rbxassetid://105180666555503",
 	["Injector"] = "rbxassetid://81132472504693",
+	["EmptyCapsule"] = "rbxassetid://116714708119585",
+	["FullCapsule"] = "rbxassetid://132749498016835",
 }
 
 -- ── Item rarity ────────────────────────────────────────────────────────
