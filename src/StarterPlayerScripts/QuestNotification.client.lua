@@ -33,14 +33,20 @@ screenGui.IgnoreGuiInset = true
 screenGui.Parent = playerGui
 
 -- Container anchored at the top-right; notifications slide in from the
--- right edge.
+-- right edge. Width scales with viewport; height auto-sizes to content.
 local container = Instance.new("Frame")
 container.Name = "NotifContainer"
 container.BackgroundTransparency = 1
 container.AnchorPoint = Vector2.new(1, 0)
 container.Position = UDim2.new(1, -16, 0, 16)
-container.Size = UDim2.fromOffset(260, 60)
+container.Size = UDim2.new(0.28, 0, 0, 0)
+container.AutomaticSize = Enum.AutomaticSize.Y
 container.Parent = screenGui
+
+local containerSizeConstraint = Instance.new("UISizeConstraint")
+containerSizeConstraint.MinSize = Vector2.new(260, 0)
+containerSizeConstraint.MaxSize = Vector2.new(420, math.huge)
+containerSizeConstraint.Parent = container
 
 -- ─── Build a toast frame ─────────────────────────────────────────────────
 local function buildToast()
@@ -49,7 +55,8 @@ local function buildToast()
 	panel.BackgroundColor3 = COLOR_PANEL
 	panel.BackgroundTransparency = 0.1
 	panel.BorderSizePixel = 0
-	panel.Size = UDim2.new(1, 0, 1, 0)
+	panel.Size = UDim2.new(1, 0, 0, 0)
+	panel.AutomaticSize = Enum.AutomaticSize.Y
 	-- Start offscreen to the right
 	panel.Position = UDim2.new(1, 20, 0, 0)
 	panel.Parent = container
@@ -71,28 +78,39 @@ local function buildToast()
 	uiPadding.PaddingRight  = UDim.new(0, 12)
 	uiPadding.Parent = panel
 
+	local listLayout = Instance.new("UIListLayout")
+	listLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	listLayout.Padding = UDim.new(0, 4)
+	listLayout.Parent = panel
+
 	local title = Instance.new("TextLabel")
 	title.Name = "Title"
 	title.BackgroundTransparency = 1
-	title.Size = UDim2.new(1, 0, 0, 20)
-	title.Position = UDim2.fromOffset(0, 0)
+	title.Size = UDim2.new(1, 0, 0, 0)
+	title.AutomaticSize = Enum.AutomaticSize.Y
 	title.Font = FONT_TITLE
 	title.TextSize = 16
 	title.TextColor3 = COLOR_ACCENT
 	title.Text = "Task completed!"
 	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextYAlignment = Enum.TextYAlignment.Top
+	title.TextWrapped = true
+	title.LayoutOrder = 1
 	title.Parent = panel
 
 	local subtitle = Instance.new("TextLabel")
 	subtitle.Name = "Subtitle"
 	subtitle.BackgroundTransparency = 1
-	subtitle.Size = UDim2.new(1, 0, 0, 18)
-	subtitle.Position = UDim2.fromOffset(0, 22)
+	subtitle.Size = UDim2.new(1, 0, 0, 0)
+	subtitle.AutomaticSize = Enum.AutomaticSize.Y
 	subtitle.Font = FONT_BODY
 	subtitle.TextSize = 14
 	subtitle.TextColor3 = COLOR_TEXT
 	subtitle.Text = ""
 	subtitle.TextXAlignment = Enum.TextXAlignment.Left
+	subtitle.TextYAlignment = Enum.TextYAlignment.Top
+	subtitle.TextWrapped = true
+	subtitle.LayoutOrder = 2
 	subtitle.Parent = panel
 
 	return panel, subtitle, title
