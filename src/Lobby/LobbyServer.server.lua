@@ -271,7 +271,6 @@ local function startCountdown(pad)
 
 			local success, err = pcall(function()
 				local teleportOptions = Instance.new("TeleportOptions")
-				teleportOptions.ShouldReserveServer = true
 
 				local teleportData = {}
 
@@ -368,7 +367,6 @@ lobbyEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		task.spawn(function()
 			local success, err = pcall(function()
 				local teleportOptions = Instance.new("TeleportOptions")
-				teleportOptions.ShouldReserveServer = true
 				teleportOptions:SetTeleportData({loadSave = true, raftOwnerId = player.UserId})
 				TeleportService:TeleportAsync(OCEAN_PLACE_ID, {player}, teleportOptions)
 			end)
