@@ -188,9 +188,10 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	end
 
 	if recipe.craftType == "tool" then
+		local tool
+
 		if template then
 			local cloned = template:Clone()
-			local tool
 
 			if cloned:IsA("Tool") then
 				tool = cloned
@@ -228,14 +229,25 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 
 				cloned:Destroy()
 			end
+		else
+			-- No template in ReplicatedStorage — build a minimal placeholder
+			-- Tool so the item still appears in the backpack with its icon.
+			tool = Instance.new("Tool")
+			tool.Name = recipe.name
+			tool.CanBeDropped = false
+			local handle = Instance.new("Part")
+			handle.Name = "Handle"
+			handle.Size = Vector3.new(1, 1, 1)
+			handle.Transparency = 1
+			handle.Parent = tool
+		end
 
-			-- Set initial attributes if defined
+		if tool then
 			if recipe.initAttributes then
 				for attr, val in recipe.initAttributes do
 					tool:SetAttribute(attr, val)
 				end
 			end
-			-- Set tool icon
 			if recipe.icon and tool.TextureId == "" then
 				tool.TextureId = recipe.icon
 			end
