@@ -129,8 +129,8 @@ local recipes = {
 	{
 		name = "Injector",
 		displayName = "Injector",
-		icon = "",
-		costs = {Plastic = 3, Rope = 1},
+		icon = "rbxassetid://81132472504693",
+		costs = {Log = 1},
 		craftType = "tool",
 		category = "Tools",
 		description = "A syringe used to hack a downed pirate's mind and recruit them as a mercenary.",
