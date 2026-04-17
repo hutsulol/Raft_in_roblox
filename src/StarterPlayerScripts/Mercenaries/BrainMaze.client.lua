@@ -7,6 +7,7 @@ local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
 local ContextActionService = game:GetService("ContextActionService")
+local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -699,6 +700,12 @@ local function openBrainMaze(pirate, onComplete)
 
 		ContextActionService:UnbindAction("BrainMazeMove")
 		table.clear(heldDirs)
+
+		local menuFolder = SoundService:FindFirstChild("Sound_Menu")
+		local completeSound = menuFolder and menuFolder:FindFirstChild("Completed_Quest")
+		if completeSound then
+			completeSound:Play()
+		end
 
 		local overlay = Instance.new("Frame")
 		overlay.Name = "RecruitPopup"
