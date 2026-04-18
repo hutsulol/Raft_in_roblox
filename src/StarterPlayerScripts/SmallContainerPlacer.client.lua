@@ -142,22 +142,20 @@ local function updateGhost()
 	local hitOnRaft = result.Instance:IsDescendantOf(raft)
 	local hitPos = result.Position
 	local ghostSize = ghost:GetExtentsSize()
+	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 
-	-- Build placeCF in the raft's *current* coordinate frame so the
-	-- container follows the raft's tilt instead of sitting world-upright
-	-- (the raft rocks on waves; using only restYaw leaves the ghost
-	-- floating perpendicular to the water while the raft is leaning).
-	local raftCF = raft.PrimaryPart.CFrame
-	local hitLocal = raftCF:PointToObjectSpace(hitPos)
-	local localCF = CFrame.new(hitLocal.X, hitLocal.Y + ghostSize.Y / 2, hitLocal.Z)
-		* CFrame.Angles(0, rotationAngle, 0)
+	-- World-space placement like the WorkBench, but flip the template
+	-- about its X axis so Container_empty lies flat on the raft instead
+	-- of standing on its end.
+	local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z)
+		* CFrame.Angles(0, restYaw + rotationAngle, 0)
 		* ghostTemplateRotation
-	local placeCF = raftCF * localCF
+		* CFrame.Angles(math.rad(90), 0, 0)
 
 	ghost:PivotTo(placeCF)
 
 	if hitOnRaft then
-		lastGhostRaftOffset = localCF
+		lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
 		local blocked = isPlacementBlocked(placeCF, ghostSize)
 		setGhostColor(not blocked)
 	else
