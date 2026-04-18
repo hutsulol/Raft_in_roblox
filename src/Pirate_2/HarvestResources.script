@@ -1,13 +1,20 @@
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService = game:GetService("SoundService")
+local Debris = game:GetService("Debris")
 
--- Same "broke" notify the player's click path fires — gives every
--- client the resource-specific break sound (Plastic Break, Rock_Crush,
--- etc.) when the merc shatters a resource. ResourceSpawner creates
--- this RemoteEvent at startup; use WaitForChild so we don't race it
--- when the merc spawns before the spawner's first tick.
-local collectNotify = ReplicatedStorage:WaitForChild("CollectNotify", 10)
+-- Per-type break sounds. Log / Leaves ship as a child Sound inside the
+-- resource template; Plastic / Rock live in SoundService. The merc
+-- plays these directly from the server so the audio replicates to all
+-- clients even though the resource is destroyed on the same frame.
+local BREAK_SOUND_CHILD = {
+	Log    = "Wood Break",
+	Leaves = "Ruin_Leaves",
+}
+local BREAK_SOUND_SERVICE = {
+	Plastic = "Plastic Break",
+	Rock    = "Rock_Crush",
+}
 
 local PICKUP_RADIUS   = 50   -- matches the player's pickup radius
 local ATTACK_COOLDOWN = 1.0
@@ -159,6 +166,37 @@ local function getOwnerEntry()
 	return folder:FindFirstChild(mercName)
 end
 
+local function playBreakSound(resource, rt)
+	local template
+	local childName = BREAK_SOUND_CHILD[rt]
+	if childName then
+		template = resource:FindFirstChild(childName, true)
+	end
+	if not template then
+		local svcName = BREAK_SOUND_SERVICE[rt]
+		if svcName then
+			template = SoundService:FindFirstChild(svcName)
+		end
+	end
+	if not template or not template:IsA("Sound") then return end
+
+	local clone = template:Clone()
+	local anchor = Instance.new("Part")
+	anchor.Anchored = true
+	anchor.CanCollide = false
+	anchor.CanQuery = false
+	anchor.CanTouch = false
+	anchor.Transparency = 1
+	anchor.Size = Vector3.new(0.1, 0.1, 0.1)
+	anchor.CFrame = CFrame.new(getResourcePos(resource))
+	anchor.Parent = workspace
+
+	clone.Parent = anchor
+	clone:Play()
+
+	Debris:AddItem(anchor, 5)
+end
+
 local function harvestResource(resource)
 	local entry = getOwnerEntry()
 	local rt = resource:GetAttribute("ResourceType")
@@ -170,11 +208,10 @@ local function harvestResource(resource)
 	end
 	resource:SetAttribute("ResourceHP", 0)
 
-	-- Broadcast "broke" so every client plays the resource-specific
-	-- break sound, matching the player's click path.
-	if collectNotify then
-		collectNotify:FireAllClients("broke", resource, rt)
-	end
+	-- Play the break sound server-side from an anchored dummy part so
+	-- it replicates to every client independently of the resource's
+	-- upcoming destruction.
+	playBreakSound(resource, rt)
 
 	resource:Destroy()
 end
