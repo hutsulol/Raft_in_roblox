@@ -162,13 +162,19 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 		end
 
 	elseif action == "put" then
-		if typeof(itemName) ~= "string" or itemName == "" then return end
+		if typeof(itemName) ~= "string" or itemName == "" then
+			if _G.SendInventory then _G.SendInventory(player) end
+			return
+		end
 		count = tonumber(count) or 1
 		count = math.clamp(math.floor(count), 1, MAX_STACK)
 
 		local inv = _G.GetInventory and _G.GetInventory(player) or {}
 		local have = inv[itemName] or 0
-		if have < count then return end
+		if have < count then
+			if _G.SendInventory then _G.SendInventory(player) end
+			return
+		end
 
 		-- If the client specified a target slot (drag lands in Slot N),
 		-- honour it: stack when the item matches, claim when empty. Fall
@@ -212,11 +218,20 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 				end
 			end
 		end
-		if not targetSlot then return end
+		-- Chest genuinely full: sync the client so the item the shift-click
+		-- optimistically drained locally comes back to the inventory and
+		-- no stacks are silently lost.
+		if not targetSlot then
+			if _G.SendInventory then _G.SendInventory(player) end
+			return
+		end
 
 		local space = MAX_STACK - existingCount
 		local toPut = math.min(count, space)
-		if toPut <= 0 then return end
+		if toPut <= 0 then
+			if _G.SendInventory then _G.SendInventory(player) end
+			return
+		end
 
 		if _G.RemoveResourceFromInventory then
 			_G.RemoveResourceFromInventory(player, itemName, toPut)
@@ -227,6 +242,10 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 		container:SetAttribute("Slot" .. targetSlot .. "_Name", itemName)
 		container:SetAttribute("Slot" .. targetSlot .. "_Count", existingCount + toPut)
 
+		-- If the client sent more than the chest could accept (space ran
+		-- out mid-stack), the leftover is still in the player's inventory
+		-- total. SendInventory drops it back into an empty slot instead
+		-- of disappearing.
 		if _G.SendInventory then _G.SendInventory(player) end
 
 	elseif action == "move" then
