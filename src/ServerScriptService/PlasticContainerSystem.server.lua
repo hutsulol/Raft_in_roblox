@@ -86,6 +86,38 @@ local function addToPlayerInventory(player, itemName, count)
 	return _G.AddResourceToInventory(player, itemName, count, nil) or 0
 end
 
+-- Tools (Wood_Knife, Injector, capsules, …) live as Tool Instances in
+-- the player's Backpack / Character. Storing them inside a hidden
+-- "StoredTools" folder and flagging the slot with Slot{i}_Kind = "tool"
+-- lets the UI keep its flat slot-count / slot-name model while the
+-- take-side reparents Instances back instead of crediting resources.
+
+local function getOrCreateToolStorage(container)
+	local folder = container:FindFirstChild("StoredTools")
+	if not folder then
+		folder = Instance.new("Folder")
+		folder.Name = "StoredTools"
+		folder.Parent = container
+	end
+	return folder
+end
+
+local function collectPlayerTools(player, toolName, limit)
+	local out = {}
+	local function scan(parent)
+		if not parent then return end
+		for _, t in parent:GetChildren() do
+			if #out >= limit then return end
+			if t:IsA("Tool") and t.Name == toolName then
+				table.insert(out, t)
+			end
+		end
+	end
+	scan(player:FindFirstChild("Backpack"))
+	scan(player.Character)
+	return out
+end
+
 -- ═══════════════════════════════════════════
 -- CupAction: place
 -- ═══════════════════════════════════════════
@@ -136,7 +168,7 @@ end)
 -- ═══════════════════════════════════════════
 -- ContainerAction: take / put / move
 -- ═══════════════════════════════════════════
-containerAction.OnServerEvent:Connect(function(player, action, container, slotIndex, itemName, count)
+containerAction.OnServerEvent:Connect(function(player, action, container, slotIndex, itemName, count, kind)
 	if typeof(action) ~= "string" then return end
 	if typeof(container) ~= "Instance" then return end
 	if not container:IsDescendantOf(workspace) then return end
@@ -149,7 +181,37 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 
 		local name = container:GetAttribute("Slot" .. slotIndex .. "_Name")
 		local n = container:GetAttribute("Slot" .. slotIndex .. "_Count") or 0
+		local slotKind = container:GetAttribute("Slot" .. slotIndex .. "_Kind")
 		if typeof(name) ~= "string" or name == "" or n <= 0 then return end
+
+		if slotKind == "tool" then
+			local backpack = player:FindFirstChild("Backpack")
+			if not backpack then return end
+			local storage = container:FindFirstChild("StoredTools")
+			if not storage then
+				container:SetAttribute("Slot" .. slotIndex .. "_Name", "")
+				container:SetAttribute("Slot" .. slotIndex .. "_Count", 0)
+				container:SetAttribute("Slot" .. slotIndex .. "_Kind", nil)
+				return
+			end
+			local moved = 0
+			for _, t in storage:GetChildren() do
+				if moved >= n then break end
+				if t:IsA("Tool") and t.Name == name then
+					t.Parent = backpack
+					moved = moved + 1
+				end
+			end
+			local remaining = n - moved
+			if remaining <= 0 then
+				container:SetAttribute("Slot" .. slotIndex .. "_Name", "")
+				container:SetAttribute("Slot" .. slotIndex .. "_Count", 0)
+				container:SetAttribute("Slot" .. slotIndex .. "_Kind", nil)
+			else
+				container:SetAttribute("Slot" .. slotIndex .. "_Count", remaining)
+			end
+			return
+		end
 
 		local cap = _G.GetInventoryCapacity and _G.GetInventoryCapacity(player, name) or n
 		local toTake = math.min(n, cap)
@@ -173,6 +235,57 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 		end
 		count = tonumber(count) or 1
 		count = math.clamp(math.floor(count), 1, MAX_STACK)
+
+		if kind == "tool" then
+			local tools = collectPlayerTools(player, itemName, count)
+			if #tools == 0 then return end
+
+			slotIndex = tonumber(slotIndex)
+			local targetSlot = nil
+			local existingCount = 0
+
+			if slotIndex and slotIndex >= 1 and slotIndex <= CONTAINER_SLOTS then
+				local n = container:GetAttribute("Slot" .. slotIndex .. "_Name")
+				local k = container:GetAttribute("Slot" .. slotIndex .. "_Kind")
+				local c = container:GetAttribute("Slot" .. slotIndex .. "_Count") or 0
+				if n == itemName and k == "tool" and c < MAX_STACK then
+					targetSlot = slotIndex; existingCount = c
+				elseif n == nil or n == "" then
+					targetSlot = slotIndex; existingCount = 0
+				end
+			end
+			if not targetSlot then
+				for i = 1, CONTAINER_SLOTS do
+					local n = container:GetAttribute("Slot" .. i .. "_Name")
+					local k = container:GetAttribute("Slot" .. i .. "_Kind")
+					if n == itemName and k == "tool" then
+						local c = container:GetAttribute("Slot" .. i .. "_Count") or 0
+						if c < MAX_STACK then targetSlot = i; existingCount = c; break end
+					end
+				end
+			end
+			if not targetSlot then
+				for i = 1, CONTAINER_SLOTS do
+					local n = container:GetAttribute("Slot" .. i .. "_Name")
+					if n == nil or n == "" then targetSlot = i; existingCount = 0; break end
+				end
+			end
+			if not targetSlot then return end
+
+			local space = MAX_STACK - existingCount
+			local toPut = math.min(#tools, space)
+			if toPut <= 0 then return end
+
+			local storage = getOrCreateToolStorage(container)
+			for i = 1, toPut do
+				tools[i].Parent = storage
+			end
+
+			container:SetAttribute("Slot" .. targetSlot .. "_Name", itemName)
+			container:SetAttribute("Slot" .. targetSlot .. "_Count", existingCount + toPut)
+			container:SetAttribute("Slot" .. targetSlot .. "_Kind", "tool")
+			return
+		end
 
 		local inv = _G.GetInventory and _G.GetInventory(player) or {}
 		local have = inv[itemName] or 0
@@ -253,29 +366,36 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 
 		local srcName = container:GetAttribute("Slot" .. src .. "_Name")
 		local srcCount = container:GetAttribute("Slot" .. src .. "_Count") or 0
+		local srcKind = container:GetAttribute("Slot" .. src .. "_Kind")
 		if typeof(srcName) ~= "string" or srcName == "" or srcCount <= 0 then return end
 
 		local dstName = container:GetAttribute("Slot" .. dst .. "_Name")
 		local dstCount = container:GetAttribute("Slot" .. dst .. "_Count") or 0
+		local dstKind = container:GetAttribute("Slot" .. dst .. "_Kind")
 
 		if dstName == nil or dstName == "" then
 			container:SetAttribute("Slot" .. dst .. "_Name", srcName)
 			container:SetAttribute("Slot" .. dst .. "_Count", srcCount)
+			container:SetAttribute("Slot" .. dst .. "_Kind", srcKind)
 			container:SetAttribute("Slot" .. src .. "_Name", "")
 			container:SetAttribute("Slot" .. src .. "_Count", 0)
-		elseif dstName == srcName then
+			container:SetAttribute("Slot" .. src .. "_Kind", nil)
+		elseif dstName == srcName and dstKind == srcKind then
 			local space = MAX_STACK - dstCount
 			if space <= 0 then
 				container:SetAttribute("Slot" .. dst .. "_Name", srcName)
 				container:SetAttribute("Slot" .. dst .. "_Count", srcCount)
+				container:SetAttribute("Slot" .. dst .. "_Kind", srcKind)
 				container:SetAttribute("Slot" .. src .. "_Name", dstName)
 				container:SetAttribute("Slot" .. src .. "_Count", dstCount)
+				container:SetAttribute("Slot" .. src .. "_Kind", dstKind)
 			else
 				local toMove = math.min(srcCount, space)
 				container:SetAttribute("Slot" .. dst .. "_Count", dstCount + toMove)
 				if toMove >= srcCount then
 					container:SetAttribute("Slot" .. src .. "_Name", "")
 					container:SetAttribute("Slot" .. src .. "_Count", 0)
+					container:SetAttribute("Slot" .. src .. "_Kind", nil)
 				else
 					container:SetAttribute("Slot" .. src .. "_Count", srcCount - toMove)
 				end
@@ -283,8 +403,10 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 		else
 			container:SetAttribute("Slot" .. dst .. "_Name", srcName)
 			container:SetAttribute("Slot" .. dst .. "_Count", srcCount)
+			container:SetAttribute("Slot" .. dst .. "_Kind", srcKind)
 			container:SetAttribute("Slot" .. src .. "_Name", dstName)
 			container:SetAttribute("Slot" .. src .. "_Count", dstCount)
+			container:SetAttribute("Slot" .. src .. "_Kind", dstKind)
 		end
 	end
 end)

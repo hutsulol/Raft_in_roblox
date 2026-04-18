@@ -1001,11 +1001,12 @@ local function endDrag(mousePos)
 	elseif not targetSlot and srcSlot then
 		-- Dropped outside any slot. If a chest/container is open and the
 		-- release was inside one of its slots, push the stack in there
-		-- instead of dumping to the world.
+		-- instead of dumping to the world. Tools go via "tool" kind so
+		-- the server moves Tool Instances; resources still go as counts.
 		if _G.ActiveContainer and typeof(_G.ContainerTryDrop) == "function" then
 			local data = slotData[srcSlot]
 			if data and data.type == "resource"
-				and _G.ContainerTryDrop(mousePos, data.name, data.count)
+				and _G.ContainerTryDrop(mousePos, data.name, data.count, "resource")
 			then
 				local dropCount = isSplit and 1 or data.count
 				if dropCount >= data.count then
@@ -1013,6 +1014,17 @@ local function endDrag(mousePos)
 				else
 					data.count = data.count - dropCount
 				end
+				cancelDrag()
+				dragState.didDrag = true
+				renderAllSlots()
+				syncSlotLayoutToServer()
+				return
+			end
+			if data and data.type == "tool"
+				and _G.ContainerTryDrop(mousePos, data.toolName, data.count or 1, "tool")
+			then
+				-- Backpack.ChildRemoved will trigger updateUI and clear
+				-- the slot; we just stop the world-drop fallback here.
 				cancelDrag()
 				dragState.didDrag = true
 				renderAllSlots()
@@ -1074,7 +1086,16 @@ local function quickTransfer(slotIndex)
 		local amount = data.count
 		slotData[slotIndex] = nil
 		renderAllSlots()
-		_G.ContainerTransferFromPlayer(name, amount)
+		_G.ContainerTransferFromPlayer(name, amount, "resource")
+		return
+	end
+
+	if _G.ActiveContainer and data.type == "tool"
+		and typeof(_G.ContainerTransferFromPlayer) == "function" then
+		-- Tools live in Backpack, not slotData. The server moves the
+		-- Tool Instances out; Backpack.ChildRemoved then clears the
+		-- local slot via updateUI. Don't pre-drain here.
+		_G.ContainerTransferFromPlayer(data.toolName, data.count or 1, "tool")
 		return
 	end
 

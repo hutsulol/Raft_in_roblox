@@ -580,20 +580,22 @@ end)
 
 -- Shift-click a player inventory/hotbar slot while chest is open →
 -- push that stack in. InventoryUI.quickTransfer calls this hook.
-_G.ContainerTransferFromPlayer = function(itemName, count)
+-- kind = "resource" (default) or "tool" so the server knows whether
+-- to drain the resource inv or move Tool instances out of Backpack.
+_G.ContainerTransferFromPlayer = function(itemName, count, kind)
 	if not activeContainer then return false end
 	if typeof(itemName) ~= "string" or itemName == "" then return false end
-	containerAction:FireServer("put", activeContainer, nil, itemName, count or 1)
+	containerAction:FireServer("put", activeContainer, nil, itemName, count or 1, kind or "resource")
 	return true
 end
 
 -- Called by InventoryUI.endDrag: if the mouse release is over one of
 -- this chest's slots, fire 'put' targeting that exact slot.
-_G.ContainerTryDrop = function(mousePos, itemName, count)
+_G.ContainerTryDrop = function(mousePos, itemName, count, kind)
 	if not activeContainer or not activeGui then return false end
 	if typeof(itemName) ~= "string" or itemName == "" then return false end
 	local i = chestSlotUnderMouse(mousePos.X, mousePos.Y)
 	if not i then return false end
-	containerAction:FireServer("put", activeContainer, i, itemName, count or 1)
+	containerAction:FireServer("put", activeContainer, i, itemName, count or 1, kind or "resource")
 	return true
 end
