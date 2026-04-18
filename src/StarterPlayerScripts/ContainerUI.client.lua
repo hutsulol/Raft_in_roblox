@@ -240,40 +240,28 @@ local function openContainerUI(container)
 	hint.TextXAlignment = Enum.TextXAlignment.Center
 	hint.Parent = panel
 
-	-- Grid of slot buttons, positioned deterministically by UIGridLayout
-	-- so the interaction hitboxes and the rendered cells can never drift
-	-- from one another.
-	local gridFrame = Instance.new("Frame")
-	gridFrame.Name = "SlotGrid"
-	gridFrame.BackgroundTransparency = 1
-	gridFrame.BorderSizePixel = 0
-	gridFrame.Position = UDim2.fromOffset(PAD, GRID_Y)
-	gridFrame.Size = UDim2.fromOffset(
-		COLS * SLOT_SIZE + (COLS - 1) * SLOT_PAD,
-		ROWS * SLOT_SIZE + (ROWS - 1) * SLOT_PAD
-	)
-	gridFrame.Parent = panel
-
-	local grid = Instance.new("UIGridLayout")
-	grid.CellSize = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE)
-	grid.CellPadding = UDim2.fromOffset(SLOT_PAD, SLOT_PAD)
-	grid.FillDirection = Enum.FillDirection.Horizontal
-	grid.FillDirectionMaxCells = COLS
-	grid.SortOrder = Enum.SortOrder.LayoutOrder
-	grid.Parent = gridFrame
-
+	-- Explicit slot positions — direct children of the panel. Identical
+	-- layout pattern to the merc backpack; avoids any layout-container
+	-- offset that could drift AbsolutePosition away from the rendered
+	-- cell.
 	local slotVisuals = {}
 	for i = 1, CONTAINER_SLOTS do
+		local col = (i - 1) % COLS
+		local row = math.floor((i - 1) / COLS)
+		local x = PAD + col * (SLOT_SIZE + SLOT_PAD)
+		local y = GRID_Y + row * (SLOT_SIZE + SLOT_PAD)
+
 		local btn = Instance.new("TextButton")
 		btn.Name = "Slot" .. i
-		btn.LayoutOrder = i
+		btn.Size = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE)
+		btn.Position = UDim2.new(0, x, 0, y)
 		btn.BackgroundColor3 = INV_COLORS.slotBg
 		btn.BackgroundTransparency = 0.05
 		btn.BorderSizePixel = 0
 		btn.AutoButtonColor = false
 		btn.Text = ""
 		btn.Active = true
-		btn.Parent = gridFrame
+		btn.Parent = panel
 
 		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
 		local bs = Instance.new("UIStroke")
