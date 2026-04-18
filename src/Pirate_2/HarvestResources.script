@@ -87,6 +87,13 @@ local function playHitAnim()
 	if not hitTrack then return end
 	hitTrack:Stop()
 	hitTrack:Play()
+
+	-- Arm-swing whoosh, stored as model.swing. Look it up lazily in case
+	-- the merc was cloned before the Sound replicated in.
+	local swing = model:FindFirstChild("swing")
+	if swing and swing:IsA("Sound") then
+		swing:Play()
+	end
 end
 
 local function getSlotCount(mercEntry)
