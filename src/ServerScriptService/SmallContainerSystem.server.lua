@@ -170,17 +170,35 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 		local have = inv[itemName] or 0
 		if have < count then return end
 
-		-- Find a target slot: existing stack with the same item first, then empty
+		-- If the client specified a target slot (drag lands in Slot N),
+		-- honour it: stack when the item matches, claim when empty. Fall
+		-- back to auto-find only when the requested slot isn't usable.
+		slotIndex = tonumber(slotIndex)
 		local targetSlot = nil
 		local existingCount = 0
-		for i = 1, CONTAINER_SLOTS do
-			local n = container:GetAttribute("Slot" .. i .. "_Name")
-			if n == itemName then
-				local c = container:GetAttribute("Slot" .. i .. "_Count") or 0
-				if c < MAX_STACK then
-					targetSlot = i
-					existingCount = c
-					break
+
+		if slotIndex and slotIndex >= 1 and slotIndex <= CONTAINER_SLOTS then
+			local n = container:GetAttribute("Slot" .. slotIndex .. "_Name")
+			local c = container:GetAttribute("Slot" .. slotIndex .. "_Count") or 0
+			if n == itemName and c < MAX_STACK then
+				targetSlot = slotIndex
+				existingCount = c
+			elseif n == nil or n == "" then
+				targetSlot = slotIndex
+				existingCount = 0
+			end
+		end
+
+		if not targetSlot then
+			for i = 1, CONTAINER_SLOTS do
+				local n = container:GetAttribute("Slot" .. i .. "_Name")
+				if n == itemName then
+					local c = container:GetAttribute("Slot" .. i .. "_Count") or 0
+					if c < MAX_STACK then
+						targetSlot = i
+						existingCount = c
+						break
+					end
 				end
 			end
 		end

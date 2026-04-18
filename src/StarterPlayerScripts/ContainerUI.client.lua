@@ -331,9 +331,16 @@ local function openContainerUI(container)
 		if not parent then closeContainer() end
 	end))
 
+	-- Use MouseButton1Down (fires on press, independent of any drag that
+	-- could swallow a follow-up Click signal). Guarded so the same
+	-- press-and-release can't fire the take twice.
+	local lastTakeAt = 0
 	for i, info in slotButtons do
-		info.button.MouseButton1Click:Connect(function()
+		info.button.MouseButton1Down:Connect(function()
 			if not activeContainer then return end
+			local now = os.clock()
+			if now - lastTakeAt < 0.15 then return end
+			lastTakeAt = now
 			local name = activeContainer:GetAttribute("Slot" .. i .. "_Name")
 			local count = activeContainer:GetAttribute("Slot" .. i .. "_Count") or 0
 			if typeof(name) ~= "string" or name == "" or count <= 0 then return end
