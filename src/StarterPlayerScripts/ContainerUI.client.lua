@@ -11,6 +11,7 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local GuiService = game:GetService("GuiService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -61,10 +62,16 @@ end
 
 local function mouseOverFrame(frame, mx, my)
 	if not frame or not frame.Parent then return false end
+	-- UserInputService:GetMouseLocation() includes the GUI inset
+	-- (topbar), but AbsolutePosition does not. Subtract the inset Y so
+	-- the mouse coords line up with the rendered cell - same correction
+	-- InventoryUI.findSlotUnderMouse applies.
+	local inset = GuiService:GetGuiInset()
 	local pos = frame.AbsolutePosition
 	local size = frame.AbsoluteSize
+	local adjY = my - inset.Y
 	return mx >= pos.X and mx <= pos.X + size.X
-		and my >= pos.Y and my <= pos.Y + size.Y
+		and adjY >= pos.Y and adjY <= pos.Y + size.Y
 end
 
 local function chestSlotUnderMouse(mx, my)
@@ -451,10 +458,12 @@ local function openContainerUI(container)
 	local function mouseOverPlayerInventory(mx, my)
 		local pp = findPlayerInventoryPanel()
 		if not pp or not pp.Parent then return false end
+		local inset = GuiService:GetGuiInset()
 		local pos = pp.AbsolutePosition
 		local size = pp.AbsoluteSize
+		local adjY = my - inset.Y
 		return mx >= pos.X and mx <= pos.X + size.X
-			and my >= pos.Y and my <= pos.Y + size.Y
+			and adjY >= pos.Y and adjY <= pos.Y + size.Y
 	end
 
 	for i = 1, CONTAINER_SLOTS do
