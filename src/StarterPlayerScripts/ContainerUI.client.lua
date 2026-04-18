@@ -222,7 +222,7 @@ local function openContainerUI(container)
 	hint.Font = Enum.Font.Gotham
 	hint.TextSize = 12
 	hint.TextWrapped = true
-	hint.Text = "Click a slot to take. Shift-click an inventory slot to put."
+	hint.Text = "Drag items to move them between the chest and inventory."
 	hint.TextXAlignment = Enum.TextXAlignment.Center
 	hint.Parent = panel
 
@@ -331,22 +331,172 @@ local function openContainerUI(container)
 		if not parent then closeContainer() end
 	end))
 
-	-- Use MouseButton1Down (fires on press, independent of any drag that
-	-- could swallow a follow-up Click signal). Guarded so the same
-	-- press-and-release can't fire the take twice.
-	local lastTakeAt = 0
-	for i, info in slotButtons do
+	-- ── Drag out of the container (take) ───────────────────────────────
+	-- Press-and-hold on a filled slot starts a drag. Release over the
+	-- player's inventory panel fires 'take'; release anywhere else
+	-- cancels. Mirrors the merc backpack drag shape.
+	local DRAG_THRESHOLD = 6
+	local drag = {
+		active = false,
+		moved = false,
+		slotIndex = nil,
+		startX = 0,
+		startY = 0,
+		ghostGui = nil,
+	}
+
+	local function destroyDragGhost()
+		if drag.ghostGui then
+			drag.ghostGui:Destroy()
+			drag.ghostGui = nil
+		end
+	end
+
+	local function slotHas(i)
+		local name = activeContainer:GetAttribute("Slot" .. i .. "_Name")
+		local count = activeContainer:GetAttribute("Slot" .. i .. "_Count") or 0
+		return typeof(name) == "string" and name ~= "" and count > 0, name, count
+	end
+
+	local function createDragGhost(i, mx, my)
+		destroyDragGhost()
+		local has, itemName, count = slotHas(i)
+		if not has then return end
+
+		local ghostGui = Instance.new("ScreenGui")
+		ghostGui.Name = "ContainerDragGhost"
+		ghostGui.ResetOnSpawn = false
+		ghostGui.DisplayOrder = 50
+		ghostGui.IgnoreGuiInset = true
+		ghostGui.Parent = playerGui
+
+		local ghost = Instance.new("Frame")
+		ghost.Size = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE)
+		ghost.Position = UDim2.fromOffset(mx - SLOT_SIZE / 2, my - SLOT_SIZE / 2)
+		ghost.BackgroundTransparency = 1
+		ghost.BorderSizePixel = 0
+		ghost.Parent = ghostGui
+
+		local rarity = _G.GetItemRarity and _G.GetItemRarity(itemName) or nil
+		local frameAsset = (_G.GetRarityFrameAsset and _G.GetRarityFrameAsset(rarity)) or ""
+		local iconAsset = (_G.GetItemIcon and _G.GetItemIcon(itemName)) or ""
+
+		if frameAsset ~= "" then
+			local gFrame = Instance.new("ImageLabel")
+			gFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+			gFrame.Size = UDim2.new(1, 0, 1, 0)
+			gFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
+			gFrame.BackgroundTransparency = 1
+			gFrame.Image = frameAsset
+			gFrame.ScaleType = Enum.ScaleType.Stretch
+			gFrame.ZIndex = 1
+			gFrame.Parent = ghost
+		end
+
+		local gIcon = Instance.new("ImageLabel")
+		gIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+		gIcon.Size = UDim2.new(0.7, 0, 0.7, 0)
+		gIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
+		gIcon.BackgroundTransparency = 1
+		gIcon.Image = iconAsset
+		gIcon.ScaleType = Enum.ScaleType.Fit
+		gIcon.ZIndex = 2
+		gIcon.Parent = ghost
+
+		if count > 1 then
+			local gCount = Instance.new("TextLabel")
+			gCount.AnchorPoint = Vector2.new(1, 1)
+			gCount.Size = UDim2.new(0, 30, 0, 16)
+			gCount.Position = UDim2.new(1, -4, 1, -2)
+			gCount.BackgroundTransparency = 1
+			gCount.TextColor3 = INV_COLORS.lightText
+			gCount.Font = Enum.Font.GothamBold
+			gCount.TextSize = 13
+			gCount.TextXAlignment = Enum.TextXAlignment.Right
+			gCount.TextStrokeTransparency = 0.3
+			gCount.TextStrokeColor3 = Color3.new(0, 0, 0)
+			gCount.Text = tostring(count)
+			gCount.ZIndex = 3
+			gCount.Parent = ghost
+		end
+
+		drag.ghostGui = ghostGui
+	end
+
+	local function resetDrag()
+		destroyDragGhost()
+		drag.active = false
+		drag.moved = false
+		drag.slotIndex = nil
+	end
+
+	local function mouseOverPlayerInventory(mx, my)
+		local pp = findPlayerInventoryPanel()
+		if not pp or not pp.Parent then return false end
+		local pos = pp.AbsolutePosition
+		local size = pp.AbsoluteSize
+		return mx >= pos.X and mx <= pos.X + size.X
+			and my >= pos.Y and my <= pos.Y + size.Y
+	end
+
+	for _, info in slotButtons do
+		local i = info.slotIndex or nil
+		-- slotButtons is a numerically-keyed table; find our key.
+		if not i then
+			for k, v in slotButtons do
+				if v == info then i = k; break end
+			end
+		end
 		info.button.MouseButton1Down:Connect(function()
-			if not activeContainer then return end
-			local now = os.clock()
-			if now - lastTakeAt < 0.15 then return end
-			lastTakeAt = now
-			local name = activeContainer:GetAttribute("Slot" .. i .. "_Name")
-			local count = activeContainer:GetAttribute("Slot" .. i .. "_Count") or 0
-			if typeof(name) ~= "string" or name == "" or count <= 0 then return end
-			containerAction:FireServer("take", activeContainer, i)
+			if not slotHas(i) then return end
+			local m = UserInputService:GetMouseLocation()
+			drag.active = true
+			drag.moved = false
+			drag.slotIndex = i
+			drag.startX = m.X
+			drag.startY = m.Y
 		end)
 	end
+
+	table.insert(conns, UserInputService.InputChanged:Connect(function(input)
+		if not drag.active then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseMovement
+			and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		local m = UserInputService:GetMouseLocation()
+		if not drag.moved then
+			local dx = m.X - drag.startX
+			local dy = m.Y - drag.startY
+			if dx * dx + dy * dy >= DRAG_THRESHOLD * DRAG_THRESHOLD then
+				drag.moved = true
+				createDragGhost(drag.slotIndex, m.X, m.Y)
+			end
+		end
+		if drag.ghostGui then
+			local ghost = drag.ghostGui:FindFirstChildOfClass("Frame")
+			if ghost then
+				ghost.Position = UDim2.fromOffset(m.X - SLOT_SIZE / 2, m.Y - SLOT_SIZE / 2)
+			end
+		end
+	end))
+
+	table.insert(conns, UserInputService.InputEnded:Connect(function(input)
+		if not drag.active then return end
+		if input.UserInputType ~= Enum.UserInputType.MouseButton1
+			and input.UserInputType ~= Enum.UserInputType.Touch then
+			return
+		end
+		local i = drag.slotIndex
+		local moved = drag.moved
+		resetDrag()
+		if not i then return end
+		if not moved then return end
+		local m = UserInputService:GetMouseLocation()
+		if mouseOverPlayerInventory(m.X, m.Y) then
+			containerAction:FireServer("take", activeContainer, i)
+		end
+	end))
 end
 
 openContainer.OnClientEvent:Connect(function(container)
