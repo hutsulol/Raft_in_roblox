@@ -98,7 +98,7 @@ do
 		bb.AlwaysOnTop = true
 		bb.LightInfluence = 0
 		bb.Size = UDim2.fromOffset(80, 28)
-		bb.StudsOffset = Vector3.new(0, 3.2, 0)
+		bb.StudsOffset = Vector3.new(0, 1, 0)
 		bb.Enabled = false
 		bb.Parent = adornee
 
