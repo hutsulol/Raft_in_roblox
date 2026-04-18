@@ -1,11 +1,12 @@
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
+local RunService = game:GetService("RunService")
 
-local SCAN_RADIUS = 10
-local HARVEST_DURATION = 15
-local SCAN_INTERVAL = 1
-
+local DETECTION_RADIUS = 40
+local ATTACK_RANGE     = 15
+local ATTACK_COOLDOWN  = 1.0
 local HARVEST_TYPES = { Log = true, Plastic = true, Leaves = true }
+local HOSTILE_BACKOFF_RANGE = 120
 
 local BACKPACK_SLOT_COUNTS = {
 	Backpack = 6,
@@ -14,8 +15,22 @@ local BACKPACK_SLOT_COUNTS = {
 local DEFAULT_SLOTS = 6
 
 local model = script.Parent
+
+while not model:IsDescendantOf(workspace) do
+	model.AncestryChanged:Wait()
+end
+
+while model.Parent and not CollectionService:HasTag(model, "SpawnedMercenary") do
+	task.wait(1)
+end
+if not model.Parent then return end
+
 local humanoid = model:WaitForChild("Humanoid", 5)
 if not humanoid then return end
+
+local function getHRP()
+	return model:FindFirstChild("HumanoidRootPart")
+end
 
 local function getSlotCount(mercEntry)
 	local bp = mercEntry:GetAttribute("EquippedBackpack") or ""
@@ -50,14 +65,14 @@ local function getResourcePos(resource)
 	return resource.Position
 end
 
-local function findNearestResource(position)
-	local closest, closestDist = nil, SCAN_RADIUS
+local function findNearestResource(myPos)
+	local closest, closestDist = nil, DETECTION_RADIUS
 	for _, resource in CollectionService:GetTagged("Resource") do
 		if resource.Parent then
-			local resType = resource:GetAttribute("ResourceType")
+			local rt = resource:GetAttribute("ResourceType")
 			local hp = resource:GetAttribute("ResourceHP") or 0
-			if HARVEST_TYPES[resType] and hp > 0 then
-				local d = (getResourcePos(resource) - position).Magnitude
+			if HARVEST_TYPES[rt] and hp > 0 then
+				local d = (getResourcePos(resource) - myPos).Magnitude
 				if d < closestDist then
 					closest, closestDist = resource, d
 				end
@@ -65,6 +80,22 @@ local function findNearestResource(position)
 		end
 	end
 	return closest
+end
+
+local function hasHostileNearby(myPos)
+	for _, pirate in CollectionService:GetTagged("HostilePirate") do
+		if pirate:IsDescendantOf(workspace) then
+			local h = pirate:FindFirstChildOfClass("Humanoid")
+			if h and h.Health > 0 then
+				local torso = pirate:FindFirstChild("Torso")
+					or pirate:FindFirstChild("HumanoidRootPart")
+				if torso and (torso.Position - myPos).Magnitude < HOSTILE_BACKOFF_RANGE then
+					return true
+				end
+			end
+		end
+	end
+	return false
 end
 
 local function getOwnerEntry()
@@ -78,51 +109,58 @@ local function getOwnerEntry()
 	return folder:FindFirstChild(mercName)
 end
 
-task.spawn(function()
-	-- Only spawned mercenaries should harvest. Hostile pirates also use
-	-- this template via cloning paths but never get tagged.
-	while model.Parent and not CollectionService:HasTag(model, "SpawnedMercenary") do
-		task.wait(1)
+local function harvestResource(resource)
+	local entry = getOwnerEntry()
+	local rt = resource:GetAttribute("ResourceType")
+	local amount = resource:GetAttribute("ResourceAmount") or 1
+	if entry and HARVEST_TYPES[rt] then
+		for _ = 1, amount do
+			if not addToMercBackpack(entry, rt) then break end
+		end
 	end
+	resource:SetAttribute("ResourceHP", 0)
+	resource:Destroy()
+end
 
-	while model.Parent do
-		if humanoid.Health <= 0 then break end
+local lastAttack = 0
 
-		local hrp = model:FindFirstChild("HumanoidRootPart")
+task.spawn(function()
+	while model.Parent and humanoid.Health > 0 do
+		local hrp = getHRP()
 		if not hrp then
-			task.wait(SCAN_INTERVAL)
+			task.wait(0.2)
+			continue
+		end
+
+		-- Let Combat.script drive the rig when an enemy is nearby.
+		if hasHostileNearby(hrp.Position) then
+			task.wait(0.5)
 			continue
 		end
 
 		local resource = findNearestResource(hrp.Position)
 		if not resource then
-			task.wait(SCAN_INTERVAL)
+			task.wait(1)
 			continue
 		end
 
-		local elapsed = 0
-		while elapsed < HARVEST_DURATION do
-			task.wait(0.5)
-			elapsed = elapsed + 0.5
-			if not model.Parent or humanoid.Health <= 0 then return end
-			if not resource.Parent then break end
+		local resPos = getResourcePos(resource)
+		local dist = (resPos - hrp.Position).Magnitude
+
+		if dist > ATTACK_RANGE then
+			-- Approach the resource on the horizontal plane; the merc
+			-- stops at the raft edge rather than swimming into open water.
+			local target = Vector3.new(resPos.X, hrp.Position.Y, resPos.Z)
+			humanoid:MoveTo(target)
+			task.wait(0.25)
+		else
+			humanoid:MoveTo(hrp.Position)
+			local now = tick()
+			if now - lastAttack >= ATTACK_COOLDOWN then
+				lastAttack = now
+				harvestResource(resource)
+			end
+			task.wait(0.2)
 		end
-
-		if not resource.Parent then continue end
-
-		local entry = getOwnerEntry()
-		if not entry then
-			task.wait(SCAN_INTERVAL)
-			continue
-		end
-
-		local resType = resource:GetAttribute("ResourceType") or ""
-		local resAmount = resource:GetAttribute("ResourceAmount") or 1
-		if not HARVEST_TYPES[resType] then continue end
-
-		for _ = 1, resAmount do
-			if not addToMercBackpack(entry, resType) then break end
-		end
-		resource:Destroy()
 	end
 end)
