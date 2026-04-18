@@ -142,10 +142,12 @@ local function hideStoredTool(tool)
 			d:SetAttribute("__cc", d.CanCollide)
 			d:SetAttribute("__cq", d.CanQuery)
 			d:SetAttribute("__ch", d.CanTouch)
+			d:SetAttribute("__ca", d.Anchored)
 			d.Transparency = 1
 			d.CanCollide = false
 			d.CanQuery = false
 			d.CanTouch = false
+			d.Anchored = true
 		end
 	end
 end
@@ -159,10 +161,12 @@ local function revealStoredTool(tool)
 			local c = d:GetAttribute("__cc")
 			local q = d:GetAttribute("__cq")
 			local h = d:GetAttribute("__ch")
+			local a = d:GetAttribute("__ca")
 			if t ~= nil then d.Transparency = t; d:SetAttribute("__ct", nil) end
 			if c ~= nil then d.CanCollide = c; d:SetAttribute("__cc", nil) end
 			if q ~= nil then d.CanQuery = q; d:SetAttribute("__cq", nil) end
 			if h ~= nil then d.CanTouch = h; d:SetAttribute("__ch", nil) end
+			if a ~= nil then d.Anchored = a; d:SetAttribute("__ca", nil) end
 		end
 	end
 end
@@ -253,7 +257,12 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 					moved = moved + 1
 				end
 			end
-			local remaining = n - moved
+			local remaining = 0
+			for _, t in storage:GetChildren() do
+				if t:IsA("Tool") and t.Name == name then
+					remaining = remaining + 1
+				end
+			end
 			if remaining <= 0 then
 				container:SetAttribute("Slot" .. slotIndex .. "_Name", "")
 				container:SetAttribute("Slot" .. slotIndex .. "_Count", 0)
