@@ -42,6 +42,12 @@ local recipes = {
 		icon = "",
 		costs = {Log = 1},
 	},
+	{
+		name = "PlasticContainer",
+		displayName = "Plastic Container",
+		icon = "",
+		costs = {Plastic = 5},
+	},
 }
 local selectedRecipe = nil
 local isOpen = false

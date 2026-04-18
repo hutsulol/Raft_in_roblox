@@ -1,10 +1,10 @@
--- SmallContainerSystem.server.lua
--- Places the Small Container on the raft (WorkBench pattern) and gives
--- it six inventory slots the player can take from / put into via the
--- chest-style UI.
+-- PlasticContainerSystem.server.lua
+-- Places the Plastic Container on the raft and gives it nine inventory
+-- slots. Identical flow to SmallContainerSystem, minus the fill-level
+-- model swap — the plastic_container model stays the same regardless
+-- of how full it is.
 
 local rs = game:GetService("ReplicatedStorage")
-local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 
 local cupActionEvent = rs:WaitForChild("CupAction")
@@ -23,114 +23,21 @@ if not openContainerEvent then
 	openContainerEvent.Parent = rs
 end
 
-local CONTAINER_SLOTS = 6
+local CONTAINER_SLOTS = 9
 local CONTAINER_RANGE = 12
 local MAX_STACK = 30
+local TEMPLATE_NAME = "plastic_container"
+local TOOL_NAME = "PlasticContainer"
+local CONTAINER_NAME = "PlasticContainer"
+local PLACE_ACTION = "placePlasticContainer"
 
-local function findTemplate(name)
-	name = name or "Container_empty"
+local function findTemplate()
 	local folder = rs:FindFirstChild("Containers_Player")
-	local tmpl = folder and folder:FindFirstChild(name)
+	local tmpl = folder and folder:FindFirstChild(TEMPLATE_NAME)
 	if not tmpl then
-		tmpl = rs:FindFirstChild(name, true)
+		tmpl = rs:FindFirstChild(TEMPLATE_NAME, true)
 	end
 	return tmpl
-end
-
-local function countFilledSlots(container)
-	local filled = 0
-	for i = 1, CONTAINER_SLOTS do
-		local name = container:GetAttribute("Slot" .. i .. "_Name")
-		local count = container:GetAttribute("Slot" .. i .. "_Count") or 0
-		if typeof(name) == "string" and name ~= "" and count > 0 then
-			filled = filled + 1
-		end
-	end
-	return filled
-end
-
-local function getContainerModelName(filled)
-	if filled >= CONTAINER_SLOTS then
-		return "Container_full"
-	elseif filled >= 3 then
-		return "Container_50"
-	else
-		return "Container_empty"
-	end
-end
-
-local setupContainerPrompt -- forward decl for swap → setup
-
--- Same pattern as ThirstSystem.swapPurifierModel: clear children,
--- reparent the new template's children, preserve the container's
--- world CFrame + slot attributes (attributes live on the container
--- instance itself, so they survive child destruction), re-weld to
--- the raft, and re-bind the ProximityPrompt on the new primary part.
-local function swapContainerModel(container)
-	if not container or not container.Parent then return end
-
-	local filled = countFilledSlots(container)
-	local modelName = getContainerModelName(filled)
-
-	local currentModel = container:GetAttribute("ModelName")
-	if currentModel == modelName then return end
-
-	local template = findTemplate(modelName)
-	if not template then
-		warn("[SmallContainer] swap model not found: " .. modelName)
-		return
-	end
-
-	local savedCF = container.PrimaryPart and container.PrimaryPart.CFrame
-	if not savedCF then
-		local first = container:FindFirstChildWhichIsA("BasePart", true)
-		savedCF = first and first.CFrame
-	end
-	if not savedCF then return end
-
-	for _, child in container:GetChildren() do
-		child:Destroy()
-	end
-
-	if template:IsA("Model") then
-		for _, child in template:GetChildren() do
-			local clone = child:Clone()
-			if clone:IsA("BasePart") then clone.Anchored = true end
-			for _, desc in clone:GetDescendants() do
-				if desc:IsA("BasePart") then desc.Anchored = true end
-			end
-			clone.Parent = container
-		end
-		if template.PrimaryPart then
-			local newPrimary = container:FindFirstChild(template.PrimaryPart.Name)
-			if newPrimary then container.PrimaryPart = newPrimary end
-		end
-		if not container.PrimaryPart then
-			local first = container:FindFirstChildWhichIsA("BasePart", true)
-			if first then container.PrimaryPart = first end
-		end
-	end
-
-	container:PivotTo(savedCF)
-
-	local raft = workspace:FindFirstChild("Raft")
-	if raft and raft.PrimaryPart then
-		for _, part in container:GetDescendants() do
-			if part:IsA("BasePart") then
-				local weld = Instance.new("WeldConstraint")
-				weld.Part0 = part
-				weld.Part1 = raft.PrimaryPart
-				weld.Parent = part
-				part.Anchored = false
-			end
-		end
-	end
-
-	container:SetAttribute("ModelName", modelName)
-
-	if setupContainerPrompt then
-		setupContainerPrompt(container)
-	end
 end
 
 local function initSlots(model)
@@ -142,10 +49,10 @@ local function initSlots(model)
 	end
 end
 
-setupContainerPrompt = function(model)
+local function setupContainerPrompt(model)
 	initSlots(model)
 	model:SetAttribute("SlotCount", CONTAINER_SLOTS)
-	CollectionService:AddTag(model, "SmallContainer")
+	CollectionService:AddTag(model, CONTAINER_NAME)
 
 	local part = model.PrimaryPart or model:FindFirstChildWhichIsA("BasePart", true)
 	if not part then return end
@@ -183,12 +90,12 @@ end
 -- CupAction: place
 -- ═══════════════════════════════════════════
 cupActionEvent.OnServerEvent:Connect(function(player, action, target)
-	if action ~= "placeSmallContainer" then return end
+	if action ~= PLACE_ACTION then return end
 
 	local char = player.Character
 	if not char then return end
 	local tool = char:FindFirstChildWhichIsA("Tool")
-	if not tool or tool.Name ~= "SmallContainer" then return end
+	if not tool or tool.Name ~= TOOL_NAME then return end
 
 	local raft = workspace:FindFirstChild("Raft")
 	if not raft or not raft.PrimaryPart then return end
@@ -201,7 +108,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	if not template then return end
 
 	local container = template:Clone()
-	container.Name = "SmallContainer"
+	container.Name = CONTAINER_NAME
 
 	if container:IsA("Model") then
 		local bbCF = container:GetBoundingBox()
@@ -221,20 +128,19 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		end
 	end
 
-	container:SetAttribute("ModelName", "Container_empty")
 	setupContainerPrompt(container)
 
 	tool:Destroy()
 end)
 
 -- ═══════════════════════════════════════════
--- ContainerAction: take / put
+-- ContainerAction: take / put / move
 -- ═══════════════════════════════════════════
 containerAction.OnServerEvent:Connect(function(player, action, container, slotIndex, itemName, count)
 	if typeof(action) ~= "string" then return end
 	if typeof(container) ~= "Instance" then return end
 	if not container:IsDescendantOf(workspace) then return end
-	if container.Name ~= "SmallContainer" then return end
+	if container.Name ~= CONTAINER_NAME then return end
 	if not withinRange(player, container) then return end
 
 	if action == "take" then
@@ -260,8 +166,6 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 			container:SetAttribute("Slot" .. slotIndex .. "_Count", remaining)
 		end
 
-		swapContainerModel(container)
-
 	elseif action == "put" then
 		if typeof(itemName) ~= "string" or itemName == "" then
 			if _G.SendInventory then _G.SendInventory(player) end
@@ -277,9 +181,6 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 			return
 		end
 
-		-- If the client specified a target slot (drag lands in Slot N),
-		-- honour it: stack when the item matches, claim when empty. Fall
-		-- back to auto-find only when the requested slot isn't usable.
 		slotIndex = tonumber(slotIndex)
 		local targetSlot = nil
 		local existingCount = 0
@@ -319,9 +220,6 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 				end
 			end
 		end
-		-- Chest genuinely full: sync the client so the item the shift-click
-		-- optimistically drained locally comes back to the inventory and
-		-- no stacks are silently lost.
 		if not targetSlot then
 			if _G.SendInventory then _G.SendInventory(player) end
 			return
@@ -343,17 +241,9 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 		container:SetAttribute("Slot" .. targetSlot .. "_Name", itemName)
 		container:SetAttribute("Slot" .. targetSlot .. "_Count", existingCount + toPut)
 
-		swapContainerModel(container)
-
-		-- If the client sent more than the chest could accept (space ran
-		-- out mid-stack), the leftover is still in the player's inventory
-		-- total. SendInventory drops it back into an empty slot instead
-		-- of disappearing.
 		if _G.SendInventory then _G.SendInventory(player) end
 
 	elseif action == "move" then
-		-- Chest-to-chest drag: slotIndex = src, itemName = dst (we reuse
-		-- parameter slots since the RemoteEvent signature is fixed).
 		local src = tonumber(slotIndex)
 		local dst = tonumber(itemName)
 		if not src or not dst then return end
@@ -369,13 +259,11 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 		local dstCount = container:GetAttribute("Slot" .. dst .. "_Count") or 0
 
 		if dstName == nil or dstName == "" then
-			-- Empty dst: straight move
 			container:SetAttribute("Slot" .. dst .. "_Name", srcName)
 			container:SetAttribute("Slot" .. dst .. "_Count", srcCount)
 			container:SetAttribute("Slot" .. src .. "_Name", "")
 			container:SetAttribute("Slot" .. src .. "_Count", 0)
 		elseif dstName == srcName then
-			-- Same item: stack up to MAX_STACK, swap remainder if full
 			local space = MAX_STACK - dstCount
 			if space <= 0 then
 				container:SetAttribute("Slot" .. dst .. "_Name", srcName)
@@ -393,22 +281,16 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 				end
 			end
 		else
-			-- Different items: swap
 			container:SetAttribute("Slot" .. dst .. "_Name", srcName)
 			container:SetAttribute("Slot" .. dst .. "_Count", srcCount)
 			container:SetAttribute("Slot" .. src .. "_Name", dstName)
 			container:SetAttribute("Slot" .. src .. "_Count", dstCount)
 		end
-
-		swapContainerModel(container)
 	end
 end)
 
--- Setup existing containers on script load (after raft restore) and
--- reconcile the visual model to whatever slot counts survived the save.
 for _, child in workspace:GetDescendants() do
-	if child:IsA("Model") and child.Name == "SmallContainer" then
+	if child:IsA("Model") and child.Name == CONTAINER_NAME then
 		setupContainerPrompt(child)
-		swapContainerModel(child)
 	end
 end

@@ -31,6 +31,13 @@ local recipes = {
 		costs = {Log = 1},
 		craftType = "placeable",
 	},
+	{
+		name = "PlasticContainer",
+		displayName = "Plastic Container",
+		icon = "",
+		costs = {Plastic = 5},
+		craftType = "placeable",
+	},
 }
 
 local function findWorkBench()

@@ -19,6 +19,11 @@ local playerGui = player:WaitForChild("PlayerGui")
 local containerAction = ReplicatedStorage:WaitForChild("ContainerAction")
 local openContainer = ReplicatedStorage:WaitForChild("OpenContainer")
 
+-- Chest slot count is read from the container's SlotCount attribute at
+-- open time, so both the 6-slot SmallContainer and the 9-slot
+-- PlasticContainer share this UI. The module-level copy is only a
+-- default; openContainerUI overwrites it before any slot-iterating
+-- helper runs.
 local CONTAINER_SLOTS = 6
 
 local INV_COLORS = {
@@ -103,6 +108,8 @@ local function openContainerUI(container)
 
 	activeContainer = container
 	_G.ActiveContainer = container
+
+	CONTAINER_SLOTS = container:GetAttribute("SlotCount") or 6
 
 	if _G.OpenInventory then
 		_G.OpenInventory()
