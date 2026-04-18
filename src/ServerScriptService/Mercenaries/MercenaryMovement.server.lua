@@ -306,9 +306,23 @@ local function startHarvestLoop(model, raftPart, localOffset)
 		animator = Instance.new("Animator")
 		animator.Parent = humanoid
 	end
-	local hitTrack = animator:LoadAnimation(getHitAnimation(model))
-	hitTrack.Priority = Enum.AnimationPriority.Action3
-	hitTrack.Looped = true
+
+	local hitTrack
+	local ok, err = pcall(function()
+		hitTrack = animator:LoadAnimation(getHitAnimation(model))
+		hitTrack.Priority = Enum.AnimationPriority.Action3
+		hitTrack.Looped = true
+	end)
+	if not ok then
+		warn("[MercHarvest] Failed to load HitAnim: " .. tostring(err))
+	end
+
+	local function playHit()
+		if hitTrack and not hitTrack.IsPlaying then hitTrack:Play() end
+	end
+	local function stopHit()
+		if hitTrack and hitTrack.IsPlaying then hitTrack:Stop() end
+	end
 
 	local token = {}
 	activeTokens[model] = token
@@ -325,6 +339,8 @@ local function startHarvestLoop(model, raftPart, localOffset)
 			humanoid:MoveTo(worldTarget)
 			task.wait(0.15)
 		end
+
+		print("[MercHarvest] arrived at harvest point, entering scan loop")
 
 		-- Phase 2: stand still and harvest
 		while activeTokens[model] == token do
@@ -343,19 +359,18 @@ local function startHarvestLoop(model, raftPart, localOffset)
 			local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
 			if not mercEntry then break end
 
-			local equippedBp = mercEntry:GetAttribute("EquippedBackpack")
-			if not equippedBp or equippedBp == "" then
-				if hitTrack.IsPlaying then hitTrack:Stop() end
+			local resource = findNearestFloatingResource(hrp.Position, HARVEST_RADIUS)
+			if not resource then
+				stopHit()
 				task.wait(2)
 				continue
 			end
 
-			local resource = findNearestFloatingResource(hrp.Position, HARVEST_RADIUS)
-			if not resource then
-				if hitTrack.IsPlaying then hitTrack:Stop() end
-				task.wait(2)
-				continue
-			end
+			print(string.format(
+				"[MercHarvest] targeting %s at %.1f studs",
+				tostring(resource:GetAttribute("ResourceType")),
+				(getResourcePosition(resource) - hrp.Position).Magnitude
+			))
 
 			-- Face the resource
 			local resPos = getResourcePosition(resource)
@@ -364,9 +379,9 @@ local function startHarvestLoop(model, raftPart, localOffset)
 				Vector3.new(resPos.X, hrp.Position.Y, resPos.Z)
 			)
 
-			if not hitTrack.IsPlaying then hitTrack:Play() end
+			playHit()
 
-			-- Wait 15s, with periodic checks
+			-- Wait HARVEST_DURATION, with periodic checks
 			local elapsed = 0
 			while elapsed < HARVEST_DURATION and activeTokens[model] == token do
 				task.wait(0.5)
@@ -393,17 +408,17 @@ local function startHarvestLoop(model, raftPart, localOffset)
 			end
 
 			if delivered > 0 then
+				print(string.format("[MercHarvest] harvested %dx %s", delivered, resType))
 				catchNotifyEvent:FireClient(owner, model, resType)
 				resource:Destroy()
 			else
-				-- Backpack full — notify and pause before retrying
 				catchNotifyEvent:FireClient(owner, model, "__BACKPACK_FULL__")
-				if hitTrack.IsPlaying then hitTrack:Stop() end
+				stopHit()
 				task.wait(2)
 			end
 		end
 
-		if hitTrack.IsPlaying then hitTrack:Stop() end
+		stopHit()
 		if activeTokens[model] == token then
 			activeTokens[model] = nil
 		end
