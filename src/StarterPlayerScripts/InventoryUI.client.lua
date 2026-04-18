@@ -110,6 +110,12 @@ local ITEM_RARITY = {
 	["Phone"] = "super_rare",
 }
 
+-- Forward-declared so functions above line 1585 (quickTransfer,
+-- drag-drop handlers, etc.) can reference it via the same upvalue
+-- that gets assigned later. Without this, those call sites resolve
+-- against a nil global and throw 'attempt to call a nil value'.
+local syncSlotLayoutToServer
+
 local function getItemRarity(itemName)
 	-- Returns nil for items that should render without a rarity frame.
 	return itemName and ITEM_RARITY[itemName] or nil
@@ -1582,7 +1588,7 @@ end
 -- ─── Slot layout sync to server ───
 local slotLayoutEvent = ReplicatedStorage:FindFirstChild("SlotLayoutSync")
 
-local function syncSlotLayoutToServer()
+function syncSlotLayoutToServer()
 	if not slotLayoutEvent then
 		slotLayoutEvent = ReplicatedStorage:FindFirstChild("SlotLayoutSync")
 	end
