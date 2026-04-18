@@ -952,6 +952,8 @@ buildEquipmentPage = function(mercName, mercNames)
 	end
 	-- Sword is always unlocked
 	unlockedSet["Sword"] = true
+	-- Unarmed is always available (removes the held weapon)
+	unlockedSet["Unarmed"] = true
 	-- Backpack is always unlocked (free starter artifact)
 	unlockedSet["Backpack"] = true
 	-- Fallback: also scan Backpack and Character for tools the server
