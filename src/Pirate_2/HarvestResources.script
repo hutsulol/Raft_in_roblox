@@ -5,6 +5,7 @@ local PICKUP_RADIUS   = 50   -- matches the player's pickup radius
 local ATTACK_COOLDOWN = 1.0
 local HARVEST_TYPES = { Log = true, Plastic = true, Leaves = true }
 local HOSTILE_BACKOFF_RANGE = 120
+local HIT_ANIM_ID = "rbxassetid://77340277526241"
 
 local BACKPACK_SLOT_COUNTS = {
 	Backpack = 6,
@@ -28,6 +29,49 @@ if not humanoid then return end
 
 local function getHRP()
 	return model:FindFirstChild("HumanoidRootPart")
+end
+
+-- Load the HitAnim bundled at model.Animate.hit.HitAnim. Fall back to
+-- the raw asset id when the child isn't present (e.g. template not yet
+-- synced).
+local function getHitAnimation()
+	local animate = model:FindFirstChild("Animate")
+	if animate then
+		local hit = animate:FindFirstChild("hit")
+		if hit then
+			local anim = hit:FindFirstChild("HitAnim")
+			if anim and anim:IsA("Animation") then
+				return anim
+			end
+		end
+	end
+	local fallback = Instance.new("Animation")
+	fallback.AnimationId = HIT_ANIM_ID
+	return fallback
+end
+
+local animator = humanoid:FindFirstChildOfClass("Animator")
+if not animator then
+	animator = Instance.new("Animator")
+	animator.Parent = humanoid
+end
+
+local hitTrack
+do
+	local ok, track = pcall(function()
+		return animator:LoadAnimation(getHitAnimation())
+	end)
+	if ok and track then
+		track.Priority = Enum.AnimationPriority.Action3
+		track.Looped = false
+		hitTrack = track
+	end
+end
+
+local function playHitAnim()
+	if not hitTrack then return end
+	hitTrack:Stop()
+	hitTrack:Play()
 end
 
 local function getSlotCount(mercEntry)
@@ -145,6 +189,7 @@ task.spawn(function()
 		local now = tick()
 		if now - lastAttack >= ATTACK_COOLDOWN then
 			lastAttack = now
+			playHitAnim()
 			harvestResource(resource)
 		end
 		task.wait(0.25)
