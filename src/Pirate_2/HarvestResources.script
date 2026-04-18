@@ -1,10 +1,8 @@
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
-local RunService = game:GetService("RunService")
 
-local DETECTION_RADIUS = 40
-local ATTACK_RANGE     = 15
-local ATTACK_COOLDOWN  = 1.0
+local PICKUP_RADIUS   = 50   -- matches the player's pickup radius
+local ATTACK_COOLDOWN = 1.0
 local HARVEST_TYPES = { Log = true, Plastic = true, Leaves = true }
 local HOSTILE_BACKOFF_RANGE = 120
 
@@ -66,7 +64,7 @@ local function getResourcePos(resource)
 end
 
 local function findNearestResource(myPos)
-	local closest, closestDist = nil, DETECTION_RADIUS
+	local closest, closestDist = nil, PICKUP_RADIUS
 	for _, resource in CollectionService:GetTagged("Resource") do
 		if resource.Parent then
 			local rt = resource:GetAttribute("ResourceType")
@@ -128,11 +126,11 @@ task.spawn(function()
 	while model.Parent and humanoid.Health > 0 do
 		local hrp = getHRP()
 		if not hrp then
-			task.wait(0.2)
+			task.wait(0.25)
 			continue
 		end
 
-		-- Let Combat.script drive the rig when an enemy is nearby.
+		-- Combat takes priority — let Combat.script drive the rig.
 		if hasHostileNearby(hrp.Position) then
 			task.wait(0.5)
 			continue
@@ -140,27 +138,15 @@ task.spawn(function()
 
 		local resource = findNearestResource(hrp.Position)
 		if not resource then
-			task.wait(1)
+			task.wait(0.5)
 			continue
 		end
 
-		local resPos = getResourcePos(resource)
-		local dist = (resPos - hrp.Position).Magnitude
-
-		if dist > ATTACK_RANGE then
-			-- Approach the resource on the horizontal plane; the merc
-			-- stops at the raft edge rather than swimming into open water.
-			local target = Vector3.new(resPos.X, hrp.Position.Y, resPos.Z)
-			humanoid:MoveTo(target)
-			task.wait(0.25)
-		else
-			humanoid:MoveTo(hrp.Position)
-			local now = tick()
-			if now - lastAttack >= ATTACK_COOLDOWN then
-				lastAttack = now
-				harvestResource(resource)
-			end
-			task.wait(0.2)
+		local now = tick()
+		if now - lastAttack >= ATTACK_COOLDOWN then
+			lastAttack = now
+			harvestResource(resource)
 		end
+		task.wait(0.25)
 	end
 end)
