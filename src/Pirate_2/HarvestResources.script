@@ -4,8 +4,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- Same "broke" notify the player's click path fires — gives every
 -- client the resource-specific break sound (Plastic Break, Rock_Crush,
--- etc.) when the merc shatters a resource.
-local collectNotify = ReplicatedStorage:FindFirstChild("CollectNotify")
+-- etc.) when the merc shatters a resource. ResourceSpawner creates
+-- this RemoteEvent at startup; use WaitForChild so we don't race it
+-- when the merc spawns before the spawner's first tick.
+local collectNotify = ReplicatedStorage:WaitForChild("CollectNotify", 10)
 
 local PICKUP_RADIUS   = 50   -- matches the player's pickup radius
 local ATTACK_COOLDOWN = 1.0
