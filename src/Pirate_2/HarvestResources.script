@@ -237,34 +237,42 @@ local function getOwnerEntry()
 end
 
 local function playBreakSound(resource, rt)
-	local template
-	local childName = BREAK_SOUND_CHILD[rt]
-	if childName then
-		template = resource:FindFirstChild(childName, true)
-	end
-	if not template then
+	if rt == "Log" or rt == "Leaves" then
+		-- Log / Leaves ship a Sound child inside the resource template.
+		-- Clone it onto an invisible anchored workspace part at the
+		-- resource's position so it plays spatially.
+		local childName = BREAK_SOUND_CHILD[rt]
+		local template = childName and resource:FindFirstChild(childName, true)
+		if not template or not template:IsA("Sound") then return end
+
+		local clone = template:Clone()
+		local anchor = Instance.new("Part")
+		anchor.Anchored = true
+		anchor.CanCollide = false
+		anchor.CanQuery = false
+		anchor.CanTouch = false
+		anchor.Transparency = 1
+		anchor.Size = Vector3.new(0.1, 0.1, 0.1)
+		anchor.CFrame = CFrame.new(getResourcePos(resource))
+		anchor.Parent = workspace
+
+		clone.Parent = anchor
+		clone:Play()
+
+		Debris:AddItem(anchor, 5)
+	else
+		-- Plastic / Rock live in SoundService and play as 2D sounds —
+		-- match the client's ResourcePull path exactly.
 		local svcName = BREAK_SOUND_SERVICE[rt]
-		if svcName then
-			template = SoundService:FindFirstChild(svcName)
-		end
+		local template = svcName and SoundService:FindFirstChild(svcName)
+		if not template or not template:IsA("Sound") then return end
+
+		local clone = template:Clone()
+		clone.Parent = SoundService
+		clone:Play()
+
+		Debris:AddItem(clone, 5)
 	end
-	if not template or not template:IsA("Sound") then return end
-
-	local clone = template:Clone()
-	local anchor = Instance.new("Part")
-	anchor.Anchored = true
-	anchor.CanCollide = false
-	anchor.CanQuery = false
-	anchor.CanTouch = false
-	anchor.Transparency = 1
-	anchor.Size = Vector3.new(0.1, 0.1, 0.1)
-	anchor.CFrame = CFrame.new(getResourcePos(resource))
-	anchor.Parent = workspace
-
-	clone.Parent = anchor
-	clone:Play()
-
-	Debris:AddItem(anchor, 5)
 end
 
 local function harvestResource(resource)
