@@ -347,11 +347,13 @@ openContainer.OnClientEvent:Connect(function(container)
 	openContainerUI(container)
 end)
 
--- Close UI on Escape
+-- Close both menus on Escape / E while the container UI is open
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
-	if input.KeyCode == Enum.KeyCode.Escape and activeGui then
+	if not activeGui then return end
+	if input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.E then
 		closeContainer()
+		if _G.CloseInventory then _G.CloseInventory() end
 	end
 end)
 
@@ -362,4 +364,32 @@ _G.ContainerTransferFromPlayer = function(itemName, count)
 	if typeof(itemName) ~= "string" or itemName == "" then return false end
 	containerAction:FireServer("put", activeContainer, nil, itemName, count or 1)
 	return true
+end
+
+-- Called by InventoryUI.endDrag when a drag ends outside all player
+-- slots. If the mouse is over one of this chest's slots, fire 'put'
+-- with the dragged stack and tell the caller we consumed the drop.
+local function mouseOverFrame(frame, mx, my)
+	if not frame or not frame.Parent then return false end
+	local pos = frame.AbsolutePosition
+	local size = frame.AbsoluteSize
+	return mx >= pos.X and mx <= pos.X + size.X
+		and my >= pos.Y and my <= pos.Y + size.Y
+end
+
+_G.ContainerTryDrop = function(mousePos, itemName, count)
+	if not activeContainer or not activeGui then return false end
+	if typeof(itemName) ~= "string" or itemName == "" then return false end
+	local panel = activeGui:FindFirstChild("Panel")
+	if not panel then return false end
+
+	local mx, my = mousePos.X, mousePos.Y
+	for i = 1, CONTAINER_SLOTS do
+		local btn = panel:FindFirstChild("Slot" .. i)
+		if btn and mouseOverFrame(btn, mx, my) then
+			containerAction:FireServer("put", activeContainer, i, itemName, count or 1)
+			return true
+		end
+	end
+	return false
 end

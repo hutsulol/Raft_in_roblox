@@ -995,7 +995,28 @@ local function endDrag(mousePos)
 			slotData[srcSlot] = dstData
 		end
 	elseif not targetSlot and srcSlot then
-		-- Dropped outside any slot: drop item into the world
+		-- Dropped outside any slot. If a chest/container is open and the
+		-- release was inside one of its slots, push the stack in there
+		-- instead of dumping to the world.
+		if _G.ActiveContainer and typeof(_G.ContainerTryDrop) == "function" then
+			local data = slotData[srcSlot]
+			if data and data.type == "resource"
+				and _G.ContainerTryDrop(mousePos, data.name, data.count)
+			then
+				local dropCount = isSplit and 1 or data.count
+				if dropCount >= data.count then
+					slotData[srcSlot] = nil
+				else
+					data.count = data.count - dropCount
+				end
+				cancelDrag()
+				dragState.didDrag = true
+				renderAllSlots()
+				syncSlotLayoutToServer()
+				return
+			end
+		end
+
 		local srcData = slotData[srcSlot]
 		if srcData then
 			local dropEvt = ReplicatedStorage:FindFirstChild("DropItem")
