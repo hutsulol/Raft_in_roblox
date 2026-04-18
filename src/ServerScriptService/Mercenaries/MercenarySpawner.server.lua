@@ -70,23 +70,25 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	-- FishingRod mercs spawn with a fake (visual-only) rod so they can walk
 	-- around holding it. The real rod is swapped in by MercenaryMovement
 	-- when the pirate reaches the fishing spot.
-	local weaponName = equippedWeapon
-	if weaponName == "Sword" then
-		weaponName = "ClassicSword"
-	elseif weaponName == "FishingRod" then
-		weaponName = "FishingRod_Fake"
-	end
+	if equippedWeapon ~= "Unarmed" then
+		local weaponName = equippedWeapon
+		if weaponName == "Sword" then
+			weaponName = "ClassicSword"
+		elseif weaponName == "FishingRod" then
+			weaponName = "FishingRod_Fake"
+		end
 
-	local weaponTemplate = ReplicatedStorage:FindFirstChild(weaponName)
-		or ReplicatedStorage:FindFirstChild(weaponName, true)
-		or ReplicatedStorage:FindFirstChild(equippedWeapon)
-		or ReplicatedStorage:FindFirstChild(equippedWeapon, true)
-	if weaponTemplate and weaponTemplate:IsA("Tool") then
-		local wArchivable = weaponTemplate.Archivable
-		weaponTemplate.Archivable = true
-		local weaponClone = weaponTemplate:Clone()
-		weaponTemplate.Archivable = wArchivable
-		weaponClone.Parent = clone
+		local weaponTemplate = ReplicatedStorage:FindFirstChild(weaponName)
+			or ReplicatedStorage:FindFirstChild(weaponName, true)
+			or ReplicatedStorage:FindFirstChild(equippedWeapon)
+			or ReplicatedStorage:FindFirstChild(equippedWeapon, true)
+		if weaponTemplate and weaponTemplate:IsA("Tool") then
+			local wArchivable = weaponTemplate.Archivable
+			weaponTemplate.Archivable = true
+			local weaponClone = weaponTemplate:Clone()
+			weaponTemplate.Archivable = wArchivable
+			weaponClone.Parent = clone
+		end
 	end
 
 	-- Remove EquipFishingRod script if present (handled by spawner now)

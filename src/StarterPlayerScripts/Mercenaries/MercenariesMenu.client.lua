@@ -170,6 +170,10 @@ local function applyWeaponToClone(clone, weaponId)
 		end
 	end
 
+	if weaponId == "Unarmed" then
+		return false
+	end
+
 	local hasWeapon = false
 	local weaponTemplate = ReplicatedStorage:FindFirstChild(requestedTool)
 		or ReplicatedStorage:FindFirstChild(requestedTool, true)
@@ -862,6 +866,15 @@ local EQUIP_CATEGORIES = { "Weapons", "Artifacts" }
 local EQUIP_ITEMS = {
 	Weapons = {
 		{
+			id            = "Unarmed",
+			displayName   = "Unarmed",
+			typeName      = "None",
+			stars         = 1,
+			baseAttack    = 0,
+			description   = "No weapon. Mercenary carries nothing in hand.",
+			alwaysUnlocked = true,
+		},
+		{
 			id            = "Sword",
 			displayName   = "Pirate Sword",
 			typeName      = "Melee",
@@ -1303,7 +1316,9 @@ buildEquipmentPage = function(mercName, mercNames)
 				iconLabel.Font = FONT_TITLE
 				iconLabel.TextSize = 28
 				iconLabel.TextColor3 = unlocked and COLOR_TEXT or COLOR_TEXT_DIM
-				iconLabel.Text = item.id == "Sword" and "⚔" or "🎣"
+				iconLabel.Text = (item.id == "Sword" and "⚔")
+					or (item.id == "Unarmed" and "✋")
+					or "🎣"
 				iconLabel.ZIndex = 53
 				iconLabel.Parent = card
 			end

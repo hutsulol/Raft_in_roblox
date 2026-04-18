@@ -161,7 +161,11 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
 			if not found and player.Character and player.Character:FindFirstChild(itemId) then
 				found = true
 			end
-			if not found and itemId ~= "Sword" and itemId ~= "Backpack" then return end
+			if not found
+				and itemId ~= "Sword"
+				and itemId ~= "Backpack"
+				and itemId ~= "Unarmed"
+			then return end
 			if found then
 				tryUnlock(player, backpack:FindFirstChild(itemId) or player.Character:FindFirstChild(itemId))
 			end
@@ -193,6 +197,24 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
 			end
 		else
 			mercEntry:SetAttribute("EquippedWeapon", itemId)
+
+			-- If Unarmed, strip the tool from any currently-spawned merc
+			-- owned by this player so the change is visible immediately.
+			if itemId == "Unarmed" then
+				local CollectionService = game:GetService("CollectionService")
+				for _, model in CollectionService:GetTagged("SpawnedMercenary") do
+					if model:GetAttribute("OwnerUserId") == player.UserId
+						and model:GetAttribute("MercName") == mercName
+						and model.Parent then
+						model:SetAttribute("EquippedWeapon", "Unarmed")
+						for _, child in model:GetChildren() do
+							if child:IsA("Tool") then
+								child:Destroy()
+							end
+						end
+					end
+				end
+			end
 		end
 
 		equipEvent:FireClient(player, "equipped", mercName, itemId)
