@@ -26,6 +26,7 @@ local currentTool = nil
 local lastGhostValid = false
 local lastGhostRaftOffset = nil
 local rotationAngle = 0
+local ghostTemplateRotation = CFrame.new()
 
 local function findTemplate()
 	local folder = ReplicatedStorage:FindFirstChild("Containers_Player")
@@ -44,10 +45,13 @@ local function createGhost()
 	ghost = template:Clone()
 	ghost.Name = "SmallContainerGhost"
 
-	-- Reset WorldPivot to bounding box center with identity rotation
-	-- (match the WorkBench pattern in CupPurifier.client.lua).
+	-- Reset WorldPivot to bounding box center with identity rotation,
+	-- and capture the template's natural rotation so PivotTo below can
+	-- reapply it (matches the bush placement pattern — needed because
+	-- Container_empty's PrimaryPart is not axis-aligned in the template).
 	local bbCF = ghost:GetBoundingBox()
 	ghost.WorldPivot = CFrame.new(bbCF.Position)
+	ghostTemplateRotation = bbCF.Rotation
 
 	for _, part in ghost:GetDescendants() do
 		if part:IsA("BasePart") then
@@ -141,6 +145,7 @@ local function updateGhost()
 	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z)
 		* CFrame.Angles(0, restYaw + rotationAngle, 0)
+		* ghostTemplateRotation
 
 	ghost:PivotTo(placeCF)
 
