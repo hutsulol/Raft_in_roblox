@@ -19,15 +19,33 @@ local lastGhostRaftOffset = nil
 local currentTool = nil
 local rotationAngle = 0
 
+local function findContainerTemplate()
+	local folder = ReplicatedStorage:FindFirstChild("Containers_Player")
+	local tmpl = folder and folder:FindFirstChild("Container_empty")
+	if not tmpl then
+		tmpl = ReplicatedStorage:FindFirstChild("Container_empty", true)
+	end
+	return tmpl
+end
+
 local function createGhost()
 	if ghost then ghost:Destroy() end
 
-	local template = ReplicatedStorage:FindFirstChild("SmallContainer")
-	if template and template:IsA("Model") then
+	local template = findContainerTemplate()
+	if template and (template:IsA("Model") or template:IsA("BasePart")) then
+		local archivable = template.Archivable
+		template.Archivable = true
 		ghost = template:Clone()
+		template.Archivable = archivable
 		ghost.Name = "SmallContainerGhost"
-		local bbCF = ghost:GetBoundingBox()
-		ghost.WorldPivot = CFrame.new(bbCF.Position)
+		if ghost:IsA("Model") and not ghost.PrimaryPart then
+			local first = ghost:FindFirstChildWhichIsA("BasePart", true)
+			if first then ghost.PrimaryPart = first end
+		end
+		if ghost:IsA("Model") then
+			local bbCF = ghost:GetBoundingBox()
+			ghost.WorldPivot = CFrame.new(bbCF.Position)
+		end
 	else
 		ghost = Instance.new("Model")
 		ghost.Name = "SmallContainerGhost"

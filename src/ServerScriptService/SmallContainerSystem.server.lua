@@ -10,9 +10,22 @@ if not actionEvent then
 end
 
 local function buildContainerModel()
-	local template = ReplicatedStorage:FindFirstChild("SmallContainer")
-	if template and template:IsA("Model") then
-		return template:Clone()
+	local folder = ReplicatedStorage:FindFirstChild("Containers_Player")
+	local template = folder and folder:FindFirstChild("Container_empty")
+	if not template then
+		template = ReplicatedStorage:FindFirstChild("Container_empty", true)
+	end
+	if template and (template:IsA("Model") or template:IsA("BasePart")) then
+		local archivable = template.Archivable
+		template.Archivable = true
+		local clone = template:Clone()
+		template.Archivable = archivable
+		clone.Name = "SmallContainer"
+		if clone:IsA("Model") and not clone.PrimaryPart then
+			local first = clone:FindFirstChildWhichIsA("BasePart", true)
+			if first then clone.PrimaryPart = first end
+		end
+		return clone
 	end
 
 	local model = Instance.new("Model")
