@@ -255,15 +255,11 @@ local function refreshCharacterViewport()
 	local animator
 	if humanoid then
 		humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-		humanoid.EvaluateStateMachine = false
-		-- Disable every Humanoid state so the rig can't ragdoll, fall,
-		-- jump, swim, climb, or otherwise react to anything in the
-		-- WorldModel. The idle animation is what poses the limbs.
-		for _, state in Enum.HumanoidStateType:GetEnumItems() do
-			pcall(function()
-				humanoid:SetStateEnabled(state, false)
-			end)
-		end
+		-- Do NOT disable EvaluateStateMachine or SetStateEnabled(...) on
+		-- every HumanoidStateType — that stops the Animator from ticking
+		-- tracks (Motor6D.Transform never updates, rig stays in T-pose).
+		-- Anchoring the HumanoidRootPart below is enough to keep the rig
+		-- in place inside the WorldModel without simulating physics.
 		animator = humanoid:FindFirstChildOfClass("Animator")
 		if not animator then
 			animator = Instance.new("Animator")
