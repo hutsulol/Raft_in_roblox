@@ -283,16 +283,6 @@ local function openContainerUI(container)
 		bs.Thickness = 1.5
 		bs.Parent = btn
 
-		local rarityFrame = Instance.new("ImageLabel")
-		rarityFrame.Name = "RarityFrame"
-		rarityFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-		rarityFrame.Size = UDim2.new(1, 0, 1, 0)
-		rarityFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-		rarityFrame.BackgroundTransparency = 1
-		rarityFrame.ScaleType = Enum.ScaleType.Stretch
-		rarityFrame.Visible = false
-		rarityFrame.Parent = btn
-
 		local iconLbl = Instance.new("ImageLabel")
 		iconLbl.Name = "ItemIcon"
 		iconLbl.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -317,7 +307,7 @@ local function openContainerUI(container)
 		countLbl.Parent = btn
 
 		slotFrames[i] = btn
-		slotVisuals[i] = { button = btn, iconLbl = iconLbl, rarityFrame = rarityFrame, countLbl = countLbl }
+		slotVisuals[i] = { button = btn, iconLbl = iconLbl, countLbl = countLbl }
 	end
 
 	local function refreshSlots()
@@ -332,19 +322,10 @@ local function openContainerUI(container)
 			local count = activeContainer:GetAttribute("Slot" .. i .. "_Count") or 0
 
 			if typeof(name) == "string" and name ~= "" and count > 0 then
-				local rarity = _G.GetItemRarity and _G.GetItemRarity(name) or nil
-				local frameAsset = (_G.GetRarityFrameAsset and _G.GetRarityFrameAsset(rarity)) or ""
 				local iconAsset = (_G.GetItemIcon and _G.GetItemIcon(name)) or ""
-				if frameAsset ~= "" then
-					s.rarityFrame.Image = frameAsset
-					s.rarityFrame.Visible = true
-				else
-					s.rarityFrame.Visible = false
-				end
 				s.iconLbl.Image = iconAsset
 				s.countLbl.Text = count > 1 and tostring(count) or ""
 			else
-				s.rarityFrame.Visible = false
 				s.iconLbl.Image = ""
 				s.countLbl.Text = ""
 			end
@@ -409,21 +390,7 @@ local function openContainerUI(container)
 		ghost.BorderSizePixel = 0
 		ghost.Parent = ghostGui
 
-		local rarity = _G.GetItemRarity and _G.GetItemRarity(itemName) or nil
-		local frameAsset = (_G.GetRarityFrameAsset and _G.GetRarityFrameAsset(rarity)) or ""
 		local iconAsset = (_G.GetItemIcon and _G.GetItemIcon(itemName)) or ""
-
-		if frameAsset ~= "" then
-			local gFrame = Instance.new("ImageLabel")
-			gFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-			gFrame.Size = UDim2.new(1, 0, 1, 0)
-			gFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-			gFrame.BackgroundTransparency = 1
-			gFrame.Image = frameAsset
-			gFrame.ScaleType = Enum.ScaleType.Stretch
-			gFrame.ZIndex = 1
-			gFrame.Parent = ghost
-		end
 
 		local gIcon = Instance.new("ImageLabel")
 		gIcon.AnchorPoint = Vector2.new(0.5, 0.5)
