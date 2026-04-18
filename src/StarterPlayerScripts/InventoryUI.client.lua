@@ -83,6 +83,7 @@ local TOOL_ICONS = {
 	["Injector"] = "rbxassetid://81132472504693",
 	["EmptyCapsule"] = "rbxassetid://116714708119585",
 	["FullCapsule"] = "rbxassetid://132749498016835",
+	["Phone"] = "rbxassetid://122333372049252",
 }
 
 -- Forward-declared so functions above line 1585 (quickTransfer,

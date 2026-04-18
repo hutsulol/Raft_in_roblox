@@ -118,6 +118,19 @@ local function collectPlayerTools(player, toolName, limit)
 	return out
 end
 
+local function cleanseExternalWelds(tool)
+	for _, d in tool:GetDescendants() do
+		if d:IsA("WeldConstraint") then
+			local p0, p1 = d.Part0, d.Part1
+			local p0In = p0 and p0:IsDescendantOf(tool)
+			local p1In = p1 and p1:IsDescendantOf(tool)
+			if not p0In or not p1In then
+				d:Destroy()
+			end
+		end
+	end
+end
+
 -- ═══════════════════════════════════════════
 -- CupAction: place
 -- ═══════════════════════════════════════════
@@ -198,6 +211,7 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 			for _, t in storage:GetChildren() do
 				if moved >= n then break end
 				if t:IsA("Tool") and t.Name == name then
+					cleanseExternalWelds(t)
 					t.Parent = backpack
 					moved = moved + 1
 				end

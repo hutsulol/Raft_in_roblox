@@ -42,6 +42,24 @@ local activeContainer = nil
 local conns = {}
 local slotFrames = {}  -- [i] = TextButton for slot i; used by hit-tests
 
+-- Tools crafted via InventoryCrafting set their TextureId at craft time;
+-- the shared icon map doesn't always list them (e.g. Phone). Fall back
+-- to the Tool's own TextureId inside StoredTools so the slot still shows
+-- an icon for any tool, not just the ones hard-coded in TOOL_ICONS.
+local function resolveItemIcon(container, itemName)
+	local iconAsset = (_G.GetItemIcon and _G.GetItemIcon(itemName)) or ""
+	if iconAsset ~= "" then return iconAsset end
+	if not container then return "" end
+	local storage = container:FindFirstChild("StoredTools")
+	if not storage then return "" end
+	for _, t in storage:GetChildren() do
+		if t:IsA("Tool") and t.Name == itemName and t.TextureId ~= "" then
+			return t.TextureId
+		end
+	end
+	return ""
+end
+
 local function disconnectAll()
 	for _, c in conns do
 		if c.Disconnect then c:Disconnect() end
@@ -322,8 +340,7 @@ local function openContainerUI(container)
 			local count = activeContainer:GetAttribute("Slot" .. i .. "_Count") or 0
 
 			if typeof(name) == "string" and name ~= "" and count > 0 then
-				local iconAsset = (_G.GetItemIcon and _G.GetItemIcon(name)) or ""
-				s.iconLbl.Image = iconAsset
+				s.iconLbl.Image = resolveItemIcon(activeContainer, name)
 				s.countLbl.Text = count > 1 and tostring(count) or ""
 			else
 				s.iconLbl.Image = ""
@@ -390,7 +407,7 @@ local function openContainerUI(container)
 		ghost.BorderSizePixel = 0
 		ghost.Parent = ghostGui
 
-		local iconAsset = (_G.GetItemIcon and _G.GetItemIcon(itemName)) or ""
+		local iconAsset = resolveItemIcon(activeContainer, itemName)
 
 		local gIcon = Instance.new("ImageLabel")
 		gIcon.AnchorPoint = Vector2.new(0.5, 0.5)

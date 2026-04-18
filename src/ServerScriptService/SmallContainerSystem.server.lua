@@ -118,9 +118,10 @@ local function swapContainerModel(container)
 	container:PivotTo(savedCF)
 
 	local raft = workspace:FindFirstChild("Raft")
+	local storage = container:FindFirstChild("StoredTools")
 	if raft and raft.PrimaryPart then
 		for _, part in container:GetDescendants() do
-			if part:IsA("BasePart") then
+			if part:IsA("BasePart") and not (storage and part:IsDescendantOf(storage)) then
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
 				weld.Part1 = raft.PrimaryPart
@@ -217,6 +218,23 @@ local function collectPlayerTools(player, toolName, limit)
 	return out
 end
 
+-- Strip any WeldConstraints inside the tool that reference parts outside
+-- of it. A previous model-swap bug welded every stored tool's Handle to
+-- the raft; without cleanup the tool stays stuck to the raft after
+-- being handed back to the player.
+local function cleanseExternalWelds(tool)
+	for _, d in tool:GetDescendants() do
+		if d:IsA("WeldConstraint") then
+			local p0, p1 = d.Part0, d.Part1
+			local p0In = p0 and p0:IsDescendantOf(tool)
+			local p1In = p1 and p1:IsDescendantOf(tool)
+			if not p0In or not p1In then
+				d:Destroy()
+			end
+		end
+	end
+end
+
 -- ═══════════════════════════════════════════
 -- CupAction: place
 -- ═══════════════════════════════════════════
@@ -298,6 +316,7 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 			for _, t in storage:GetChildren() do
 				if moved >= n then break end
 				if t:IsA("Tool") and t.Name == name then
+					cleanseExternalWelds(t)
 					t.Parent = backpack
 					moved = moved + 1
 				end
