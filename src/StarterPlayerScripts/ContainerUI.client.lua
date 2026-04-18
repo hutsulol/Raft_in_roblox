@@ -92,7 +92,6 @@ local function closeContainer()
 	end
 	activeContainer = nil
 	_G.ActiveContainer = nil
-	_G.SuppressInventoryToggle = false
 	table.clear(slotFrames)
 end
 
@@ -104,10 +103,6 @@ local function openContainerUI(container)
 
 	activeContainer = container
 	_G.ActiveContainer = container
-	-- Block InventoryUI's E toggle while the chest is open so pressing E
-	-- closes the whole menu via our own handler instead of InventoryUI
-	-- re-opening the inventory after we close it.
-	_G.SuppressInventoryToggle = true
 
 	if _G.OpenInventory then
 		_G.OpenInventory()
@@ -556,13 +551,15 @@ openContainer.OnClientEvent:Connect(function(container)
 	openContainerUI(container)
 end)
 
--- Close both menus on Escape / E while the container UI is open
+-- Escape closes the chest + inventory together. E is handled by
+-- InventoryUI's toggle (which cascades CloseContainer via closeUI) so
+-- we don't fight the deferred toggle.
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	if not activeGui then return end
-	if input.KeyCode == Enum.KeyCode.Escape or input.KeyCode == Enum.KeyCode.E then
-		closeContainer()
+	if input.KeyCode == Enum.KeyCode.Escape then
 		if _G.CloseInventory then _G.CloseInventory() end
+		closeContainer()
 	end
 end)
 
