@@ -235,6 +235,46 @@ local function cleanseExternalWelds(tool)
 	end
 end
 
+-- Tool BaseParts still render and collide when the Tool lives in a
+-- Workspace Model/Folder (unlike Backpack/Character where the engine
+-- hides them). Hide the handles while stored, cache their original
+-- values on attributes, and restore them when the tool is handed back.
+local HIDDEN_TAG = "ChestHidden"
+
+local function hideStoredTool(tool)
+	if tool:GetAttribute(HIDDEN_TAG) then return end
+	tool:SetAttribute(HIDDEN_TAG, true)
+	for _, d in tool:GetDescendants() do
+		if d:IsA("BasePart") then
+			d:SetAttribute("__ct", d.Transparency)
+			d:SetAttribute("__cc", d.CanCollide)
+			d:SetAttribute("__cq", d.CanQuery)
+			d:SetAttribute("__ch", d.CanTouch)
+			d.Transparency = 1
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+		end
+	end
+end
+
+local function revealStoredTool(tool)
+	if not tool:GetAttribute(HIDDEN_TAG) then return end
+	tool:SetAttribute(HIDDEN_TAG, nil)
+	for _, d in tool:GetDescendants() do
+		if d:IsA("BasePart") then
+			local t = d:GetAttribute("__ct")
+			local c = d:GetAttribute("__cc")
+			local q = d:GetAttribute("__cq")
+			local h = d:GetAttribute("__ch")
+			if t ~= nil then d.Transparency = t; d:SetAttribute("__ct", nil) end
+			if c ~= nil then d.CanCollide = c; d:SetAttribute("__cc", nil) end
+			if q ~= nil then d.CanQuery = q; d:SetAttribute("__cq", nil) end
+			if h ~= nil then d.CanTouch = h; d:SetAttribute("__ch", nil) end
+		end
+	end
+end
+
 -- ═══════════════════════════════════════════
 -- CupAction: place
 -- ═══════════════════════════════════════════
@@ -317,6 +357,7 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 				if moved >= n then break end
 				if t:IsA("Tool") and t.Name == name then
 					cleanseExternalWelds(t)
+					revealStoredTool(t)
 					t.Parent = backpack
 					moved = moved + 1
 				end
@@ -408,6 +449,7 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 			local storage = getOrCreateToolStorage(container)
 			for i = 1, toPut do
 				tools[i].Parent = storage
+				hideStoredTool(tools[i])
 			end
 
 			container:SetAttribute("Slot" .. targetSlot .. "_Name", itemName)
