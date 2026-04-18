@@ -45,13 +45,12 @@ local function createGhost()
 	ghost = template:Clone()
 	ghost.Name = "SmallContainerGhost"
 
-	-- Reset WorldPivot to bounding box center with identity rotation,
-	-- and capture the template's natural rotation so PivotTo below can
-	-- reapply it (matches the bush placement pattern — needed because
-	-- Container_empty's PrimaryPart is not axis-aligned in the template).
+	-- Reset WorldPivot to bounding box center with identity rotation —
+	-- exactly what CupPurifier.client.lua does for WorkBench / Furnace /
+	-- Destitalor / Bed / Garden / Sawmill (every non-bush placeable).
 	local bbCF = ghost:GetBoundingBox()
 	ghost.WorldPivot = CFrame.new(bbCF.Position)
-	ghostTemplateRotation = bbCF.Rotation
+	ghostTemplateRotation = CFrame.new()
 
 	for _, part in ghost:GetDescendants() do
 		if part:IsA("BasePart") then
@@ -144,13 +143,12 @@ local function updateGhost()
 	local ghostSize = ghost:GetExtentsSize()
 	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 
-	-- World-space placement like the WorkBench, but flip the template
-	-- about its X axis so Container_empty lies flat on the raft instead
-	-- of standing on its end.
+	-- Identical formula to WorkBench / Furnace / Bed / Sawmill placement
+	-- in CupPurifier.client.lua. No extra axis flips — if the model sits
+	-- the way it was authored, it will sit the same way on the raft.
 	local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z)
 		* CFrame.Angles(0, restYaw + rotationAngle, 0)
 		* ghostTemplateRotation
-		* CFrame.Angles(math.rad(90), 0, 0)
 
 	ghost:PivotTo(placeCF)
 
