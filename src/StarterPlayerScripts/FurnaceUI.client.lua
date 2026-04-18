@@ -509,6 +509,23 @@ openFurnaceEvent.OnClientEvent:Connect(function(furnaceModel, state)
 	openUI(furnaceModel, state)
 end)
 
+-- E / Escape closes the furnace UI. Same guard pattern as the chest
+-- and workbench: block InventoryUI's deferred E toggle while we tear
+-- down, then clear the flag after 0.25 s so later E presses work
+-- normally.
+UserInputService.InputBegan:Connect(function(input)
+	if not isOpen then return end
+	if input.KeyCode ~= Enum.KeyCode.E
+		and input.KeyCode ~= Enum.KeyCode.Escape then
+		return
+	end
+	_G.SuppressInventoryToggle = true
+	closeUI()
+	task.delay(0.25, function()
+		_G.SuppressInventoryToggle = false
+	end)
+end)
+
 furnaceEvent.OnClientEvent:Connect(function(action, data, extra1, extra2)
 	if action == "stateUpdate" then
 		if data then
