@@ -328,6 +328,70 @@ local function openContainerUI(container)
 		slotVisuals[i] = { button = btn, iconLbl = iconLbl, countLbl = countLbl }
 	end
 
+	-- Hover tooltip — mirrors the inventory's behaviour (name shown
+	-- above the cursor, follows the mouse, hides while dragging).
+	local tooltipGui = Instance.new("ScreenGui")
+	tooltipGui.Name = "ContainerTooltip"
+	tooltipGui.ResetOnSpawn = false
+	tooltipGui.IgnoreGuiInset = true
+	tooltipGui.DisplayOrder = 201
+	tooltipGui.Enabled = false
+	tooltipGui.Parent = playerGui
+	table.insert(conns, { Disconnect = function() tooltipGui:Destroy() end })
+
+	local tooltipLabel = Instance.new("TextLabel")
+	tooltipLabel.Name = "Label"
+	tooltipLabel.AutomaticSize = Enum.AutomaticSize.XY
+	tooltipLabel.Size = UDim2.new(0, 0, 0, 0)
+	tooltipLabel.BackgroundColor3 = Color3.fromRGB(30, 22, 10)
+	tooltipLabel.BackgroundTransparency = 0.1
+	tooltipLabel.BorderSizePixel = 0
+	tooltipLabel.TextColor3 = Color3.fromRGB(255, 245, 220)
+	tooltipLabel.Font = Enum.Font.GothamMedium
+	tooltipLabel.TextSize = 14
+	tooltipLabel.Text = ""
+	tooltipLabel.Parent = tooltipGui
+	local pad = Instance.new("UIPadding")
+	pad.PaddingTop = UDim.new(0, 4)
+	pad.PaddingBottom = UDim.new(0, 4)
+	pad.PaddingLeft = UDim.new(0, 8)
+	pad.PaddingRight = UDim.new(0, 8)
+	pad.Parent = tooltipLabel
+	Instance.new("UICorner", tooltipLabel).CornerRadius = UDim.new(0, 4)
+	local tstroke = Instance.new("UIStroke")
+	tstroke.Color = Color3.fromRGB(120, 90, 50)
+	tstroke.Thickness = 1
+	tstroke.Parent = tooltipLabel
+
+	local function updateTooltipPos(mousePos)
+		if not tooltipGui.Enabled then return end
+		local x = mousePos.X + 14
+		local y = mousePos.Y - tooltipLabel.AbsoluteSize.Y - 10
+		if y < 4 then y = mousePos.Y + 18 end
+		tooltipLabel.Position = UDim2.fromOffset(x, y)
+	end
+
+	local function hideTooltip()
+		tooltipGui.Enabled = false
+	end
+
+	local function showTooltipForSlot(i)
+		local name = activeContainer and activeContainer:GetAttribute("Slot" .. i .. "_Name")
+		local count = activeContainer and (activeContainer:GetAttribute("Slot" .. i .. "_Count") or 0)
+		if typeof(name) ~= "string" or name == "" or count <= 0 then
+			hideTooltip()
+			return
+		end
+		local display = _G.GetItemDisplayName and _G.GetItemDisplayName(name)
+		if not display or display == "" then
+			hideTooltip()
+			return
+		end
+		tooltipLabel.Text = display
+		tooltipGui.Enabled = true
+		updateTooltipPos(UserInputService:GetMouseLocation())
+	end
+
 	local function refreshSlots()
 		if not activeContainer or not activeContainer.Parent then
 			closeContainer()
@@ -459,6 +523,13 @@ local function openContainerUI(container)
 
 	for i = 1, CONTAINER_SLOTS do
 		local btn = slotFrames[i]
+		btn.MouseEnter:Connect(function()
+			if drag.active then return end
+			showTooltipForSlot(i)
+		end)
+		btn.MouseLeave:Connect(function()
+			hideTooltip()
+		end)
 		btn.MouseButton1Down:Connect(function()
 			local has = slotHas(i)
 			if not has then return end
@@ -474,16 +545,20 @@ local function openContainerUI(container)
 			drag.slotIndex = i
 			drag.startX = m.X
 			drag.startY = m.Y
+			hideTooltip()
 		end)
 	end
 
 	table.insert(conns, UserInputService.InputChanged:Connect(function(input)
-		if not drag.active then return end
 		if input.UserInputType ~= Enum.UserInputType.MouseMovement
 			and input.UserInputType ~= Enum.UserInputType.Touch then
 			return
 		end
 		local m = UserInputService:GetMouseLocation()
+		if tooltipGui.Enabled then
+			updateTooltipPos(m)
+		end
+		if not drag.active then return end
 		if not drag.moved then
 			local dx = m.X - drag.startX
 			local dy = m.Y - drag.startY

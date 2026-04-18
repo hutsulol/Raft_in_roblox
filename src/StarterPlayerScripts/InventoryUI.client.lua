@@ -314,6 +314,15 @@ local function getDisplayName(data)
 	return (key:gsub("_", " "))
 end
 
+-- Shared with the chest / mercenary backpack UIs so their hover
+-- tooltips use the same underscore-stripping + override table as the
+-- main inventory.
+_G.GetItemDisplayName = function(name)
+	if typeof(name) ~= "string" or name == "" then return nil end
+	if DISPLAY_NAMES[name] then return DISPLAY_NAMES[name] end
+	return (name:gsub("_", " "))
+end
+
 local function ensureTooltipGui()
 	if tooltipGui and tooltipGui.Parent then return end
 	tooltipGui = Instance.new("ScreenGui")
