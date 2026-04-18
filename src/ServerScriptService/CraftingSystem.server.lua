@@ -27,14 +27,14 @@ local recipes = {
 	{
 		name = "SmallContainer",
 		displayName = "Small Container",
-		icon = "",
+		icon = "rbxassetid://86632287242518",
 		costs = {Log = 1},
 		craftType = "placeable",
 	},
 	{
 		name = "PlasticContainer",
 		displayName = "Plastic Container",
-		icon = "",
+		icon = "rbxassetid://98308527317479",
 		costs = {Plastic = 5},
 		craftType = "placeable",
 	},
