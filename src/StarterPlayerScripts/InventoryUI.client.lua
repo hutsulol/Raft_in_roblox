@@ -882,7 +882,6 @@ local function findSlotUnderMouse(mousePos)
 	local inset = GuiService:GetGuiInset()
 	local mx = mousePos.X
 	local my = mousePos.Y - inset.Y
-
 	-- Check hotbar slots (1-8)
 	if hotbarGui then
 		local bar = hotbarGui:FindFirstChild("Hotbar")
@@ -929,6 +928,11 @@ local function cancelDrag()
 	dragState.ghostGui = nil
 	dragState.startPos = nil
 end
+
+-- Exposed so other client scripts (e.g. the chest UI) can ask which
+-- inventory slot the mouse is currently over - same hit-test the
+-- inventory's own drag-drop uses, including the GUI inset correction.
+_G.FindInventorySlotUnderMouse = findSlotUnderMouse
 
 local function endDrag(mousePos)
 	if not dragState.active then

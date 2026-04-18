@@ -529,8 +529,18 @@ local function openContainerUI(container)
 			return
 		end
 
-		-- Release over player inventory → take
+		-- Release over player inventory → take. If the release is over a
+		-- specific slot, queue it via _G.PendingTargetSlot so the
+		-- inventory places the stack there instead of auto-filling.
 		if mouseOverPlayerInventory(m.X, m.Y) then
+			local srcName = activeContainer:GetAttribute("Slot" .. srcSlot .. "_Name")
+			local targetInvSlot = nil
+			if typeof(_G.FindInventorySlotUnderMouse) == "function" then
+				targetInvSlot = _G.FindInventorySlotUnderMouse(m)
+			end
+			if targetInvSlot and typeof(srcName) == "string" and srcName ~= "" then
+				_G.PendingTargetSlot = { name = srcName, slot = targetInvSlot }
+			end
 			containerAction:FireServer("take", activeContainer, srcSlot)
 		end
 	end))
