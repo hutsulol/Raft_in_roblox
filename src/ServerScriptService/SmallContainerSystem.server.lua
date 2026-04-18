@@ -1,51 +1,23 @@
-local ReplicatedStorage = game:GetService("ReplicatedStorage")
+-- SmallContainerSystem.server.lua
+-- Placement for the Small Container crafted at the WorkBench.
+-- Mirrors FurnaceCraft.server.lua's placement block byte-for-byte so
+-- the container slots into the same raft/weld pattern the furnace uses.
 
-local CONTAINER_SIZE = Vector3.new(3, 2.2, 2)
+local rs = game:GetService("ReplicatedStorage")
 
-local actionEvent = ReplicatedStorage:FindFirstChild("SmallContainerAction")
-if not actionEvent then
-	actionEvent = Instance.new("RemoteEvent")
-	actionEvent.Name = "SmallContainerAction"
-	actionEvent.Parent = ReplicatedStorage
+local cupActionEvent = rs:WaitForChild("CupAction")
+
+local function getContainerTemplate()
+	local folder = rs:FindFirstChild("Containers_Player")
+	local tmpl = folder and folder:FindFirstChild("Container_empty")
+	if not tmpl then
+		tmpl = rs:FindFirstChild("Container_empty", true)
+	end
+	return tmpl
 end
 
-local function buildContainerModel()
-	local folder = ReplicatedStorage:FindFirstChild("Containers_Player")
-	local template = folder and folder:FindFirstChild("Container_empty")
-	if not template then
-		template = ReplicatedStorage:FindFirstChild("Container_empty", true)
-	end
-	if template and (template:IsA("Model") or template:IsA("BasePart")) then
-		local archivable = template.Archivable
-		template.Archivable = true
-		local clone = template:Clone()
-		template.Archivable = archivable
-		clone.Name = "SmallContainer"
-		if clone:IsA("Model") and not clone.PrimaryPart then
-			local first = clone:FindFirstChildWhichIsA("BasePart", true)
-			if first then clone.PrimaryPart = first end
-		end
-		return clone
-	end
-
-	local model = Instance.new("Model")
-	model.Name = "SmallContainer"
-
-	local body = Instance.new("Part")
-	body.Name = "Handle"
-	body.Size = CONTAINER_SIZE
-	body.Material = Enum.Material.Wood
-	body.Color = Color3.fromRGB(120, 80, 50)
-	body.TopSurface = Enum.SurfaceType.Smooth
-	body.BottomSurface = Enum.SurfaceType.Smooth
-	body.Parent = model
-	model.PrimaryPart = body
-
-	return model
-end
-
-actionEvent.OnServerEvent:Connect(function(player, action, target)
-	if action ~= "placeContainer" then return end
+cupActionEvent.OnServerEvent:Connect(function(player, action, target)
+	if action ~= "placeSmallContainer" then return end
 
 	local char = player.Character
 	if not char then return end
@@ -58,22 +30,36 @@ actionEvent.OnServerEvent:Connect(function(player, action, target)
 
 	local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
 
-	local container = buildContainerModel()
+	local template = getContainerTemplate()
+	if not template then return end
 
+	local archivable = template.Archivable
+	template.Archivable = true
+	local container = template:Clone()
+	template.Archivable = archivable
+	container.Name = "SmallContainer"
+
+	-- Remove scripts from clone
 	for _, desc in container:GetDescendants() do
 		if desc:IsA("Script") or desc:IsA("LocalScript") then
 			desc:Destroy()
 		end
 	end
 
+	-- Position
 	if container:IsA("Model") then
+		if not container.PrimaryPart then
+			local first = container:FindFirstChildWhichIsA("BasePart", true)
+			if first then container.PrimaryPart = first end
+		end
 		local bbCF = container:GetBoundingBox()
 		container.WorldPivot = CFrame.new(bbCF.Position)
-		container:PivotTo(worldCF)
 	end
 
+	container:PivotTo(worldCF)
 	container.Parent = raft
 
+	-- Weld to raft
 	for _, part in container:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false

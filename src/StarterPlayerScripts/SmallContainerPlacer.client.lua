@@ -1,3 +1,8 @@
+-- SmallContainerPlacer.client.lua
+-- Ghost preview + placement click for the SmallContainer tool.
+-- Copy of FurnacePlacer.client.lua with the template and action name
+-- swapped so the container follows the exact same placement flow.
+
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService = game:GetService("RunService")
@@ -5,12 +10,11 @@ local UserInputService = game:GetService("UserInputService")
 local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
 local mouse = player:GetMouse()
 local camera = workspace.CurrentCamera
 
-local actionEvent = ReplicatedStorage:WaitForChild("SmallContainerAction")
-
-local CONTAINER_SIZE = Vector3.new(3, 2.2, 2)
+local cupActionEvent = ReplicatedStorage:WaitForChild("CupAction")
 
 local placing = false
 local ghost = nil
@@ -19,7 +23,7 @@ local lastGhostRaftOffset = nil
 local currentTool = nil
 local rotationAngle = 0
 
-local function findContainerTemplate()
+local function getContainerTemplate()
 	local folder = ReplicatedStorage:FindFirstChild("Containers_Player")
 	local tmpl = folder and folder:FindFirstChild("Container_empty")
 	if not tmpl then
@@ -31,35 +35,22 @@ end
 local function createGhost()
 	if ghost then ghost:Destroy() end
 
-	local template = findContainerTemplate()
-	if template and (template:IsA("Model") or template:IsA("BasePart")) then
-		local archivable = template.Archivable
-		template.Archivable = true
-		ghost = template:Clone()
-		template.Archivable = archivable
-		ghost.Name = "SmallContainerGhost"
-		if ghost:IsA("Model") and not ghost.PrimaryPart then
+	local template = getContainerTemplate()
+	if not template then return end
+
+	local archivable = template.Archivable
+	template.Archivable = true
+	ghost = template:Clone()
+	template.Archivable = archivable
+	ghost.Name = "SmallContainerGhost"
+
+	if ghost:IsA("Model") then
+		if not ghost.PrimaryPart then
 			local first = ghost:FindFirstChildWhichIsA("BasePart", true)
 			if first then ghost.PrimaryPart = first end
 		end
-		if ghost:IsA("Model") then
-			local bbCF = ghost:GetBoundingBox()
-			ghost.WorldPivot = CFrame.new(bbCF.Position)
-		end
-	else
-		ghost = Instance.new("Model")
-		ghost.Name = "SmallContainerGhost"
-		local body = Instance.new("Part")
-		body.Name = "Handle"
-		body.Size = CONTAINER_SIZE
-		body.Material = Enum.Material.Wood
-		body.Color = Color3.fromRGB(120, 80, 50)
-		body.TopSurface = Enum.SurfaceType.Smooth
-		body.BottomSurface = Enum.SurfaceType.Smooth
-		body.Anchored = true
-		body.CanCollide = false
-		body.Parent = ghost
-		ghost.PrimaryPart = body
+		local bbCF = ghost:GetBoundingBox()
+		ghost.WorldPivot = CFrame.new(bbCF.Position)
 	end
 
 	for _, part in ghost:GetDescendants() do
@@ -70,9 +61,6 @@ local function createGhost()
 			part.Color = Color3.fromRGB(80, 255, 80)
 		end
 		if part:IsA("Script") or part:IsA("LocalScript") then
-			part:Destroy()
-		end
-		if part:IsA("ProximityPrompt") then
 			part:Destroy()
 		end
 	end
@@ -230,7 +218,7 @@ mouse.Button1Down:Connect(function()
 	if not placing or not ghost then return end
 	if not lastGhostValid or not lastGhostRaftOffset then return end
 
-	actionEvent:FireServer("placeContainer", lastGhostRaftOffset)
+	cupActionEvent:FireServer("placeSmallContainer", lastGhostRaftOffset)
 
 	local folder = SoundService:FindFirstChild("Building")
 	local snd = folder and folder:FindFirstChild("Place_Block")
