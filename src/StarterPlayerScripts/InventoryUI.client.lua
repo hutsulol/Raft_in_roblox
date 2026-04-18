@@ -1060,14 +1060,21 @@ end
 
 -- ─── Quick-transfer: Shift+click moves item between hotbar and grid ───
 -- If a chest/container UI is open, shift-clicking an inventory slot
--- pushes the stack into the container instead.
+-- pushes the stack into the container instead. We drain the clicked
+-- slot locally before the server call so the specific slot the user
+-- aimed at is the one that empties — otherwise distributeResource
+-- picks the last slot with that item and the wrong one clears.
 local function quickTransfer(slotIndex)
 	local data = slotData[slotIndex]
 	if not data then return end
 
 	if _G.ActiveContainer and data.type == "resource"
 		and typeof(_G.ContainerTransferFromPlayer) == "function" then
-		_G.ContainerTransferFromPlayer(data.name, data.count)
+		local name = data.name
+		local amount = data.count
+		slotData[slotIndex] = nil
+		renderAllSlots()
+		_G.ContainerTransferFromPlayer(name, amount)
 		return
 	end
 
