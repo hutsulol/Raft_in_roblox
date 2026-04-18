@@ -190,7 +190,16 @@ task.spawn(function()
 		if now - lastAttack >= ATTACK_COOLDOWN then
 			lastAttack = now
 			playHitAnim()
-			harvestResource(resource)
+
+			-- Let the swing animation (~0.3 s) finish before the resource
+			-- pops, so the break visually lines up with the hit rather
+			-- than happening on the wind-up.
+			local swingDelay = (hitTrack and hitTrack.Length > 0) and hitTrack.Length or 0.3
+			task.wait(swingDelay)
+
+			if resource.Parent then
+				harvestResource(resource)
+			end
 		end
 		task.wait(0.25)
 	end
