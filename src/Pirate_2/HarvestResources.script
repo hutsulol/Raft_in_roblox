@@ -1,5 +1,11 @@
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Same "broke" notify the player's click path fires — gives every
+-- client the resource-specific break sound (Plastic Break, Rock_Crush,
+-- etc.) when the merc shatters a resource.
+local collectNotify = ReplicatedStorage:FindFirstChild("CollectNotify")
 
 local PICKUP_RADIUS   = 50   -- matches the player's pickup radius
 local ATTACK_COOLDOWN = 1.0
@@ -161,6 +167,13 @@ local function harvestResource(resource)
 		end
 	end
 	resource:SetAttribute("ResourceHP", 0)
+
+	-- Broadcast "broke" so every client plays the resource-specific
+	-- break sound, matching the player's click path.
+	if collectNotify then
+		collectNotify:FireAllClients("broke", resource, rt)
+	end
+
 	resource:Destroy()
 end
 
