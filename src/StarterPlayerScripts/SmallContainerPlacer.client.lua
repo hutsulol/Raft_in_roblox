@@ -53,16 +53,41 @@ local function createGhost()
 		ghost.WorldPivot = CFrame.new(bbCF.Position)
 	end
 
-	for _, part in ghost:GetDescendants() do
-		if part:IsA("BasePart") then
-			part.Transparency = 0.5
-			part.CanCollide = false
-			part.Anchored = true
-			part.Color = Color3.fromRGB(80, 255, 80)
+	-- Strip anything that could couple the ghost to the raft: scripts,
+	-- legacy welds / motors / attachments / constraints (the template may
+	-- ship with pre-welded sub-parts or BodyMovers that would yank raft
+	-- parts around the moment the ghost clones into workspace).
+	for _, desc in ghost:GetDescendants() do
+		if desc:IsA("Script") or desc:IsA("LocalScript") then
+			desc:Destroy()
+		elseif desc:IsA("Weld") or desc:IsA("Motor6D") or desc:IsA("Snap")
+			or desc:IsA("WeldConstraint") or desc:IsA("RopeConstraint")
+			or desc:IsA("Constraint") or desc:IsA("BodyMover") then
+			desc:Destroy()
+		elseif desc:IsA("BasePart") then
+			desc.Anchored = true
+			desc.CanCollide = false
+			desc.CanTouch = false
+			desc.CanQuery = false
+			desc.Massless = true
+			desc.Transparency = 0.5
+			desc.Color = Color3.fromRGB(80, 255, 80)
+			-- Smooth all surfaces so Roblox's legacy auto-welding can't
+			-- stick the ghost to anything it clips through on the raft.
+			desc.TopSurface = Enum.SurfaceType.Smooth
+			desc.BottomSurface = Enum.SurfaceType.Smooth
+			desc.FrontSurface = Enum.SurfaceType.Smooth
+			desc.BackSurface = Enum.SurfaceType.Smooth
+			desc.LeftSurface = Enum.SurfaceType.Smooth
+			desc.RightSurface = Enum.SurfaceType.Smooth
 		end
-		if part:IsA("Script") or part:IsA("LocalScript") then
-			part:Destroy()
-		end
+	end
+
+	-- Park the ghost far underground before parenting so the first frame
+	-- can never overlap the raft. updateGhost repositions it the moment
+	-- the mouse produces a valid raycast.
+	if ghost:IsA("Model") then
+		ghost:PivotTo(CFrame.new(0, -10000, 0))
 	end
 	ghost.Parent = workspace
 end
