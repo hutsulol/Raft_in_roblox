@@ -740,7 +740,9 @@ local function openCommandMenu(model)
 	title.TextScaled = true
 	title.Parent = panel
 
-	-- "Set Fishing Location" button (only shown if mercenary has a fishing rod)
+	-- "Set Fishing Location" (fishing-rod mercs) / "Set Harvest Location"
+	-- (all other weapons — merc will stand at the point and pull floating
+	-- resources out of the water on a 15s timer).
 	if hasFishingRod(model) then
 		local btn = Instance.new("TextButton")
 		btn.Name = "SetFishingBtn"
@@ -761,7 +763,30 @@ local function openCommandMenu(model)
 		btn.MouseButton1Click:Connect(function()
 			closeCommandMenu()
 			if mercName then
-				startPlacementMode(mercName)
+				startPlacementMode(mercName, "setFishingLocation")
+			end
+		end)
+	else
+		local btn = Instance.new("TextButton")
+		btn.Name = "SetHarvestBtn"
+		btn.Size = UDim2.new(0.85, 0, 0, 42)
+		btn.Position = UDim2.new(0.075, 0, 0, 52)
+		btn.BackgroundColor3 = Color3.fromRGB(50, 140, 80)
+		btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		btn.Text = "Set Harvest Location"
+		btn.Font = Enum.Font.GothamBold
+		btn.TextScaled = true
+		btn.BorderSizePixel = 0
+		btn.Parent = panel
+
+		local btnCorner = Instance.new("UICorner")
+		btnCorner.CornerRadius = UDim.new(0, 8)
+		btnCorner.Parent = btn
+
+		btn.MouseButton1Click:Connect(function()
+			closeCommandMenu()
+			if mercName then
+				startPlacementMode(mercName, "setHarvestLocation")
 			end
 		end)
 	end
@@ -996,8 +1021,10 @@ end
 
 -- ── Pick raft spot and send command ────────────────────────────────────
 
-function startPlacementMode(mercName)
+function startPlacementMode(mercName, actionName)
 	if isPlacingLocation or isPlacingCast then stopAllPlacement() end
+
+	actionName = actionName or "setFishingLocation"
 
 	isPlacingLocation = true
 	placingMercName = mercName
@@ -1005,7 +1032,10 @@ function startPlacementMode(mercName)
 	_G.SuppressInventoryToggle = true
 
 	createPreviewCircle()
-	showHint("Click on the raft to set fishing location  |  Esc to cancel")
+	local hintText = actionName == "setHarvestLocation"
+		and "Click on the raft to set harvest location  |  Esc to cancel"
+		or "Click on the raft to set fishing location  |  Esc to cancel"
+	showHint(hintText)
 
 	renderConn = RunService.RenderStepped:Connect(function()
 		if not isPlacingLocation or not previewCircle then return end
@@ -1035,7 +1065,7 @@ function startPlacementMode(mercName)
 
 		-- Send the raft position to the server
 		commandEvent:FireServer(
-			"setFishingLocation", placingMercName,
+			actionName, placingMercName,
 			hitPart, localOffset
 		)
 		stopAllPlacement()
