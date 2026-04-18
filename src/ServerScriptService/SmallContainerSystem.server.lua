@@ -228,6 +228,55 @@ containerAction.OnServerEvent:Connect(function(player, action, container, slotIn
 		container:SetAttribute("Slot" .. targetSlot .. "_Count", existingCount + toPut)
 
 		if _G.SendInventory then _G.SendInventory(player) end
+
+	elseif action == "move" then
+		-- Chest-to-chest drag: slotIndex = src, itemName = dst (we reuse
+		-- parameter slots since the RemoteEvent signature is fixed).
+		local src = tonumber(slotIndex)
+		local dst = tonumber(itemName)
+		if not src or not dst then return end
+		if src == dst then return end
+		if src < 1 or src > CONTAINER_SLOTS then return end
+		if dst < 1 or dst > CONTAINER_SLOTS then return end
+
+		local srcName = container:GetAttribute("Slot" .. src .. "_Name")
+		local srcCount = container:GetAttribute("Slot" .. src .. "_Count") or 0
+		if typeof(srcName) ~= "string" or srcName == "" or srcCount <= 0 then return end
+
+		local dstName = container:GetAttribute("Slot" .. dst .. "_Name")
+		local dstCount = container:GetAttribute("Slot" .. dst .. "_Count") or 0
+
+		if dstName == nil or dstName == "" then
+			-- Empty dst: straight move
+			container:SetAttribute("Slot" .. dst .. "_Name", srcName)
+			container:SetAttribute("Slot" .. dst .. "_Count", srcCount)
+			container:SetAttribute("Slot" .. src .. "_Name", "")
+			container:SetAttribute("Slot" .. src .. "_Count", 0)
+		elseif dstName == srcName then
+			-- Same item: stack up to MAX_STACK, swap remainder if full
+			local space = MAX_STACK - dstCount
+			if space <= 0 then
+				container:SetAttribute("Slot" .. dst .. "_Name", srcName)
+				container:SetAttribute("Slot" .. dst .. "_Count", srcCount)
+				container:SetAttribute("Slot" .. src .. "_Name", dstName)
+				container:SetAttribute("Slot" .. src .. "_Count", dstCount)
+			else
+				local toMove = math.min(srcCount, space)
+				container:SetAttribute("Slot" .. dst .. "_Count", dstCount + toMove)
+				if toMove >= srcCount then
+					container:SetAttribute("Slot" .. src .. "_Name", "")
+					container:SetAttribute("Slot" .. src .. "_Count", 0)
+				else
+					container:SetAttribute("Slot" .. src .. "_Count", srcCount - toMove)
+				end
+			end
+		else
+			-- Different items: swap
+			container:SetAttribute("Slot" .. dst .. "_Name", srcName)
+			container:SetAttribute("Slot" .. dst .. "_Count", srcCount)
+			container:SetAttribute("Slot" .. src .. "_Name", dstName)
+			container:SetAttribute("Slot" .. src .. "_Count", dstCount)
+		end
 	end
 end)
 

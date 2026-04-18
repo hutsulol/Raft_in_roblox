@@ -1,9 +1,11 @@
 -- ContainerUI.client.lua
--- Chest-style side panel for the placed Small Container. Mirrors the
--- mercenary backpack UI (StarterPlayerScripts/Mercenaries/
--- MercenaryCommand.client.lua) — same 3x2 slot layout, same anchoring
--- to the player inventory's CenterPanel. Click a container slot to
--- take the stack; shift-click a player hotbar slot to push it in.
+-- Chest UI for the Small Container. The chest slots behave like six
+-- extra inventory cells:
+--   * Drag an inventory stack onto a slot → lands in that exact slot.
+--   * Drag a chest stack onto the player inventory → goes into inventory.
+--   * Shift+LMB on a chest slot → instant move to player inventory.
+--   * Shift+LMB on an inventory slot while the chest is open → push in.
+-- Panel anchors to the left of the inventory CenterPanel.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -32,6 +34,7 @@ local INV_COLORS = {
 local activeGui = nil
 local activeContainer = nil
 local conns = {}
+local slotFrames = {}  -- [i] = TextButton for slot i; used by hit-tests
 
 local function disconnectAll()
 	for _, c in conns do
@@ -56,6 +59,24 @@ local function waitForInventoryPanel(timeout)
 	return findPlayerInventoryPanel()
 end
 
+local function mouseOverFrame(frame, mx, my)
+	if not frame or not frame.Parent then return false end
+	local pos = frame.AbsolutePosition
+	local size = frame.AbsoluteSize
+	return mx >= pos.X and mx <= pos.X + size.X
+		and my >= pos.Y and my <= pos.Y + size.Y
+end
+
+local function chestSlotUnderMouse(mx, my)
+	for i = 1, CONTAINER_SLOTS do
+		local f = slotFrames[i]
+		if f and mouseOverFrame(f, mx, my) then
+			return i
+		end
+	end
+	return nil
+end
+
 local function closeContainer()
 	disconnectAll()
 	if activeGui then
@@ -64,6 +85,7 @@ local function closeContainer()
 	end
 	activeContainer = nil
 	_G.ActiveContainer = nil
+	table.clear(slotFrames)
 end
 
 _G.CloseContainer = closeContainer
@@ -80,9 +102,8 @@ local function openContainerUI(container)
 	end
 	local playerPanel = waitForInventoryPanel(1)
 
-	-- Hide the crafting panel while the container UI is open so the two
-	-- UIs don't compete for the left-side of the screen, and keep it
-	-- hidden across any rebuild that happens while we stay open.
+	-- Hide the crafting panel while the chest is open (same pattern the
+	-- merc backpack uses).
 	local function hideCraftPanel()
 		local ig = playerGui:FindFirstChild("InventoryGui")
 		if not ig then return end
@@ -93,9 +114,7 @@ local function openContainerUI(container)
 	local invGui = playerGui:FindFirstChild("InventoryGui")
 	if invGui then
 		table.insert(conns, invGui.ChildAdded:Connect(function(child)
-			if child.Name == "CraftPanel" then
-				child.Visible = false
-			end
+			if child.Name == "CraftPanel" then child.Visible = false end
 		end))
 	end
 	table.insert(conns, playerGui.ChildAdded:Connect(function(child)
@@ -169,10 +188,7 @@ local function openContainerUI(container)
 		table.insert(conns, ownScale:GetPropertyChangedSignal("Scale"):Connect(repositionPanel))
 	end
 
-	local panelCorner = Instance.new("UICorner")
-	panelCorner.CornerRadius = UDim.new(0, 10)
-	panelCorner.Parent = panel
-
+	Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 10)
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = INV_COLORS.panelBorder
 	stroke.Thickness = 3
@@ -206,9 +222,7 @@ local function openContainerUI(container)
 	closeBtn.TextSize = 16
 	closeBtn.BorderSizePixel = 0
 	closeBtn.Parent = panel
-	local closeCorner = Instance.new("UICorner")
-	closeCorner.CornerRadius = UDim.new(0, 6)
-	closeCorner.Parent = closeBtn
+	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
 	closeBtn.MouseButton1Click:Connect(function()
 		closeContainer()
 		if _G.CloseInventory then _G.CloseInventory() end
@@ -222,11 +236,11 @@ local function openContainerUI(container)
 	hint.Font = Enum.Font.Gotham
 	hint.TextSize = 12
 	hint.TextWrapped = true
-	hint.Text = "Drag items to move them between the chest and inventory."
+	hint.Text = "Drag or Shift+Click to move items between chest and inventory."
 	hint.TextXAlignment = Enum.TextXAlignment.Center
 	hint.Parent = panel
 
-	local slotButtons = {}
+	local slotVisuals = {}
 	for i = 1, CONTAINER_SLOTS do
 		local col = (i - 1) % COLS
 		local row = math.floor((i - 1) / COLS)
@@ -242,16 +256,15 @@ local function openContainerUI(container)
 		btn.BorderSizePixel = 0
 		btn.AutoButtonColor = false
 		btn.Text = ""
+		btn.ZIndex = 2
+		btn.Active = true
 		btn.Parent = panel
 
-		local btnCorner = Instance.new("UICorner")
-		btnCorner.CornerRadius = UDim.new(0, 5)
-		btnCorner.Parent = btn
-
-		local btnStroke = Instance.new("UIStroke")
-		btnStroke.Color = INV_COLORS.slotBorder
-		btnStroke.Thickness = 1.5
-		btnStroke.Parent = btn
+		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
+		local bs = Instance.new("UIStroke")
+		bs.Color = INV_COLORS.slotBorder
+		bs.Thickness = 1.5
+		bs.Parent = btn
 
 		local rarityFrame = Instance.new("ImageLabel")
 		rarityFrame.Name = "RarityFrame"
@@ -260,7 +273,7 @@ local function openContainerUI(container)
 		rarityFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 		rarityFrame.BackgroundTransparency = 1
 		rarityFrame.ScaleType = Enum.ScaleType.Stretch
-		rarityFrame.ZIndex = 1
+		rarityFrame.ZIndex = 3
 		rarityFrame.Visible = false
 		rarityFrame.Parent = btn
 
@@ -271,7 +284,7 @@ local function openContainerUI(container)
 		iconLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
 		iconLbl.BackgroundTransparency = 1
 		iconLbl.ScaleType = Enum.ScaleType.Fit
-		iconLbl.ZIndex = 2
+		iconLbl.ZIndex = 4
 		iconLbl.Parent = btn
 
 		local countLbl = Instance.new("TextLabel")
@@ -286,13 +299,11 @@ local function openContainerUI(container)
 		countLbl.TextStrokeTransparency = 0.3
 		countLbl.TextStrokeColor3 = Color3.new(0, 0, 0)
 		countLbl.Text = ""
-		countLbl.ZIndex = 3
+		countLbl.ZIndex = 5
 		countLbl.Parent = btn
 
-		slotButtons[i] = {
-			button = btn, iconLbl = iconLbl,
-			rarityFrame = rarityFrame, countLbl = countLbl,
-		}
+		slotFrames[i] = btn
+		slotVisuals[i] = { button = btn, iconLbl = iconLbl, rarityFrame = rarityFrame, countLbl = countLbl }
 	end
 
 	local function refreshSlots()
@@ -301,7 +312,8 @@ local function openContainerUI(container)
 			return
 		end
 		for i = 1, CONTAINER_SLOTS do
-			local s = slotButtons[i]
+			local s = slotVisuals[i]
+			if not s then continue end
 			local name = activeContainer:GetAttribute("Slot" .. i .. "_Name")
 			local count = activeContainer:GetAttribute("Slot" .. i .. "_Count") or 0
 
@@ -331,10 +343,16 @@ local function openContainerUI(container)
 		if not parent then closeContainer() end
 	end))
 
-	-- ── Drag out of the container (take) ───────────────────────────────
-	-- Press-and-hold on a filled slot starts a drag. Release over the
-	-- player's inventory panel fires 'take'; release anywhere else
-	-- cancels. Mirrors the merc backpack drag shape.
+	-- ── Chest-slot interactions ───────────────────────────────────────
+	-- Each slot supports three gestures:
+	--   1. Shift + LMB  → instant take
+	--   2. Drag (LMB down, mouse move past threshold, LMB up):
+	--        • Release over player inventory CenterPanel → take
+	--        • Release over another chest slot → swap (take then put)
+	--        • Release elsewhere → cancel
+	--   3. Plain click (no drag, no shift) → does nothing, so players
+	--      can't accidentally drain the chest with a single click.
+
 	local DRAG_THRESHOLD = 6
 	local drag = {
 		active = false,
@@ -439,16 +457,17 @@ local function openContainerUI(container)
 			and my >= pos.Y and my <= pos.Y + size.Y
 	end
 
-	for _, info in slotButtons do
-		local i = info.slotIndex or nil
-		-- slotButtons is a numerically-keyed table; find our key.
-		if not i then
-			for k, v in slotButtons do
-				if v == info then i = k; break end
+	for i = 1, CONTAINER_SLOTS do
+		local btn = slotFrames[i]
+		btn.MouseButton1Down:Connect(function()
+			local has = slotHas(i)
+			if not has then return end
+			local shift = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
+				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
+			if shift then
+				containerAction:FireServer("take", activeContainer, i)
+				return
 			end
-		end
-		info.button.MouseButton1Down:Connect(function()
-			if not slotHas(i) then return end
 			local m = UserInputService:GetMouseLocation()
 			drag.active = true
 			drag.moved = false
@@ -487,14 +506,23 @@ local function openContainerUI(container)
 			and input.UserInputType ~= Enum.UserInputType.Touch then
 			return
 		end
-		local i = drag.slotIndex
+		local srcSlot = drag.slotIndex
 		local moved = drag.moved
 		resetDrag()
-		if not i then return end
-		if not moved then return end
+		if not srcSlot or not moved then return end
+
 		local m = UserInputService:GetMouseLocation()
+
+		-- Release on another chest slot → take-then-put swap via server
+		local destSlot = chestSlotUnderMouse(m.X, m.Y)
+		if destSlot and destSlot ~= srcSlot then
+			containerAction:FireServer("move", activeContainer, srcSlot, destSlot)
+			return
+		end
+
+		-- Release over player inventory → take
 		if mouseOverPlayerInventory(m.X, m.Y) then
-			containerAction:FireServer("take", activeContainer, i)
+			containerAction:FireServer("take", activeContainer, srcSlot)
 		end
 	end))
 end
@@ -514,8 +542,8 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	end
 end)
 
--- Shift-click a player inventory/hotbar slot while the container UI is
--- open → push that stack into the container.
+-- Shift-click a player inventory/hotbar slot while chest is open →
+-- push that stack in. InventoryUI.quickTransfer calls this hook.
 _G.ContainerTransferFromPlayer = function(itemName, count)
 	if not activeContainer then return false end
 	if typeof(itemName) ~= "string" or itemName == "" then return false end
@@ -523,30 +551,13 @@ _G.ContainerTransferFromPlayer = function(itemName, count)
 	return true
 end
 
--- Called by InventoryUI.endDrag when a drag ends outside all player
--- slots. If the mouse is over one of this chest's slots, fire 'put'
--- with the dragged stack and tell the caller we consumed the drop.
-local function mouseOverFrame(frame, mx, my)
-	if not frame or not frame.Parent then return false end
-	local pos = frame.AbsolutePosition
-	local size = frame.AbsoluteSize
-	return mx >= pos.X and mx <= pos.X + size.X
-		and my >= pos.Y and my <= pos.Y + size.Y
-end
-
+-- Called by InventoryUI.endDrag: if the mouse release is over one of
+-- this chest's slots, fire 'put' targeting that exact slot.
 _G.ContainerTryDrop = function(mousePos, itemName, count)
 	if not activeContainer or not activeGui then return false end
 	if typeof(itemName) ~= "string" or itemName == "" then return false end
-	local panel = activeGui:FindFirstChild("Panel")
-	if not panel then return false end
-
-	local mx, my = mousePos.X, mousePos.Y
-	for i = 1, CONTAINER_SLOTS do
-		local btn = panel:FindFirstChild("Slot" .. i)
-		if btn and mouseOverFrame(btn, mx, my) then
-			containerAction:FireServer("put", activeContainer, i, itemName, count or 1)
-			return true
-		end
-	end
-	return false
+	local i = chestSlotUnderMouse(mousePos.X, mousePos.Y)
+	if not i then return false end
+	containerAction:FireServer("put", activeContainer, i, itemName, count or 1)
+	return true
 end
