@@ -1645,10 +1645,12 @@ local function closeUI(isRebuild)
 	selectedRecipe = nil
 	selectedCategory = nil
 	if hotbarGui then hotbarGui.DisplayOrder = 5 end
-	-- Also close the mercenary backpack panel if it was open,
-	-- but NOT during a rebuild (recipe refresh) — only on a real close.
-	if not isRebuild and _G.CloseMercInventory then
-		_G.CloseMercInventory()
+	-- Also close the mercenary backpack / container panels if they
+	-- were open, but NOT during a rebuild (recipe refresh) — only on
+	-- a real close.
+	if not isRebuild then
+		if _G.CloseMercInventory then _G.CloseMercInventory() end
+		if _G.CloseContainer then _G.CloseContainer() end
 	end
 end
 

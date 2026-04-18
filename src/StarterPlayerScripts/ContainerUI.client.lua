@@ -80,6 +80,35 @@ local function openContainerUI(container)
 	end
 	local playerPanel = waitForInventoryPanel(1)
 
+	-- Hide the crafting panel while the container UI is open so the two
+	-- UIs don't compete for the left-side of the screen, and keep it
+	-- hidden across any rebuild that happens while we stay open.
+	local function hideCraftPanel()
+		local ig = playerGui:FindFirstChild("InventoryGui")
+		if not ig then return end
+		local cp = ig:FindFirstChild("CraftPanel")
+		if cp then cp.Visible = false end
+	end
+	hideCraftPanel()
+	local invGui = playerGui:FindFirstChild("InventoryGui")
+	if invGui then
+		table.insert(conns, invGui.ChildAdded:Connect(function(child)
+			if child.Name == "CraftPanel" then
+				child.Visible = false
+			end
+		end))
+	end
+	table.insert(conns, playerGui.ChildAdded:Connect(function(child)
+		if child.Name == "InventoryGui" then
+			task.defer(hideCraftPanel)
+			local conn
+			conn = child.ChildAdded:Connect(function(c)
+				if c.Name == "CraftPanel" then c.Visible = false end
+			end)
+			table.insert(conns, conn)
+		end
+	end))
+
 	local gui = Instance.new("ScreenGui")
 	gui.Name = "ContainerGui"
 	gui.ResetOnSpawn = false
