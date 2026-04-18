@@ -551,16 +551,24 @@ openContainer.OnClientEvent:Connect(function(container)
 	openContainerUI(container)
 end)
 
--- Escape closes the chest + inventory together. E is handled by
--- InventoryUI's toggle (which cascades CloseContainer via closeUI) so
--- we don't fight the deferred toggle.
-UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
+-- E / Escape close the chest + inventory together. We set
+-- SuppressInventoryToggle before closing so InventoryUI's own
+-- task.defer'd E toggle (which can't know we're closing in the
+-- same frame) doesn't race us and flip the inventory back open.
+-- The flag is cleared after a short delay so a subsequent E press
+-- can re-open the inventory normally.
+UserInputService.InputBegan:Connect(function(input)
 	if not activeGui then return end
-	if input.KeyCode == Enum.KeyCode.Escape then
-		if _G.CloseInventory then _G.CloseInventory() end
-		closeContainer()
+	if input.KeyCode ~= Enum.KeyCode.E
+		and input.KeyCode ~= Enum.KeyCode.Escape then
+		return
 	end
+	_G.SuppressInventoryToggle = true
+	if _G.CloseInventory then _G.CloseInventory() end
+	closeContainer()
+	task.delay(0.25, function()
+		_G.SuppressInventoryToggle = false
+	end)
 end)
 
 -- Shift-click a player inventory/hotbar slot while chest is open →
