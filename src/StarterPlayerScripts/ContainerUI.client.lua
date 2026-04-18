@@ -92,6 +92,7 @@ local function closeContainer()
 	end
 	activeContainer = nil
 	_G.ActiveContainer = nil
+	_G.SuppressInventoryToggle = false
 	table.clear(slotFrames)
 end
 
@@ -103,6 +104,10 @@ local function openContainerUI(container)
 
 	activeContainer = container
 	_G.ActiveContainer = container
+	-- Block InventoryUI's E toggle while the chest is open so pressing E
+	-- closes the whole menu via our own handler instead of InventoryUI
+	-- re-opening the inventory after we close it.
+	_G.SuppressInventoryToggle = true
 
 	if _G.OpenInventory then
 		_G.OpenInventory()
