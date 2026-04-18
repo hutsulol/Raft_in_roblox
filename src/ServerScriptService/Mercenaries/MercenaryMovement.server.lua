@@ -272,6 +272,13 @@ commandEvent.OnServerEvent:Connect(function(player, action, mercName, raftPart, 
 		if not model then return end
 
 		walkToPosition(model, raftPart, localOffset)
+
+	elseif action == "toggleCooldownDisplay" then
+		if typeof(mercName) ~= "string" then return end
+		local model = findMercenary(player, mercName)
+		if not model then return end
+		local hidden = model:GetAttribute("CooldownHidden") == true
+		model:SetAttribute("CooldownHidden", not hidden)
 	end
 end)
 

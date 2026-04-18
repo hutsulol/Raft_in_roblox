@@ -92,26 +92,38 @@ local function createPrompt(model)
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "MercInteractPrompt"
 	bb.Adornee = adornee
-	bb.Size = UDim2.new(0, 120, 0, 36)
-	bb.StudsOffset = Vector3.new(0, 3, 0)
+	bb.Size = UDim2.new(0, 200, 0, 70)
+	bb.StudsOffset = Vector3.new(0, 3.2, 0)
 	bb.AlwaysOnTop = true
 	bb.ResetOnSpawn = false
 	bb.Parent = playerGui
 
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-	label.BackgroundTransparency = 0.3
-	label.TextColor3 = Color3.fromRGB(255, 255, 0)
-	label.Text = "[E] Command"
-	label.Font = Enum.Font.GothamBold
-	label.TextScaled = true
-	label.BorderSizePixel = 0
-	label.Parent = bb
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Vertical
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.Padding = UDim.new(0, 4)
+	layout.Parent = bb
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = label
+	local function makeLine(order, text)
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, 0, 0, 30)
+		label.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+		label.BackgroundTransparency = 0.3
+		label.TextColor3 = Color3.fromRGB(255, 255, 0)
+		label.Text = text
+		label.Font = Enum.Font.GothamBold
+		label.TextScaled = true
+		label.BorderSizePixel = 0
+		label.LayoutOrder = order
+		label.Parent = bb
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 8)
+		corner.Parent = label
+	end
+
+	makeLine(1, "[E] Command")
+	makeLine(2, "[Q] Turn off time counter")
 
 	promptBillboard = bb
 end
@@ -1130,6 +1142,20 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		openCommandMenu(targetMerc)
 		destroyPrompt()
 	end
+end)
+
+-- ── Q key: toggle the cooldown timer above the merc ────────────────────
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then return end
+	if input.KeyCode ~= Enum.KeyCode.Q then return end
+	if not targetMerc or not targetMerc.Parent then return end
+	if commandMenuOpen or mercInvGui then return end
+
+	local mercName = targetMerc:GetAttribute("MercName")
+	if typeof(mercName) ~= "string" or mercName == "" then return end
+
+	commandEvent:FireServer("toggleCooldownDisplay", mercName)
 end)
 
 -- ── Fishing catch +1 popup ─────────────────────────────────────────────

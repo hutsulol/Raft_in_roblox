@@ -98,7 +98,7 @@ do
 		bb.AlwaysOnTop = true
 		bb.LightInfluence = 0
 		bb.Size = UDim2.fromOffset(80, 28)
-		bb.StudsOffset = Vector3.new(0, 1, 0)
+		bb.StudsOffset = Vector3.new(0, 1.8, 0)
 		bb.Enabled = false
 		bb.Parent = adornee
 
@@ -132,7 +132,8 @@ do
 		task.spawn(function()
 			while model.Parent and humanoid.Health > 0 do
 				local remaining = cooldownEndsAt - tick()
-				if remaining > 0 then
+				local hidden = model:GetAttribute("CooldownHidden") == true
+				if remaining > 0 and not hidden then
 					bb.Enabled = true
 					cooldownLabel.Text = string.format("%ds", math.ceil(remaining))
 				else
