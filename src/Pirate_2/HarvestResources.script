@@ -83,6 +83,68 @@ do
 	end
 end
 
+-- ── Cooldown billboard ─────────────────────────────────────────────────
+-- A small floating countdown over the merc's head shows how many
+-- seconds remain until the next harvest swing.
+local cooldownEndsAt = 0
+local cooldownLabel
+
+do
+	local adornee = model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
+	if adornee then
+		local bb = Instance.new("BillboardGui")
+		bb.Name = "HarvestCooldown"
+		bb.Adornee = adornee
+		bb.AlwaysOnTop = true
+		bb.LightInfluence = 0
+		bb.Size = UDim2.fromOffset(80, 28)
+		bb.StudsOffset = Vector3.new(0, 3.2, 0)
+		bb.Enabled = false
+		bb.Parent = adornee
+
+		local bg = Instance.new("Frame")
+		bg.Size = UDim2.new(1, 0, 1, 0)
+		bg.BackgroundColor3 = Color3.fromRGB(15, 25, 45)
+		bg.BackgroundTransparency = 0.2
+		bg.BorderSizePixel = 0
+		bg.Parent = bb
+
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 6)
+		corner.Parent = bg
+
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 1.5
+		stroke.Color = Color3.fromRGB(120, 210, 255)
+		stroke.Transparency = 0.3
+		stroke.Parent = bg
+
+		cooldownLabel = Instance.new("TextLabel")
+		cooldownLabel.BackgroundTransparency = 1
+		cooldownLabel.Size = UDim2.new(1, 0, 1, 0)
+		cooldownLabel.Font = Enum.Font.GothamBold
+		cooldownLabel.TextSize = 16
+		cooldownLabel.TextColor3 = Color3.fromRGB(220, 240, 255)
+		cooldownLabel.TextStrokeTransparency = 0.4
+		cooldownLabel.Text = ""
+		cooldownLabel.Parent = bb
+
+		task.spawn(function()
+			while model.Parent and humanoid.Health > 0 do
+				local remaining = cooldownEndsAt - tick()
+				if remaining > 0 then
+					bb.Enabled = true
+					cooldownLabel.Text = string.format("%ds", math.ceil(remaining))
+				else
+					bb.Enabled = false
+				end
+				task.wait(0.2)
+			end
+			if bb then bb:Destroy() end
+		end)
+	end
+end
+
 local function playHitAnim()
 	if not hitTrack then return end
 	hitTrack:Stop()
@@ -248,6 +310,7 @@ task.spawn(function()
 		local now = tick()
 		if now - lastAttack >= ATTACK_COOLDOWN then
 			lastAttack = now
+			cooldownEndsAt = now + ATTACK_COOLDOWN
 			playHitAnim()
 
 			-- Let the swing animation (~0.3 s) finish before the resource
