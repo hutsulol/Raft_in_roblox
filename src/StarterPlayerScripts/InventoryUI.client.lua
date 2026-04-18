@@ -1034,9 +1034,17 @@ local function endDrag(mousePos)
 end
 
 -- ─── Quick-transfer: Shift+click moves item between hotbar and grid ───
+-- If a chest/container UI is open, shift-clicking an inventory slot
+-- pushes the stack into the container instead.
 local function quickTransfer(slotIndex)
 	local data = slotData[slotIndex]
 	if not data then return end
+
+	if _G.ActiveContainer and data.type == "resource"
+		and typeof(_G.ContainerTransferFromPlayer) == "function" then
+		_G.ContainerTransferFromPlayer(data.name, data.count)
+		return
+	end
 
 	local isHotbar = slotIndex >= 1 and slotIndex <= HOTBAR_SLOTS
 	local targetStart, targetEnd
