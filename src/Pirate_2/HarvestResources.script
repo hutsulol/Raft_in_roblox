@@ -39,6 +39,12 @@ while model.Parent and not CollectionService:HasTag(model, "SpawnedMercenary") d
 end
 if not model.Parent then return end
 
+-- Only Unarmed mercs harvest. Sword mercs fight (Combat.script),
+-- FishingRod mercs fish (Fishing.script) — keep each role self-contained
+-- so swapping EquippedWeapon in the menu picks the right behaviour.
+local equippedWeapon = model:GetAttribute("EquippedWeapon") or "Sword"
+if equippedWeapon ~= "Unarmed" then return end
+
 local humanoid = model:WaitForChild("Humanoid", 5)
 if not humanoid then return end
 
