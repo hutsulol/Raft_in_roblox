@@ -198,14 +198,23 @@ local dailyQuestRows     = {}
 local dailyQuestConnections = {}
 
 -- Build a static preview rig from the player's HumanoidDescription. This
--- gives us a fresh R15 model in a clean neutral pose (like the Avatar
--- Editor) that matches the player's appearance, instead of a snapshot of
--- the live character mid-animation. Falls back to a plain clone if the
--- description API fails for any reason.
+-- gives us a fresh model in a clean neutral pose (like the Avatar Editor)
+-- that matches the player's appearance, instead of a snapshot of the
+-- live character mid-animation. Rig type is mirrored from the live
+-- player so R6 / R15 idles drive the correct rig.
 local function buildPreviewRig()
+	local rigType = Enum.HumanoidRigType.R15
+	local liveChar = player.Character
+	if liveChar then
+		local liveHum = liveChar:FindFirstChildOfClass("Humanoid")
+		if liveHum and liveHum.RigType then
+			rigType = liveHum.RigType
+		end
+	end
+
 	local ok, rig = pcall(function()
 		local desc = Players:GetHumanoidDescriptionFromUserId(player.UserId)
-		return Players:CreateHumanoidModelFromDescription(desc, Enum.HumanoidRigType.R15)
+		return Players:CreateHumanoidModelFromDescription(desc, rigType)
 	end)
 	if ok and rig then return rig end
 
