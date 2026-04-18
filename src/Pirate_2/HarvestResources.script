@@ -17,7 +17,7 @@ local BREAK_SOUND_SERVICE = {
 }
 
 local PICKUP_RADIUS   = 50   -- matches the player's pickup radius
-local ATTACK_COOLDOWN = 1.0
+local ATTACK_COOLDOWN = 15   -- seconds between harvest swings
 local HARVEST_TYPES = { Log = true, Plastic = true, Leaves = true }
 local HOSTILE_BACKOFF_RANGE = 120
 local HIT_ANIM_ID = "rbxassetid://77340277526241"
