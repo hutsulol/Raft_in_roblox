@@ -35,6 +35,12 @@ local recipes = {
 		icon = "rbxassetid://75858978626954",
 		costs = {Log = 1},
 	},
+	{
+		name = "SmallContainer",
+		displayName = "Small Container",
+		icon = "",
+		costs = {Log = 1},
+	},
 }
 local selectedRecipe = nil
 local isOpen = false
