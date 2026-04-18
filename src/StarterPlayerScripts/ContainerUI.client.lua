@@ -240,25 +240,40 @@ local function openContainerUI(container)
 	hint.TextXAlignment = Enum.TextXAlignment.Center
 	hint.Parent = panel
 
+	-- Grid of slot buttons, positioned deterministically by UIGridLayout
+	-- so the interaction hitboxes and the rendered cells can never drift
+	-- from one another.
+	local gridFrame = Instance.new("Frame")
+	gridFrame.Name = "SlotGrid"
+	gridFrame.BackgroundTransparency = 1
+	gridFrame.BorderSizePixel = 0
+	gridFrame.Position = UDim2.fromOffset(PAD, GRID_Y)
+	gridFrame.Size = UDim2.fromOffset(
+		COLS * SLOT_SIZE + (COLS - 1) * SLOT_PAD,
+		ROWS * SLOT_SIZE + (ROWS - 1) * SLOT_PAD
+	)
+	gridFrame.Parent = panel
+
+	local grid = Instance.new("UIGridLayout")
+	grid.CellSize = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE)
+	grid.CellPadding = UDim2.fromOffset(SLOT_PAD, SLOT_PAD)
+	grid.FillDirection = Enum.FillDirection.Horizontal
+	grid.FillDirectionMaxCells = COLS
+	grid.SortOrder = Enum.SortOrder.LayoutOrder
+	grid.Parent = gridFrame
+
 	local slotVisuals = {}
 	for i = 1, CONTAINER_SLOTS do
-		local col = (i - 1) % COLS
-		local row = math.floor((i - 1) / COLS)
-		local x = PAD + col * (SLOT_SIZE + SLOT_PAD)
-		local y = GRID_Y + row * (SLOT_SIZE + SLOT_PAD)
-
 		local btn = Instance.new("TextButton")
 		btn.Name = "Slot" .. i
-		btn.Size = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE)
-		btn.Position = UDim2.new(0, x, 0, y)
+		btn.LayoutOrder = i
 		btn.BackgroundColor3 = INV_COLORS.slotBg
 		btn.BackgroundTransparency = 0.05
 		btn.BorderSizePixel = 0
 		btn.AutoButtonColor = false
 		btn.Text = ""
-		btn.ZIndex = 2
 		btn.Active = true
-		btn.Parent = panel
+		btn.Parent = gridFrame
 
 		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
 		local bs = Instance.new("UIStroke")
@@ -273,7 +288,6 @@ local function openContainerUI(container)
 		rarityFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
 		rarityFrame.BackgroundTransparency = 1
 		rarityFrame.ScaleType = Enum.ScaleType.Stretch
-		rarityFrame.ZIndex = 3
 		rarityFrame.Visible = false
 		rarityFrame.Parent = btn
 
@@ -284,7 +298,6 @@ local function openContainerUI(container)
 		iconLbl.Position = UDim2.new(0.5, 0, 0.5, 0)
 		iconLbl.BackgroundTransparency = 1
 		iconLbl.ScaleType = Enum.ScaleType.Fit
-		iconLbl.ZIndex = 4
 		iconLbl.Parent = btn
 
 		local countLbl = Instance.new("TextLabel")
@@ -299,7 +312,6 @@ local function openContainerUI(container)
 		countLbl.TextStrokeTransparency = 0.3
 		countLbl.TextStrokeColor3 = Color3.new(0, 0, 0)
 		countLbl.Text = ""
-		countLbl.ZIndex = 5
 		countLbl.Parent = btn
 
 		slotFrames[i] = btn
