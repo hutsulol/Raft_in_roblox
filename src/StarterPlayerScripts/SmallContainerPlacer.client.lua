@@ -1,88 +1,64 @@
 -- SmallContainerPlacer.client.lua
--- Ghost preview + placement click for the SmallContainer tool.
--- Copy of FurnacePlacer.client.lua with the template and action name
--- swapped so the container follows the exact same placement flow.
+-- Ghost preview + placement click for the SmallContainer tool. Follows
+-- the exact pattern the WorkBench placement uses in
+-- StarterPlayerScripts/CupPurifier.client.lua — only the tool name,
+-- template lookup, and server action differ.
 
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
-local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local RunService = game:GetService("RunService")
 local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
-local playerGui = player:WaitForChild("PlayerGui")
 local mouse = player:GetMouse()
 local camera = workspace.CurrentCamera
 
 local cupActionEvent = ReplicatedStorage:WaitForChild("CupAction")
 
-local placing = false
+local TEMPLATE_NAME = "Container_empty"
+local TOOL_NAME = "SmallContainer"
+local ACTION_NAME = "placeSmallContainer"
+
 local ghost = nil
+local placing = false
+local currentTool = nil
 local lastGhostValid = false
 local lastGhostRaftOffset = nil
-local currentTool = nil
 local rotationAngle = 0
 
-local function getContainerTemplate()
+local function findTemplate()
 	local folder = ReplicatedStorage:FindFirstChild("Containers_Player")
-	local tmpl = folder and folder:FindFirstChild("Container_empty")
+	local tmpl = folder and folder:FindFirstChild(TEMPLATE_NAME)
 	if not tmpl then
-		tmpl = ReplicatedStorage:FindFirstChild("Container_empty", true)
+		tmpl = ReplicatedStorage:FindFirstChild(TEMPLATE_NAME, true)
 	end
 	return tmpl
 end
 
 local function createGhost()
 	if ghost then ghost:Destroy() end
-
-	local template = getContainerTemplate()
+	local template = findTemplate()
 	if not template then return end
 
-	local archivable = template.Archivable
-	template.Archivable = true
 	ghost = template:Clone()
-	template.Archivable = archivable
 	ghost.Name = "SmallContainerGhost"
 
-	if ghost:IsA("Model") then
-		if not ghost.PrimaryPart then
-			local first = ghost:FindFirstChildWhichIsA("BasePart", true)
-			if first then ghost.PrimaryPart = first end
-		end
-		local bbCF = ghost:GetBoundingBox()
-		ghost.WorldPivot = CFrame.new(bbCF.Position)
-	end
+	-- Reset WorldPivot to bounding box center with identity rotation
+	-- (match the WorkBench pattern in CupPurifier.client.lua).
+	local bbCF = ghost:GetBoundingBox()
+	ghost.WorldPivot = CFrame.new(bbCF.Position)
 
-	-- Strip scripts only — keep welds/motors/constraints so the model's
-	-- visual shape and orientation stay intact. Make every part harmless
-	-- via Anchor / Can(Collide|Touch|Query) / Massless and smooth every
-	-- SurfaceType so the legacy auto-welder can't stick the ghost to any
-	-- raft part it briefly clips through.
-	for _, desc in ghost:GetDescendants() do
-		if desc:IsA("Script") or desc:IsA("LocalScript") then
-			desc:Destroy()
-		elseif desc:IsA("BasePart") then
-			desc.Anchored = true
-			desc.CanCollide = false
-			desc.CanTouch = false
-			desc.CanQuery = false
-			desc.Massless = true
-			desc.Transparency = 0.5
-			desc.Color = Color3.fromRGB(80, 255, 80)
-			desc.TopSurface = Enum.SurfaceType.Smooth
-			desc.BottomSurface = Enum.SurfaceType.Smooth
-			desc.FrontSurface = Enum.SurfaceType.Smooth
-			desc.BackSurface = Enum.SurfaceType.Smooth
-			desc.LeftSurface = Enum.SurfaceType.Smooth
-			desc.RightSurface = Enum.SurfaceType.Smooth
+	for _, part in ghost:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Transparency = 0.5
+			part.CanCollide = false
+			part.Anchored = true
+			part.Color = Color3.fromRGB(80, 255, 80)
 		end
-	end
-
-	-- Park the ghost far underground before parenting so nothing can
-	-- overlap the raft on the first physics frame; updateGhost repositions
-	-- it on the next RenderStep.
-	if ghost:IsA("Model") then
-		ghost:PivotTo(CFrame.new(0, -10000, 0))
+		if part:IsA("Script") or part:IsA("LocalScript") then
+			part:Destroy()
+		end
 	end
 	ghost.Parent = workspace
 end
@@ -159,28 +135,27 @@ local function updateGhost()
 		return
 	end
 
-	if not result.Instance:IsDescendantOf(raft) then
-		setGhostColor(false)
-		return
-	end
-
+	local hitOnRaft = result.Instance:IsDescendantOf(raft)
 	local hitPos = result.Position
-	local _, ghostSize = ghost:GetBoundingBox()
+	local ghostSize = ghost:GetExtentsSize()
 	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z)
 		* CFrame.Angles(0, restYaw + rotationAngle, 0)
 
 	ghost:PivotTo(placeCF)
 
-	lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
-
-	local blocked = isPlacementBlocked(placeCF, ghostSize)
-	setGhostColor(not blocked)
+	if hitOnRaft then
+		lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
+		local blocked = isPlacementBlocked(placeCF, ghostSize)
+		setGhostColor(not blocked)
+	else
+		setGhostColor(false)
+	end
 end
 
 local function onToolEquipped(tool)
 	currentTool = tool
-	if tool.Name == "SmallContainer" then
+	if tool.Name == TOOL_NAME then
 		placing = true
 		rotationAngle = 0
 		createGhost()
@@ -188,7 +163,7 @@ local function onToolEquipped(tool)
 end
 
 local function onToolUnequipped(tool)
-	if tool.Name == "SmallContainer" then
+	if tool and tool.Name == TOOL_NAME then
 		placing = false
 		destroyGhost()
 	end
@@ -210,7 +185,7 @@ local function setupCharacter(char)
 		end
 	end)
 	for _, child in char:GetChildren() do
-		if child:IsA("Tool") and child.Name == "SmallContainer" then
+		if child:IsA("Tool") and child.Name == TOOL_NAME then
 			onToolEquipped(child)
 			break
 		end
@@ -238,7 +213,7 @@ mouse.Button1Down:Connect(function()
 	if not placing or not ghost then return end
 	if not lastGhostValid or not lastGhostRaftOffset then return end
 
-	cupActionEvent:FireServer("placeSmallContainer", lastGhostRaftOffset)
+	cupActionEvent:FireServer(ACTION_NAME, lastGhostRaftOffset)
 
 	local folder = SoundService:FindFirstChild("Building")
 	local snd = folder and folder:FindFirstChild("Place_Block")

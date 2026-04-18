@@ -1,13 +1,13 @@
 -- SmallContainerSystem.server.lua
--- Placement for the Small Container crafted at the WorkBench.
--- Mirrors FurnaceCraft.server.lua's placement block byte-for-byte so
--- the container slots into the same raft/weld pattern the furnace uses.
+-- Places the Small Container on the raft. Mirrors ThirstSystem's
+-- 'placeWorkbench' handler exactly — only the tool name, template
+-- lookup, and action string differ.
 
 local rs = game:GetService("ReplicatedStorage")
 
 local cupActionEvent = rs:WaitForChild("CupAction")
 
-local function getContainerTemplate()
+local function findTemplate()
 	local folder = rs:FindFirstChild("Containers_Player")
 	local tmpl = folder and folder:FindFirstChild("Container_empty")
 	if not tmpl then
@@ -26,32 +26,19 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 	local raft = workspace:FindFirstChild("Raft")
 	if not raft or not raft.PrimaryPart then return end
+
 	if typeof(target) ~= "CFrame" then return end
 
 	local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
 
-	local template = getContainerTemplate()
+	local template = findTemplate()
 	if not template then return end
 
-	local archivable = template.Archivable
-	template.Archivable = true
 	local container = template:Clone()
-	template.Archivable = archivable
 	container.Name = "SmallContainer"
 
-	-- Remove scripts from clone
-	for _, desc in container:GetDescendants() do
-		if desc:IsA("Script") or desc:IsA("LocalScript") then
-			desc:Destroy()
-		end
-	end
-
-	-- Position
+	-- Reset WorldPivot to bounding box center with no rotation (match client ghost)
 	if container:IsA("Model") then
-		if not container.PrimaryPart then
-			local first = container:FindFirstChildWhichIsA("BasePart", true)
-			if first then container.PrimaryPart = first end
-		end
 		local bbCF = container:GetBoundingBox()
 		container.WorldPivot = CFrame.new(bbCF.Position)
 	end
@@ -70,5 +57,6 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		end
 	end
 
+	-- Remove tool from player
 	tool:Destroy()
 end)
