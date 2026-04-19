@@ -29,7 +29,7 @@ end
 local DETECTION_RANGE = 200   -- studs
 local ATTACK_RANGE    = 5     -- studs
 local ATTACK_DAMAGE   = 10
-local ATTACK_COOLDOWN = 1.5   -- seconds
+local ATTACK_COOLDOWN = 1.0   -- seconds (1.5× faster than the old 1.5s)
 local WALK_SPEED      = 16
 local TICK_INTERVAL   = 0.1   -- AI tick — 10Hz is plenty for chase/attack
 
