@@ -607,24 +607,26 @@ local function rebuildSlotData()
 			end
 		end
 
-		local toolCounts = {}
-		for _, tool in tools do
-			toolCounts[tool.Name] = (toolCounts[tool.Name] or 0) + 1
-		end
-
+		-- Tools never stack: each Tool Instance gets its own slot so
+		-- duplicates (e.g. two Machetes) occupy separate cells. The
+		-- Tool reference is stored so rebuildSlotData can match a
+		-- slot back to the same instance on subsequent refreshes.
 		local slot = 2
-		local addedTools = {}
 		for _, tool in tools do
-			if not addedTools[tool.Name] then
-				addedTools[tool.Name] = true
-				while slot <= HOTBAR_SLOTS and slotData[slot] do
-					slot = slot + 1
-				end
-				if slot > HOTBAR_SLOTS then break end
-				local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
-				slotData[slot] = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon, count = toolCounts[tool.Name]}
+			while slot <= HOTBAR_SLOTS and slotData[slot] do
 				slot = slot + 1
 			end
+			if slot > HOTBAR_SLOTS then break end
+			local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+			slotData[slot] = {
+				type = "tool",
+				name = tool.Name,
+				toolName = tool.Name,
+				toolInst = tool,
+				icon = toolIcon,
+				count = 1,
+			}
+			slot = slot + 1
 		end
 
 		slotsInitialized = true
@@ -636,34 +638,47 @@ local function rebuildSlotData()
 		updateResourceSlots(resName, inventory[resName] or 0, resIcon)
 	end
 
-	-- Remove tools that no longer exist
-	local currentTools = {}
-	for _, tool in tools do currentTools[tool.Name] = tool end
+	-- Tools don't stack; each Tool Instance claims its own slot. Match
+	-- surviving instances to their existing slot; re-bind slots whose
+	-- instance ref went stale (e.g. after a layout restore from the
+	-- server saved state, which only carries the tool name) to any
+	-- unclaimed same-name tool; drop orphan slots.
+	local currentSet = {}
+	for _, tool in tools do currentSet[tool] = true end
 
+	local claimed = {}
 	for i = 1, TOTAL_SLOTS do
-		if slotData[i] and slotData[i].type == "tool" then
-			if not currentTools[slotData[i].toolName] then
-				slotData[i] = nil
+		local entry = slotData[i]
+		if entry and entry.type == "tool" then
+			local inst = entry.toolInst
+			if inst and currentSet[inst] and not claimed[inst] then
+				claimed[inst] = true
+				entry.count = 1
+			else
+				local name = entry.toolName or entry.name
+				local bound
+				for _, t in tools do
+					if not claimed[t] and t.Name == name then
+						bound = t
+						break
+					end
+				end
+				if bound then
+					entry.toolInst = bound
+					entry.count = 1
+					claimed[bound] = true
+				else
+					slotData[i] = nil
+				end
 			end
 		end
 	end
 
-	-- Add new tools (count duplicates for stacking)
-	local toolCounts = {}
+	-- Any Tool instances not yet bound to a slot get a fresh one —
+	-- honouring _G.PendingTargetSlot so a chest → inventory drag lands
+	-- where the user released the drag.
 	for _, tool in tools do
-		toolCounts[tool.Name] = (toolCounts[tool.Name] or 0) + 1
-	end
-
-	for _, tool in tools do
-		local existing = findItemSlot("tool", tool.Name)
-		if existing then
-			slotData[existing].count = toolCounts[tool.Name]
-		else
-			local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
-			local entry = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon, count = toolCounts[tool.Name]}
-
-			-- Honour _G.PendingTargetSlot so a chest → inventory drag lands
-			-- in the slot the user released over, not the first empty one.
+		if not claimed[tool] then
 			local target
 			local pending = _G.PendingTargetSlot
 			if pending and pending.name == tool.Name then
@@ -674,9 +689,19 @@ local function rebuildSlotData()
 					_G.PendingTargetSlot = nil
 				end
 			end
-
 			target = target or findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, maxWritableSlot())
-			if target then slotData[target] = entry end
+			if target then
+				local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+				slotData[target] = {
+					type = "tool",
+					name = tool.Name,
+					toolName = tool.Name,
+					toolInst = tool,
+					icon = toolIcon,
+					count = 1,
+				}
+				claimed[tool] = true
+			end
 		end
 	end
 end
