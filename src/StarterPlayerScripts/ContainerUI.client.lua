@@ -595,15 +595,16 @@ local function openContainerUI(container)
 			return
 		end
 
-		-- Release over player inventory → take. If the release is over a
-		-- specific slot, queue it via _G.PendingTargetSlot so the
-		-- inventory places the stack there instead of auto-filling.
-		if mouseOverPlayerInventory(m.X, m.Y) then
+		-- Release over player inventory OR hotbar → take. The hotbar is
+		-- a separate ScreenGui so mouseOverPlayerInventory alone misses
+		-- it; fall back to any slot the mouse is over (hotbar slots
+		-- 1..HOTBAR_SLOTS count as valid drop targets too).
+		local targetInvSlot = nil
+		if typeof(_G.FindInventorySlotUnderMouse) == "function" then
+			targetInvSlot = _G.FindInventorySlotUnderMouse(m)
+		end
+		if mouseOverPlayerInventory(m.X, m.Y) or targetInvSlot then
 			local srcName = activeContainer:GetAttribute("Slot" .. srcSlot .. "_Name")
-			local targetInvSlot = nil
-			if typeof(_G.FindInventorySlotUnderMouse) == "function" then
-				targetInvSlot = _G.FindInventorySlotUnderMouse(m)
-			end
 			if targetInvSlot and typeof(srcName) == "string" and srcName ~= "" then
 				_G.PendingTargetSlot = { name = srcName, slot = targetInvSlot }
 			end
