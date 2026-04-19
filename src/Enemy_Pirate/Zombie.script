@@ -33,6 +33,15 @@ local ATTACK_COOLDOWN = 1.5   -- seconds
 local WALK_SPEED      = 16
 local TICK_INTERVAL   = 0.1   -- AI tick — 10Hz is plenty for chase/attack
 
+-- Default R6 animation assets. The script picks the first Animation
+-- child of the right name (idle/walk/attack) if the model ships one,
+-- otherwise falls back to these IDs so pirates animate out of the box.
+local DEFAULT_ANIM_IDS = {
+	idle   = "rbxassetid://180435571",
+	walk   = "rbxassetid://180426354",
+	attack = "rbxassetid://522635514",
+}
+
 -- ─── State ────────────────────────────────────────────────────────────────
 local lastAttack = 0
 local alive      = true
@@ -45,18 +54,50 @@ humanoid.PlatformStand = false
 humanoid.Sit           = false
 rootPart.Anchored      = false
 
--- ─── Optional attack animation ────────────────────────────────────────────
--- Use an Animation Instance if the model ships with one, otherwise skip.
-local attackTrack
+-- ─── Animations ───────────────────────────────────────────────────────────
+-- Self-contained: the AI drives idle/walk/attack through an Animator
+-- on the Humanoid. If the model ships its own Animate script we turn
+-- it off first so the two don't fight for the same joints.
 do
-	local anim = script:FindFirstChildOfClass("Animation")
-		or self:FindFirstChild("AttackAnim")
-	if anim and anim:IsA("Animation") then
-		local animator = humanoid:FindFirstChildOfClass("Animator")
-			or Instance.new("Animator", humanoid)
-		local ok, track = pcall(animator.LoadAnimation, animator, anim)
-		if ok then attackTrack = track end
+	local legacy = self:FindFirstChild("Animate")
+	if legacy and (legacy:IsA("BaseScript")) then
+		legacy.Disabled = true
 	end
+end
+
+local animator = humanoid:FindFirstChildOfClass("Animator")
+if not animator then
+	animator = Instance.new("Animator")
+	animator.Parent = humanoid
+end
+
+local function loadTrack(name)
+	-- Prefer a matching Animation Instance shipped with the template
+	-- (script.<name> first, then Self.<name>Anim). Fall back to the
+	-- default asset ID.
+	local anim = script:FindFirstChild(name) or self:FindFirstChild(name .. "Anim")
+	if not (anim and anim:IsA("Animation")) then
+		anim = Instance.new("Animation")
+		anim.AnimationId = DEFAULT_ANIM_IDS[name] or ""
+	end
+	local ok, track = pcall(animator.LoadAnimation, animator, anim)
+	if ok then return track end
+	return nil
+end
+
+local idleTrack   = loadTrack("idle")
+local walkTrack   = loadTrack("walk")
+local attackTrack = loadTrack("attack")
+
+if idleTrack then idleTrack.Looped = true end
+if walkTrack then walkTrack.Looped = true end
+
+local currentMove
+local function setMoveAnim(track)
+	if currentMove == track then return end
+	if currentMove then currentMove:Stop(0.15) end
+	currentMove = track
+	if track then track:Play(0.15) end
 end
 
 -- ─── Helpers ──────────────────────────────────────────────────────────────
@@ -134,7 +175,7 @@ local function tryAttack(targetHum, targetRoot)
 	lastAttack = tick()
 	targetHum:TakeDamage(ATTACK_DAMAGE)
 	if attackTrack then
-		pcall(attackTrack.Play, attackTrack)
+		pcall(function() attackTrack:Play(0.1) end)
 	end
 end
 
@@ -145,6 +186,9 @@ end)
 
 print("[Zombie] AI online for " .. self:GetFullName())
 
+-- Kick off idle so the pirate doesn't just T-pose when there's no target.
+setMoveAnim(idleTrack)
+
 -- ─── Main loop ────────────────────────────────────────────────────────────
 while alive and self.Parent do
 	local ok, err = pcall(function()
@@ -153,11 +197,26 @@ while alive and self.Parent do
 			return
 		end
 		local target = findTarget()
-		if not target then return end
+		if not target then
+			setMoveAnim(idleTrack)
+			return
+		end
 		local tRoot = rootOf(target)
-		if not tRoot then return end
+		if not tRoot then
+			setMoveAnim(idleTrack)
+			return
+		end
 
-		humanoid:MoveTo(tRoot.Position)
+		local dist = (rootPart.Position - tRoot.Position).Magnitude
+		if dist > ATTACK_RANGE then
+			humanoid:MoveTo(tRoot.Position)
+			setMoveAnim(walkTrack)
+		else
+			-- In melee range: stand still and swing. MoveTo(self) keeps
+			-- the humanoid facing the target without drifting away.
+			humanoid:MoveTo(rootPart.Position)
+			setMoveAnim(idleTrack)
+		end
 		tryAttack(target, tRoot)
 	end)
 	if not ok then
@@ -165,3 +224,8 @@ while alive and self.Parent do
 	end
 	task.wait(TICK_INTERVAL)
 end
+
+-- Clean up tracks so a dying pirate doesn't freeze mid-swing.
+if idleTrack   then idleTrack:Stop(0)   end
+if walkTrack   then walkTrack:Stop(0)   end
+if attackTrack then attackTrack:Stop(0) end
