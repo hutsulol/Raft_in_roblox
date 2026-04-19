@@ -12,8 +12,10 @@ local CLICKS_BY_TYPE = {
 }
 
 -- ─── Raft collision damage config ───
-local COLLISION_VEL_THRESHOLD = 3  -- minimum relative velocity for damage
-local COLLISION_DAMAGE_DIVISOR = 5 -- damage = floor(velocity / divisor)
+-- Any contact with the raft is fatal: the resource shatters on the
+-- first touch regardless of velocity. The per-resource guard below
+-- keeps the multiple Touched events from a single collision frame
+-- from double-firing :Destroy(), which would otherwise throw.
 local COLLISION_COOLDOWN = 0.5     -- seconds between damage events per resource
 
 local collectEvent = rs:FindFirstChild("CollectResource")
@@ -147,24 +149,18 @@ local function setupResourceCollision(resource, maxHP)
 		if not raft then return end
 		if not otherPart:IsDescendantOf(raft) then return end
 
-		-- Per-resource cooldown so Touched spam doesn't shred HP in one frame
+		-- Guard against multiple Touched events on the same collision
+		-- reaching Destroy() twice (Roblox throws if we try).
 		local now = tick()
 		local lastHit = collisionCooldowns[resource]
 		if lastHit and (now - lastHit) < COLLISION_COOLDOWN then return end
-
-		-- Relative velocity between resource part and raft part
-		local relVel = (resPart.AssemblyLinearVelocity - otherPart.AssemblyLinearVelocity).Magnitude
-		if relVel < COLLISION_VEL_THRESHOLD then return end
-
-		local damage = math.max(1, math.floor(relVel / COLLISION_DAMAGE_DIVISOR))
 		collisionCooldowns[resource] = now
 
-		local hp = damageResource(resource, damage)
+		if not resource.Parent then return end
 
-		if hp <= 0 then
-			-- Fatal collision: destroy without reward, no break sound
-			resource:Destroy()
-		end
+		-- Raft collision is always fatal: drain HP to 0 and shatter.
+		resource:SetAttribute("ResourceHP", 0)
+		resource:Destroy()
 	end
 
 	-- Connect Touched on every BasePart in the resource
