@@ -1439,6 +1439,7 @@ local function openDetailOverlay(recipe)
 
 		local have = inventory[item] or 0
 		local matLabel = Instance.new("TextLabel")
+		matLabel.Name = "MatLabel_" .. item
 		matLabel.Size = UDim2.new(1, -60, 1, 0)
 		matLabel.Position = UDim2.new(0, 52, 0, 0)
 		matLabel.BackgroundTransparency = 1
@@ -1449,6 +1450,8 @@ local function openDetailOverlay(recipe)
 		matLabel.TextXAlignment = Enum.TextXAlignment.Left
 		matLabel.ZIndex = 22
 		matLabel.Parent = matRow
+		matRow:SetAttribute("ItemName", item)
+		matRow:SetAttribute("ItemAmount", amount)
 	end
 
 	-- Craft button at bottom
@@ -1614,6 +1617,24 @@ local function updateCraftPanel()
 		local craftBtn = detailOverlay:FindFirstChild("DetailCraftButton")
 		if craftBtn then
 			craftBtn.BackgroundColor3 = canAfford(selectedRecipe) and COLORS.affordable or Color3.fromRGB(120, 120, 120)
+		end
+
+		-- Refresh the "Log: have / need" material rows so a just-
+		-- completed craft immediately reflects the drained inventory.
+		local matScroll = detailOverlay:FindFirstChild("MaterialsScroll")
+		if matScroll then
+			for _, row in matScroll:GetChildren() do
+				local item = row:GetAttribute("ItemName")
+				local amount = row:GetAttribute("ItemAmount")
+				if item and amount then
+					local label = row:FindFirstChild("MatLabel_" .. item)
+					if label then
+						local have = inventory[item] or 0
+						label.Text = item .. ": " .. have .. " / " .. amount
+						label.TextColor3 = have >= amount and COLORS.affordable or COLORS.notAffordable
+					end
+				end
+			end
 		end
 	end
 end
