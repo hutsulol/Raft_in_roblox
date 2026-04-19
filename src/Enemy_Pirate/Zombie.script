@@ -46,11 +46,17 @@ humanoid.Sit           = false
 rootPart.Anchored      = false
 
 -- ─── Attack animation ─────────────────────────────────────────────────────
--- Walk / idle come from the rig's own Animate script (the same way
--- Pirate_2 — the working mercenary — does it), so we DO NOT disable it.
--- Only the swing animation is owned here: if the template ships a
--- child Animation named "Attack" on this script we load it; otherwise
--- activating the equipped Tool (ClassicSword) plays its own swing.
+-- Walk / idle come from the rig's own Animate script (same way the
+-- working Pirate_2 mercenary does it), so we DO NOT disable it.
+--
+-- The original Zombie.script required a child Animation called "Attack"
+-- (the assert on `script.Attack` is what threw "Monster does not have
+-- a MonsterScript.Attack Animation" after the template lost it). We
+-- still prefer that Instance when the template ships one, but fall
+-- back to the standard R6 tool-slash asset so every pirate visibly
+-- swings even if no Animation child is present.
+local DEFAULT_ATTACK_ID = "rbxassetid://129967390"  -- R6 toolslash
+
 local animator = humanoid:FindFirstChildOfClass("Animator")
 if not animator then
 	animator = Instance.new("Animator")
@@ -61,9 +67,15 @@ local attackTrack
 do
 	local anim = script:FindFirstChild("Attack")
 		or self:FindFirstChild("AttackAnim")
-	if anim and anim:IsA("Animation") then
-		local ok, track = pcall(animator.LoadAnimation, animator, anim)
-		if ok then attackTrack = track end
+	if not (anim and anim:IsA("Animation")) then
+		anim = Instance.new("Animation")
+		anim.Name = "Attack"
+		anim.AnimationId = DEFAULT_ATTACK_ID
+	end
+	local ok, track = pcall(animator.LoadAnimation, animator, anim)
+	if ok then
+		attackTrack = track
+		attackTrack.Priority = Enum.AnimationPriority.Action
 	end
 end
 
@@ -142,9 +154,14 @@ local function tryAttack(targetHum, targetRoot)
 	lastAttack = tick()
 	targetHum:TakeDamage(ATTACK_DAMAGE)
 
-	-- Play the rig's own Attack animation if one was loaded.
+	-- Play the rig's Attack animation (either the one shipped with the
+	-- model or the default R6 sword-slash). Stop first so consecutive
+	-- swings visibly restart from frame 0.
 	if attackTrack then
-		pcall(function() attackTrack:Play(0.1) end)
+		pcall(function()
+			attackTrack:Stop(0)
+			attackTrack:Play(0.1)
+		end)
 	end
 
 	-- Activate the equipped Tool (ClassicSword) so its built-in swing
