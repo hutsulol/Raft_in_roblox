@@ -661,8 +661,22 @@ local function rebuildSlotData()
 		else
 			local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
 			local entry = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon, count = toolCounts[tool.Name]}
-			local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, maxWritableSlot())
-			if empty then slotData[empty] = entry end
+
+			-- Honour _G.PendingTargetSlot so a chest → inventory drag lands
+			-- in the slot the user released over, not the first empty one.
+			local target
+			local pending = _G.PendingTargetSlot
+			if pending and pending.name == tool.Name then
+				local tgt = pending.slot
+				if tgt and tgt >= 1 and tgt <= TOTAL_SLOTS
+					and not isSlotLocked(tgt) and not slotData[tgt] then
+					target = tgt
+					_G.PendingTargetSlot = nil
+				end
+			end
+
+			target = target or findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, maxWritableSlot())
+			if target then slotData[target] = entry end
 		end
 	end
 end
