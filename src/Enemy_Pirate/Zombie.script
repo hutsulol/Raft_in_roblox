@@ -133,14 +133,17 @@ end
 --   * Mercenary      → nearest HostilePirate (never attacks a player)
 local CollectionService = Game:GetService('CollectionService')
 
+-- Returns the BasePart used for distance / pathing checks. Prefers
+-- Humanoid.RootPart (HumanoidRootPart) so both R15 players and R6
+-- pirates/mercenaries resolve to a valid part; falls back to the
+-- legacy .Torso for any rig that happens to lack a root part.
 local function GetSearchTorso(humanoid)
-	-- Keep the candidate filter aligned with TargetIsValid (which only
-	-- accepts humanoids whose .Torso is a BasePart). This is the legacy
-	-- R6 path; R15 players are deliberately not supported so we don't
-	-- latch onto them and then idle. Mercenaries and hostile pirates are
-	-- both cloned from R6 templates so they always satisfy this.
 	if humanoid == nil then return nil end
-	return humanoid.Torso
+	local root = humanoid.RootPart
+	if root and root:IsA('BasePart') then return root end
+	if humanoid.Torso and humanoid.Torso:IsA('BasePart') then return humanoid.Torso end
+	local model = humanoid.Parent
+	return model and model:FindFirstChild('HumanoidRootPart') or nil
 end
 
 function Monster:SearchForTarget()
@@ -208,26 +211,27 @@ end
 
 function Monster:GetTargetCFrame()
 	local targetHumanoid = Mind.CurrentTargetHumanoid.Value
-	
+
 	if Monster:TargetIsValid() then
-		return targetHumanoid.Torso.CFrame
+		local root = GetSearchTorso(targetHumanoid)
+		return root and root.CFrame or CFrame.new()
 	else
 		return CFrame.new()
 	end
 end
 
 function Monster:IsAlive()
-	return Self.Humanoid.Health > 0 and Self.Humanoid.Torso ~= nil
+	return Self.Humanoid.Health > 0 and GetSearchTorso(Self.Humanoid) ~= nil
 end
 
 function Monster:TargetIsValid()
 	local targetHumanoid = Mind.CurrentTargetHumanoid.Value
-	
-	if targetHumanoid ~= nil and targetHumanoid:IsA 'Humanoid' and targetHumanoid.Torso ~= nil and targetHumanoid.Torso:IsA 'BasePart' then
-		return true
-	else
-		return false
+
+	if targetHumanoid ~= nil and targetHumanoid:IsA 'Humanoid' then
+		local root = GetSearchTorso(targetHumanoid)
+		if root and root:IsA 'BasePart' then return true end
 	end
+	return false
 end
 
 function Monster:HasClearLineOfSight()
@@ -463,8 +467,8 @@ function Monster:ReevaluateTarget()
 		
 		
 		if currentTarget == Mind.CurrentTargetHumanoid.Value then
-			local torso = currentTarget.Torso
-			
+			local torso = GetSearchTorso(currentTarget)
+
 			if torso ~= nil and torso:IsA 'BasePart' then
 				if Settings.CanGiveUp.Value and (torso.Position - Monster:GetCFrame().p).magnitude > Monster:GetMaximumDetectionDistance() then
 					Mind.CurrentTargetHumanoid.Value = nil
