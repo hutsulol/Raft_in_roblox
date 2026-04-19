@@ -1,529 +1,167 @@
---[[
-	Basic Monster by ArceusInator
-
-	Information:
-		Configurations.MaximumDetectionDistance (default 200)
-			The monster will not detect players past this point.  If you set it to a negative number then the monster will be able to chase from any distance.
-			
-		Configurations.CanGiveUp (default true)
-			If true, the monster will give up if its target goes past the MaximumDetectionDistance.  This is a pretty good idea if you have people teleporting around.
-			
-		Configurations.CanRespawn (default true)
-			If true, the monster will respawn after it dies
-			
-		Configurations.AutoDetectSpawnPoint (default true)
-			If true, the spawn point will be auto detected based on where the monster is when it starts
-		
-		Configurations.SpawnPoint (default 0,0,0)
-			If Settings.AutoDetectSpawnPoint is disabled, this will be set to the monster's initial position.  This value will be used when the monster auto respawns to tell it where to spawn next.
-			
-		Configurations.FriendlyTeam (default Really black)
-			The monster will not attack players on this team
-		
-		
-		
-		Mind.CurrentTargetHumanoid (Humanoid objects only)
-			You can force the monster to follow a certain humanoid by setting this to that humanoid
-		
-		
-		
-		Monster.Respawn (Function)
-			Arguments are: Vector3 point
-			Info: Respawns the monster at the given point, or at the SpawnPoint setting if none if provided
-		
-		Monster.Died (Event)
-			Info: Fired when the monster dies
-		
-		Monster.Respawned (Event)
-			Info: Fired when the monster respawns
---]]
-
-local Self = script.Parent
-local Settings = Self:FindFirstChild'Configurations' -- Points to the settings.
-local Mind = Self:FindFirstChild'Mind' -- Points to the monster's mind.  You can edit parts of this from other scripts in-game to change the monster's behavior.  Advanced users only.
-
+-- Zombie.script — minimal self-contained pirate AI.
 --
--- Verify that everything is where it should be
-assert(Self:FindFirstChild'Humanoid' ~= nil, 'Monster does not have a humanoid')
-assert(Settings ~= nil, 'Monster does not have a Configurations object')
-	assert(Settings:FindFirstChild'MaximumDetectionDistance' ~= nil and Settings.MaximumDetectionDistance:IsA'NumberValue', 'Monster does not have a MaximumDetectionDistance (NumberValue) setting')
-	assert(Settings:FindFirstChild'CanGiveUp' ~= nil and Settings.CanGiveUp:IsA'BoolValue', 'Monster does not have a CanGiveUp (BoolValue) setting')
-	assert(Settings:FindFirstChild'CanRespawn' ~= nil and Settings.CanRespawn:IsA'BoolValue', 'Monster does not have a CanRespawn (BoolValue) setting')
-	assert(Settings:FindFirstChild'SpawnPoint' ~= nil and Settings.SpawnPoint:IsA'Vector3Value', 'Monster does not have a SpawnPoint (Vector3Value) setting')
-	assert(Settings:FindFirstChild'AutoDetectSpawnPoint' ~= nil and Settings.AutoDetectSpawnPoint:IsA'BoolValue', 'Monster does not have a AutoDetectSpawnPoint (BoolValue) setting')
-	assert(Settings:FindFirstChild'FriendlyTeam' ~= nil and Settings.FriendlyTeam:IsA'BrickColorValue', 'Monster does not have a FriendlyTeam (BrickColorValue) setting')
-	assert(Settings:FindFirstChild'AttackDamage' ~= nil and Settings.AttackDamage:IsA'NumberValue', 'Monster does not have a AttackDamage (NumberValue) setting')
-	assert(Settings:FindFirstChild'AttackFrequency' ~= nil and Settings.AttackFrequency:IsA'NumberValue', 'Monster does not have a AttackFrequency (NumberValue) setting')
-	assert(Settings:FindFirstChild'AttackRange' ~= nil and Settings.AttackRange:IsA'NumberValue', 'Monster does not have a AttackRange (NumberValue) setting')
-assert(Mind ~= nil, 'Monster does not have a Mind object')
-	assert(Mind:FindFirstChild'CurrentTargetHumanoid' ~= nil and Mind.CurrentTargetHumanoid:IsA'ObjectValue', 'Monster does not have a CurrentTargetHumanoid (ObjectValue) mind setting')
-assert(Self:FindFirstChild'Respawn' and Self.Respawn:IsA'BindableFunction', 'Monster does not have a Respawn BindableFunction')
-assert(Self:FindFirstChild'Died' and Self.Died:IsA'BindableEvent', 'Monster does not have a Died BindableEvent')
-assert(Self:FindFirstChild'Respawned' and Self.Died:IsA'BindableEvent', 'Monster does not have a Respawned BindableEvent')
-assert(Self:FindFirstChild'Attacked' and Self.Died:IsA'BindableEvent', 'Monster does not have a Attacked BindableEvent')
-assert(script:FindFirstChild'Attack' and script.Attack:IsA'Animation', 'Monster does not have a MonsterScript.Attack Animation')
-
-
+-- Replaces the old Quenty monster framework that required a
+-- Configurations folder, a Mind folder, Died / Respawned / Attacked
+-- BindableEvents, a Respawn BindableFunction, and an Attack Animation
+-- child. None of those are needed: tunables live in local constants
+-- below and the loop reads state straight off the Humanoid.
 --
+-- Role is driven by CollectionService tags on the model itself:
+--   * "SpawnedMercenary" → hunt nearest HostilePirate
+--   * anything else       → hunt nearest player + any SpawnedMercenary
 --
-local Info = {
-	-- These are constant values.  Don't change them unless you know what you're doing.
+-- Stops cleanly on death — no respawn loop.
 
-	-- Services
-	Players = Game:GetService 'Players',
-	PathfindingService = Game:GetService 'PathfindingService',
+local CollectionService = game:GetService("CollectionService")
+local Players            = game:GetService("Players")
+local RunService         = game:GetService("RunService")
 
-	-- Advanced settings
-	RecomputePathFrequency = 1, -- The monster will recompute its path this many times per second
-	RespawnWaitTime = 5, -- How long to wait before the monster respawns
-	JumpCheckFrequency = 1, -- How many times per second it will do a jump check
-}
-local Data = {
-	-- These are variable values used internally by the script.  Advanced users only.
+local self        = script.Parent
+local humanoid    = self:WaitForChild("Humanoid", 5)
+local rootPart    = self:WaitForChild("HumanoidRootPart", 5)
 
-	LastRecomputePath = 0,
-	Recomputing = false, -- Reocmputing occurs async, meaning this script will still run while it's happening.  This variable will prevent the script from running two recomputes at once.
-	PathCoords = {},
-	IsDead = false,
-	TimeOfDeath = 0,
-	CurrentNode = nil,
-	CurrentNodeIndex = 1,
-	AutoRecompute = true,
-	LastJumpCheck = 0,
-	LastAttack = 0,
-	
-	BaseMonster = Self:Clone(),
-	AttackTrack = nil,
-}
+if not humanoid or not rootPart then
+	warn("[Zombie] missing Humanoid / HumanoidRootPart on " .. self:GetFullName())
+	return
+end
 
---
---
-local Monster = {} -- Create the monster class
+-- ─── Tunables ─────────────────────────────────────────────────────────────
+local DETECTION_RANGE = 200   -- studs
+local ATTACK_RANGE    = 5     -- studs
+local ATTACK_DAMAGE   = 10
+local ATTACK_COOLDOWN = 1.5   -- seconds
+local WALK_SPEED      = 16
+local TICK_INTERVAL   = 0.1   -- AI tick — 10Hz is plenty for chase/attack
 
+-- ─── State ────────────────────────────────────────────────────────────────
+local lastAttack = 0
+local alive      = true
 
-function Monster:GetCFrame()
-	-- Returns the CFrame of the monster's humanoidrootpart
+-- ─── Startup normalisation ────────────────────────────────────────────────
+-- A previous playtest may have saved the template mid-ragdoll. Force the
+-- humanoid back into a walkable state so MoveTo actually moves it.
+humanoid.WalkSpeed     = WALK_SPEED
+humanoid.PlatformStand = false
+humanoid.Sit           = false
+rootPart.Anchored      = false
 
-	local humanoidRootPart = Self:FindFirstChild('HumanoidRootPart')
-
-	if humanoidRootPart ~= nil and humanoidRootPart:IsA('BasePart') then
-		return humanoidRootPart.CFrame
-	else
-		return CFrame.new()
+-- ─── Optional attack animation ────────────────────────────────────────────
+-- Use an Animation Instance if the model ships with one, otherwise skip.
+local attackTrack
+do
+	local anim = script:FindFirstChildOfClass("Animation")
+		or self:FindFirstChild("AttackAnim")
+	if anim and anim:IsA("Animation") then
+		local animator = humanoid:FindFirstChildOfClass("Animator")
+			or Instance.new("Animator", humanoid)
+		local ok, track = pcall(animator.LoadAnimation, animator, anim)
+		if ok then attackTrack = track end
 	end
 end
 
-function Monster:GetMaximumDetectionDistance()
-	-- Returns the maximum detection distance
-	
-	local setting = Settings.MaximumDetectionDistance.Value
+-- ─── Helpers ──────────────────────────────────────────────────────────────
 
-	if setting < 0 then
-		return math.huge
-	else
-		return setting
+-- Returns the BasePart used for distance / movement (R15 players and R6
+-- pirates both resolve to a valid part).
+local function rootOf(humanoidInst)
+	if not humanoidInst then return nil end
+	local rp = humanoidInst.RootPart
+	if rp and rp:IsA("BasePart") then return rp end
+	if humanoidInst.Torso and humanoidInst.Torso:IsA("BasePart") then
+		return humanoidInst.Torso
 	end
+	local model = humanoidInst.Parent
+	return model and model:FindFirstChild("HumanoidRootPart") or nil
 end
 
--- Role-aware target search. This script is shared by hostile pirates
--- (tagged "HostilePirate") and recruited mercenaries (tagged
--- "SpawnedMercenary"). The two roles look for different enemies:
---
---   * Hostile pirate → nearest player OR nearest SpawnedMercenary
---   * Mercenary      → nearest HostilePirate (never attacks a player)
-local CollectionService = Game:GetService('CollectionService')
-
--- Returns the BasePart used for distance / pathing checks. Prefers
--- Humanoid.RootPart (HumanoidRootPart) so both R15 players and R6
--- pirates/mercenaries resolve to a valid part; falls back to the
--- legacy .Torso for any rig that happens to lack a root part.
-local function GetSearchTorso(humanoid)
-	if humanoid == nil then return nil end
-	local root = humanoid.RootPart
-	if root and root:IsA('BasePart') then return root end
-	if humanoid.Torso and humanoid.Torso:IsA('BasePart') then return humanoid.Torso end
-	local model = humanoid.Parent
-	return model and model:FindFirstChild('HumanoidRootPart') or nil
+local function isMercenary()
+	return CollectionService:HasTag(self, "SpawnedMercenary")
 end
 
-function Monster:SearchForTarget()
-	-- Build the candidate humanoid list based on this unit's role.
-	local isMercenary = CollectionService:HasTag(Self, 'SpawnedMercenary')
+-- Walk through the candidate list and return the nearest live Humanoid.
+local function nearestFrom(humanoids)
+	local myPos = rootPart.Position
+	local bestHum, bestDist = nil, DETECTION_RANGE
+	for _, hum in ipairs(humanoids) do
+		if hum and hum ~= humanoid and hum.Health > 0 then
+			local part = rootOf(hum)
+			if part then
+				local d = (part.Position - myPos).Magnitude
+				if d < bestDist then
+					bestHum, bestDist = hum, d
+				end
+			end
+		end
+	end
+	return bestHum
+end
 
+-- Build the candidate list based on this unit's role.
+local function findTarget()
+	local mercRole = isMercenary()
 	local candidates = {}
 
-	if isMercenary then
-		-- Mercenary: only hunt hostile pirates.
-		for _, pirate in CollectionService:GetTagged('HostilePirate') do
-			if pirate:IsDescendantOf(workspace) then
-				local hum = pirate:FindFirstChildOfClass('Humanoid')
+	if mercRole then
+		for _, pirate in CollectionService:GetTagged("HostilePirate") do
+			if pirate:IsDescendantOf(workspace) and pirate ~= self then
+				local hum = pirate:FindFirstChildOfClass("Humanoid")
 				if hum then table.insert(candidates, hum) end
 			end
 		end
 	else
-		-- Hostile pirate: target non-friendly players AND any mercenary.
-		local players = Info.Players:GetPlayers()
-		for i = 1, #players do
-			local player = players[i]
-			if player.Neutral or player.TeamColor ~= Settings.FriendlyTeam.Value then
-				local character = player.Character
-				if character ~= nil then
-					local hum = character:FindFirstChildOfClass('Humanoid')
-					if hum then table.insert(candidates, hum) end
-				end
+		-- Hostile pirate targets players + any spawned mercenary.
+		for _, player in ipairs(Players:GetPlayers()) do
+			local char = player.Character
+			if char then
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				if hum then table.insert(candidates, hum) end
 			end
 		end
-		for _, merc in CollectionService:GetTagged('SpawnedMercenary') do
-			if merc:IsDescendantOf(workspace) and merc ~= Self then
-				local hum = merc:FindFirstChildOfClass('Humanoid')
+		for _, merc in CollectionService:GetTagged("SpawnedMercenary") do
+			if merc:IsDescendantOf(workspace) and merc ~= self then
+				local hum = merc:FindFirstChildOfClass("Humanoid")
 				if hum then table.insert(candidates, hum) end
 			end
 		end
 	end
 
-	-- Pick the closest live candidate within detection range.
-	local myPos = Monster:GetCFrame().p
-	local maxDist = Monster:GetMaximumDetectionDistance()
-	local closestHumanoid, closestDistance = nil, math.huge
+	return nearestFrom(candidates)
+end
 
-	for _, hum in ipairs(candidates) do
-		if hum ~= Self.Humanoid and hum.Health > 0 then
-			local torso = GetSearchTorso(hum)
-			if torso and torso:IsA('BasePart') then
-				local distance = (torso.Position - myPos).magnitude
-				if distance < maxDist and distance < closestDistance then
-					closestHumanoid, closestDistance = hum, distance
-				end
-			end
+local function tryAttack(targetHum, targetRoot)
+	if tick() - lastAttack < ATTACK_COOLDOWN then return end
+	if (rootPart.Position - targetRoot.Position).Magnitude > ATTACK_RANGE then return end
+	lastAttack = tick()
+	targetHum:TakeDamage(ATTACK_DAMAGE)
+	if attackTrack then
+		pcall(attackTrack.Play, attackTrack)
+	end
+end
+
+-- ─── Lifecycle ────────────────────────────────────────────────────────────
+humanoid.Died:Connect(function()
+	alive = false
+end)
+
+print("[Zombie] AI online for " .. self:GetFullName())
+
+-- ─── Main loop ────────────────────────────────────────────────────────────
+while alive and self.Parent do
+	local ok, err = pcall(function()
+		if humanoid.Health <= 0 then
+			alive = false
+			return
 		end
-	end
+		local target = findTarget()
+		if not target then return end
+		local tRoot = rootOf(target)
+		if not tRoot then return end
 
-	if closestHumanoid ~= nil then
-		Mind.CurrentTargetHumanoid.Value = closestHumanoid
-	end
-end
-
-function Monster:TryRecomputePath()
-	if Data.AutoRecompute or tick() - Data.LastRecomputePath > 1/Info.RecomputePathFrequency then
-		Monster:RecomputePath()
-	end
-end
-
-function Monster:GetTargetCFrame()
-	local targetHumanoid = Mind.CurrentTargetHumanoid.Value
-
-	if Monster:TargetIsValid() then
-		local root = GetSearchTorso(targetHumanoid)
-		return root and root.CFrame or CFrame.new()
-	else
-		return CFrame.new()
-	end
-end
-
-function Monster:IsAlive()
-	return Self.Humanoid.Health > 0 and GetSearchTorso(Self.Humanoid) ~= nil
-end
-
-function Monster:TargetIsValid()
-	local targetHumanoid = Mind.CurrentTargetHumanoid.Value
-
-	if targetHumanoid ~= nil and targetHumanoid:IsA 'Humanoid' then
-		local root = GetSearchTorso(targetHumanoid)
-		if root and root:IsA 'BasePart' then return true end
-	end
-	return false
-end
-
-function Monster:HasClearLineOfSight()
-	-- Going to cast a ray to see if I can just see my target
-	local myPos, targetPos = Monster:GetCFrame().p, Monster:GetTargetCFrame().p
-	
-	local hit, pos = Workspace:FindPartOnRayWithIgnoreList(
-		Ray.new(
-			myPos,
-			targetPos - myPos
-		),
-		{
-			Self,
-			Mind.CurrentTargetHumanoid.Value.Parent
-		}
-	)
-	
-	
-	if hit == nil then
-		return true
-	else
-		return false
-	end
-end
-
-function Monster:RecomputePath()
-	if not Data.Recomputing then
-		if Monster:IsAlive() and Monster:TargetIsValid() then
-			if Monster:HasClearLineOfSight() then
-				Data.AutoRecompute = true
-				Data.PathCoords = {
-					Monster:GetCFrame().p,
-					Monster:GetTargetCFrame().p
-				}
-				
-				Data.LastRecomputePath = tick()
-				Data.CurrentNode = nil
-				Data.CurrentNodeIndex = 2 -- Starts chasing the target without evaluating its current position
-			else
-				-- Do pathfinding since you can't walk straight
-				Data.Recomputing = true -- Basically a debounce.
-				Data.AutoRecompute = false
-				
-				
-				local path = Info.PathfindingService:ComputeSmoothPathAsync(
-					Monster:GetCFrame().p,
-					Monster:GetTargetCFrame().p,
-					500
-				)
-				Data.PathCoords = path:GetPointCoordinates()
-				
-				
-				Data.Recomputing = false
-				Data.LastRecomputePath = tick()
-				Data.CurrentNode = nil
-				Data.CurrentNodeIndex = 1
-			end
-		end
-	end
-end
-
-function Monster:Update()
-	Monster:ReevaluateTarget()
-	Monster:SearchForTarget()
-	Monster:TryRecomputePath()
-	Monster:TravelPath()
-end
-
-function Monster:TravelPath()
-	local closest, closestDistance, closestIndex
-	local myPosition = Monster:GetCFrame().p
-	local skipCurrentNode = Data.CurrentNode ~= nil and (Data.CurrentNode - myPosition).magnitude < 3
-	
-	for i=Data.CurrentNodeIndex, #Data.PathCoords do
-		local coord = Data.PathCoords[i]
-		if not (skipCurrentNode and coord == Data.CurrentNode) then
-			local distance = (coord - myPosition).magnitude
-			
-			if closest == nil then
-				closest, closestDistance, closestIndex = coord, distance, i
-			else
-				if distance < closestDistance then
-					closest, closestDistance, closestIndex = coord, distance, i
-				else
-					break
-				end
-			end
-		end
-	end
-	
-	
-	--
-	if closest ~= nil then
-		Data.CurrentNode = closest
-		Data.CurrentNodeIndex = closestIndex
-		
-		local humanoid = Self:FindFirstChild 'Humanoid'
-		
-		if humanoid ~= nil and humanoid:IsA'Humanoid' then
-			humanoid:MoveTo(closest)
-		end
-		
-		if Monster:IsAlive() and Monster:TargetIsValid() then
-			Monster:TryJumpCheck()
-			Monster:TryAttack()
-		end
-		
-		if closestIndex == #Data.PathCoords then
-			-- Reached the end of the path, force a new check
-			Data.AutoRecompute = true
-		end
-	end
-end
-
-function Monster:TryJumpCheck()
-	if tick() - Data.LastJumpCheck > 1/Info.JumpCheckFrequency then
-		Monster:JumpCheck()
-	end
-end
-
-function Monster:TryAttack()
-	if tick() - Data.LastAttack > 1/Settings.AttackFrequency.Value then
-		Monster:Attack()
-	end
-end
-
-function Monster:Attack()
-	local myPos, targetPos = Monster:GetCFrame().p, Monster:GetTargetCFrame().p
-	
-	if (myPos - targetPos).magnitude <= Settings.AttackRange.Value then
-		Mind.CurrentTargetHumanoid.Value:TakeDamage(Settings.AttackDamage.Value)
-		Data.LastAttack = tick()
-		Data.AttackTrack:Play()
-	end
-end
-
-function Monster:JumpCheck()
-	-- Do a raycast to check if we need to jump
-	local myCFrame = Monster:GetCFrame()
-	local checkVector = (Monster:GetTargetCFrame().p - myCFrame.p).unit*2
-	
-	local hit, pos = Workspace:FindPartOnRay(
-		Ray.new(
-			myCFrame.p + Vector3.new(0, -2.4, 0),
-			checkVector
-		),
-		Self
-	)
-	
-	if hit ~= nil and not hit:IsDescendantOf(Mind.CurrentTargetHumanoid.Value.Parent) then
-		-- Do a slope check to make sure we're not walking up a ramp
-		
-		local hit2, pos2 = Workspace:FindPartOnRay(
-			Ray.new(
-				myCFrame.p + Vector3.new(0, -2.3, 0),
-				checkVector
-			),
-			Self
-		)
-		
-		if hit2 == hit then
-			if ((pos2 - pos)*Vector3.new(1,0,1)).magnitude < 0.05 then -- Will pass for any ramp with <2 slope
-				Self.Humanoid.Jump = true
-			end
-		end
-	end
-	
-	Data.LastJumpCheck = tick()
-end
-
-function Monster:Connect()
-	Mind.CurrentTargetHumanoid.Changed:connect(function(humanoid)
-		if humanoid ~= nil then
-			assert(humanoid:IsA'Humanoid', 'Monster target must be a humanoid')
-			
-			Monster:RecomputePath()
-		end
+		humanoid:MoveTo(tRoot.Position)
+		tryAttack(target, tRoot)
 	end)
-	
-	Self.Respawn.OnInvoke = function(point)
-		Monster:Respawn(point)
+	if not ok then
+		warn("[Zombie] tick error: " .. tostring(err))
 	end
-end
-
-function Monster:Initialize()
-	Monster:Connect()
-	
-	if Settings.AutoDetectSpawnPoint.Value then
-		Settings.SpawnPoint.Value = Monster:GetCFrame().p
-	end
-end
-
-function Monster:Respawn(point)
-	local point = point or Settings.SpawnPoint.Value
-	
-	for index, obj in next, Data.BaseMonster:Clone():GetChildren() do
-		if obj.Name == 'Configurations' or obj.Name == 'Mind' or obj.Name == 'Respawned' or obj.Name == 'Died' or obj.Name == 'MonsterScript' or obj.Name == 'Respawn' then
-			obj:Destroy()
-		else
-			Self[obj.Name]:Destroy()
-			obj.Parent = Self
-		end
-	end
-	
-	Monster:InitializeUnique()
-	
-	Self.Parent = Workspace
-	
-	Self.HumanoidRootPart.CFrame = CFrame.new(point)
-	Settings.SpawnPoint.Value = point
-	Self.Respawned:Fire()
-end
-
-function Monster:InitializeUnique()
-	Data.AttackTrack = Self.Humanoid:LoadAnimation(script.Attack)
-end
-
-function Monster:ReevaluateTarget()
-	local currentTarget = Mind.CurrentTargetHumanoid.Value
-	
-	if currentTarget ~= nil and currentTarget:IsA'Humanoid' then
-		local character = currentTarget.Parent
-		
-		if character ~= nil then
-			local player = Info.Players:GetPlayerFromCharacter(character)
-			
-			if player ~= nil then
-				if not player.Neutral and player.TeamColor == Settings.FriendlyTeam.Value then
-					Mind.CurrentTargetHumanoid.Value = nil
-				end
-			end
-		end
-		
-		
-		if currentTarget == Mind.CurrentTargetHumanoid.Value then
-			local torso = GetSearchTorso(currentTarget)
-
-			if torso ~= nil and torso:IsA 'BasePart' then
-				if Settings.CanGiveUp.Value and (torso.Position - Monster:GetCFrame().p).magnitude > Monster:GetMaximumDetectionDistance() then
-					Mind.CurrentTargetHumanoid.Value = nil
-				end
-			end
-		end
-	end
-end
-
---
---
-Monster:Initialize()
-Monster:InitializeUnique()
-
--- Guard against save-state surprises: if a previous playtest left the
--- Humanoid in a non-movable state (WalkSpeed=0, PlatformStand=true,
--- Sit=true), the AI would loop forever calling MoveTo on a humanoid
--- that can't walk. Reset the movement-blocking properties so the
--- pirate is free to chase its target.
-do
-	local hum = Self:FindFirstChildWhichIsA('Humanoid')
-	if hum then
-		if hum.WalkSpeed <= 0 then hum.WalkSpeed = 16 end
-		hum.PlatformStand = false
-		hum.Sit = false
-	end
-	local hrp = Self:FindFirstChild('HumanoidRootPart')
-	if hrp and hrp:IsA('BasePart') then hrp.Anchored = false end
-end
-
-print('[Zombie] AI online for ' .. Self:GetFullName())
-
-while true do
-	if not Monster:IsAlive() then
-		if Data.IsDead == false then
-			Data.IsDead = true
-			Data.TimeOfDeath = tick()
-			Self.Died:Fire()
-		end
-		if Data.IsDead == true then
-			if Settings.CanRespawn.Value and tick()-Data.TimeOfDeath > Info.RespawnWaitTime then
-				Monster:Respawn()
-			end
-		end
-	end
-
-	if Monster:IsAlive() then
-		-- pcall the update so a one-off error (e.g. a stale target
-		-- humanoid whose torso was just destroyed) doesn't terminate
-		-- the whole AI loop and leave the pirate frozen forever.
-		local ok, err = pcall(Monster.Update, Monster)
-		if not ok then
-			warn('[Zombie] update error: ' .. tostring(err))
-		end
-	end
-
-	wait()
+	task.wait(TICK_INTERVAL)
 end
