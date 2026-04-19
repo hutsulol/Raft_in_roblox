@@ -90,11 +90,49 @@ local function isOffRaft(pirate, raft)
 	return false
 end
 
+-- Strip every weld / constraint connecting this pirate to anything
+-- outside its own model, force-unanchor its parts, and wake the
+-- Humanoid up. Called during boarding so the transit weld (plus any
+-- template-level welds pointing at the pirate raft) can't pull the
+-- pirate back once it's been teleported.
+local function releasePirate(pirate)
+	for _, d in pirate:GetDescendants() do
+		if d:IsA("WeldConstraint") or d:IsA("Weld") or d:IsA("Motor") then
+			local p0, p1 = d.Part0, d.Part1
+			local inside0 = p0 and p0:IsDescendantOf(pirate)
+			local inside1 = p1 and p1:IsDescendantOf(pirate)
+			-- Keep internal joints (character Motor6Ds etc.) intact;
+			-- only kill bonds that reach outside the pirate model.
+			if (p0 and not inside0) or (p1 and not inside1) then
+				d:Destroy()
+			end
+		elseif d:IsA("BasePart") then
+			d.Anchored = false
+		end
+	end
+	local hum = pirate:FindFirstChildWhichIsA("Humanoid")
+	if hum then
+		hum.PlatformStand = false
+		hum.Sit = false
+	end
+	local hrp = pirate:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		hrp.AssemblyLinearVelocity  = Vector3.zero
+		hrp.AssemblyAngularVelocity = Vector3.zero
+	end
+end
+
 local function boardPirate(pirate, raft)
+	releasePirate(pirate)
 	local hrp = pirate:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 	local landing = pickRaftDropPoint(raft)
-	pirate:PivotTo(CFrame.new(landing))
+	-- Use a direct CFrame assignment on the HumanoidRootPart so gravity
+	-- takes over immediately; PivotTo on a model with lingering welds
+	-- sometimes snaps the part back to the old anchor.
+	hrp.CFrame = CFrame.new(landing)
+	hrp.AssemblyLinearVelocity  = Vector3.zero
+	hrp.AssemblyAngularVelocity = Vector3.zero
 end
 
 -- Pirate raft spawn + approach + shadow logic.
@@ -211,8 +249,11 @@ local function spawnPirateRaft()
 			-- After boarding we hold position to the side so the pirate
 			-- raft never crashes into / overlaps the player's tiles.
 			if boarded then
-				local look = b.PrimaryPart.CFrame.RightVector
-				target = target + Vector3.new(look.X, 0, look.Z).Unit * SHADOW_OFFSET
+				local right = b.PrimaryPart.CFrame.RightVector
+				local planarRight = Vector3.new(right.X, 0, right.Z)
+				if planarRight.Magnitude > 0.01 then
+					target = target + planarRight.Unit * SHADOW_OFFSET
+				end
 			end
 			alignPos.Position = target
 
