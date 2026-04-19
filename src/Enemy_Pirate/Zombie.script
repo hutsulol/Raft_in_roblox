@@ -483,6 +483,24 @@ end
 Monster:Initialize()
 Monster:InitializeUnique()
 
+-- Guard against save-state surprises: if a previous playtest left the
+-- Humanoid in a non-movable state (WalkSpeed=0, PlatformStand=true,
+-- Sit=true), the AI would loop forever calling MoveTo on a humanoid
+-- that can't walk. Reset the movement-blocking properties so the
+-- pirate is free to chase its target.
+do
+	local hum = Self:FindFirstChildWhichIsA('Humanoid')
+	if hum then
+		if hum.WalkSpeed <= 0 then hum.WalkSpeed = 16 end
+		hum.PlatformStand = false
+		hum.Sit = false
+	end
+	local hrp = Self:FindFirstChild('HumanoidRootPart')
+	if hrp and hrp:IsA('BasePart') then hrp.Anchored = false end
+end
+
+print('[Zombie] AI online for ' .. Self:GetFullName())
+
 while true do
 	if not Monster:IsAlive() then
 		if Data.IsDead == false then
@@ -496,10 +514,16 @@ while true do
 			end
 		end
 	end
-	
+
 	if Monster:IsAlive() then
-		Monster:Update()
+		-- pcall the update so a one-off error (e.g. a stale target
+		-- humanoid whose torso was just destroyed) doesn't terminate
+		-- the whole AI loop and leave the pirate frozen forever.
+		local ok, err = pcall(Monster.Update, Monster)
+		if not ok then
+			warn('[Zombie] update error: ' .. tostring(err))
+		end
 	end
-	
+
 	wait()
 end
