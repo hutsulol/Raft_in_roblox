@@ -120,9 +120,11 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 		cloned:Destroy()
 	end
 
-	local backpack = player:FindFirstChild("Backpack")
-	if backpack then
-		tool.Parent = backpack
+	if _G.GiveToolOrDrop then
+		_G.GiveToolOrDrop(player, tool)
+	else
+		local backpack = player:FindFirstChild("Backpack")
+		if backpack then tool.Parent = backpack end
 	end
 
 	if _G.SendInventory then

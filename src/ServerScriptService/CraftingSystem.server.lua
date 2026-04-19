@@ -117,12 +117,20 @@ craftEvent.OnServerEvent:Connect(function(player, action, data)
 		handle.Size = Vector3.new(1, 1, 1)
 		handle.Transparency = 1
 		handle.Parent = tool
-		tool.Parent = backpack
+		if _G.GiveToolOrDrop then
+			_G.GiveToolOrDrop(player, tool)
+		else
+			tool.Parent = backpack
+		end
 	else
 		local template = rs:FindFirstChild(recipe.model)
 		if template then
 			local tool = template:Clone()
-			tool.Parent = backpack
+			if _G.GiveToolOrDrop then
+				_G.GiveToolOrDrop(player, tool)
+			else
+				tool.Parent = backpack
+			end
 		end
 	end
 

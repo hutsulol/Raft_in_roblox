@@ -251,9 +251,11 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 			if recipe.icon and tool.TextureId == "" then
 				tool.TextureId = recipe.icon
 			end
-			local backpack = player:FindFirstChild("Backpack")
-			if backpack then
-				tool.Parent = backpack
+			if _G.GiveToolOrDrop then
+				_G.GiveToolOrDrop(player, tool)
+			else
+				local backpack = player:FindFirstChild("Backpack")
+				if backpack then tool.Parent = backpack end
 			end
 		end
 	elseif recipe.craftType == "placeable" then
@@ -271,9 +273,11 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 		handle.Transparency = 1
 		handle.Parent = tool
 
-		local backpack = player:FindFirstChild("Backpack")
-		if backpack then
-			tool.Parent = backpack
+		if _G.GiveToolOrDrop then
+			_G.GiveToolOrDrop(player, tool)
+		else
+			local backpack = player:FindFirstChild("Backpack")
+			if backpack then tool.Parent = backpack end
 		end
 
 	elseif recipe.craftType == "resource" then

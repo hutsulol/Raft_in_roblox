@@ -128,7 +128,11 @@ craftEvent.OnServerEvent:Connect(function(player, action, data)
 	handle.Transparency = 1
 	handle.Parent = tool
 
-	tool.Parent = backpack
+	if _G.GiveToolOrDrop then
+		_G.GiveToolOrDrop(player, tool)
+	else
+		tool.Parent = backpack
+	end
 
 	if _G.SendInventory then _G.SendInventory(player) end
 	craftEvent:FireClient(player, "success", "Furnace")
