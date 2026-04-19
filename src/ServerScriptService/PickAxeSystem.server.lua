@@ -87,7 +87,11 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	local inv = _G.GetInventory and _G.GetInventory(player) or {}
 	if (inv.Log or 0) < 2 then return end
 
-	inv.Log = inv.Log - 2
+	if _G.RemoveResourceFromInventory then
+		_G.RemoveResourceFromInventory(player, "Log", 2)
+	else
+		inv.Log = inv.Log - 2
+	end
 
 	local template = rs:FindFirstChild("Pick-Axe")
 	if not template then return end

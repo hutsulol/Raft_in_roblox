@@ -360,11 +360,17 @@ _G.GetEmptySlotCount = function(player)
 	return computeLayoutCapacity(player, nil).emptySlots
 end
 
--- True when the player can accept one more Tool instance. The client's
--- layout is the source of truth for resource occupancy; tools are
--- counted straight from Backpack / Character. If unlocked slots minus
--- resource stacks minus tool instances >= 1, there's room.
+-- True when the player can accept one more Tool instance. Uses the
+-- client's actual slot layout so split stacks are counted as the
+-- slots they really occupy — otherwise the raw resource count would
+-- assume stacks are packed and miscount free cells.
 _G.HasFreeToolSlot = function(player)
+	local layout = _G.GetClientSlotLayout and _G.GetClientSlotLayout(player)
+	if layout then
+		return (_G.GetEmptySlotCount(player) or 0) > 0
+	end
+	-- Fallback when the client hasn't synced a layout yet (e.g. very
+	-- early in the session): count packed stacks + tool instances.
 	local unlocked = getUnlockedSlots(player)
 	local tools = countToolSlots(player)
 	local inv = _G.GetInventory(player)

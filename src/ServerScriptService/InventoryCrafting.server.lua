@@ -176,7 +176,11 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	end
 
 	for item, amount in recipe.costs do
-		inv[item] = inv[item] - amount
+		if _G.RemoveResourceFromInventory then
+			_G.RemoveResourceFromInventory(player, item, amount)
+		else
+			inv[item] = inv[item] - amount
+		end
 	end
 
 	-- Templates normally live directly under ReplicatedStorage, but a few
