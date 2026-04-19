@@ -29,10 +29,17 @@ local APPROACH_MARGIN   = 14   -- studs/s on top of player raft's speed
 local MIN_APPROACH_VEL  = 22   -- never slower than this, even if raft is still
 local APPROACH_FORCE    = 60000
 
-local BOARD_DISTANCE    = 45   -- studs from pirate raft to player raft
-local SHADOW_OFFSET     = 35   -- keep pirate raft this far to the side
+-- How far to the side of the player raft the pirate raft holds once
+-- they've collided. Small enough to stay in contact so pirates can
+-- walk across, large enough that the pirate raft doesn't drift into
+-- the player's build grid.
+local SHADOW_OFFSET     = 18
+
+local BOARD_FALLBACK_DISTANCE = 18 -- touched is preferred; this is a safety net
+local PIRATE_JUMP_POWER = 50   -- enough to hop the gap between the two rafts
+local PIRATE_JUMP_HEIGHT = 7
 local WATER_DROP_MARGIN = 5    -- below raft Y by this much = considered fallen
-local RAFT_STAY_RADIUS  = 60   -- too far from raft → snap back
+local RAFT_STAY_RADIUS  = 80   -- too far from either raft → snap back
 
 local SELF_DESTRUCT_TIME = 180
 local SINK_DURATION      = 4
@@ -51,42 +58,32 @@ while not boat do
 end
 while not boat.PrimaryPart do task.wait(0.1) end
 
--- Pick a random floor tile on the player raft, return a world CFrame
--- above it so a pirate teleported there lands cleanly on top.
-local function pickRaftDropPoint(raft)
-	local tiles = {}
-	for _, child in raft:GetChildren() do
-		if child.Name == "Raft_part"
-			or child:GetAttribute("BuildType") == "raft"
-			or child == raft.PrimaryPart then
-			local pos
-			if child:IsA("Model") then
-				pos = child:GetPivot().Position
-			elseif child:IsA("BasePart") then
-				pos = child.Position
-			end
-			if pos then table.insert(tiles, pos) end
-		end
-	end
-	if #tiles == 0 and raft.PrimaryPart then
-		return raft.PrimaryPart.Position + Vector3.new(0, 5, 0)
-	end
-	return tiles[math.random(1, #tiles)] + Vector3.new(0, 4, 0)
-end
-
--- True when the pirate looks like it's no longer on the raft — either
--- it dropped below the raft plane (fell off) or drifted out of bounds.
-local function isOffRaft(pirate, raft)
-	if not raft or not raft.PrimaryPart then return false end
+-- True when the pirate has dropped into the water: Y below the player
+-- raft plane. Drift is only considered "too far" if it's past both
+-- rafts at once, since pirates are allowed to be on either.
+local function hasFallenInWater(pirate, playerRaft, pirateRaftRoot)
 	local hrp = pirate:FindFirstChild("HumanoidRootPart")
 	if not hrp then return false end
-	local raftY = raft.PrimaryPart.Position.Y
-	if hrp.Position.Y < raftY - WATER_DROP_MARGIN then return true end
-	local dx = hrp.Position.X - raft.PrimaryPart.Position.X
-	local dz = hrp.Position.Z - raft.PrimaryPart.Position.Z
-	if (dx * dx + dz * dz) > (RAFT_STAY_RADIUS * RAFT_STAY_RADIUS) then
-		return true
+	local refY
+	if playerRaft and playerRaft.PrimaryPart then
+		refY = playerRaft.PrimaryPart.Position.Y
+	elseif pirateRaftRoot then
+		refY = pirateRaftRoot.Position.Y
+	else
+		return false
 	end
+	if hrp.Position.Y < refY - WATER_DROP_MARGIN then return true end
+
+	-- Allow being near either raft; only wander-teleport if far from both.
+	local function planarDist(rootPart)
+		if not rootPart then return math.huge end
+		local dx = hrp.Position.X - rootPart.Position.X
+		local dz = hrp.Position.Z - rootPart.Position.Z
+		return math.sqrt(dx * dx + dz * dz)
+	end
+	local dPlayer = planarDist(playerRaft and playerRaft.PrimaryPart)
+	local dPirate = planarDist(pirateRaftRoot)
+	if math.min(dPlayer, dPirate) > RAFT_STAY_RADIUS then return true end
 	return false
 end
 
@@ -122,15 +119,15 @@ local function releasePirate(pirate)
 	end
 end
 
-local function boardPirate(pirate, raft)
+-- Kept for the drown-recovery path only: when a pirate falls in the
+-- water we teleport them back onto their own raft so they can try to
+-- board again instead of drifting forever.
+local function rescueToPirateRaft(pirate, pirateRaftRoot)
 	releasePirate(pirate)
+	if not pirateRaftRoot then return end
 	local hrp = pirate:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
-	local landing = pickRaftDropPoint(raft)
-	-- Use a direct CFrame assignment on the HumanoidRootPart so gravity
-	-- takes over immediately; PivotTo on a model with lingering welds
-	-- sometimes snaps the part back to the old anchor.
-	hrp.CFrame = CFrame.new(landing)
+	hrp.CFrame = CFrame.new(pirateRaftRoot.Position + Vector3.new(0, 5, 0))
 	hrp.AssemblyLinearVelocity  = Vector3.zero
 	hrp.AssemblyAngularVelocity = Vector3.zero
 end
@@ -239,21 +236,69 @@ local function spawnPirateRaft()
 	local boarded = false
 	local running = true
 
+	-- Release every pirate from the transit weld and give them jumping
+	-- power so they can hop across the seam between the two rafts.
+	local function triggerBoarding()
+		if boarded then return end
+		boarded = true
+		for _, w in transitWelds do
+			if w and w.Parent then w:Destroy() end
+		end
+		for _, pirate in pirates do
+			if pirate and pirate.Parent then
+				releasePirate(pirate)
+				local hum = pirate:FindFirstChildWhichIsA("Humanoid")
+				if hum then
+					-- JumpPower lets them clear the gap between rafts.
+					hum.JumpPower  = PIRATE_JUMP_POWER
+					hum.JumpHeight = PIRATE_JUMP_HEIGHT
+					hum.AutoJumpEnabled = true
+				end
+				local configs = pirate:FindFirstChild("Configurations")
+				if configs then
+					local canRespawn = configs:FindFirstChild("CanRespawn")
+					if canRespawn then canRespawn.Value = false end
+				end
+			end
+		end
+	end
+
+	-- Touched trigger: any pirate-raft part hitting any player-raft
+	-- part counts as "boarded". This is the authoritative signal —
+	-- the player might have built walls or not, so we don't guess,
+	-- we just wait for physical contact.
+	local function hookTouched(part)
+		if not part:IsA("BasePart") then return end
+		part.Touched:Connect(function(other)
+			if boarded then return end
+			local b = getBoat()
+			if b and other:IsDescendantOf(b) then
+				triggerBoarding()
+			end
+		end)
+	end
+	if floor:IsA("BasePart") then
+		hookTouched(floor)
+	else
+		for _, d in floor:GetDescendants() do
+			hookTouched(d)
+		end
+	end
+
 	task.spawn(function()
 		while running and floor.Parent do
 			local b = getBoat()
 			if not b or not b.PrimaryPart then break end
 			local target = b.PrimaryPart.Position
 
-			-- Before boarding we steer straight at the player raft.
-			-- After boarding we hold position to the side so the pirate
-			-- raft never crashes into / overlaps the player's tiles.
-			if boarded then
-				local right = b.PrimaryPart.CFrame.RightVector
-				local planarRight = Vector3.new(right.X, 0, right.Z)
-				if planarRight.Magnitude > 0.01 then
-					target = target + planarRight.Unit * SHADOW_OFFSET
-				end
+			-- Keep a small lateral offset so the pirate raft ends up
+			-- edge-to-edge with the player raft instead of grinding
+			-- into the middle of it. The rafts collide → boarding
+			-- trigger → pirates walk or hop across.
+			local right = b.PrimaryPart.CFrame.RightVector
+			local planarRight = Vector3.new(right.X, 0, right.Z)
+			if planarRight.Magnitude > 0.01 then
+				target = target + planarRight.Unit * SHADOW_OFFSET
 			end
 			alignPos.Position = target
 
@@ -265,40 +310,21 @@ local function spawnPirateRaft()
 			alignPos.MaxVelocity = math.max(MIN_APPROACH_VEL, planar + APPROACH_MARGIN)
 
 			-- Face the player raft.
-			local flat = target - rootPart.Position
+			local flat = b.PrimaryPart.Position - rootPart.Position
 			flat = Vector3.new(flat.X, 0, flat.Z)
 			if flat.Magnitude > 1 then
 				local _, yaw = CFrame.lookAt(Vector3.zero, flat.Unit):ToEulerAnglesYXZ()
 				alignOri.CFrame = CFrame.Angles(0, yaw, 0)
 			end
 
-			-- Boarding trigger: within range → drop pirates onto the
-			-- player raft and switch to shadow mode.
+			-- Safety net for edge cases (tiny / stacked tiles, Touched
+			-- filter misses): if the pirate raft is nose-to-nose with
+			-- the player raft but Touched hasn't fired, still trigger.
 			if not boarded then
 				local dx = rootPart.Position.X - b.PrimaryPart.Position.X
 				local dz = rootPart.Position.Z - b.PrimaryPart.Position.Z
-				local d = math.sqrt(dx * dx + dz * dz)
-				if d < BOARD_DISTANCE then
-					boarded = true
-					for _, w in transitWelds do
-						if w and w.Parent then w:Destroy() end
-					end
-					for _, pirate in pirates do
-						if pirate and pirate.Parent then
-							boardPirate(pirate, b)
-							-- Don't jump off the edge chasing a player.
-							local hum = pirate:FindFirstChildWhichIsA("Humanoid")
-							if hum then
-								hum.JumpPower  = 0
-								hum.JumpHeight = 0
-							end
-							local configs = pirate:FindFirstChild("Configurations")
-							if configs then
-								local canRespawn = configs:FindFirstChild("CanRespawn")
-								if canRespawn then canRespawn.Value = false end
-							end
-						end
-					end
+				if math.sqrt(dx * dx + dz * dz) < BOARD_FALLBACK_DISTANCE then
+					triggerBoarding()
 				end
 			end
 
@@ -306,19 +332,20 @@ local function spawnPirateRaft()
 		end
 	end)
 
-	-- Watchdog: once pirates have boarded, teleport any that fall into
-	-- the water or wander too far back to a raft tile.
+	-- Watchdog: if a pirate falls in the water between the two rafts,
+	-- put them back on the pirate raft so they can try to board again
+	-- instead of drowning.
 	task.spawn(function()
 		while running and floor.Parent do
 			task.wait(0.5)
-			if not boarded then continue end
 			local b = getBoat()
-			if not b or not b.PrimaryPart then continue end
 			for _, pirate in pirates do
 				if pirate and pirate.Parent then
 					local hum = pirate:FindFirstChildWhichIsA("Humanoid")
-					if hum and hum.Health > 0 and isOffRaft(pirate, b) then
-						boardPirate(pirate, b)
+					if hum and hum.Health > 0
+						and hasFallenInWater(pirate, b, rootPart)
+					then
+						rescueToPirateRaft(pirate, rootPart)
 					end
 				end
 			end
