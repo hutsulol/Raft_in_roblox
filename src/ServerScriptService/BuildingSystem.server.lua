@@ -387,20 +387,10 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 			or rs:FindFirstChild("Anchor_part", true)
 		if not anchorTemplate then return end
 
-		-- Anchor body spans ~2 grid cells along Z, so the selected
-		-- grid cell is the "near" edge and the rendered position
-		-- has to be shifted 2 cells forward so the anchor's inner
-		-- edge sits flush with the raft. The selected cell is still
-		-- the one marked as occupied.
-		local ANCHOR_Z_OFFSET = 2 * GRID_SIZE
 		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
 		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 		local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
-		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(
-			gx * GRID_SIZE,
-			0,
-			gz * GRID_SIZE + ANCHOR_Z_OFFSET
-		))
+		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
 		local localOffset = restCF:VectorToObjectSpace(worldOffset)
 		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft)
 
