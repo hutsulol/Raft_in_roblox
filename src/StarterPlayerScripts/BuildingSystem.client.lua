@@ -638,23 +638,24 @@ local function createPreview()
 	local template = getTemplateForItem(selectedItem)
 	previewPart = template:Clone()
 	previewPart.Name = "BuildPreview"
-	-- Anchor_part's authored pivot isn't axis-aligned (PivotTo would
-	-- drop the ghost tilted) AND it isn't horizontally centred on the
-	-- footprint (the authored pivot's XZ sits off to one side, so
-	-- PivotTo lands the anchor shifted along Z). Use the bounding-box
-	-- centre for XZ — that matches the middle of the log footprint for
-	-- a model whose frame is symmetric above the base — and the
-	-- authored pivot's Y so the vertical offset the model expects is
-	-- preserved.
+	-- Anchor_part's template logs run along Z while a Raft_part tile
+	-- runs along X, so PivotTo-ing the anchor with the raft's CFrame
+	-- drops its base 90° off. Compensate by baking a 90°-Y rotation
+	-- into the WorldPivot — PivotTo will then align the rotated pivot
+	-- with worldCF, effectively rotating the whole anchor so its
+	-- logs match the raft's. XZ comes from the bounding-box centre
+	-- (footprint middle) and Y from the authored pivot (vertical
+	-- offset that was correct).
 	if selectedItem and selectedItem.buildType == "anchor"
 		and previewPart:IsA("Model") then
 		local authored = previewPart:GetPivot()
 		local bbCF = previewPart:GetBoundingBox()
-		previewPart.WorldPivot = CFrame.new(Vector3.new(
+		local pivotPos = Vector3.new(
 			bbCF.Position.X,
 			authored.Position.Y,
 			bbCF.Position.Z
-		))
+		)
+		previewPart.WorldPivot = CFrame.new(pivotPos) * CFrame.Angles(0, math.rad(90), 0)
 	end
 	setPreviewAppearance(PREVIEW_COLOR_VALID)
 	previewPart.Parent = workspace

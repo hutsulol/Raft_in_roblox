@@ -410,18 +410,20 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 				local p = newAnchor:FindFirstChildWhichIsA("BasePart", true)
 				if p then newAnchor.PrimaryPart = p end
 			end
-			-- Template's authored pivot is tilted (bad rotation) AND
-			-- horizontally off-centre (bad Z). Use the bounding-box
-			-- centre for XZ so the footprint lines up with the grid
-			-- cell, and keep the authored Y so the vertical offset
-			-- the model was authored with (log base height) is kept.
+			-- Anchor_part's template logs run 90° off from Raft_part's,
+			-- so bake a Y-yaw rotation into the WorldPivot — PivotTo
+			-- then aligns the rotated pivot with worldCF, effectively
+			-- rotating the anchor so its base matches the raft tiles.
+			-- XZ from bounding-box centre (footprint middle), Y from
+			-- authored pivot (correct vertical offset).
 			local authored = newAnchor:GetPivot()
 			local bbCF = newAnchor:GetBoundingBox()
-			newAnchor.WorldPivot = CFrame.new(Vector3.new(
+			local pivotPos = Vector3.new(
 				bbCF.Position.X,
 				authored.Position.Y,
 				bbCF.Position.Z
-			))
+			)
+			newAnchor.WorldPivot = CFrame.new(pivotPos) * CFrame.Angles(0, math.rad(90), 0)
 			newAnchor:PivotTo(worldCF)
 		elseif newAnchor:IsA("BasePart") then
 			newAnchor.CFrame = worldCF
