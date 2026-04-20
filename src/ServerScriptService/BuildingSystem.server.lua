@@ -410,6 +410,11 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 				local p = newAnchor:FindFirstChildWhichIsA("BasePart", true)
 				if p then newAnchor.PrimaryPart = p end
 			end
+			-- Template's authored pivot can be tilted; reset it to the
+			-- bounding-box centre with identity rotation so PivotTo lands
+			-- the anchor flat on the grid cell like a Raft_part.
+			local bbCF = newAnchor:GetBoundingBox()
+			newAnchor.WorldPivot = CFrame.new(bbCF.Position)
 			newAnchor:PivotTo(worldCF)
 		elseif newAnchor:IsA("BasePart") then
 			newAnchor.CFrame = worldCF
