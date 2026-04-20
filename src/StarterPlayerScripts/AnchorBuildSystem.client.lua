@@ -20,8 +20,13 @@ local camera = workspace.CurrentCamera
 
 local placeBlockEvent = ReplicatedStorage:WaitForChild("PlaceBlock")
 local raftPartTemplate = ReplicatedStorage:WaitForChild("Raft_part")
-local anchorTemplate   = ReplicatedStorage:FindFirstChild("Anchor_part")
-	or ReplicatedStorage:FindFirstChild("Anchor_part", true)
+
+-- Resolved lazily so it picks up templates that land in
+-- ReplicatedStorage after this LocalScript has loaded.
+local function getAnchorTemplate()
+	return ReplicatedStorage:FindFirstChild("Anchor_part")
+		or ReplicatedStorage:FindFirstChild("Anchor_part", true)
+end
 
 local TOOL_NAME        = "Anchor_part"
 local PREVIEW_VALID    = Color3.fromRGB(80, 200, 80)
@@ -249,6 +254,9 @@ local function applyPreviewAppearance()
 end
 
 local function createPreview()
+	local anchorTemplate = getAnchorTemplate()
+	print("[AnchorBuildSystem] createPreview: template=",
+		anchorTemplate and anchorTemplate:GetFullName() or "nil")
 	if previewPart then previewPart:Destroy() end
 	if not anchorTemplate then
 		warn("[AnchorBuildSystem] Anchor_part missing in ReplicatedStorage")
@@ -359,6 +367,8 @@ local function startBuildMode()
 	if placing then return end
 	placing = true
 	createPreview()
+	print("[AnchorBuildSystem] startBuildMode: previewPart=",
+		previewPart and previewPart:GetFullName() or "nil")
 	renderConn = RunService.RenderStepped:Connect(updatePreview)
 end
 
@@ -369,6 +379,7 @@ local function closeBuildMode()
 end
 
 local function onToolEquipped(tool)
+	print("[AnchorBuildSystem] onToolEquipped:", tool and tool.Name)
 	if tool.Name ~= TOOL_NAME then return end
 	startBuildMode()
 end
