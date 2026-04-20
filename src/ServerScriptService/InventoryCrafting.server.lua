@@ -29,7 +29,7 @@ local recipes = {
 	{
 		name = "Machete",
 		displayName = "Machete",
-		icon = "rbxassetid://114406082138691",
+		icon = "rbxassetid://92926554091794",
 		costs = {Log = 1},
 		craftType = "tool",
 		category = "Tools",
@@ -44,6 +44,15 @@ local recipes = {
 		initAttributes = {CupState = "empty"},
 		category = "Misc",
 		description = "A cup for scooping ocean water. Fill it, purify it, and drink to quench your thirst.",
+	},
+	{
+		name = "bag_empty_2",
+		displayName = "Empty Bag",
+		icon = "rbxassetid://89398456198664",
+		costs = {Leaves = 5},
+		craftType = "tool",
+		category = "Misc",
+		description = "An empty woven bag. Fill it with sand or clay on an island.",
 	},
 	{
 		name = "Destitalor",
@@ -93,7 +102,7 @@ local recipes = {
 	{
 		name = "Wet_Brick",
 		displayName = "Wet Brick",
-		icon = "rbxassetid://77999856849195",
+		icon = "rbxassetid://122295013823946",
 		costs = {Sand = 2, Clay = 2},
 		craftType = "placeable",
 		category = "Resources",

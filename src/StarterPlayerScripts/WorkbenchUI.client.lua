@@ -51,7 +51,7 @@ local recipes = {
 	{
 		name = "Anchor_part",
 		displayName = "Anchor",
-		icon = "",
+		icon = "rbxassetid://120414328052740",
 		costs = {Log = 1},
 	},
 }

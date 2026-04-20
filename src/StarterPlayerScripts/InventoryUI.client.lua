@@ -24,8 +24,13 @@ local PLANK_ICON = "rbxassetid://118108820731466"
 local ROPE_ICON = "rbxassetid://78492721752628"
 local SAND_ICON = "rbxassetid://96142393982330"
 local CLAY_ICON = "rbxassetid://70464196671282"
-local WET_BRICK_ICON = "rbxassetid://77999856849195"
-local DRY_BRICK_ICON = "rbxassetid://129896663405682"
+local WET_BRICK_ICON = "rbxassetid://122295013823946"
+local DRY_BRICK_ICON = "rbxassetid://97609326528615"
+local BAG_EMPTY_ICON = "rbxassetid://89398456198664"
+local BAG_WITH_CLAY_ICON = "rbxassetid://126238050436106"
+local BAG_WITH_SAND_ICON = "rbxassetid://77748685223141"
+local GLASS_ICON = "rbxassetid://85347221722445"
+local GLASS_PANEL_ICON = "rbxassetid://79199838395462"
 
 local BLUE_FISH_ICON = "rbxassetid://95052485461834"
 local CARP_FISH_ICON = "rbxassetid://122853256629696"
@@ -49,6 +54,10 @@ local RESOURCE_ICONS = {
 	Clay = CLAY_ICON,
 	Wet_Brick = WET_BRICK_ICON,
 	Dry_Brick = DRY_BRICK_ICON,
+	bag_with_clay_2 = BAG_WITH_CLAY_ICON,
+	bag_with_sand_2 = BAG_WITH_SAND_ICON,
+	glass = GLASS_ICON,
+	glass_panel = GLASS_PANEL_ICON,
 	Blue_Fish = BLUE_FISH_ICON,
 	Carp_Fish = CARP_FISH_ICON,
 	Fish_Bones = FISH_BONES_ICON,
@@ -67,7 +76,7 @@ local TOOL_ICONS = {
 	["Furnace"] = "rbxassetid://117760352651529",
 	["bush"] = "rbxassetid://100755665041729",
 
-	["Machete"] = "rbxassetid://114406082138691",
+	["Machete"] = "rbxassetid://92926554091794",
 	["Wood_Knife"] = "rbxassetid://110032041583533",
 	["WorkBench"] = "rbxassetid://104306543647624",
 	["Bed"] = "rbxassetid://85069521486600",
@@ -84,6 +93,8 @@ local TOOL_ICONS = {
 	["EmptyCapsule"] = "rbxassetid://116714708119585",
 	["FullCapsule"] = "rbxassetid://132749498016835",
 	["Phone"] = "rbxassetid://122333372049252",
+	["Anchor_part"] = "rbxassetid://120414328052740",
+	["bag_empty_2"] = BAG_EMPTY_ICON,
 }
 
 -- Forward-declared so functions above line 1585 (quickTransfer,
