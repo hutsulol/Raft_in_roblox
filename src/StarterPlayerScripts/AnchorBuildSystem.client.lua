@@ -337,7 +337,7 @@ local function updatePreview()
 
 	movePreviewToCell(raft, gx, gz)
 
-	if not isAdjacent(map, gx, gz) or overlapsRaft(raft, gx, gz) then
+	if not isAdjacent(map, gx, gz) then
 		colourPreview(false)
 		return
 	end
