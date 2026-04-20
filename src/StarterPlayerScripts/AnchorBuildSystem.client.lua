@@ -126,10 +126,45 @@ local function isAdjacent(map, gx, gz)
 	return false
 end
 
--- Single compensation value shared by the cursor pre-shift and the
--- preview CFrame, so the ghost and the server placement always land
--- on the same spot. Must stay in sync with BuildingSystem.server.
-local ANCHOR_X_COMPENSATION = 10
+-- Extra safety: even when the cell the cursor resolved to is legal,
+-- reject placement if the anchor's bounding box would physically
+-- overlap any raft descendant. Prevents the anchor's body from
+-- clipping into an adjacent Raft_part / Anchor_part / wall / beam
+-- when the footprint spills over the grid cell.
+local ANCHOR_EXTENT
+if anchorTemplate then
+	if anchorTemplate:IsA("Model") then
+		ANCHOR_EXTENT = anchorTemplate:GetExtentsSize()
+	elseif anchorTemplate:IsA("BasePart") then
+		ANCHOR_EXTENT = anchorTemplate.Size
+	end
+end
+ANCHOR_EXTENT = ANCHOR_EXTENT or Vector3.new(GRID_SIZE, GRID_SIZE, GRID_SIZE)
+
+local overlapParams = OverlapParams.new()
+overlapParams.FilterType = Enum.RaycastFilterType.Include
+
+local function overlapsRaft(raft, worldCF)
+	overlapParams.FilterDescendantsInstances = { raft }
+	-- Shrink the probe slightly so a cell that only touches the
+	-- neighbour along the edge isn't marked as overlapping.
+	local checkSize = ANCHOR_EXTENT * 0.75
+	local parts = workspace:GetPartBoundsInBox(worldCF, checkSize, overlapParams)
+	if previewPart then
+		for _, p in parts do
+			if not p:IsDescendantOf(previewPart) then return true end
+		end
+		return false
+	end
+	return #parts > 0
+end
+
+-- Anchor_part's PrimaryPart sits 2 studs to the right of the model's
+-- visible centre (the A-frame opening pushes it off), so PivotTo
+-- parks the body 2 studs right of the grid cell. Shift the target
+-- CFrame 2 studs to the left along its own X axis so the visible
+-- anchor ends up on the cell instead.
+local ANCHOR_PIVOT_COMPENSATION = CFrame.new(-2, 0, 0)
 
 local function gridToWorldCF(raft, gx, gz)
 	local primary = raft.PrimaryPart
@@ -138,14 +173,11 @@ local function gridToWorldCF(raft, gx, gz)
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	return primary.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft) * CFrame.new(-ANCHOR_X_COMPENSATION, 0, 0)
+	return primary.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft) * ANCHOR_PIVOT_COMPENSATION
 end
 
--- Cursor → grid coord. Project mouse ray onto the raft plane, convert
--- to raft-local X/Z, undo the ANCHOR_X_COMPENSATION so the hit point
--- is expressed in the same frame the grid cell will be rendered in,
--- then round. That way the cell we pick is the one whose placement
--- CFrame lands directly under the cursor — no visual desync.
+-- Cursor → grid coord. Project mouse ray onto the raft plane, then
+-- convert to integer grid. Returns nil outside a valid range.
 local function getFloorGridFromMouse()
 	local raft = getRaft()
 	if not raft or not raft.PrimaryPart then return nil end
@@ -165,10 +197,7 @@ local function getFloorGridFromMouse()
 	end
 	local restFlat = CFrame.new(primary.Position) * CFrame.Angles(0, restYaw, 0)
 	local localHit = restFlat:PointToObjectSpace(hit)
-	-- Pre-shift matches ANCHOR_X_COMPENSATION so the cell we resolve
-	-- from the cursor is the one whose post-compensation world CFrame
-	-- is directly under the mouse — preview + placement align.
-	local gx = math.round((localHit.X + ANCHOR_X_COMPENSATION) / GRID_SIZE)
+	local gx = math.round(localHit.X / GRID_SIZE)
 	local gz = math.round(localHit.Z / GRID_SIZE)
 	return gx, gz
 end
@@ -284,10 +313,17 @@ local function updatePreview()
 		return
 	end
 
+	-- Physical overlap: ghost's extents must not poke into a raft tile
+	-- or any other raft descendant.
+	local worldCF = gridToWorldCF(raft, gx, gz)
+	if overlapsRaft(raft, worldCF) then
+		colourPreview(false)
+		return
+	end
+
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	if hrp then
-		local worldCF = gridToWorldCF(raft, gx, gz)
 		if (hrp.Position - worldCF.Position).Magnitude > MAX_PLACE_RANGE then
 			colourPreview(false)
 			return

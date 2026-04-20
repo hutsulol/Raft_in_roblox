@@ -387,20 +387,39 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 			or rs:FindFirstChild("Anchor_part", true)
 		if not anchorTemplate then return end
 
-		-- PrimaryPart sits 8 studs right of the anchor's visible centre
-		-- (3 logs × 2 studs per log + 2 stud PrimaryPart offset). Shift
-		-- the target CFrame -8 on local X so the body lands on the
-		-- cell. The client pre-shifts its cursor → grid conversion by
-		-- +8 so the preview tracks the mouse exactly.
-		local ANCHOR_X_COMPENSATION = 10
+		-- Anchor_part's PrimaryPart sits 2 studs to the right of the
+		-- visible centre (A-frame opening). PivotTo would park the
+		-- body 2 studs past the grid cell, so shift the target 2
+		-- studs left along its own X axis to compensate.
+		local ANCHOR_PIVOT_COMPENSATION = CFrame.new(-2, 0, 0)
+
 		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
 		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 		local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
 		local localOffset = restCF:VectorToObjectSpace(worldOffset)
-		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft) * CFrame.new(-ANCHOR_X_COMPENSATION, 0, 0)
+		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft) * ANCHOR_PIVOT_COMPENSATION
 
 		if (char.HumanoidRootPart.Position - worldCF.Position).Magnitude > 80 then return end
+
+		-- Physical overlap check: even when the chosen cell is free in
+		-- the grid, reject the placement if the anchor's bounding box
+		-- would clip into any existing raft descendant (walls, beams,
+		-- anchors, tiles). Authoritative against a cheating client.
+		local extent
+		if anchorTemplate:IsA("Model") then
+			extent = anchorTemplate:GetExtentsSize()
+		elseif anchorTemplate:IsA("BasePart") then
+			extent = anchorTemplate.Size
+		end
+		extent = extent or Vector3.new(GRID_SIZE, GRID_SIZE, GRID_SIZE)
+		do
+			local params = OverlapParams.new()
+			params.FilterType = Enum.RaycastFilterType.Include
+			params.FilterDescendantsInstances = { raft }
+			local overlaps = workspace:GetPartBoundsInBox(worldCF, extent * 0.75, params)
+			if #overlaps > 0 then return end
+		end
 
 		local newAnchor = anchorTemplate:Clone()
 		-- Tag it with the same grid coords as a raft tile so existing
