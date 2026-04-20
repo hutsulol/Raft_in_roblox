@@ -639,14 +639,15 @@ local function createPreview()
 	previewPart = template:Clone()
 	previewPart.Name = "BuildPreview"
 	-- Anchor_part's authored pivot isn't axis-aligned, so PivotTo would
-	-- drop it tilted even though the grid CFrame is flat. Reset the
-	-- WorldPivot to bounding-box centre with identity rotation — same
-	-- trick the placeable models (SmallContainer, WorkBench…) use — so
-	-- it sits on the water the same way a Raft_part would.
+	-- drop it tilted. Strip only the rotation from the authored pivot
+	-- — keep its position — so the model still sits where the author
+	-- placed it relative to the pivot, just without any tilt. Using
+	-- the bounding-box centre instead shifted the whole model along Z
+	-- because the anchor's frame pushes the bbCF above the footprint.
 	if selectedItem and selectedItem.buildType == "anchor"
 		and previewPart:IsA("Model") then
-		local bbCF = previewPart:GetBoundingBox()
-		previewPart.WorldPivot = CFrame.new(bbCF.Position)
+		local authored = previewPart:GetPivot()
+		previewPart.WorldPivot = CFrame.new(authored.Position)
 	end
 	setPreviewAppearance(PREVIEW_COLOR_VALID)
 	previewPart.Parent = workspace
