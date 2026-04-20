@@ -42,21 +42,26 @@ local function findCenterOfSticks(anchorModel)
 	return nil
 end
 
--- Raft is halted when ANY anchor on it has its rope fully deployed.
+-- Raft's AnchorDepth ∈ [0, 1] is the deepest anchor currently deployed
+-- on it (0 = all anchors up, 1 = at least one rope fully out). Set
+-- alongside the existing AnchorDeployed bool so BoatForwardMovement
+-- can smoothly scale the raft's forward speed instead of a hard stop.
 local function recomputeRaftAnchoredState()
 	local raft = workspace:FindFirstChild("Raft")
 	if not raft then return end
-	local deployed = false
+	local range = math.max(0.001, MAX_ROPE - MIN_ROPE)
+	local depth = 0
 	for _, child in raft:GetChildren() do
 		if child:IsA("Model") and child.Name == "Anchor_part" then
 			local rc = findRope(child)
-			if rc and rc.Length >= MAX_ROPE - 0.01 then
-				deployed = true
-				break
+			if rc then
+				local d = math.clamp((rc.Length - MIN_ROPE) / range, 0, 1)
+				if d > depth then depth = d end
 			end
 		end
 	end
-	raft:SetAttribute("AnchorDeployed", deployed)
+	raft:SetAttribute("AnchorDepth", depth)
+	raft:SetAttribute("AnchorDeployed", depth >= 1 - 1e-3)
 end
 
 -- ─── Setup per anchor ────────────────────────────────────────────────
