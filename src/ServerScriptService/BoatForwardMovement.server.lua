@@ -344,6 +344,12 @@ RunService.Heartbeat:Connect(function(dt)
 		targetSpeed = targetSpeed + PADDLE_BOOST * (paddleBoostRemaining / PADDLE_DECAY)
 		paddleBoostRemaining = math.max(0, paddleBoostRemaining - dt)
 	end
+	-- Anchor deployment: when AnchorInteraction has decided an anchor
+	-- is fully lowered, force the target velocity to zero so the
+	-- velocity-correction force brakes the raft to a standstill.
+	if boat:GetAttribute("AnchorDeployed") then
+		targetSpeed = 0
+	end
 	local desiredVelocity = forwardDirection * targetSpeed
 
 	-- Velocity correction force. This simultaneously:
