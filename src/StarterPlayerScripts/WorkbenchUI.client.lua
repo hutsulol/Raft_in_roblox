@@ -48,6 +48,12 @@ local recipes = {
 		icon = "rbxassetid://98308527317479",
 		costs = {Plastic = 5},
 	},
+	{
+		name = "Anchor_part",
+		displayName = "Anchor",
+		icon = "",
+		costs = {Log = 1},
+	},
 }
 local selectedRecipe = nil
 local isOpen = false

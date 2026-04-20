@@ -363,11 +363,69 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 	if not raft or not raft.PrimaryPart then return end
 
 	local tool = char:FindFirstChildWhichIsA("Tool")
-	if not tool or tool.Name ~= "Hammer" then return end
+	if not tool then return end
+
+	-- Anchor placement uses the Anchor_part tool (crafted at the
+	-- workbench). Every other buildType is hammer-driven.
+	local requiredTool = (buildType == "anchor") and "Anchor_part" or "Hammer"
+	if tool.Name ~= requiredTool then return end
 
 	local inv = _G.GetInventory and _G.GetInventory(player) or {}
 
-	if buildType == "raft" then
+	if buildType == "anchor" then
+		local gridX, gridZ = ...
+		if type(gridX) ~= "number" or type(gridZ) ~= "number" then return end
+
+		local gx = math.round(gridX)
+		local gz = math.round(gridZ)
+
+		local offsets = getFloorOffsets(raft)
+		if isFloorOccupied(offsets, gx, gz) then return end
+		if not isFloorAdjacent(offsets, gx, gz) then return end
+
+		local anchorTemplate = rs:FindFirstChild("Anchor_part")
+			or rs:FindFirstChild("Anchor_part", true)
+		if not anchorTemplate then return end
+
+		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
+		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
+		local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
+		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
+		local localOffset = restCF:VectorToObjectSpace(worldOffset)
+		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft)
+
+		if (char.HumanoidRootPart.Position - worldCF.Position).Magnitude > 80 then return end
+
+		local newAnchor = anchorTemplate:Clone()
+		-- Tag it with the same grid coords as a raft tile so existing
+		-- offset / occupancy / save logic counts the cell as filled and
+		-- nothing else can be dropped on top of it.
+		newAnchor:SetAttribute("GridX", gx)
+		newAnchor:SetAttribute("GridZ", gz)
+		newAnchor:SetAttribute("BuildType", "raft")
+		newAnchor:SetAttribute("IsAnchor", true)
+
+		if newAnchor:IsA("Model") then
+			if not newAnchor.PrimaryPart then
+				local p = newAnchor:FindFirstChildWhichIsA("BasePart", true)
+				if p then newAnchor.PrimaryPart = p end
+			end
+			newAnchor:PivotTo(worldCF)
+		elseif newAnchor:IsA("BasePart") then
+			newAnchor.CFrame = worldCF
+		end
+		placeWithVelocityPreserved(raft, function()
+			newAnchor.Parent = raft
+			weldToRaft(newAnchor, raft)
+		end)
+
+		-- Consume the Anchor_part tool — one craft = one placement.
+		tool:Destroy()
+
+		if _G.SendInventory then _G.SendInventory(player) end
+		return
+
+	elseif buildType == "raft" then
 		local gridX, gridZ = ...
 		if type(gridX) ~= "number" or type(gridZ) ~= "number" then return end
 		if (inv.Log or 0) < RAFT_COST then return end

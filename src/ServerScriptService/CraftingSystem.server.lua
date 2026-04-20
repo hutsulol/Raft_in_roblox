@@ -38,6 +38,13 @@ local recipes = {
 		costs = {Plastic = 5},
 		craftType = "placeable",
 	},
+	{
+		name = "Anchor_part",
+		displayName = "Anchor",
+		icon = "",
+		costs = {Log = 1},
+		craftType = "placeable",
+	},
 }
 
 local function findWorkBench()
