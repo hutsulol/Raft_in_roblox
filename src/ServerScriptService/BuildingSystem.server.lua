@@ -439,7 +439,27 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		end
 		placeWithVelocityPreserved(raft, function()
 			newAnchor.Parent = raft
-			weldToRaft(newAnchor, raft)
+			-- Weld the frame/sticks to the raft, but leave the inner
+			-- `anchor` submodel (the Union that hangs from the rope)
+			-- completely free — no welds, unanchored — so the
+			-- RopeConstraint can actually swing it when the player
+			-- lowers the rope with the E prompt.
+			local hanging = newAnchor:FindFirstChild("anchor")
+			for _, desc in newAnchor:GetDescendants() do
+				if desc:IsA("BasePart") then
+					if hanging and desc:IsDescendantOf(hanging) then
+						desc.Anchored = false
+						pcall(function() desc:SetNetworkOwner(nil) end)
+					else
+						local weld = Instance.new("WeldConstraint")
+						weld.Part0 = desc
+						weld.Part1 = raft.PrimaryPart
+						weld.Parent = desc
+						desc.Anchored = false
+						pcall(function() desc:SetNetworkOwner(nil) end)
+					end
+				end
+			end
 		end)
 
 		-- Consume the Anchor_part tool — one craft = one placement.
