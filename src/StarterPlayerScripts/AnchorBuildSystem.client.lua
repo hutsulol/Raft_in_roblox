@@ -126,12 +126,22 @@ local function isAdjacent(map, gx, gz)
 	return false
 end
 
+-- Anchors are longer than a single tile — the frame + tail extends
+-- ~2 grid cells along the raft's local Z. Offset the visual position
+-- (not the validated grid coord) by 2 cells so the anchor's inner
+-- edge sits flush with the raft instead of overlapping it.
+local ANCHOR_Z_OFFSET = 2 * GRID_SIZE
+
 local function gridToWorldCF(raft, gx, gz)
 	local primary = raft.PrimaryPart
 	local restCF  = primary:GetAttribute("RestCFrame") or primary.CFrame
 	local restYaw = primary:GetAttribute("RestYaw") or 0
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
-	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
+	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(
+		gx * GRID_SIZE,
+		0,
+		gz * GRID_SIZE + ANCHOR_Z_OFFSET
+	))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
 	return primary.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft)
 end
