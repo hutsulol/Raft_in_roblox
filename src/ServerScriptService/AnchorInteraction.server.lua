@@ -180,6 +180,22 @@ local function setupAnchor(anchorModel)
 	if hc then
 		hc.MotorMaxTorque  = SPIN_HOLD_TORQUE
 		hc.AngularVelocity = 0
+		local a0 = hc.Attachment0
+		local a1 = hc.Attachment1
+		print(string.format(
+			"[AnchorInteraction] hinge setup: enabled=%s actuator=%s a0=%s (anchored=%s) a1=%s (anchored=%s) torque=%s maxAccel=%s",
+			tostring(hc.Enabled),
+			tostring(hc.ActuatorType),
+			a0 and a0.Parent and a0.Parent:GetFullName() or "nil",
+			a0 and a0.Parent and tostring(a0.Parent.Anchored) or "?",
+			a1 and a1.Parent and a1.Parent:GetFullName() or "nil",
+			a1 and a1.Parent and tostring(a1.Parent.Anchored) or "?",
+			tostring(hc.MotorMaxTorque),
+			tostring(hc.MotorMaxAcceleration)
+		))
+	else
+		warn("[AnchorInteraction] setupAnchor: no HingeConstraint under "
+			.. anchorModel:GetFullName())
 	end
 	anchorModel:SetAttribute("AnchorInteractionReady", true)
 	recomputeRaftAnchoredState()
