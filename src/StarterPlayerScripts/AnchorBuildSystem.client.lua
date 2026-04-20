@@ -126,14 +126,10 @@ local function isAdjacent(map, gx, gz)
 	return false
 end
 
--- Anchor_part's PrimaryPart sits off the model's visible centre.
--- Placement compensation stays at PLACE_COMPENSATION (server-side too)
--- so the real anchor lands where the player expects. The PREVIEW uses
--- a slightly smaller compensation so the ghost renders 2 studs to
--- the right of the placement CFrame — lining it up under the cursor
--- even though the server still lands the real anchor further along.
-local PLACE_COMPENSATION   = 10  -- matches BuildingSystem.server
-local PREVIEW_COMPENSATION = 8   -- 2 studs less → ghost sits 2 studs right of placement
+-- Single compensation value shared by the cursor pre-shift and the
+-- preview CFrame, so the ghost and the server placement always land
+-- on the same spot. Must stay in sync with BuildingSystem.server.
+local ANCHOR_X_COMPENSATION = 10
 
 local function gridToWorldCF(raft, gx, gz)
 	local primary = raft.PrimaryPart
@@ -142,7 +138,7 @@ local function gridToWorldCF(raft, gx, gz)
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	return primary.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft) * CFrame.new(-PREVIEW_COMPENSATION, 0, 0)
+	return primary.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft) * CFrame.new(-ANCHOR_X_COMPENSATION, 0, 0)
 end
 
 -- Cursor → grid coord. Project mouse ray onto the raft plane, convert
@@ -169,11 +165,10 @@ local function getFloorGridFromMouse()
 	end
 	local restFlat = CFrame.new(primary.Position) * CFrame.Angles(0, restYaw, 0)
 	local localHit = restFlat:PointToObjectSpace(hit)
-	-- Pre-shift matches the server's PLACE_COMPENSATION so the grid
-	-- cell resolved from the cursor is the one the server will
-	-- actually place on. The preview may render slightly off-centre
-	-- (see PREVIEW_COMPENSATION) to line up under the cursor.
-	local gx = math.round((localHit.X + PLACE_COMPENSATION) / GRID_SIZE)
+	-- Pre-shift matches ANCHOR_X_COMPENSATION so the cell we resolve
+	-- from the cursor is the one whose post-compensation world CFrame
+	-- is directly under the mouse — preview + placement align.
+	local gx = math.round((localHit.X + ANCHOR_X_COMPENSATION) / GRID_SIZE)
 	local gz = math.round(localHit.Z / GRID_SIZE)
 	return gx, gz
 end
