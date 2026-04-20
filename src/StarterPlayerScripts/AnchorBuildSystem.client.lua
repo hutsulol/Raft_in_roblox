@@ -324,11 +324,11 @@ local function updatePreview()
 	lastGX, lastGZ = gx, gz
 
 	-- Hide the preview entirely when the cursor is over a cell that's
-	-- already filled. Check both the grid-attribute map AND physical
-	-- overlap at the cell, so tiles without explicit GridX / GridZ
-	-- attributes (e.g. raft primary part, stray initial tiles) still
-	-- suppress the ghost.
-	if isOccupied(map, gx, gz) or overlapsRaft(raft, gx, gz) then
+	-- already filled by a known raft tile. Physical overlap is still
+	-- checked below as an extra red-colour gate, not a hide gate —
+	-- the overlap probe was false-positiving and keeping the ghost
+	-- off-screen whenever the player picked up the anchor tool.
+	if isOccupied(map, gx, gz) then
 		setPreviewVisible(false)
 		lastValid = false
 		return
@@ -337,7 +337,7 @@ local function updatePreview()
 
 	movePreviewToCell(raft, gx, gz)
 
-	if not isAdjacent(map, gx, gz) then
+	if not isAdjacent(map, gx, gz) or overlapsRaft(raft, gx, gz) then
 		colourPreview(false)
 		return
 	end
