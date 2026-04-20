@@ -638,16 +638,23 @@ local function createPreview()
 	local template = getTemplateForItem(selectedItem)
 	previewPart = template:Clone()
 	previewPart.Name = "BuildPreview"
-	-- Anchor_part's authored pivot isn't axis-aligned, so PivotTo would
-	-- drop it tilted. Strip only the rotation from the authored pivot
-	-- — keep its position — so the model still sits where the author
-	-- placed it relative to the pivot, just without any tilt. Using
-	-- the bounding-box centre instead shifted the whole model along Z
-	-- because the anchor's frame pushes the bbCF above the footprint.
+	-- Anchor_part's authored pivot isn't axis-aligned (PivotTo would
+	-- drop the ghost tilted) AND it isn't horizontally centred on the
+	-- footprint (the authored pivot's XZ sits off to one side, so
+	-- PivotTo lands the anchor shifted along Z). Use the bounding-box
+	-- centre for XZ — that matches the middle of the log footprint for
+	-- a model whose frame is symmetric above the base — and the
+	-- authored pivot's Y so the vertical offset the model expects is
+	-- preserved.
 	if selectedItem and selectedItem.buildType == "anchor"
 		and previewPart:IsA("Model") then
 		local authored = previewPart:GetPivot()
-		previewPart.WorldPivot = CFrame.new(authored.Position)
+		local bbCF = previewPart:GetBoundingBox()
+		previewPart.WorldPivot = CFrame.new(Vector3.new(
+			bbCF.Position.X,
+			authored.Position.Y,
+			bbCF.Position.Z
+		))
 	end
 	setPreviewAppearance(PREVIEW_COLOR_VALID)
 	previewPart.Parent = workspace

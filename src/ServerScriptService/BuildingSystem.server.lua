@@ -410,11 +410,18 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 				local p = newAnchor:FindFirstChildWhichIsA("BasePart", true)
 				if p then newAnchor.PrimaryPart = p end
 			end
-			-- Template's authored pivot can be tilted; strip only the
-			-- rotation from it (keep its position) so PivotTo lands
-			-- the anchor flat without shifting the footprint along Z.
+			-- Template's authored pivot is tilted (bad rotation) AND
+			-- horizontally off-centre (bad Z). Use the bounding-box
+			-- centre for XZ so the footprint lines up with the grid
+			-- cell, and keep the authored Y so the vertical offset
+			-- the model was authored with (log base height) is kept.
 			local authored = newAnchor:GetPivot()
-			newAnchor.WorldPivot = CFrame.new(authored.Position)
+			local bbCF = newAnchor:GetBoundingBox()
+			newAnchor.WorldPivot = CFrame.new(Vector3.new(
+				bbCF.Position.X,
+				authored.Position.Y,
+				bbCF.Position.Z
+			))
 			newAnchor:PivotTo(worldCF)
 		elseif newAnchor:IsA("BasePart") then
 			newAnchor.CFrame = worldCF
