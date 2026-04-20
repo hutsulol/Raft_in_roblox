@@ -104,28 +104,36 @@ local function freeWheelRotor(anchorModel)
 end
 
 -- ─── Hinge pulse ────────────────────────────────────────────────────
--- Each press of E (direction +1) or Q (-1) drives the wheel's
--- HingeConstraint motor for SPIN_PULSE_DURATION seconds, then coasts
--- to a stop. Overlapping presses extend the pulse and can flip
--- direction instantly — MotorMaxTorque is held high while the pulse
--- is live so the motor actually develops the commanded velocity.
+-- HingeConstraint holds the wheel upright at all times via
+-- MotorMaxTorque = SPIN_HOLD_TORQUE and AngularVelocity = 0.
+-- A press of E (+1) / Q (-1) changes AngularVelocity to ±SPIN_VELOCITY
+-- for SPIN_PULSE_DURATION seconds, then drops it back to 0. Torque
+-- is never zeroed — if it were, the rotor would flop over under
+-- gravity as soon as the pulse ended.
 local SPIN_PULSE_DURATION  = 0.5
-local SPIN_TORQUE          = 50000
-local SPIN_ANGULAR_VELOCITY = 4  -- rad/s magnitude
+local SPIN_HOLD_TORQUE     = 50000
+local SPIN_VELOCITY        = 4     -- rad/s magnitude
 local pulseTokens = {}
 
 local function pulseWheel(anchorModel, direction)
 	local hc = findHinge(anchorModel)
-	if not hc then return end
-	hc.MotorMaxTorque  = SPIN_TORQUE
-	hc.AngularVelocity = direction * SPIN_ANGULAR_VELOCITY
+	if not hc then
+		warn("[AnchorInteraction] pulseWheel: HingeConstraint missing on "
+			.. anchorModel:GetFullName())
+		return
+	end
+	hc.MotorMaxTorque  = SPIN_HOLD_TORQUE
+	hc.AngularVelocity = direction * SPIN_VELOCITY
+	print(string.format("[AnchorInteraction] pulseWheel: dir=%d torque=%d vel=%.1f",
+		direction, SPIN_HOLD_TORQUE, hc.AngularVelocity))
 
 	pulseTokens[anchorModel] = (pulseTokens[anchorModel] or 0) + 1
 	local token = pulseTokens[anchorModel]
 	task.delay(SPIN_PULSE_DURATION, function()
 		if pulseTokens[anchorModel] ~= token then return end
 		if not hc or not hc.Parent then return end
-		hc.MotorMaxTorque  = 0
+		-- Keep MotorMaxTorque so the hinge still holds the wheel in
+		-- place — only stop the commanded velocity.
 		hc.AngularVelocity = 0
 	end)
 end
@@ -165,10 +173,14 @@ local function setupAnchor(anchorModel)
 	if rope.Length > MAX_ROPE then rope.Length = MAX_ROPE end
 	rope:GetPropertyChangedSignal("Length"):Connect(recomputeRaftAnchoredState)
 	freeWheelRotor(anchorModel)
-	-- HingeConstraint ships idle (MotorMaxTorque 0) — pulseWheel
-	-- turns it on for each E / Q press, then zeroes it again.
+	-- Arm the hinge: hold the rotor upright at rest (torque high,
+	-- angular velocity 0) so gravity can't flop it. pulseWheel just
+	-- swaps the angular velocity during a press.
 	local hc = findHinge(anchorModel)
-	if hc then hc.MotorMaxTorque = 0; hc.AngularVelocity = 0 end
+	if hc then
+		hc.MotorMaxTorque  = SPIN_HOLD_TORQUE
+		hc.AngularVelocity = 0
+	end
 	anchorModel:SetAttribute("AnchorInteractionReady", true)
 	recomputeRaftAnchoredState()
 end
@@ -207,6 +219,7 @@ anchorEvent.OnServerEvent:Connect(function(player, action, anchorModel)
 	local rope = findRope(anchorModel)
 	if not rope then return end
 
+	print("[AnchorInteraction] action=", action, "new rope.Length will be", rope.Length)
 	if action == "lower" then
 		rope.Length = math.clamp(rope.Length + ROPE_STEP, MIN_ROPE, MAX_ROPE)
 		pulseWheel(anchorModel, 1)
