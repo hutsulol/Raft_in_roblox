@@ -126,13 +126,6 @@ local function isAdjacent(map, gx, gz)
 	return false
 end
 
--- Anchor_part's PrimaryPart sits 2 studs to the right of the model's
--- visible centre (the A-frame opening pushes it off), so PivotTo
--- parks the body 2 studs right of the grid cell. Shift the target
--- CFrame 2 studs to the left along its own X axis so the visible
--- anchor ends up on the cell instead.
-local ANCHOR_PIVOT_COMPENSATION = CFrame.new(-2, 0, 0)
-
 local function gridToWorldCF(raft, gx, gz)
 	local primary = raft.PrimaryPart
 	local restCF  = primary:GetAttribute("RestCFrame") or primary.CFrame
@@ -140,7 +133,7 @@ local function gridToWorldCF(raft, gx, gz)
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	return primary.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft) * ANCHOR_PIVOT_COMPENSATION
+	return primary.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft)
 end
 
 -- Cursor → grid coord. Project mouse ray onto the raft plane, then

@@ -387,18 +387,12 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 			or rs:FindFirstChild("Anchor_part", true)
 		if not anchorTemplate then return end
 
-		-- Anchor_part's PrimaryPart sits 2 studs to the right of the
-		-- visible centre (A-frame opening). PivotTo would park the
-		-- body 2 studs past the grid cell, so shift the target 2
-		-- studs left along its own X axis to compensate.
-		local ANCHOR_PIVOT_COMPENSATION = CFrame.new(-2, 0, 0)
-
 		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
 		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 		local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
 		local localOffset = restCF:VectorToObjectSpace(worldOffset)
-		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft) * ANCHOR_PIVOT_COMPENSATION
+		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft)
 
 		if (char.HumanoidRootPart.Position - worldCF.Position).Magnitude > 80 then return end
 
