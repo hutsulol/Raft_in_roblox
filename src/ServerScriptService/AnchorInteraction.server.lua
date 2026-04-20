@@ -42,6 +42,35 @@ local function findCenterOfSticks(anchorModel)
 	return nil
 end
 
+-- Make sure the Wooden_Wheel has a Motor6D the client-side spin code
+-- can drive via Transform. The template ships with a static Weld, so
+-- we swap that for a Motor6D (same Part0/Part1/C0/C1) once per model.
+local function ensureWheelMotor(anchorModel)
+	local wheel = anchorModel:FindFirstChild("Wooden_Wheel")
+	if not wheel then return end
+	local existing = wheel:FindFirstChild("WheelSpinMotor", true)
+	if existing and existing:IsA("Motor6D") then return end
+
+	local weld
+	for _, d in wheel:GetDescendants() do
+		if d:IsA("Weld") and d.Name ~= "WheelSpinMotor" then
+			weld = d
+			break
+		end
+	end
+	if not weld then return end
+	if not weld.Part0 or not weld.Part1 then return end
+
+	local motor = Instance.new("Motor6D")
+	motor.Name = "WheelSpinMotor"
+	motor.Part0 = weld.Part0
+	motor.Part1 = weld.Part1
+	motor.C0 = weld.C0
+	motor.C1 = weld.C1
+	motor.Parent = weld.Parent
+	weld:Destroy()
+end
+
 -- Raft's AnchorDepth ∈ [0, 1] is the deepest anchor currently deployed
 -- on it (0 = all anchors up, 1 = at least one rope fully out). Set
 -- alongside the existing AnchorDeployed bool so BoatForwardMovement
@@ -76,6 +105,7 @@ local function setupAnchor(anchorModel)
 	if rope.Length < MIN_ROPE then rope.Length = MIN_ROPE end
 	if rope.Length > MAX_ROPE then rope.Length = MAX_ROPE end
 	rope:GetPropertyChangedSignal("Length"):Connect(recomputeRaftAnchoredState)
+	ensureWheelMotor(anchorModel)
 	anchorModel:SetAttribute("AnchorInteractionReady", true)
 	recomputeRaftAnchoredState()
 end
