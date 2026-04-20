@@ -126,13 +126,13 @@ local function isAdjacent(map, gx, gz)
 	return false
 end
 
--- Anchor_part's PrimaryPart sits 2 studs right of the model's visible
--- centre. Placement has to shift the target CFrame -2 on X so the
--- visible anchor lands on the grid cell; the cursor → grid conversion
--- has to apply the INVERSE shift (+2 on local X) so the cell the
--- preview resolves to is the one directly under the cursor — without
--- it, the ghost appears 2 studs left of the mouse (desync).
-local ANCHOR_X_COMPENSATION = 2
+-- Anchor_part's PrimaryPart sits 8 studs right of the model's visible
+-- centre (3 logs × 2 studs + 2 stud PrimaryPart offset). Placement has
+-- to shift the target CFrame -8 on X so the visible anchor lands on
+-- the grid cell; the cursor → grid conversion applies the INVERSE
+-- shift (+8 on local X) so the cell the preview resolves to is the
+-- one directly under the cursor — no desync.
+local ANCHOR_X_COMPENSATION = 8
 
 local function gridToWorldCF(raft, gx, gz)
 	local primary = raft.PrimaryPart
