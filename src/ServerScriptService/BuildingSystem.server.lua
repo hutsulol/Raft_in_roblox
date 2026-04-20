@@ -440,13 +440,20 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		end
 		placeWithVelocityPreserved(raft, function()
 			newAnchor.Parent = raft
-			-- Weld the frame/sticks to the raft, but leave the inner
-			-- `anchor` submodel (the Union that hangs from the rope)
-			-- completely free so the RopeConstraint can swing it.
+			-- Two groups stay free of raft welds so they can move:
+			--   * the inner `anchor` submodel — the Union the rope
+			--     lowers on — must hang freely.
+			--   * every BasePart inside Wooden_Wheel except HingePart.
+			--     HingePart gets the raft weld so the wheel stays put;
+			--     the rotor spins via the template's HingeConstraint.
 			local hanging = newAnchor:FindFirstChild("anchor")
+			local wheel   = newAnchor:FindFirstChild("Wooden_Wheel")
+			local hinge   = wheel and wheel:FindFirstChild("HingePart", true)
 			for _, desc in newAnchor:GetDescendants() do
 				if desc:IsA("BasePart") then
-					if hanging and desc:IsDescendantOf(hanging) then
+					local inHanging    = hanging and desc:IsDescendantOf(hanging)
+					local inWheelRotor = wheel and desc:IsDescendantOf(wheel) and desc ~= hinge
+					if inHanging or inWheelRotor then
 						desc.Anchored = false
 						pcall(function() desc:SetNetworkOwner(nil) end)
 					else

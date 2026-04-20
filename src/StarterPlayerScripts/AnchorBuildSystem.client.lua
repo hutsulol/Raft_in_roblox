@@ -255,8 +255,6 @@ end
 
 local function createPreview()
 	local anchorTemplate = getAnchorTemplate()
-	print("[AnchorBuildSystem] createPreview: template=",
-		anchorTemplate and anchorTemplate:GetFullName() or "nil")
 	if previewPart then previewPart:Destroy() end
 	if not anchorTemplate then
 		warn("[AnchorBuildSystem] Anchor_part missing in ReplicatedStorage")
@@ -367,8 +365,6 @@ local function startBuildMode()
 	if placing then return end
 	placing = true
 	createPreview()
-	print("[AnchorBuildSystem] startBuildMode: previewPart=",
-		previewPart and previewPart:GetFullName() or "nil")
 	renderConn = RunService.RenderStepped:Connect(updatePreview)
 end
 
@@ -379,7 +375,6 @@ local function closeBuildMode()
 end
 
 local function onToolEquipped(tool)
-	print("[AnchorBuildSystem] onToolEquipped:", tool and tool.Name)
 	if tool.Name ~= TOOL_NAME then return end
 	startBuildMode()
 end
