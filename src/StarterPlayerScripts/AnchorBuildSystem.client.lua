@@ -253,6 +253,35 @@ local function applyPreviewAppearance()
 	end
 end
 
+-- The Anchor_part template ships with RopeConstraint, HingeConstraint,
+-- WeldConstraint and Motor6D instances that drive the rigged anchor and
+-- wheel. On a hologram clone they serve no purpose, and any physics
+-- systems the raft runs (buoyancy, waves) can still feed energy into
+-- the preview's assembly through them — which is what was producing
+-- the bouncing raft while the anchor tool was held. Strip every
+-- physics-active instance so the preview is pure geometry.
+local PHYSICS_CLASSES = {
+	"RopeConstraint", "HingeConstraint", "WeldConstraint", "Weld",
+	"Motor6D", "Motor", "SpringConstraint", "RodConstraint",
+	"BallSocketConstraint", "CylindricalConstraint", "PrismaticConstraint",
+	"UniversalConstraint", "LineForce", "Torque", "VectorForce",
+	"AlignOrientation", "AlignPosition", "AngularVelocity",
+	"BodyVelocity", "BodyAngularVelocity", "BodyForce", "BodyGyro",
+	"BodyPosition", "BodyThrust", "BodyMover",
+	"Humanoid", "VehicleSeat", "Seat",
+}
+
+local function stripPhysicsInstances(model)
+	for _, d in model:GetDescendants() do
+		for _, className in PHYSICS_CLASSES do
+			if d:IsA(className) then
+				d:Destroy()
+				break
+			end
+		end
+	end
+end
+
 local function createPreview()
 	local anchorTemplate = getAnchorTemplate()
 	if previewPart then previewPart:Destroy() end
@@ -266,6 +295,10 @@ local function createPreview()
 	for _, d in previewPart:GetDescendants() do
 		if d:IsA("Script") or d:IsA("LocalScript") then d:Destroy() end
 	end
+	-- Kill every constraint/mover so the rigged anchor (rope) and wheel
+	-- (hinge/motor) don't participate in physics while the preview is
+	-- parented in workspace.
+	stripPhysicsInstances(previewPart)
 	-- Anchor's Z matches a regular raft tile exactly — only the X is
 	-- offset because of the hollow centre, and gridToWorldCF already
 	-- applies the -2 stud X compensation. No WorldPivot rework here.
@@ -277,7 +310,11 @@ local function createPreview()
 	elseif previewPart:IsA("BasePart") then
 		previewPart.CFrame = CFrame.new(0, -10000, 0)
 	end
-	previewPart.Parent = workspace
+	-- Parent under the local Camera instead of workspace: Camera-rooted
+	-- parts render normally but are invisible to the physics engine,
+	-- buoyancy probes and server replication, so the preview truly
+	-- behaves as a hologram.
+	previewPart.Parent = camera
 end
 
 local function destroyPreview()
