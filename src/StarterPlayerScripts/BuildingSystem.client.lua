@@ -16,8 +16,6 @@ local beamTemplate = ReplicatedStorage:FindFirstChild("beam")
 local wallPanelTemplate = ReplicatedStorage:FindFirstChild("wall_model_wood")
 local wallArchTemplate = ReplicatedStorage:FindFirstChild("wall_model_wood_arch")
 local doorTemplate = ReplicatedStorage:FindFirstChild("Door_Wood")
-local anchorTemplate = ReplicatedStorage:FindFirstChild("Anchor_part")
-	or ReplicatedStorage:FindFirstChild("Anchor_part", true)
 
 local GRID_SIZE = raftPartTemplate:GetAttribute("GridSize")
 if not GRID_SIZE then
@@ -79,11 +77,8 @@ local FLOOR_ICON = "rbxassetid://93002853045949"
 -- Beam/wall X-axis correction (pivot offset in template)
 local BEAM_X_OFFSET = 1
 
--- Building items organised by category. The Hammer tool exposes the
--- full set; equipping the Anchor_part tool instead swaps `categories`
--- to the anchor-only set below so the placement UI is reused without
--- duplicating any of the preview / click / wind logic.
-local hammerCategories = {
+-- Building items organized by category
+local categories = {
 	{
 		name = "Floors",
 		icon = FLOOR_ICON,
@@ -102,20 +97,6 @@ local hammerCategories = {
 		},
 	},
 }
-
-local anchorCategories = {
-	{
-		name = "Anchor",
-		icon = FLOOR_ICON,
-		items = {
-			{id = "anchor", name = "Anchor", icon = FLOOR_ICON, cost = 0, costType = "Anchor_part", buildType = "anchor"},
-		},
-	},
-}
-
--- Active set of categories — flipped by syncBuildMode based on which
--- tool the player has equipped.
-local categories = hammerCategories
 
 local isBuilding = false
 local selectedCategory = 1
@@ -629,7 +610,6 @@ local function getTemplateForItem(item)
 	if item.buildType == "wall_panel" then return wallPanelTemplate or raftPartTemplate end
 	if item.buildType == "wall_arch" then return wallArchTemplate or raftPartTemplate end
 	if item.buildType == "door" then return doorTemplate or raftPartTemplate end
-	if item.buildType == "anchor" then return anchorTemplate or raftPartTemplate end
 	return raftPartTemplate
 end
 
@@ -638,28 +618,6 @@ local function createPreview()
 	local template = getTemplateForItem(selectedItem)
 	previewPart = template:Clone()
 	previewPart.Name = "BuildPreview"
-	-- Anchor_part has to be compensated on three fronts before PivotTo:
-	--   * 90° Y rotation so its template Z-axis logs align with the
-	--     raft's X-axis tiles.
-	--   * XZ centred on the bounding-box middle (the authored pivot is
-	--     off-side of the footprint).
-	--   * A 2·GRID_SIZE shift forward along the pivot's local Z so the
-	--     hollow middle of the anchor (the A-frame opening) doesn't
-	--     push the whole model two tiles away from the grid cell.
-	if selectedItem and selectedItem.buildType == "anchor"
-		and previewPart:IsA("Model") then
-		local authored = previewPart:GetPivot()
-		local bbCF = previewPart:GetBoundingBox()
-		local pivotPos = Vector3.new(
-			bbCF.Position.X,
-			authored.Position.Y,
-			bbCF.Position.Z
-		)
-		previewPart.WorldPivot =
-			CFrame.new(pivotPos)
-			* CFrame.Angles(0, math.rad(90), 0)
-			* CFrame.new(0, 0, 2 * GRID_SIZE)
-	end
 	setPreviewAppearance(PREVIEW_COLOR_VALID)
 	previewPart.Parent = workspace
 end
@@ -888,7 +846,7 @@ local function startBuildMode()
 	renderConnection = RunService.RenderStepped:Connect(function()
 		if not isBuilding or not previewPart or not selectedItem then return end
 
-		if selectedItem.buildType == "raft" or selectedItem.buildType == "anchor" then
+		if selectedItem.buildType == "raft" then
 			local gx, gz, worldCF = getFloorGridFromMouse()
 			if not gx then hidePreview(); return end
 
@@ -896,10 +854,7 @@ local function startBuildMode()
 			if isFloorOccupied(offsets, gx, gz) then hidePreview(); return end
 
 			movePreview(worldCF)
-			-- Anchor cost is the tool itself, paid at the workbench;
-			-- once equipped there's no per-placement resource check.
-			local canAfford = selectedItem.buildType == "anchor"
-				or (inventory[selectedItem.costType] or 0) >= selectedItem.cost
+			local canAfford = (inventory[selectedItem.costType] or 0) >= selectedItem.cost
 			local valid = isFloorAdjacent(offsets, gx, gz) and canAfford
 			setPreviewAppearance(valid and PREVIEW_COLOR_VALID or PREVIEW_COLOR_INVALID)
 
@@ -958,16 +913,10 @@ local function startBuildMode()
 	end)
 end
 
--- Returns the placement-tool name currently equipped (if any), or nil.
--- Hammer = full build menu; Anchor_part = anchor-only build menu.
-local function getEquippedBuildTool(character)
-	if not character then return nil end
+local function hasEquippedHammer(character)
+	if not character then return false end
 	local equippedTool = character:FindFirstChildWhichIsA("Tool")
-	if not equippedTool then return nil end
-	if equippedTool.Name == "Hammer" or equippedTool.Name == "Anchor_part" then
-		return equippedTool.Name
-	end
-	return nil
+	return equippedTool and equippedTool.Name == "Hammer"
 end
 
 -- ─── Wind warning UI ─────────────────────────────────────────────────────────
@@ -1038,29 +987,19 @@ local function isWindActive()
 end
 
 local function syncBuildMode(character)
-	local equippedTool = getEquippedBuildTool(character)
+	local equipped = hasEquippedHammer(character)
 	local windActive = isWindActive()
 
-	-- Swap the active categories before opening / refreshing the UI
-	-- so the panel shows the right items for the equipped tool.
-	local desiredCategories = (equippedTool == "Anchor_part")
-		and anchorCategories
-		or hammerCategories
-	if categories ~= desiredCategories then
-		categories = desiredCategories
-		if isBuilding then
-			closeBuildMode()
-		end
-	end
-
-	if equippedTool and windActive then
-		-- Build tool out during wind: block the build UI, show warning.
+	if equipped and windActive then
+		-- Hammer out during wind: block the build UI, show warning.
 		if isBuilding then closeBuildMode() end
 		showWindWarning()
-	elseif equippedTool and not windActive then
+	elseif equipped and not windActive then
+		-- Safe to build.
 		hideWindWarning()
 		if not isBuilding then startBuildMode() end
 	else
+		-- Hammer not equipped: nothing to show.
 		hideWindWarning()
 		if isBuilding then closeBuildMode() end
 	end
@@ -1072,20 +1011,15 @@ player:GetAttributeChangedSignal("WindActive"):Connect(function()
 	syncBuildMode(player.Character)
 end)
 
-local function isBuildTool(child)
-	return child:IsA("Tool")
-		and (child.Name == "Hammer" or child.Name == "Anchor_part")
-end
-
 local function onCharacterAdded(character)
 	character.ChildAdded:Connect(function(child)
-		if isBuildTool(child) then
+		if child:IsA("Tool") and child.Name == "Hammer" then
 			syncBuildMode(character)
 		end
 	end)
 
 	character.ChildRemoved:Connect(function(child)
-		if isBuildTool(child) then
+		if child:IsA("Tool") and child.Name == "Hammer" then
 			syncBuildMode(character)
 		end
 	end)
@@ -1129,19 +1063,16 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if not isBuilding or not selectedItem then return end
 	if input.UserInputType ~= Enum.UserInputType.MouseButton1 then return end
 
-	if selectedItem.buildType == "raft" or selectedItem.buildType == "anchor" then
+	if selectedItem.buildType == "raft" then
 		local gx, gz, _ = getFloorGridFromMouse()
 		if not gx then return end
 
 		local offsets = getFloorOffsets()
 		if isFloorOccupied(offsets, gx, gz) then return end
 		if not isFloorAdjacent(offsets, gx, gz) then return end
-		if selectedItem.buildType ~= "anchor"
-			and (inventory[selectedItem.costType] or 0) < selectedItem.cost then
-			return
-		end
+		if (inventory[selectedItem.costType] or 0) < selectedItem.cost then return end
 
-		placeBlockEvent:FireServer(selectedItem.buildType, gx, gz)
+		placeBlockEvent:FireServer("raft", gx, gz)
 		playPlaceSound()
 
 	elseif selectedItem.buildType == "beam" then
