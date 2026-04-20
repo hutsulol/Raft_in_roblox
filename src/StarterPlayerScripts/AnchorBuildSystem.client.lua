@@ -280,21 +280,12 @@ local function destroyPreview()
 	lastGX, lastGZ = nil, nil
 end
 
--- Anchor_part's authored pivot isn't centred on its body along Z,
--- so a preview aligned with the cell's worldCF renders 4 studs off
--- from where the cursor points. The server placement is considered
--- "correct", so we DON'T shift its CFrame — we only nudge the
--- preview back by PREVIEW_Z_NUDGE so the ghost visually lines up
--- with the cursor. Flip the sign if the preview moves the wrong way.
-local PREVIEW_Z_NUDGE = -4
-
 local function movePreviewToCell(raft, gx, gz)
 	local worldCF = gridToWorldCF(raft, gx, gz)
-	local previewCF = worldCF * CFrame.new(0, 0, PREVIEW_Z_NUDGE)
 	if previewPart:IsA("Model") then
-		previewPart:PivotTo(previewCF)
+		previewPart:PivotTo(worldCF)
 	elseif previewPart:IsA("BasePart") then
-		previewPart.CFrame = previewCF
+		previewPart.CFrame = worldCF
 	end
 end
 
