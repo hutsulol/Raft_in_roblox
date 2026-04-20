@@ -53,34 +53,12 @@ local function findHinge(anchorModel)
 	return hc
 end
 
--- Free the wheel's rotor so the HingeConstraint can actually turn it.
--- Any weld that still pins a rotating part to the raft (from the
--- anchor placement weld loop) is destroyed; the assembly is otherwise
--- left untouched so the user's hinge/weld setup keeps working.
-local function freeWheelRotor(anchorModel)
-	if anchorModel:GetAttribute("AnchorWheelReady") then return end
-	local wheel = anchorModel:FindFirstChild("Wooden_Wheel")
-	if not wheel then return end
-	local hinge = wheel:FindFirstChild("HingePart", true)
-	if not hinge then return end
-
-	for _, d in wheel:GetDescendants() do
-		if d:IsA("BasePart") and d ~= hinge then
-			for _, w in d:GetChildren() do
-				if w:IsA("WeldConstraint") then
-					local a, b = w.Part0, w.Part1
-					if a and b
-						and ((not a:IsDescendantOf(wheel)) or (not b:IsDescendantOf(wheel))) then
-						w:Destroy()
-					end
-				end
-			end
-			d.Anchored = false
-			pcall(function() d:SetNetworkOwner(nil) end)
-		end
-	end
-
-	anchorModel:SetAttribute("AnchorWheelReady", true)
+-- The user's Wooden_Wheel ships with its own internal weld + hinge
+-- configuration. We no longer touch those welds during setup — the
+-- HingeConstraint handles rotation on its own; any weld adjustments
+-- here just risk detaching pieces of the wheel. Kept as a stub so
+-- the call site stays the same.
+local function freeWheelRotor(_anchorModel)
 end
 
 -- ─── Hinge pulse ────────────────────────────────────────────────────
