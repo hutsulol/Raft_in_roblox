@@ -227,77 +227,16 @@ end
 
 RunService.RenderStepped:Connect(updateUI)
 
--- ─── Wheel spin animation ───────────────────────────────────────────
--- Ported from SawmillSystem.client.lua: per press of E (+1) or Q (-1)
--- we rotate the Wooden_Wheel's Motor6D.Transform by a quarter turn
--- over SPIN_DURATION seconds. Multiple presses accumulate on the
--- target angle so rapid taps produce continuous rotation.
-local WHEEL_SPIN_SPEED = math.rad(360)  -- radians per second, matches sawmill
-local SPIN_PER_PRESS   = math.pi / 2    -- 90° per press
-
-local wheelState = {}  -- [anchorModel] = {motor=..., currentAngle=0, targetAngle=0}
-
-local function getWheelMotor(anchorModel)
-	local wheel = anchorModel:FindFirstChild("Wooden_Wheel")
-	if not wheel then return nil end
-	local motor = wheel:FindFirstChild("WheelSpinMotor", true)
-	if motor and motor:IsA("Motor6D") then return motor end
-	-- Fall back to any Motor6D inside the wheel (in case the server's
-	-- ensureWheelMotor used a different name or the model shipped with
-	-- its own already-configured motor).
-	for _, d in wheel:GetDescendants() do
-		if d:IsA("Motor6D") then return d end
-	end
-	return nil
-end
-
-local function getWheelState(anchorModel)
-	local state = wheelState[anchorModel]
-	if state and state.motor and state.motor.Parent then
-		return state
-	end
-	local motor = getWheelMotor(anchorModel)
-	if not motor then return nil end
-	state = { motor = motor, currentAngle = 0, targetAngle = 0 }
-	wheelState[anchorModel] = state
-	return state
-end
-
-local function bumpWheel(anchorModel, direction)
-	local state = getWheelState(anchorModel)
-	if not state then return end
-	state.targetAngle = state.targetAngle + direction * SPIN_PER_PRESS
-end
-
-RunService.RenderStepped:Connect(function(dt)
-	for anchorModel, state in pairs(wheelState) do
-		if not anchorModel.Parent or not state.motor or not state.motor.Parent then
-			wheelState[anchorModel] = nil
-			continue
-		end
-		if state.currentAngle ~= state.targetAngle then
-			local diff = state.targetAngle - state.currentAngle
-			local step = WHEEL_SPIN_SPEED * dt * (diff >= 0 and 1 or -1)
-			if math.abs(step) >= math.abs(diff) then
-				state.currentAngle = state.targetAngle
-			else
-				state.currentAngle = state.currentAngle + step
-			end
-			state.motor.Transform = CFrame.Angles(0, state.currentAngle, 0)
-		end
-	end
-end)
-
 -- ─── Input ──────────────────────────────────────────────────────────
+-- The wheel's HingeConstraint is pulsed by AnchorInteraction.server
+-- on "lower"/"raise", so all we do here is forward the key press.
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	-- Only act while the UI is visible (i.e. cursor is on the wheel).
 	if not currentAnchor then return end
 	if input.KeyCode == Enum.KeyCode.E then
 		anchorEvent:FireServer("lower", currentAnchor)
-		bumpWheel(currentAnchor, 1)
 	elseif input.KeyCode == Enum.KeyCode.Q then
 		anchorEvent:FireServer("raise", currentAnchor)
-		bumpWheel(currentAnchor, -1)
 	end
 end)

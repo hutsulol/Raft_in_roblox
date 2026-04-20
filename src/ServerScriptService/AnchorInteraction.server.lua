@@ -42,88 +42,72 @@ local function findCenterOfSticks(anchorModel)
 	return nil
 end
 
--- Make sure the Wooden_Wheel has a Motor6D the client-side spin code
--- can drive. The template ships with HingePart (the static axle) and
--- several rotating sub-parts welded internally; for the wheel to
--- actually move, the rotating assembly has to be Motor-attached to
--- HingePart — not rigidly welded to the raft.
-local function ensureWheelMotor(anchorModel)
-	if anchorModel:GetAttribute("WheelMotorReady") then return end
+-- Find the HingeConstraint the template ships inside HingePart —
+-- that's what the user wired up as the wheel's Motor actuator.
+local function findHinge(anchorModel)
+	local wheel = anchorModel:FindFirstChild("Wooden_Wheel")
+	if not wheel then return nil end
+	local hinge = wheel:FindFirstChild("HingePart", true)
+	if not hinge then return nil end
+	local hc = hinge:FindFirstChildOfClass("HingeConstraint")
+	return hc
+end
+
+-- Free the wheel's rotor so the HingeConstraint can actually turn it.
+-- Any weld that still pins a rotating part to the raft (from the
+-- anchor placement weld loop) is destroyed; the assembly is otherwise
+-- left untouched so the user's hinge/weld setup keeps working.
+local function freeWheelRotor(anchorModel)
+	if anchorModel:GetAttribute("AnchorWheelReady") then return end
 	local wheel = anchorModel:FindFirstChild("Wooden_Wheel")
 	if not wheel then return end
 	local hinge = wheel:FindFirstChild("HingePart", true)
-	if not hinge or not hinge:IsA("BasePart") then return end
+	if not hinge then return end
 
-	-- Walk the wheel's BaseParts, separating the static hinge from
-	-- everything that ought to spin with it.
-	local rotatingParts = {}
 	for _, d in wheel:GetDescendants() do
 		if d:IsA("BasePart") and d ~= hinge then
-			table.insert(rotatingParts, d)
-		end
-	end
-	if #rotatingParts == 0 then return end
-
-	-- Break any WeldConstraint that pins a rotating part to something
-	-- outside the wheel (e.g. the raft's primary weld the anchor
-	-- placement creates) or directly to the hinge — either would lock
-	-- the spin. Welds between two rotating parts are preserved so the
-	-- assembly stays rigid.
-	local function isRotating(part)
-		if part == hinge then return false end
-		return part:IsDescendantOf(wheel)
-	end
-	for _, part in rotatingParts do
-		for _, w in part:GetChildren() do
-			if w:IsA("WeldConstraint") then
-				local a, b = w.Part0, w.Part1
-				if a and b then
-					if (a == part and (not isRotating(b))) or
-					   (b == part and (not isRotating(a))) then
+			for _, w in d:GetChildren() do
+				if w:IsA("WeldConstraint") then
+					local a, b = w.Part0, w.Part1
+					if a and b
+						and ((not a:IsDescendantOf(wheel)) or (not b:IsDescendantOf(wheel))) then
 						w:Destroy()
 					end
 				end
 			end
-		end
-		part.Anchored = false
-		pcall(function() part:SetNetworkOwner(nil) end)
-	end
-
-	-- Weld every rotating part to a reference so they move as one
-	-- assembly regardless of the template's sub-model structure.
-	local reference = rotatingParts[1]
-	for i = 2, #rotatingParts do
-		local part = rotatingParts[i]
-		local linked = false
-		for _, w in part:GetChildren() do
-			if w:IsA("WeldConstraint")
-				and ((w.Part0 == part and w.Part1 == reference)
-					or (w.Part1 == part and w.Part0 == reference)) then
-				linked = true
-				break
-			end
-		end
-		if not linked then
-			local w = Instance.new("WeldConstraint")
-			w.Part0 = reference
-			w.Part1 = part
-			w.Parent = part
+			d.Anchored = false
+			pcall(function() d:SetNetworkOwner(nil) end)
 		end
 	end
 
-	-- Motor6D: hinge (Part0, static) → reference (Part1, rotating).
-	local existing = wheel:FindFirstChild("WheelSpinMotor", true)
-	if not (existing and existing:IsA("Motor6D")) then
-		local motor = Instance.new("Motor6D")
-		motor.Name = "WheelSpinMotor"
-		motor.Part0 = hinge
-		motor.Part1 = reference
-		motor.C0 = hinge.CFrame:ToObjectSpace(reference.CFrame)
-		motor.C1 = CFrame.new()
-		motor.Parent = hinge
-	end
+	anchorModel:SetAttribute("AnchorWheelReady", true)
+end
 
-	anchorModel:SetAttribute("WheelMotorReady", true)
+-- ─── Hinge pulse ────────────────────────────────────────────────────
+-- Each press of E (direction +1) or Q (-1) drives the wheel's
+-- HingeConstraint motor for SPIN_PULSE_DURATION seconds, then coasts
+-- to a stop. Overlapping presses extend the pulse and can flip
+-- direction instantly — MotorMaxTorque is held high while the pulse
+-- is live so the motor actually develops the commanded velocity.
+local SPIN_PULSE_DURATION  = 0.5
+local SPIN_TORQUE          = 50000
+local SPIN_ANGULAR_VELOCITY = 4  -- rad/s magnitude
+local pulseTokens = {}
+
+local function pulseWheel(anchorModel, direction)
+	local hc = findHinge(anchorModel)
+	if not hc then return end
+	hc.MotorMaxTorque  = SPIN_TORQUE
+	hc.AngularVelocity = direction * SPIN_ANGULAR_VELOCITY
+
+	pulseTokens[anchorModel] = (pulseTokens[anchorModel] or 0) + 1
+	local token = pulseTokens[anchorModel]
+	task.delay(SPIN_PULSE_DURATION, function()
+		if pulseTokens[anchorModel] ~= token then return end
+		if not hc or not hc.Parent then return end
+		hc.MotorMaxTorque  = 0
+		hc.AngularVelocity = 0
+	end)
 end
 
 -- Raft's AnchorDepth ∈ [0, 1] is the deepest anchor currently deployed
@@ -160,7 +144,11 @@ local function setupAnchor(anchorModel)
 	if rope.Length < MIN_ROPE then rope.Length = MIN_ROPE end
 	if rope.Length > MAX_ROPE then rope.Length = MAX_ROPE end
 	rope:GetPropertyChangedSignal("Length"):Connect(recomputeRaftAnchoredState)
-	ensureWheelMotor(anchorModel)
+	freeWheelRotor(anchorModel)
+	-- HingeConstraint ships idle (MotorMaxTorque 0) — pulseWheel
+	-- turns it on for each E / Q press, then zeroes it again.
+	local hc = findHinge(anchorModel)
+	if hc then hc.MotorMaxTorque = 0; hc.AngularVelocity = 0 end
 	anchorModel:SetAttribute("AnchorInteractionReady", true)
 	recomputeRaftAnchoredState()
 end
@@ -201,8 +189,10 @@ anchorEvent.OnServerEvent:Connect(function(player, action, anchorModel)
 
 	if action == "lower" then
 		rope.Length = math.clamp(rope.Length + ROPE_STEP, MIN_ROPE, MAX_ROPE)
+		pulseWheel(anchorModel, 1)
 	elseif action == "raise" then
 		rope.Length = math.clamp(rope.Length - ROPE_STEP, MIN_ROPE, MAX_ROPE)
+		pulseWheel(anchorModel, -1)
 	end
 end)
 
