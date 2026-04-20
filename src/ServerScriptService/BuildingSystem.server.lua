@@ -387,12 +387,18 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 			or rs:FindFirstChild("Anchor_part", true)
 		if not anchorTemplate then return end
 
+		-- PrimaryPart sits 2 studs right of the anchor's visible centre,
+		-- so PivotTo lands the body 2 studs past the grid cell. Shift
+		-- the target CFrame -2 on local X so the body lands on the cell.
+		-- The client pre-shifts its cursor → grid conversion by +2 so
+		-- the preview tracks the mouse exactly.
+		local ANCHOR_X_COMPENSATION = 2
 		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
 		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 		local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
 		local localOffset = restCF:VectorToObjectSpace(worldOffset)
-		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft)
+		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft) * CFrame.new(-ANCHOR_X_COMPENSATION, 0, 0)
 
 		if (char.HumanoidRootPart.Position - worldCF.Position).Magnitude > 80 then return end
 

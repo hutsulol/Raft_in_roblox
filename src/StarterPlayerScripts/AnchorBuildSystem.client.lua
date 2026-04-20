@@ -126,6 +126,14 @@ local function isAdjacent(map, gx, gz)
 	return false
 end
 
+-- Anchor_part's PrimaryPart sits 2 studs right of the model's visible
+-- centre. Placement has to shift the target CFrame -2 on X so the
+-- visible anchor lands on the grid cell; the cursor → grid conversion
+-- has to apply the INVERSE shift (+2 on local X) so the cell the
+-- preview resolves to is the one directly under the cursor — without
+-- it, the ghost appears 2 studs left of the mouse (desync).
+local ANCHOR_X_COMPENSATION = 2
+
 local function gridToWorldCF(raft, gx, gz)
 	local primary = raft.PrimaryPart
 	local restCF  = primary:GetAttribute("RestCFrame") or primary.CFrame
@@ -133,11 +141,14 @@ local function gridToWorldCF(raft, gx, gz)
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
-	return primary.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft)
+	return primary.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft) * CFrame.new(-ANCHOR_X_COMPENSATION, 0, 0)
 end
 
--- Cursor → grid coord. Project mouse ray onto the raft plane, then
--- convert to integer grid. Returns nil outside a valid range.
+-- Cursor → grid coord. Project mouse ray onto the raft plane, convert
+-- to raft-local X/Z, undo the ANCHOR_X_COMPENSATION so the hit point
+-- is expressed in the same frame the grid cell will be rendered in,
+-- then round. That way the cell we pick is the one whose placement
+-- CFrame lands directly under the cursor — no visual desync.
 local function getFloorGridFromMouse()
 	local raft = getRaft()
 	if not raft or not raft.PrimaryPart then return nil end
@@ -157,7 +168,10 @@ local function getFloorGridFromMouse()
 	end
 	local restFlat = CFrame.new(primary.Position) * CFrame.Angles(0, restYaw, 0)
 	local localHit = restFlat:PointToObjectSpace(hit)
-	local gx = math.round(localHit.X / GRID_SIZE)
+	-- Pre-shift the hit point by +ANCHOR_X_COMPENSATION so the grid
+	-- cell we round to, after the -ANCHOR_X_COMPENSATION on the
+	-- placement side, lands directly under the cursor.
+	local gx = math.round((localHit.X + ANCHOR_X_COMPENSATION) / GRID_SIZE)
 	local gz = math.round(localHit.Z / GRID_SIZE)
 	return gx, gz
 end
