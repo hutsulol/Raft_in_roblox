@@ -426,7 +426,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 			newAnchor.WorldPivot =
 				CFrame.new(pivotPos)
 				* CFrame.Angles(0, math.rad(90), 0)
-				* CFrame.new(0, 0, -2 * GRID_SIZE)
+				* CFrame.new(0, 0, 2 * GRID_SIZE)
 			newAnchor:PivotTo(worldCF)
 		elseif newAnchor:IsA("BasePart") then
 			newAnchor.CFrame = worldCF

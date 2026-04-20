@@ -658,7 +658,7 @@ local function createPreview()
 		previewPart.WorldPivot =
 			CFrame.new(pivotPos)
 			* CFrame.Angles(0, math.rad(90), 0)
-			* CFrame.new(0, 0, -2 * GRID_SIZE)
+			* CFrame.new(0, 0, 2 * GRID_SIZE)
 	end
 	setPreviewAppearance(PREVIEW_COLOR_VALID)
 	previewPart.Parent = workspace
