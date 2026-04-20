@@ -126,30 +126,32 @@ local function isAdjacent(map, gx, gz)
 	return false
 end
 
--- Extra safety: even when the cell the cursor resolved to is legal,
--- reject placement if the anchor's bounding box would physically
--- overlap any raft descendant. Prevents the anchor's body from
--- clipping into an adjacent Raft_part / Anchor_part / wall / beam
--- when the footprint spills over the grid cell.
-local ANCHOR_EXTENT
-if anchorTemplate then
-	if anchorTemplate:IsA("Model") then
-		ANCHOR_EXTENT = anchorTemplate:GetExtentsSize()
-	elseif anchorTemplate:IsA("BasePart") then
-		ANCHOR_EXTENT = anchorTemplate.Size
-	end
+-- Build the CFrame of the raw grid cell (no X compensation) so the
+-- overlap check probes the cell itself instead of the anchor's
+-- compensated body position — otherwise right-side placements
+-- false-positive because the body shifts back toward the raft.
+local function gridCellCF(raft, gx, gz)
+	local primary = raft.PrimaryPart
+	local restCF  = primary:GetAttribute("RestCFrame") or primary.CFrame
+	local restYaw = primary:GetAttribute("RestYaw") or 0
+	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
+	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
+	local localOffset = restCF:VectorToObjectSpace(worldOffset)
+	return primary.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft)
 end
-ANCHOR_EXTENT = ANCHOR_EXTENT or Vector3.new(GRID_SIZE, GRID_SIZE, GRID_SIZE)
 
+-- Reject placements whose grid cell physically intersects any raft
+-- descendant — belt + suspenders on top of the grid adjacency check.
+-- Probe size is one grid tile (shrunk a touch to ignore edges).
 local overlapParams = OverlapParams.new()
 overlapParams.FilterType = Enum.RaycastFilterType.Include
 
-local function overlapsRaft(raft, worldCF)
+local OVERLAP_PROBE_SIZE = Vector3.new(GRID_SIZE * 0.75, GRID_SIZE * 0.75, GRID_SIZE * 0.75)
+
+local function overlapsRaft(raft, gx, gz)
 	overlapParams.FilterDescendantsInstances = { raft }
-	-- Shrink the probe slightly so a cell that only touches the
-	-- neighbour along the edge isn't marked as overlapping.
-	local checkSize = ANCHOR_EXTENT * 0.75
-	local parts = workspace:GetPartBoundsInBox(worldCF, checkSize, overlapParams)
+	local cellCF = gridCellCF(raft, gx, gz)
+	local parts = workspace:GetPartBoundsInBox(cellCF, OVERLAP_PROBE_SIZE, overlapParams)
 	if previewPart then
 		for _, p in parts do
 			if not p:IsDescendantOf(previewPart) then return true end
@@ -212,6 +214,18 @@ local function colourPreview(valid)
 		end
 	elseif previewPart:IsA("BasePart") then
 		previewPart.Color = c
+	end
+end
+
+local function setPreviewVisible(visible)
+	if not previewPart then return end
+	local alpha = visible and 0.5 or 1
+	if previewPart:IsA("Model") then
+		for _, d in previewPart:GetDescendants() do
+			if d:IsA("BasePart") then d.Transparency = alpha end
+		end
+	elseif previewPart:IsA("BasePart") then
+		previewPart.Transparency = alpha
 	end
 end
 
@@ -304,19 +318,27 @@ local function updatePreview()
 	end
 
 	local map = getFloorOffsetMap()
-	local valid = not isOccupied(map, gx, gz) and isAdjacent(map, gx, gz)
-	movePreviewToCell(raft, gx, gz)
 	lastGX, lastGZ = gx, gz
 
-	if not valid then
+	-- Mirror the hammer's behaviour: when the cursor is over a cell
+	-- that's already filled, hide the preview entirely rather than
+	-- colouring it red on top of the raft.
+	if isOccupied(map, gx, gz) then
+		setPreviewVisible(false)
+		lastValid = false
+		return
+	end
+	setPreviewVisible(true)
+
+	movePreviewToCell(raft, gx, gz)
+
+	if not isAdjacent(map, gx, gz) then
 		colourPreview(false)
 		return
 	end
 
-	-- Physical overlap: ghost's extents must not poke into a raft tile
-	-- or any other raft descendant.
-	local worldCF = gridToWorldCF(raft, gx, gz)
-	if overlapsRaft(raft, worldCF) then
+	-- Physical overlap: cell itself must be empty of raft descendants.
+	if overlapsRaft(raft, gx, gz) then
 		colourPreview(false)
 		return
 	end
@@ -324,6 +346,7 @@ local function updatePreview()
 	local char = player.Character
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	if hrp then
+		local worldCF = gridToWorldCF(raft, gx, gz)
 		if (hrp.Position - worldCF.Position).Magnitude > MAX_PLACE_RANGE then
 			colourPreview(false)
 			return

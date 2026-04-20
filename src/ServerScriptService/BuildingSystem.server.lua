@@ -402,22 +402,17 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 
 		if (char.HumanoidRootPart.Position - worldCF.Position).Magnitude > 80 then return end
 
-		-- Physical overlap check: even when the chosen cell is free in
-		-- the grid, reject the placement if the anchor's bounding box
-		-- would clip into any existing raft descendant (walls, beams,
-		-- anchors, tiles). Authoritative against a cheating client.
-		local extent
-		if anchorTemplate:IsA("Model") then
-			extent = anchorTemplate:GetExtentsSize()
-		elseif anchorTemplate:IsA("BasePart") then
-			extent = anchorTemplate.Size
-		end
-		extent = extent or Vector3.new(GRID_SIZE, GRID_SIZE, GRID_SIZE)
+		-- Physical overlap check: probe the grid cell itself (without
+		-- the X compensation) so adjacent placements on any side of
+		-- the raft don't false-positive. We only care whether the
+		-- cell the player chose is physically empty.
 		do
+			local cellCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft)
+			local probe = Vector3.new(GRID_SIZE * 0.75, GRID_SIZE * 0.75, GRID_SIZE * 0.75)
 			local params = OverlapParams.new()
 			params.FilterType = Enum.RaycastFilterType.Include
 			params.FilterDescendantsInstances = { raft }
-			local overlaps = workspace:GetPartBoundsInBox(worldCF, extent * 0.75, params)
+			local overlaps = workspace:GetPartBoundsInBox(cellCF, probe, params)
 			if #overlaps > 0 then return end
 		end
 
