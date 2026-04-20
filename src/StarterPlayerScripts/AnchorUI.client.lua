@@ -10,6 +10,8 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService  = game:GetService("UserInputService")
 local RunService        = game:GetService("RunService")
+local SoundService      = game:GetService("SoundService")
+local Debris            = game:GetService("Debris")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -230,13 +232,24 @@ RunService.RenderStepped:Connect(updateUI)
 -- ─── Input ──────────────────────────────────────────────────────────
 -- The wheel's HingeConstraint is pulsed by AnchorInteraction.server
 -- on "lower"/"raise", so all we do here is forward the key press.
+local function playRopeSound()
+	local template = SoundService:FindFirstChild("low_rope")
+	if not template or not template:IsA("Sound") then return end
+	local clone = template:Clone()
+	clone.Parent = SoundService
+	clone:Play()
+	Debris:AddItem(clone, 5)
+end
+
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	-- Only act while the UI is visible (i.e. cursor is on the wheel).
 	if not currentAnchor then return end
 	if input.KeyCode == Enum.KeyCode.E then
 		anchorEvent:FireServer("lower", currentAnchor)
+		playRopeSound()
 	elseif input.KeyCode == Enum.KeyCode.Q then
 		anchorEvent:FireServer("raise", currentAnchor)
+		playRopeSound()
 	end
 end)
