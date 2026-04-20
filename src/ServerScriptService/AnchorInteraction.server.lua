@@ -53,12 +53,54 @@ local function findHinge(anchorModel)
 	return hc
 end
 
--- The user's Wooden_Wheel ships with its own internal weld + hinge
--- configuration. We no longer touch those welds during setup — the
--- HingeConstraint handles rotation on its own; any weld adjustments
--- here just risk detaching pieces of the wheel. Kept as a stub so
--- the call site stays the same.
-local function freeWheelRotor(_anchorModel)
+-- Free the wheel's rotor. The template ships with a HingeConstraint
+-- on HingePart AND several WeldConstraints that weld HingePart
+-- directly to rotor pieces — the welds override the hinge and the
+-- wheel stays frozen. Strip any WeldConstraint whose other end is
+-- inside Wooden_Wheel (it's just keeping the rotor stuck to the
+-- hinge), leaving welds that reach outside the wheel alone (those
+-- hold the assembly to the anchor frame).
+local function freeWheelRotor(anchorModel)
+	if anchorModel:GetAttribute("AnchorWheelReady") then return end
+	local wheel = anchorModel:FindFirstChild("Wooden_Wheel")
+	if not wheel then return end
+	local hinge = wheel:FindFirstChild("HingePart", true)
+	if not hinge then return end
+
+	-- Drop every WeldConstraint that pins HingePart directly to a
+	-- rotor piece. Those are the welds that were making the hinge
+	-- useless.
+	local function otherPart(weld, self)
+		if weld.Part0 == self then return weld.Part1 end
+		if weld.Part1 == self then return weld.Part0 end
+		return nil
+	end
+	for _, w in hinge:GetChildren() do
+		if w:IsA("WeldConstraint") then
+			local other = otherPart(w, hinge)
+			if other and other ~= hinge and other:IsDescendantOf(wheel) then
+				w:Destroy()
+			end
+		end
+	end
+	-- Also break welds on the rotor side that point at HingePart, in
+	-- case the template parented them there instead.
+	for _, d in wheel:GetDescendants() do
+		if d:IsA("BasePart") and d ~= hinge then
+			for _, w in d:GetChildren() do
+				if w:IsA("WeldConstraint") then
+					local other = otherPart(w, d)
+					if other == hinge then
+						w:Destroy()
+					end
+				end
+			end
+			d.Anchored = false
+			pcall(function() d:SetNetworkOwner(nil) end)
+		end
+	end
+
+	anchorModel:SetAttribute("AnchorWheelReady", true)
 end
 
 -- ─── Hinge pulse ────────────────────────────────────────────────────
