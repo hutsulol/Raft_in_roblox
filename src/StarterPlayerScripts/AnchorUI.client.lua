@@ -13,12 +13,14 @@ local RunService        = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+local mouse  = player:GetMouse()
+local camera = workspace.CurrentCamera
 
 local anchorEvent = ReplicatedStorage:WaitForChild("AnchorAction")
 
 local MIN_ROPE          = 5
 local MAX_ROPE          = 11
-local INTERACTION_RANGE = 10
+local HOVER_RANGE       = 60    -- studs; cap on the cursor raycast
 
 local COLORS = {
 	panelBg    = Color3.fromRGB(139, 109, 63),
@@ -165,35 +167,50 @@ local function findRope(anchorModel)
 	return nil
 end
 
-local function nearestAnchor()
-	local char = player.Character
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return nil end
-
-	local raft = workspace:FindFirstChild("Raft")
-	if not raft then return nil end
-
-	local best, bestDist = nil, INTERACTION_RANGE
-	for _, child in raft:GetChildren() do
-		if child:IsA("Model") and child.Name == "Anchor_part" then
-			local center = findCenterOfSticks(child)
-			if center then
-				local d = (center.Position - hrp.Position).Magnitude
-				if d < bestDist then
-					best, bestDist = child, d
-				end
+-- Walks up from the cursor's hit instance looking for a Wooden_Wheel
+-- whose ancestor model is an Anchor_part. Returns the Anchor_part
+-- model, or nil.
+local function anchorFromInstance(inst)
+	local cur = inst
+	while cur do
+		if cur:IsA("Model") and cur.Name == "Wooden_Wheel" then
+			local anchor = cur:FindFirstAncestorOfClass("Model")
+			if anchor and anchor.Name == "Anchor_part" then
+				return anchor
+			end
+			-- Wooden_Wheel might be a direct child of Anchor_part too.
+			if cur.Parent and cur.Parent.Name == "Anchor_part" then
+				return cur.Parent
 			end
 		end
+		cur = cur.Parent
 	end
-	return best
+	return nil
+end
+
+local raycastParams = RaycastParams.new()
+raycastParams.FilterType = Enum.RaycastFilterType.Exclude
+
+local function anchorUnderCursor()
+	local char = player.Character
+	if not char then return nil end
+	raycastParams.FilterDescendantsInstances = { char }
+
+	local unitRay = camera:ViewportPointToRay(mouse.X, mouse.Y)
+	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * HOVER_RANGE, raycastParams)
+	if not result or not result.Instance then return nil end
+	return anchorFromInstance(result.Instance)
 end
 
 -- ─── Render loop ────────────────────────────────────────────────────
 local currentAnchor
 
 local function updateUI()
-	local anchor = nearestAnchor()
+	local anchor = anchorUnderCursor()
 	currentAnchor = anchor
+	-- Mirror the E-suppression trick PhoneMenu / ContainerUI use so the
+	-- inventory toggle doesn't fire alongside "lower anchor".
+	_G.SuppressInventoryToggle = anchor ~= nil or nil
 	if not anchor then
 		gui.Enabled = false
 		return
@@ -204,7 +221,6 @@ local function updateUI()
 	local range  = math.max(0.001, MAX_ROPE - MIN_ROPE)
 	local pct    = math.clamp((length - MIN_ROPE) / range, 0, 1)
 	fill.Size = UDim2.new(pct, 0, 1, 0)
-	-- Green → red gradient so the player can feel the anchor biting.
 	fill.BackgroundColor3 = COLORS.fillShallow:Lerp(COLORS.fillDeep, pct)
 	pctLabel.Text = string.format("%d%%", math.floor(pct * 100 + 0.5))
 end
@@ -214,6 +230,7 @@ RunService.RenderStepped:Connect(updateUI)
 -- ─── Input ──────────────────────────────────────────────────────────
 UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
+	-- Only act while the UI is visible (i.e. cursor is on the wheel).
 	if not currentAnchor then return end
 	if input.KeyCode == Enum.KeyCode.E then
 		anchorEvent:FireServer("lower", currentAnchor)
