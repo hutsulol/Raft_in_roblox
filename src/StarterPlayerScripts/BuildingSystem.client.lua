@@ -638,14 +638,14 @@ local function createPreview()
 	local template = getTemplateForItem(selectedItem)
 	previewPart = template:Clone()
 	previewPart.Name = "BuildPreview"
-	-- Anchor_part's template logs run along Z while a Raft_part tile
-	-- runs along X, so PivotTo-ing the anchor with the raft's CFrame
-	-- drops its base 90° off. Compensate by baking a 90°-Y rotation
-	-- into the WorldPivot — PivotTo will then align the rotated pivot
-	-- with worldCF, effectively rotating the whole anchor so its
-	-- logs match the raft's. XZ comes from the bounding-box centre
-	-- (footprint middle) and Y from the authored pivot (vertical
-	-- offset that was correct).
+	-- Anchor_part has to be compensated on three fronts before PivotTo:
+	--   * 90° Y rotation so its template Z-axis logs align with the
+	--     raft's X-axis tiles.
+	--   * XZ centred on the bounding-box middle (the authored pivot is
+	--     off-side of the footprint).
+	--   * A 2·GRID_SIZE shift forward along the pivot's local Z so the
+	--     hollow middle of the anchor (the A-frame opening) doesn't
+	--     push the whole model two tiles away from the grid cell.
 	if selectedItem and selectedItem.buildType == "anchor"
 		and previewPart:IsA("Model") then
 		local authored = previewPart:GetPivot()
@@ -655,7 +655,10 @@ local function createPreview()
 			authored.Position.Y,
 			bbCF.Position.Z
 		)
-		previewPart.WorldPivot = CFrame.new(pivotPos) * CFrame.Angles(0, math.rad(90), 0)
+		previewPart.WorldPivot =
+			CFrame.new(pivotPos)
+			* CFrame.Angles(0, math.rad(90), 0)
+			* CFrame.new(0, 0, -2 * GRID_SIZE)
 	end
 	setPreviewAppearance(PREVIEW_COLOR_VALID)
 	previewPart.Parent = workspace
