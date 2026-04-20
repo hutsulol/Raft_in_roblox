@@ -43,32 +43,87 @@ local function findCenterOfSticks(anchorModel)
 end
 
 -- Make sure the Wooden_Wheel has a Motor6D the client-side spin code
--- can drive via Transform. The template ships with a static Weld, so
--- we swap that for a Motor6D (same Part0/Part1/C0/C1) once per model.
+-- can drive. The template ships with HingePart (the static axle) and
+-- several rotating sub-parts welded internally; for the wheel to
+-- actually move, the rotating assembly has to be Motor-attached to
+-- HingePart — not rigidly welded to the raft.
 local function ensureWheelMotor(anchorModel)
+	if anchorModel:GetAttribute("WheelMotorReady") then return end
 	local wheel = anchorModel:FindFirstChild("Wooden_Wheel")
 	if not wheel then return end
-	local existing = wheel:FindFirstChild("WheelSpinMotor", true)
-	if existing and existing:IsA("Motor6D") then return end
+	local hinge = wheel:FindFirstChild("HingePart", true)
+	if not hinge or not hinge:IsA("BasePart") then return end
 
-	local weld
+	-- Walk the wheel's BaseParts, separating the static hinge from
+	-- everything that ought to spin with it.
+	local rotatingParts = {}
 	for _, d in wheel:GetDescendants() do
-		if d:IsA("Weld") and d.Name ~= "WheelSpinMotor" then
-			weld = d
-			break
+		if d:IsA("BasePart") and d ~= hinge then
+			table.insert(rotatingParts, d)
 		end
 	end
-	if not weld then return end
-	if not weld.Part0 or not weld.Part1 then return end
+	if #rotatingParts == 0 then return end
 
-	local motor = Instance.new("Motor6D")
-	motor.Name = "WheelSpinMotor"
-	motor.Part0 = weld.Part0
-	motor.Part1 = weld.Part1
-	motor.C0 = weld.C0
-	motor.C1 = weld.C1
-	motor.Parent = weld.Parent
-	weld:Destroy()
+	-- Break any WeldConstraint that pins a rotating part to something
+	-- outside the wheel (e.g. the raft's primary weld the anchor
+	-- placement creates) or directly to the hinge — either would lock
+	-- the spin. Welds between two rotating parts are preserved so the
+	-- assembly stays rigid.
+	local function isRotating(part)
+		if part == hinge then return false end
+		return part:IsDescendantOf(wheel)
+	end
+	for _, part in rotatingParts do
+		for _, w in part:GetChildren() do
+			if w:IsA("WeldConstraint") then
+				local a, b = w.Part0, w.Part1
+				if a and b then
+					if (a == part and (not isRotating(b))) or
+					   (b == part and (not isRotating(a))) then
+						w:Destroy()
+					end
+				end
+			end
+		end
+		part.Anchored = false
+		pcall(function() part:SetNetworkOwner(nil) end)
+	end
+
+	-- Weld every rotating part to a reference so they move as one
+	-- assembly regardless of the template's sub-model structure.
+	local reference = rotatingParts[1]
+	for i = 2, #rotatingParts do
+		local part = rotatingParts[i]
+		local linked = false
+		for _, w in part:GetChildren() do
+			if w:IsA("WeldConstraint")
+				and ((w.Part0 == part and w.Part1 == reference)
+					or (w.Part1 == part and w.Part0 == reference)) then
+				linked = true
+				break
+			end
+		end
+		if not linked then
+			local w = Instance.new("WeldConstraint")
+			w.Part0 = reference
+			w.Part1 = part
+			w.Parent = part
+		end
+	end
+
+	-- Motor6D: hinge (Part0, static) → reference (Part1, rotating).
+	local existing = wheel:FindFirstChild("WheelSpinMotor", true)
+	if not (existing and existing:IsA("Motor6D")) then
+		local motor = Instance.new("Motor6D")
+		motor.Name = "WheelSpinMotor"
+		motor.Part0 = hinge
+		motor.Part1 = reference
+		motor.C0 = hinge.CFrame:ToObjectSpace(reference.CFrame)
+		motor.C1 = CFrame.new()
+		motor.Parent = hinge
+	end
+
+	anchorModel:SetAttribute("WheelMotorReady", true)
 end
 
 -- Raft's AnchorDepth ∈ [0, 1] is the deepest anchor currently deployed
