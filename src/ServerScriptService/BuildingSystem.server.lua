@@ -430,23 +430,10 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 				local p = newAnchor:FindFirstChildWhichIsA("BasePart", true)
 				if p then newAnchor.PrimaryPart = p end
 			end
-			-- Anchor_part needs three pre-PivotTo compensations:
-			--   * 90° Y rotation — template logs run on Z, raft on X.
-			--   * XZ centred on BB middle — authored pivot is off-side.
-			--   * 2·GRID_SIZE shift along the pivot's local Z — the
-			--     anchor's hollow A-frame middle pushes the body away
-			--     from the grid cell otherwise.
-			local authored = newAnchor:GetPivot()
-			local bbCF = newAnchor:GetBoundingBox()
-			local pivotPos = Vector3.new(
-				bbCF.Position.X,
-				authored.Position.Y,
-				bbCF.Position.Z
-			)
-			newAnchor.WorldPivot =
-				CFrame.new(pivotPos)
-				* CFrame.Angles(0, math.rad(90), 0)
-				* CFrame.new(0, 0, 2 * GRID_SIZE)
+			-- Anchor's Z matches a regular raft tile; only X is offset
+			-- (hollow centre), and worldCF already has the -2 X shift.
+			-- No WorldPivot rework — just pivot to the compensated CF
+			-- like a normal raft tile placement.
 			newAnchor:PivotTo(worldCF)
 		elseif newAnchor:IsA("BasePart") then
 			newAnchor.CFrame = worldCF

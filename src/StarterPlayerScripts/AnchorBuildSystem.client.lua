@@ -260,6 +260,9 @@ local function createPreview()
 	for _, d in previewPart:GetDescendants() do
 		if d:IsA("Script") or d:IsA("LocalScript") then d:Destroy() end
 	end
+	-- Anchor's Z matches a regular raft tile exactly — only the X is
+	-- offset because of the hollow centre, and gridToWorldCF already
+	-- applies the -2 stud X compensation. No WorldPivot rework here.
 	applyPreviewAppearance()
 	-- Park offscreen until the first RenderStepped tick places it on
 	-- a legal cell.
@@ -320,10 +323,12 @@ local function updatePreview()
 	local map = getFloorOffsetMap()
 	lastGX, lastGZ = gx, gz
 
-	-- Mirror the hammer's behaviour: when the cursor is over a cell
-	-- that's already filled, hide the preview entirely rather than
-	-- colouring it red on top of the raft.
-	if isOccupied(map, gx, gz) then
+	-- Hide the preview entirely when the cursor is over a cell that's
+	-- already filled. Check both the grid-attribute map AND physical
+	-- overlap at the cell, so tiles without explicit GridX / GridZ
+	-- attributes (e.g. raft primary part, stray initial tiles) still
+	-- suppress the ghost.
+	if isOccupied(map, gx, gz) or overlapsRaft(raft, gx, gz) then
 		setPreviewVisible(false)
 		lastValid = false
 		return
@@ -333,12 +338,6 @@ local function updatePreview()
 	movePreviewToCell(raft, gx, gz)
 
 	if not isAdjacent(map, gx, gz) then
-		colourPreview(false)
-		return
-	end
-
-	-- Physical overlap: cell itself must be empty of raft descendants.
-	if overlapsRaft(raft, gx, gz) then
 		colourPreview(false)
 		return
 	end
