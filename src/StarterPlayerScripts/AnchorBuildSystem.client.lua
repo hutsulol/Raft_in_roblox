@@ -132,7 +132,7 @@ end
 -- the grid cell; the cursor → grid conversion applies the INVERSE
 -- shift (+8 on local X) so the cell the preview resolves to is the
 -- one directly under the cursor — no desync.
-local ANCHOR_X_COMPENSATION = 8
+local ANCHOR_X_COMPENSATION = 10
 
 local function gridToWorldCF(raft, gx, gz)
 	local primary = raft.PrimaryPart

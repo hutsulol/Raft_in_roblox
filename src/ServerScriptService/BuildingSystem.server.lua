@@ -392,7 +392,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		-- the target CFrame -8 on local X so the body lands on the
 		-- cell. The client pre-shifts its cursor → grid conversion by
 		-- +8 so the preview tracks the mouse exactly.
-		local ANCHOR_X_COMPENSATION = 8
+		local ANCHOR_X_COMPENSATION = 10
 		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
 		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 		local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
