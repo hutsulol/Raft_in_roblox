@@ -1262,7 +1262,7 @@ buildPage = function(mercNames)
 	local COLUMN_GAP    = 20
 	local PANELS_TOP_Y  = 70
 	local PANELS_BOT_PAD = 24
-	local RIGHT_PANEL_Y_OFFSET = -18
+	local RIGHT_PANEL_Y_OFFSET = -60
 
 	local scaleWrap = Instance.new("Frame")
 	scaleWrap.Name = "ScaleWrap"
@@ -1335,7 +1335,7 @@ buildPage = function(mercNames)
 	backBtn.Name = "BackButton"
 	backBtn.AnchorPoint = Vector2.new(0, 0)
 	-- Keep BACK as a separate top-left action (not inside the left panel band).
-	backBtn.Position = UDim2.fromOffset(-30, 24)
+	backBtn.Position = UDim2.fromOffset(-100, 0)
 	backBtn.Size = UDim2.fromOffset(96, 40)
 	backBtn.BackgroundColor3 = HOLO_PANEL_FILL
 	backBtn.BackgroundTransparency = 0
@@ -1388,13 +1388,14 @@ buildPage = function(mercNames)
 	-- the gem + number so a 5-digit count still reads cleanly.
 	local chip = Instance.new("Frame")
 	chip.Name = "CurrencyChip"
-	chip.AnchorPoint = Vector2.new(1, 0.5)
-	chip.Position = UDim2.new(1, 0, 0.5, 0)
+	chip.AnchorPoint = Vector2.new(1, 1)
+	chip.Position = UDim2.new(1, EDGE_BLEED_X, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET - 10)
 	chip.Size = UDim2.fromOffset(96, 28)
 	chip.BackgroundColor3 = HOLO_PANEL_FILL
 	chip.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	chip.BorderSizePixel = 0
-	chip.Parent = topBar
+	chip.ZIndex = 6
+	chip.Parent = scaleWrap
 	local chipStroke = Instance.new("UIStroke")
 	chipStroke.Color     = HOLO_PANEL_BORDER
 	chipStroke.Thickness = 1
@@ -1698,7 +1699,7 @@ buildPage = function(mercNames)
 	-- (or Hire button for unrecruited mercs — currently only OWNED
 	-- since we only render mercs from player.Mercenaries).
 	local META_HEIGHT = 44
-	local META_TOP_OFFSET = -24
+	local META_TOP_OFFSET = -44
 	local metaBar = Instance.new("Frame")
 	metaBar.Name = "MetaBar"
 	metaBar.BackgroundColor3 = HOLO_PANEL_FILL
