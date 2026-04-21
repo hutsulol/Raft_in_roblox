@@ -1191,7 +1191,7 @@ local function buildMenu()
 	viewportFrame = Instance.new("ViewportFrame")
 	viewportFrame.Name = "CharacterViewport"
 	viewportFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-	viewportFrame.Position = UDim2.fromScale(0.5, 0.46)
+	viewportFrame.Position = UDim2.fromScale(0.5, 0.44)
 	viewportFrame.Size = UDim2.fromOffset(420, 560)
 	viewportFrame.BackgroundTransparency = 1
 	viewportFrame.BorderSizePixel = 0
@@ -1372,7 +1372,7 @@ local function buildMenu()
 		lvlLabel.Position = UDim2.new(0.6, 0, 0, 0)
 		lvlLabel.Size = UDim2.new(0.4, 0, 0, 14)
 
-		local track, fill = makeHoloBar(content, UDim2.new(1, 0, 0, 8), 12)
+		local track, fill = makeHoloBar(content, UDim2.new(1, 0, 0, 8), STAT_BAR_SEGMENTS)
 		track.Position = UDim2.fromOffset(0, 24)
 
 		local btn = Instance.new("TextButton")
@@ -1663,7 +1663,8 @@ local function buildMenu()
 	local xpPanel = makePanel("XPPanel", root)
 	xpPanel.AnchorPoint = Vector2.new(0.5, 1)
 	xpPanel.Position = UDim2.new(0.5, 0, 1, -24)
-	xpPanel.Size = UDim2.fromOffset(560, 56)
+	xpPanel.Size = UDim2.fromOffset(500, 54)
+	xpPanel.BackgroundTransparency = 0.16
 	local xpPad = Instance.new("UIPadding")
 	xpPad.PaddingTop    = UDim.new(0, 10)
 	xpPad.PaddingBottom = UDim.new(0, 10)
@@ -1675,19 +1676,19 @@ local function buildMenu()
 
 	-- No spark icon — "XP" sits at the left edge of the bar on its own.
 	local xpTag = makeLabel(xpPanel, "XP", FONT_TITLE, 17, HOLO_EDGE)
-	xpTag.Position = UDim2.fromOffset(0, 0)
-	xpTag.Size = UDim2.new(0, 28, 1, 0)
+	xpTag.Position = UDim2.fromOffset(2, 0)
+	xpTag.Size = UDim2.new(0, 30, 1, 0)
 
 	local xpAmount = makeLabel(xpPanel, "0 / 50", FONT_BODY, 14, COLOR_TEXT_DIM)
-	xpAmount.Position = UDim2.fromOffset(40, 0)
-	xpAmount.Size = UDim2.new(0, 74, 1, 0)
+	xpAmount.Position = UDim2.fromOffset(46, 0)
+	xpAmount.Size = UDim2.new(0, 66, 1, 0)
 	xpAmountLabel = xpAmount
 
 	-- Holo bar fills the middle. Reserve 52 px on the right for the Lv
 	-- badge (40 + 12 gap), 102 on the left for the tag + amount cluster.
-	local xpTrack, xpFill = makeHoloBar(xpPanel, UDim2.new(1, -174, 0, 12), 12)
+	local xpTrack, xpFill = makeHoloBar(xpPanel, UDim2.new(1, -164, 0, 12), XP_BAR_SEGMENTS)
 	xpTrack.AnchorPoint = Vector2.new(0, 0.5)
-	xpTrack.Position = UDim2.new(0, 116, 0.5, 0)
+	xpTrack.Position = UDim2.new(0, 108, 0.5, 0)
 	xpFillFrame = xpFill
 
 	-- Lv badge on the right. RichText so we can dim the "Lv" prefix
@@ -2175,6 +2176,7 @@ local phoneMenuEvent = ReplicatedStorage:WaitForChild("PhoneMenuAction")
 -- Dev-phase: treat 10 levels in any attribute as a full bar.
 local STAT_BAR_MAX = 10
 local STAT_BAR_SEGMENTS = 10
+local XP_BAR_SEGMENTS = 10
 
 -- Align filled width to exact segment steps (1/10, 2/10, ...). This avoids
 -- the visual "slightly more than one level" effect caused by fractional
@@ -2248,8 +2250,12 @@ local function refreshCharacteristics()
 		xpAmountLabel.Text = xp.Value .. " / " .. xpRequired.Value
 	end
 	if xpFillFrame and xp and xpRequired then
-		local ratio = xpRequired.Value > 0 and xp.Value / xpRequired.Value or 0
-		xpFillFrame.Size = UDim2.new(math.clamp(ratio, 0, 1), 0, 1, 0)
+		local ratio = getSteppedBarRatio(
+			xp.Value,
+			xpRequired.Value,
+			math.max(1, xpRequired.Value)
+		)
+		xpFillFrame.Size = UDim2.new(ratio, 0, 1, 0)
 	end
 	if xpLevelLabel and level then
 		-- Dim "Lv" prefix + gold level number to match MainMenu.jsx.
