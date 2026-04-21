@@ -159,6 +159,136 @@ local function makeBar(parent, fill01, label)
 	return row, fill, lvl
 end
 
+-- ─── Holo background ─────────────────────────────────────────────────────
+-- Deep-ocean sea-mist backdrop ported from the Claude Design mockup.
+-- Layers: vertical gradient (bgA → bgB → bgC) → horizon glow band → top +
+-- bottom vignette → drifting light motes. Built inside a single root
+-- Frame so the rest of the UI can still treat the backdrop as one child
+-- of the ScreenGui.
+local function buildHoloBackground(parent)
+	local BG_TOP   = Color3.fromRGB(8, 19, 34)    -- #081322 deep ocean night
+	local BG_MID   = Color3.fromRGB(13, 31, 53)   -- #0d1f35
+	local BG_BOT   = Color3.fromRGB(21, 51, 82)   -- #153352 cool haze
+	local HORIZON  = Color3.fromRGB(80, 140, 190) -- cyan horizon band
+	local MOTE_COL = Color3.fromRGB(180, 215, 240)
+
+	local root = Instance.new("Frame")
+	root.Name = "Backdrop"
+	root.Size = UDim2.fromScale(1, 1)
+	root.BackgroundColor3 = BG_MID
+	root.BorderSizePixel = 0
+	root.ZIndex = 0
+	root.Parent = parent
+
+	-- Base vertical gradient
+	local grad = Instance.new("UIGradient")
+	grad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0,    BG_TOP),
+		ColorSequenceKeypoint.new(0.45, BG_MID),
+		ColorSequenceKeypoint.new(1,    BG_BOT),
+	})
+	grad.Rotation = 90 -- top → bottom
+	grad.Parent = root
+
+	-- Horizon light band, slightly above centre, with soft horizontal fade
+	local horizon = Instance.new("Frame")
+	horizon.Name = "Horizon"
+	horizon.AnchorPoint = Vector2.new(0.5, 0.5)
+	horizon.Position = UDim2.fromScale(0.5, 0.42)
+	horizon.Size = UDim2.fromScale(1.2, 0.22)
+	horizon.BackgroundColor3 = HORIZON
+	horizon.BackgroundTransparency = 0.55
+	horizon.BorderSizePixel = 0
+	horizon.ZIndex = 1
+	horizon.Parent = root
+	local hGrad = Instance.new("UIGradient")
+	hGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0,    1),
+		NumberSequenceKeypoint.new(0.35, 0.55),
+		NumberSequenceKeypoint.new(0.5,  0.35),
+		NumberSequenceKeypoint.new(0.65, 0.55),
+		NumberSequenceKeypoint.new(1,    1),
+	})
+	hGrad.Rotation = 0
+	hGrad.Parent = horizon
+
+	-- Vignette: darken top and bottom toward the screen edges so the
+	-- panels sit in a soft tunnel of light.
+	local function makeVignette(yPos, flip)
+		local v = Instance.new("Frame")
+		v.Name = flip and "VignetteBottom" or "VignetteTop"
+		v.Size = UDim2.new(1, 0, 0.38, 0)
+		v.Position = UDim2.fromScale(0, yPos)
+		v.BackgroundColor3 = Color3.new(0, 0, 0)
+		v.BorderSizePixel = 0
+		v.ZIndex = 2
+		v.Parent = root
+		local g = Instance.new("UIGradient")
+		g.Transparency = flip
+			and NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(1, 0.35),
+			})
+			or NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.35),
+				NumberSequenceKeypoint.new(1, 1),
+			})
+		g.Rotation = 90
+		g.Parent = v
+	end
+	makeVignette(0,    false)
+	makeVignette(0.62, true)
+
+	-- Drifting light motes: ~24 small glowing dots floating upward with
+	-- per-mote random size, opacity, duration and slight horizontal drift
+	-- — reshuffles after each pass so the loop never visibly resets.
+	local motes = Instance.new("Frame")
+	motes.Name = "Motes"
+	motes.Size = UDim2.fromScale(1, 1)
+	motes.BackgroundTransparency = 1
+	motes.BorderSizePixel = 0
+	motes.ClipsDescendants = true
+	motes.ZIndex = 3
+	motes.Parent = root
+
+	for _ = 1, 24 do
+		local sizePx     = math.random(12, 32) / 10   -- 1.2 .. 3.2 px
+		local duration   = 14 + math.random() * 14    -- 14 .. 28 s
+		local startDelay = math.random() * 18
+		local opacity    = 0.2 + math.random() * 0.6
+
+		local mote = Instance.new("Frame")
+		mote.Name = "Mote"
+		mote.AnchorPoint = Vector2.new(0.5, 0.5)
+		mote.Size = UDim2.fromOffset(sizePx, sizePx)
+		mote.BackgroundColor3 = MOTE_COL
+		mote.BackgroundTransparency = 1 - opacity
+		mote.BorderSizePixel = 0
+		mote.ZIndex = 4
+		mote.Parent = motes
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(1, 0)
+		c.Parent = mote
+
+		task.spawn(function()
+			task.wait(startDelay)
+			while mote.Parent do
+				local startX = math.random()
+				local driftX = (math.random() - 0.5) * 0.06
+				mote.Position = UDim2.new(startX, 0, 1.05, 0)
+				local goal = UDim2.new(startX + driftX, 0, -0.05, 0)
+				local tw = TweenService:Create(mote,
+					TweenInfo.new(duration, Enum.EasingStyle.Linear),
+					{ Position = goal })
+				tw:Play()
+				tw.Completed:Wait()
+			end
+		end)
+	end
+
+	return root
+end
+
 -- ─── Menu construction ────────────────────────────────────────────────────
 local viewportFrame = nil
 local viewportWorld = nil
@@ -387,15 +517,11 @@ local function buildMenu()
 	screenGui.DisplayOrder = 50
 	screenGui.Parent = playerGui
 
-	-- Dimming backdrop — full-screen because the ScreenGui ignores the
-	-- topbar inset. No visible strip of world behind the topbar anymore.
-	local backdrop = Instance.new("Frame")
-	backdrop.Name = "Backdrop"
-	backdrop.BackgroundColor3 = COLOR_BG
-	backdrop.BackgroundTransparency = 0.25
-	backdrop.BorderSizePixel = 0
-	backdrop.Size = UDim2.fromScale(1, 1)
-	backdrop.Parent = screenGui
+	-- Holo backdrop ported from the Claude Design mockup. Fills the whole
+	-- ScreenGui with the sea-mist gradient + horizon band + vignette +
+	-- drifting light motes. Renders as the first child so the Root /
+	-- holoCover siblings created below sit on top of it.
+	local backdrop = buildHoloBackground(screenGui)
 
 	-- Root hosts the interactive UI. It's a plain Frame — the menu stays
 	-- fully built and laid out beneath an opaque `holoCover` sibling
