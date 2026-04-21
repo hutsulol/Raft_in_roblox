@@ -1073,30 +1073,30 @@ local function buildMenu()
 	-- holoCover siblings created below sit on top of it.
 	local backdrop = buildHoloBackground(screenGui)
 
-	-- Root hosts the interactive UI. It's a plain Frame — the menu stays
-	-- fully built and laid out beneath an opaque `holoCover` sibling
-	-- (created later in this function) that hides it during the holo
-	-- open animation and fades out at the reveal moment. We wrap it in
-	-- an outer `scaleWrap` frame so the responsive UIScale can live
-	-- above the existing HoloScale: Roblox only honours ONE UIScale
-	-- per parent, but UIScales on different ancestors compound. The
-	-- outer wrap takes the Roblox-topbar inset margins; root fills it.
+	-- Responsive artboard: the Claude Design mockup is authored at the
+	-- 960x600 canvas. Make `scaleWrap` a *fixed* 960x600 frame centred
+	-- on screen and drive its UIScale so the whole artboard grows or
+	-- shrinks to match the viewport. Because UIScale multiplies the
+	-- scale *and* offset parts of children's UDim2s, a screen-sized
+	-- parent would push right-anchored panels (Position (1, 0, …)) to
+	-- screen.width × scale — i.e. off the right edge on large displays.
+	-- Fixing scaleWrap's own size keeps every Position (1, 0) landing
+	-- on the artboard's own 960 mark, which the UIScale then maps
+	-- correctly back onto the player's screen.
 	local topInset = GuiService:GetGuiInset().Y
+	local REFERENCE_W, REFERENCE_H = 960, 600
+
 	local scaleWrap = Instance.new("Frame")
 	scaleWrap.Name = "ScaleWrap"
 	scaleWrap.BackgroundTransparency = 1
 	scaleWrap.BorderSizePixel = 0
-	scaleWrap.AnchorPoint = Vector2.new(0, 0)
-	scaleWrap.Position = UDim2.new(0, 30, 0, topInset + 20)
-	scaleWrap.Size = UDim2.new(1, -60, 1, -(topInset + 50))
+	-- Centred horizontally. Pushed down by topInset/2 so the artboard
+	-- never clips into the Roblox topbar, even at maximum scale.
+	scaleWrap.AnchorPoint = Vector2.new(0.5, 0.5)
+	scaleWrap.Position = UDim2.new(0.5, 0, 0.5, topInset / 2)
+	scaleWrap.Size = UDim2.fromOffset(REFERENCE_W, REFERENCE_H)
 	scaleWrap.Parent = screenGui
 
-	-- Responsive UIScale on the outer wrap: the Claude Design mockup is
-	-- authored at a 960x600 artboard, so scale the menu up proportionally
-	-- when the player runs the game full-screen on a big monitor, but
-	-- never shrink below 1 (the layout already fits the Studio / small-
-	-- window case at scale 1).
-	local REFERENCE_W, REFERENCE_H = 960, 600
 	local responsiveScale = Instance.new("UIScale")
 	responsiveScale.Name = "ResponsiveScale"
 	responsiveScale.Scale = 1
@@ -1105,13 +1105,23 @@ local function buildMenu()
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
 		if size.X <= 0 or size.Y <= 0 then return end
-		local s = math.min(size.X / REFERENCE_W, size.Y / REFERENCE_H)
-		if s < 1 then s = 1 end
+		-- min(sx, sy) so the scaled artboard always fits — a 1920x1080
+		-- window scales to ~1.74x, a Studio 1520x700 to ~1.11x, a tiny
+		-- 800x450 window to ~0.69x. Floor at 0.5 so text never becomes
+		-- unreadable on very small windows.
+		local sx = size.X / REFERENCE_W
+		local sy = (size.Y - topInset) / REFERENCE_H
+		local s = math.min(sx, sy)
+		if s < 0.5 then s = 0.5 end
 		responsiveScale.Scale = s
 	end
 	updateResponsiveScale()
 	screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateResponsiveScale)
 
+	-- Root fills the scale wrap. Panels live here and position themselves
+	-- within the 960x600 artboard coordinate space — e.g. right-column
+	-- panels with Position (1, 0, …) anchor on the 960 mark and Anchor
+	-- (1, 0) extends them leftward from there.
 	local root = Instance.new("Frame")
 	root.Name = "Root"
 	root.BackgroundTransparency = 1
@@ -1120,11 +1130,10 @@ local function buildMenu()
 	root.Size = UDim2.fromScale(1, 1)
 	root.Parent = scaleWrap
 
-	-- UIScale we drive for the final "materialize" tween (0.85 → 1),
-	-- so the panels subtly zoom in behind the dissolving cover. Sits
-	-- on root (inner wrap) so it's an independent ancestor from the
-	-- responsive scale above — Roblox compounds UIScales across
-	-- ancestors even though it won't compound siblings.
+	-- HoloScale on root (inner wrapper) — separate ancestor from the
+	-- responsive scale above so the two UIScales compound correctly
+	-- (Roblox honours only one UIScale per parent but multiplies
+	-- across ancestors).
 	local rootScale = Instance.new("UIScale")
 	rootScale.Name = "HoloScale"
 	rootScale.Scale = 1
