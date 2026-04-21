@@ -215,30 +215,7 @@ local function buildHoloBackground(parent)
 	horizonLayer(1.6, 0.22, 0.90, 0.50)
 	horizonLayer(1.0, 0.08, 0.72, 0.15)
 
-	local function makeVignette(yPos, flip)
-		local v = Instance.new("Frame")
-		v.Name = flip and "VignetteBottom" or "VignetteTop"
-		v.Size = UDim2.new(1, 0, 0.38, 0)
-		v.Position = UDim2.fromScale(0, yPos)
-		v.BackgroundColor3 = Color3.new(0, 0, 0)
-		v.BorderSizePixel = 0
-		v.ZIndex = 2
-		v.Parent = root
-		local g = Instance.new("UIGradient")
-		g.Transparency = flip
-			and NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 1),
-				NumberSequenceKeypoint.new(1, 0.35),
-			})
-			or NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0.35),
-				NumberSequenceKeypoint.new(1, 1),
-			})
-		g.Rotation = 90
-		g.Parent = v
-	end
-	makeVignette(0,    false)
-	makeVignette(0.62, true)
+	-- No vignette on Mercenaries page (requested): keep backdrop clean.
 
 	local motes = Instance.new("Frame")
 	motes.Name = "Motes"
