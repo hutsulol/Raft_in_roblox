@@ -68,6 +68,7 @@ local MERC_THEMES = {
 		accent      = Color3.fromRGB(255, 80, 80),
 		displayName = "Pirate",
 		stars       = 1,
+		role        = "Sailor · Melee",
 		-- Stats mirror src/Pirate_2/Combat.script ATTR so the card doesn't
 		-- lie to the player about how tough their merc actually is.
 		stats       = { hp = 250, damage = 18, mana = "20/min" },
@@ -78,6 +79,7 @@ local DEFAULT_THEME = {
 	accent      = COLOR_ACCENT,
 	displayName = "Unknown",
 	stars       = 1,
+	role        = "Crew",
 	stats       = { hp = 50, damage = 5, mana = "0/min" },
 }
 
@@ -300,6 +302,21 @@ local function buildHoloBackground(parent)
 	return root
 end
 
+-- ─── Text label helper ─────────────────────────────────────────────────
+local function makeLabel(parent, text, font, size, color, align)
+	local t = Instance.new("TextLabel")
+	t.BackgroundTransparency = 1
+	t.BorderSizePixel = 0
+	t.Font = font or FONT_BODY
+	t.TextSize = size or 14
+	t.TextColor3 = color or COLOR_TEXT
+	t.TextXAlignment = align or Enum.TextXAlignment.Left
+	t.TextYAlignment = Enum.TextYAlignment.Center
+	t.Text = text or ""
+	t.Parent = parent
+	return t
+end
+
 -- ─── Hand-drawn icons ───────────────────────────────────────────────────
 -- Drop-in geometry helpers matching the style used in PhoneMenu — each
 -- takes (parent, size, color), builds itself inside a square container
@@ -333,6 +350,166 @@ local function makeBackIcon(parent, size, color)
 	bot.BorderSizePixel = 0
 	bot.Rotation = 45
 	bot.Parent = c
+
+	return c
+end
+
+-- Users — two stylised people, one slightly behind and smaller.
+local function makeUsersIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "UsersIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local function person(cx, headSize, bodyW, bodyH)
+		local head = Instance.new("Frame")
+		head.AnchorPoint = Vector2.new(0.5, 0)
+		head.Position = UDim2.fromScale(cx, 0.1)
+		head.Size = UDim2.fromOffset(headSize, headSize)
+		head.BackgroundColor3 = color
+		head.BorderSizePixel = 0
+		head.Parent = c
+		local hc = Instance.new("UICorner")
+		hc.CornerRadius = UDim.new(1, 0)
+		hc.Parent = head
+
+		local body = Instance.new("Frame")
+		body.AnchorPoint = Vector2.new(0.5, 0)
+		body.Position = UDim2.fromScale(cx, 0.55)
+		body.Size = UDim2.fromOffset(bodyW, bodyH)
+		body.BackgroundColor3 = color
+		body.BorderSizePixel = 0
+		body.Parent = c
+		local bc = Instance.new("UICorner")
+		bc.CornerRadius = UDim.new(0.3, 0)
+		bc.Parent = body
+	end
+
+	person(0.35, size * 0.40, size * 0.60, size * 0.34)
+	person(0.72, size * 0.30, size * 0.44, size * 0.28)
+
+	return c
+end
+
+-- Character silhouette — round head + rounded body block. Used as the
+-- placeholder glyph inside a MercCard portrait slot.
+local function makeCharacterIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "CharacterIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local head = Instance.new("Frame")
+	head.AnchorPoint = Vector2.new(0.5, 0)
+	head.Position = UDim2.fromScale(0.5, 0.1)
+	head.Size = UDim2.fromOffset(size * 0.42, size * 0.42)
+	head.BackgroundColor3 = color
+	head.BorderSizePixel = 0
+	head.Parent = c
+	local hc = Instance.new("UICorner")
+	hc.CornerRadius = UDim.new(1, 0)
+	hc.Parent = head
+
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0)
+	body.Position = UDim2.fromScale(0.5, 0.58)
+	body.Size = UDim2.fromOffset(size * 0.78, size * 0.36)
+	body.BackgroundColor3 = color
+	body.BorderSizePixel = 0
+	body.Parent = c
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0.4, 0)
+	bc.Parent = body
+
+	return c
+end
+
+-- Padlock — rounded body + half-circle shackle. Used for locked
+-- mercenary cards.
+local function makeLockIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "LockIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	-- Shackle: hollow-top half of a circle via a circle Frame with
+	-- UIStroke, clipped by a covering Frame below.
+	local shackleH = size * 0.46
+	local shackle = Instance.new("Frame")
+	shackle.AnchorPoint = Vector2.new(0.5, 0)
+	shackle.Position = UDim2.fromScale(0.5, 0.06)
+	shackle.Size = UDim2.fromOffset(size * 0.56, shackleH)
+	shackle.BackgroundTransparency = 1
+	shackle.BorderSizePixel = 0
+	shackle.Parent = c
+	local sc = Instance.new("UICorner")
+	sc.CornerRadius = UDim.new(0.5, 0)
+	sc.Parent = shackle
+	local ss = Instance.new("UIStroke")
+	ss.Color     = color
+	ss.Thickness = math.max(1, math.floor(size * 0.12))
+	ss.Parent    = shackle
+
+	-- Body: rounded-top rectangle that covers the lower half of the
+	-- shackle, leaving only the U-shape visible above.
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0)
+	body.Position = UDim2.fromScale(0.5, 0.42)
+	body.Size = UDim2.fromOffset(size * 0.78, size * 0.5)
+	body.BackgroundColor3 = color
+	body.BorderSizePixel = 0
+	body.Parent = c
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, math.max(1, math.floor(size * 0.08)))
+	bc.Parent = body
+
+	return c
+end
+
+-- Rarity row — N small rotated-square "stars". The first `filled` are
+-- solid gold, the rest are hollow outlines at reduced opacity. Returns
+-- a container Frame sized to fit `total` stars with a 2 px gap.
+local function makeStarRow(parent, filled, total, size, color)
+	size  = size  or 10
+	color = color or COLOR_GOLD
+	total = total or 5
+	filled = math.clamp(filled or 0, 0, total)
+
+	local gap = 2
+	local c = Instance.new("Frame")
+	c.Name = "StarRow"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(total * size + (total - 1) * gap, size)
+	c.Parent = parent
+
+	for i = 1, total do
+		local star = Instance.new("Frame")
+		star.AnchorPoint = Vector2.new(0.5, 0.5)
+		star.Position = UDim2.new(0, (i - 1) * (size + gap) + size * 0.5, 0.5, 0)
+		star.Size = UDim2.fromOffset(size * 0.72, size * 0.72)
+		star.Rotation = 45
+		star.BorderSizePixel = 0
+		if i <= filled then
+			star.BackgroundColor3 = color
+			star.BackgroundTransparency = 0
+			star.Parent = c
+		else
+			star.BackgroundTransparency = 1
+			star.Parent = c
+			local ss = Instance.new("UIStroke")
+			ss.Color       = color
+			ss.Thickness   = 1
+			ss.Transparency = 0.6
+			ss.Parent      = star
+		end
+	end
 
 	return c
 end
@@ -1032,6 +1209,226 @@ buildPage = function(mercNames)
 	chipLabel.TextXAlignment = Enum.TextXAlignment.Left
 	chipLabel.Text = "0"
 	chipLabel.Parent = chip
+
+	-- ── Left column: mercenary list ────────────────────────────────────
+	-- Position from MercenaryPage.jsx: left 24, top 70, bottom 24,
+	-- width 300. All panels live inside scaleWrap so they share the
+	-- responsive UIScale.
+	local leftCol = Instance.new("Frame")
+	leftCol.Name = "LeftColumn"
+	leftCol.BackgroundColor3 = HOLO_PANEL_FILL
+	leftCol.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	leftCol.BorderSizePixel = 0
+	leftCol.Position = UDim2.fromOffset(24, 70)
+	leftCol.Size = UDim2.new(0, 300, 1, -(70 + 24))
+	leftCol.ZIndex = 3
+	leftCol.Parent = scaleWrap
+
+	local leftStroke = Instance.new("UIStroke")
+	leftStroke.Color     = HOLO_PANEL_BORDER
+	leftStroke.Thickness = 1
+	leftStroke.Parent    = leftCol
+
+	local leftPad = Instance.new("UIPadding")
+	leftPad.PaddingTop    = UDim.new(0, 12)
+	leftPad.PaddingBottom = UDim.new(0, 12)
+	leftPad.PaddingLeft   = UDim.new(0, 12)
+	leftPad.PaddingRight  = UDim.new(0, 12)
+	leftPad.Parent = leftCol
+
+	cornerLs(leftCol, 10, HOLO_PANEL_LBRACKET, 1.5)
+	table.insert(motesOccludeList, leftCol)
+
+	-- Header row: users glyph + "MERCENARIES" + "X / Y HIRED" count
+	-- aligned right, with a hairline divider under it.
+	local leftHeader = Instance.new("Frame")
+	leftHeader.Name = "HeaderRow"
+	leftHeader.BackgroundTransparency = 1
+	leftHeader.Size = UDim2.new(1, 0, 0, 18)
+	leftHeader.Parent = leftCol
+
+	local headerGlyph = makeUsersIcon(leftHeader, 14, HOLO_EDGE)
+	headerGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	headerGlyph.Position = UDim2.fromScale(0, 0.5)
+
+	local leftTitle = makeLabel(leftHeader, "MERCENARIES", FONT_TITLE, 15, COLOR_TEXT)
+	leftTitle.Position = UDim2.fromOffset(22, 0)
+	leftTitle.Size = UDim2.new(1, -132, 1, 0)
+
+	-- Cap of 6 matches the design's MERCS roster — it's purely a text
+	-- hint; actual slot count is driven by what's in player.Mercenaries.
+	local ROSTER_CAP = 6
+	local countLabel = makeLabel(leftHeader,
+		string.format("%d / %d HIRED", #mercNames, ROSTER_CAP),
+		FONT_BODY, 11, COLOR_TEXT_DIM, Enum.TextXAlignment.Right)
+	countLabel.AnchorPoint = Vector2.new(1, 0.5)
+	countLabel.Position = UDim2.new(1, 0, 0.5, 0)
+	countLabel.Size = UDim2.fromOffset(110, 18)
+
+	local leftDivider = Instance.new("Frame")
+	leftDivider.Name = "Divider"
+	leftDivider.BackgroundColor3 = HOLO_PANEL_BORDER
+	leftDivider.BackgroundTransparency = 0.3
+	leftDivider.BorderSizePixel = 0
+	leftDivider.Size = UDim2.new(1, 0, 0, 1)
+	leftDivider.Position = UDim2.fromOffset(0, 28)
+	leftDivider.Parent = leftCol
+
+	-- Scrolling card list.
+	local cardList = Instance.new("ScrollingFrame")
+	cardList.Name = "CardList"
+	cardList.BackgroundTransparency = 1
+	cardList.BorderSizePixel = 0
+	cardList.Position = UDim2.fromOffset(0, 40)
+	cardList.Size = UDim2.new(1, 0, 1, -40)
+	cardList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	cardList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	cardList.ScrollBarThickness = 4
+	cardList.ScrollBarImageColor3 = HOLO_PANEL_BORDER
+	cardList.ScrollBarImageTransparency = 0.3
+	cardList.Parent = leftCol
+
+	local cardLayout = Instance.new("UIListLayout")
+	cardLayout.FillDirection = Enum.FillDirection.Vertical
+	cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	cardLayout.Padding = UDim.new(0, 8)
+	cardLayout.Parent = cardList
+
+	-- Per-card refs keyed by merc name, populated below. setSelectedCard
+	-- iterates this to refresh stroke + corner-bracket + portrait-stroke
+	-- colours on the selected and previously-selected rows.
+	local mercCards = {}
+
+	local function setSelectedCard(mercName)
+		currentSelectedMerc = mercName
+		for name, rec in pairs(mercCards) do
+			local isSel = (name == mercName)
+			local color = isSel and HOLO_EDGE or HOLO_PANEL_BORDER
+			rec.stroke.Color = color
+			rec.portraitStroke.Color = color
+			for _, bracket in rec.brackets do
+				bracket.BackgroundColor3 = isSel and HOLO_EDGE or HOLO_PANEL_LBRACKET
+			end
+		end
+		-- Later steps will hook into this to refresh the centre viewport
+		-- and the right-column characteristics panel.
+	end
+
+	-- Build one holo card per recruited mercenary.
+	for i, mercName in mercNames do
+		local theme = MERC_THEMES[mercName] or DEFAULT_THEME
+		local displayName = theme.displayName or mercName
+
+		local card = Instance.new("TextButton")
+		card.Name = "Card_" .. mercName
+		card.BackgroundColor3 = HOLO_PANEL_FILL
+		card.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+		card.BorderSizePixel = 0
+		card.AutoButtonColor = false
+		card.Text = ""
+		card.Size = UDim2.new(1, -6, 0, 72)
+		card.LayoutOrder = i
+		card.Parent = cardList
+
+		local cardStroke = Instance.new("UIStroke")
+		cardStroke.Color     = HOLO_PANEL_BORDER
+		cardStroke.Thickness = 1
+		cardStroke.Parent    = card
+
+		local cardPad = Instance.new("UIPadding")
+		cardPad.PaddingTop    = UDim.new(0, 10)
+		cardPad.PaddingBottom = UDim.new(0, 10)
+		cardPad.PaddingLeft   = UDim.new(0, 10)
+		cardPad.PaddingRight  = UDim.new(0, 10)
+		cardPad.Parent = card
+
+		-- Portrait slot — 52x52, translucent fill, hairline border, mini
+		-- corner L's. Character icon sits centred inside.
+		local portrait = Instance.new("Frame")
+		portrait.Name = "Portrait"
+		portrait.AnchorPoint = Vector2.new(0, 0.5)
+		portrait.Position = UDim2.new(0, 0, 0.5, 0)
+		portrait.Size = UDim2.fromOffset(52, 52)
+		portrait.BackgroundColor3 = Color3.fromRGB(15, 35, 65)
+		portrait.BackgroundTransparency = 0.65
+		portrait.BorderSizePixel = 0
+		portrait.Parent = card
+
+		local portraitStroke = Instance.new("UIStroke")
+		portraitStroke.Color     = HOLO_PANEL_BORDER
+		portraitStroke.Thickness = 1
+		portraitStroke.Parent    = portrait
+
+		cornerLs(portrait, 5, HOLO_PANEL_LBRACKET, 1.5)
+
+		local charGlyph = makeCharacterIcon(portrait, 28, HOLO_PANEL_LBRACKET)
+		charGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+		charGlyph.Position = UDim2.fromScale(0.5, 0.5)
+
+		-- Right side of the card: name row (+ OWNED chip) / star row / role
+		-- line, all left-aligned starting 62 px in so they sit clear of
+		-- the 52-wide portrait plus its 10 px gap.
+		local name = makeLabel(card, displayName, FONT_TITLE, 15, COLOR_TEXT)
+		name.Position = UDim2.fromOffset(62, 0)
+		name.Size = UDim2.fromOffset(130, 18)
+
+		-- OWNED chip in green stroke — every merc we render here comes
+		-- from player.Mercenaries, so they're by definition recruited.
+		local ownedChip = Instance.new("Frame")
+		ownedChip.Name = "OwnedChip"
+		ownedChip.AnchorPoint = Vector2.new(0, 0.5)
+		ownedChip.Position = UDim2.new(0, 62 + 80, 0, 9)
+		ownedChip.Size = UDim2.fromOffset(44, 14)
+		ownedChip.BackgroundTransparency = 1
+		ownedChip.BorderSizePixel = 0
+		ownedChip.Parent = card
+		local ownedStroke = Instance.new("UIStroke")
+		ownedStroke.Color     = Color3.fromRGB(110, 200, 140)
+		ownedStroke.Thickness = 1
+		ownedStroke.Parent    = ownedChip
+		local ownedLbl = makeLabel(ownedChip, "OWNED", FONT_TITLE, 8,
+			Color3.fromRGB(110, 200, 140), Enum.TextXAlignment.Center)
+		ownedLbl.Size = UDim2.fromScale(1, 1)
+
+		local starRow = makeStarRow(card, theme.stars or 1, 5, 9, COLOR_GOLD)
+		starRow.Position = UDim2.fromOffset(62, 24)
+
+		local role = makeLabel(card, theme.role or "Crew", FONT_BODY, 10, COLOR_TEXT_DIM)
+		role.Position = UDim2.fromOffset(62, 38)
+		role.Size = UDim2.fromOffset(150, 14)
+
+		-- Collect bracket refs so selection recolouring can tint them
+		-- without re-creating the Frames.
+		local brackets = {}
+		for _, child in card:GetChildren() do
+			if child.Name == "CornerL_H" or child.Name == "CornerL_V" then
+				table.insert(brackets, child)
+			end
+		end
+		-- Panel-level brackets haven't been added yet — do it now so
+		-- they can also tint with selection.
+		cornerLs(card, 8, HOLO_PANEL_LBRACKET, 1.5)
+		for _, child in card:GetChildren() do
+			if (child.Name == "CornerL_H" or child.Name == "CornerL_V")
+				and not table.find(brackets, child) then
+				table.insert(brackets, child)
+			end
+		end
+
+		card.MouseButton1Click:Connect(function()
+			setSelectedCard(mercName)
+		end)
+
+		mercCards[mercName] = {
+			frame          = card,
+			stroke         = cardStroke,
+			portraitStroke = portraitStroke,
+			brackets       = brackets,
+		}
+	end
+
+	-- Apply initial selection (first merc in the roster).
+	if selectedName then setSelectedCard(selectedName) end
 end
 
 -- ─── Equipment data ─────────────────────────────────────────────────────
