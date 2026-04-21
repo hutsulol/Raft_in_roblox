@@ -698,40 +698,40 @@ local function buildHoloBackground(parent)
 	grad.Rotation = 90 -- top → bottom
 	grad.Parent = root
 
-	-- Horizon glow — built as two stacked Frames to fake the blurred
-	-- radial feel of the Claude Design mockup. UIGradient is linear
-	-- only, so we layer a wide faint outer halo behind a tighter inner
-	-- core: each layer fades horizontally to fully transparent at the
-	-- screen edges and is already mostly transparent in the middle, so
-	-- the whole band reads as diffuse light rather than a hard stripe.
-	local function horizonLayer(scaleX, scaleY, bgTrans, centerTrans)
-		local h = Instance.new("Frame")
-		h.Name = "Horizon"
-		h.AnchorPoint = Vector2.new(0.5, 0.5)
-		h.Position = UDim2.fromScale(0.5, 0.42)
-		h.Size = UDim2.fromScale(scaleX, scaleY)
-		h.BackgroundColor3 = HORIZON
-		h.BackgroundTransparency = bgTrans
-		h.BorderSizePixel = 0
-		h.ZIndex = 1
-		h.Parent = root
-		local g = Instance.new("UIGradient")
-		g.Transparency = NumberSequence.new({
-			NumberSequenceKeypoint.new(0,    1),
-			NumberSequenceKeypoint.new(0.28, 0.85),
-			NumberSequenceKeypoint.new(0.5,  centerTrans),
-			NumberSequenceKeypoint.new(0.72, 0.85),
-			NumberSequenceKeypoint.new(1,    1),
-		})
-		g.Rotation = 0
-		g.Parent = h
-		return h
+	-- Horizon fog (no hard top/bottom borders): build many thin,
+	-- overlapping horizontal-fade bands with Gaussian-weighted opacity.
+	-- The stack approximates a blurred volumetric mist strip.
+	local function buildHorizonFog(centerY, totalHeight, rows, peakOpacity)
+		for i = 1, rows do
+			local t = ((i - 1) / math.max(rows - 1, 1)) * 2 - 1 -- -1..1
+			local weight = math.exp(-(t * t) * 3.2)
+			local y = centerY + (t * totalHeight * 0.42)
+			local band = Instance.new("Frame")
+			band.Name = "HorizonFogBand"
+			band.AnchorPoint = Vector2.new(0.5, 0.5)
+			band.Position = UDim2.fromScale(0.5, y)
+			band.Size = UDim2.fromScale(1.9, totalHeight / rows * 1.9)
+			band.BackgroundColor3 = HORIZON
+			band.BackgroundTransparency = 1 - (peakOpacity * weight)
+			band.BorderSizePixel = 0
+			band.ZIndex = 1
+			band.Parent = root
+
+			local g = Instance.new("UIGradient")
+			local edge = 0.90 - (0.12 * weight)
+			local center = 1 - (0.96 * weight)
+			g.Transparency = NumberSequence.new({
+				NumberSequenceKeypoint.new(0,    1),
+				NumberSequenceKeypoint.new(0.30, edge),
+				NumberSequenceKeypoint.new(0.50, center),
+				NumberSequenceKeypoint.new(0.70, edge),
+				NumberSequenceKeypoint.new(1,    1),
+			})
+			g.Rotation = 0
+			g.Parent = band
+		end
 	end
-	-- Layered fog band: several soft passes with different heights so the
-	-- horizon reads diffused (no hard top/bottom edge stripe).
-	horizonLayer(1.8, 0.30, 0.93, 0.78) -- broad atmospheric haze
-	horizonLayer(1.4, 0.18, 0.88, 0.62) -- mid fog
-	horizonLayer(1.0, 0.10, 0.82, 0.46) -- inner core glow
+	buildHorizonFog(0.42, 0.30, 22, 0.22)
 
 	-- Vignette: darken top and bottom toward the screen edges so the
 	-- panels sit in a soft tunnel of light.
