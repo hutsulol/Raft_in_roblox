@@ -727,8 +727,11 @@ local function buildHoloBackground(parent)
 		g.Parent = h
 		return h
 	end
-	horizonLayer(1.6, 0.22, 0.88, 0.44) -- wide outer halo
-	horizonLayer(1.0, 0.08, 0.60, 0.06) -- tight inner core
+	-- Layered fog band: several soft passes with different heights so the
+	-- horizon reads diffused (no hard top/bottom edge stripe).
+	horizonLayer(1.8, 0.30, 0.93, 0.78) -- broad atmospheric haze
+	horizonLayer(1.4, 0.18, 0.88, 0.62) -- mid fog
+	horizonLayer(1.0, 0.10, 0.82, 0.46) -- inner core glow
 
 	-- Vignette: darken top and bottom toward the screen edges so the
 	-- panels sit in a soft tunnel of light.
