@@ -46,6 +46,7 @@ local HOLO_PANEL_LBRACKET     = Color3.fromRGB(118, 155, 190)-- oklch(0.70 0.10 
 local HOLO_EDGE               = Color3.fromRGB(190, 220, 245)-- oklch(0.90 0.14 215)
 local HOLO_DEEP               = Color3.fromRGB(40, 60, 90)   -- oklch(0.30 0.06 230)
 local COLOR_GOLD              = Color3.fromRGB(230, 190, 100)-- oklch(0.85 0.14 85)
+local HORIZON                 = Color3.fromRGB(80, 140, 190) -- cyan horizon band
 
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
@@ -633,7 +634,6 @@ local function buildHoloBackground(parent)
 	local BG_TOP   = Color3.fromRGB(8, 19, 34)    -- #081322 deep ocean night
 	local BG_MID   = Color3.fromRGB(13, 31, 53)   -- #0d1f35
 	local BG_BOT   = Color3.fromRGB(21, 51, 82)   -- #153352 cool haze
-	local HORIZON  = Color3.fromRGB(80, 140, 190) -- cyan horizon band
 	local MOTE_COL = Color3.fromRGB(180, 215, 240)
 
 	local root = Instance.new("Frame")
