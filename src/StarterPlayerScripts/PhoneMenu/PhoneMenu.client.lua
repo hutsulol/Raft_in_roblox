@@ -1076,38 +1076,31 @@ local function buildMenu()
 	-- Root hosts the interactive UI. It's a plain Frame — the menu stays
 	-- fully built and laid out beneath an opaque `holoCover` sibling
 	-- (created later in this function) that hides it during the holo
-	-- open animation and fades out at the reveal moment. Inset by the
-	-- Roblox topbar height at the top (plus a small margin) so the
-	-- level / tasks panels never slide under the Roblox chrome on any
-	-- device.
+	-- open animation and fades out at the reveal moment. We wrap it in
+	-- an outer `scaleWrap` frame so the responsive UIScale can live
+	-- above the existing HoloScale: Roblox only honours ONE UIScale
+	-- per parent, but UIScales on different ancestors compound. The
+	-- outer wrap takes the Roblox-topbar inset margins; root fills it.
 	local topInset = GuiService:GetGuiInset().Y
-	local root = Instance.new("Frame")
-	root.Name = "Root"
-	root.BackgroundTransparency = 1
-	root.AnchorPoint = Vector2.new(0, 0)
-	root.Position = UDim2.new(0, 30, 0, topInset + 20)
-	root.Size = UDim2.new(1, -60, 1, -(topInset + 50))
-	root.Parent = screenGui
+	local scaleWrap = Instance.new("Frame")
+	scaleWrap.Name = "ScaleWrap"
+	scaleWrap.BackgroundTransparency = 1
+	scaleWrap.BorderSizePixel = 0
+	scaleWrap.AnchorPoint = Vector2.new(0, 0)
+	scaleWrap.Position = UDim2.new(0, 30, 0, topInset + 20)
+	scaleWrap.Size = UDim2.new(1, -60, 1, -(topInset + 50))
+	scaleWrap.Parent = screenGui
 
-	-- UIScale we drive for the final "materialize" tween (0.85 → 1),
-	-- so the panels subtly zoom in behind the dissolving cover.
-	local rootScale = Instance.new("UIScale")
-	rootScale.Name = "HoloScale"
-	rootScale.Scale = 1
-	rootScale.Parent = root
-
-	-- Responsive UIScale: the Claude Design mockup is authored at the
-	-- 960x600 artboard, so scale Root up proportionally when the player
-	-- runs the game full-screen on a big monitor, but never shrink
-	-- below 1 (the layout already fits the intended Studio / small-
-	-- window case at scale 1). Multiple UIScales on the same parent
-	-- compound, so this multiplies cleanly with the holo-open
-	-- animation's HoloScale above.
+	-- Responsive UIScale on the outer wrap: the Claude Design mockup is
+	-- authored at a 960x600 artboard, so scale the menu up proportionally
+	-- when the player runs the game full-screen on a big monitor, but
+	-- never shrink below 1 (the layout already fits the Studio / small-
+	-- window case at scale 1).
 	local REFERENCE_W, REFERENCE_H = 960, 600
 	local responsiveScale = Instance.new("UIScale")
 	responsiveScale.Name = "ResponsiveScale"
 	responsiveScale.Scale = 1
-	responsiveScale.Parent = root
+	responsiveScale.Parent = scaleWrap
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
@@ -1117,9 +1110,25 @@ local function buildMenu()
 		responsiveScale.Scale = s
 	end
 	updateResponsiveScale()
-	-- Fires whenever the window resizes or the player rotates their
-	-- phone — keeps the menu proportionally sized on every device.
 	screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateResponsiveScale)
+
+	local root = Instance.new("Frame")
+	root.Name = "Root"
+	root.BackgroundTransparency = 1
+	root.AnchorPoint = Vector2.new(0, 0)
+	root.Position = UDim2.fromOffset(0, 0)
+	root.Size = UDim2.fromScale(1, 1)
+	root.Parent = scaleWrap
+
+	-- UIScale we drive for the final "materialize" tween (0.85 → 1),
+	-- so the panels subtly zoom in behind the dissolving cover. Sits
+	-- on root (inner wrap) so it's an independent ancestor from the
+	-- responsive scale above — Roblox compounds UIScales across
+	-- ancestors even though it won't compound siblings.
+	local rootScale = Instance.new("UIScale")
+	rootScale.Name = "HoloScale"
+	rootScale.Scale = 1
+	rootScale.Parent = root
 
 	menuRoot             = root
 	menuRootBasePosition = root.Position
