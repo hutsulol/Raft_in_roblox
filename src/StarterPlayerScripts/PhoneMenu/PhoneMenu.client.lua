@@ -673,9 +673,9 @@ end
 -- Frame so the rest of the UI can still treat the backdrop as one child
 -- of the ScreenGui.
 local function buildHoloBackground(parent)
-	local BG_TOP   = Color3.fromRGB(8, 19, 34)    -- #081322 deep ocean night
-	local BG_MID   = Color3.fromRGB(13, 31, 53)   -- #0d1f35
-	local BG_BOT   = Color3.fromRGB(21, 51, 82)   -- #153352 cool haze
+	local BG_TOP   = Color3.fromRGB(18, 38, 66)
+	local BG_MID   = Color3.fromRGB(28, 58, 92)
+	local BG_BOT   = Color3.fromRGB(40, 80, 122)
 	local MOTE_COL = Color3.fromRGB(180, 215, 240)
 
 	local root = Instance.new("Frame")
@@ -725,8 +725,8 @@ local function buildHoloBackground(parent)
 		g.Parent = h
 		return h
 	end
-	horizonLayer(1.6, 0.22, 0.90, 0.50) -- wide outer halo
-	horizonLayer(1.0, 0.08, 0.72, 0.15) -- tight inner core
+	horizonLayer(1.6, 0.22, 0.88, 0.44) -- wide outer halo
+	horizonLayer(1.0, 0.08, 0.60, 0.06) -- tight inner core
 
 	-- Vignette: darken top and bottom toward the screen edges so the
 	-- panels sit in a soft tunnel of light.
@@ -743,10 +743,10 @@ local function buildHoloBackground(parent)
 		g.Transparency = flip
 			and NumberSequence.new({
 				NumberSequenceKeypoint.new(0, 1),
-				NumberSequenceKeypoint.new(1, 0.35),
+				NumberSequenceKeypoint.new(1, 0.20),
 			})
 			or NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0.35),
+				NumberSequenceKeypoint.new(0, 0.20),
 				NumberSequenceKeypoint.new(1, 1),
 			})
 		g.Rotation = 90
@@ -877,6 +877,7 @@ local dailyResetButton   = nil
 local dailyXPButton      = nil
 local dailyQuestRows     = {}
 local dailyQuestConnections = {}
+local reflowDailyTasksLayout = nil
 
 -- Build a static preview rig from the player's HumanoidDescription. This
 -- gives us a fresh model in a clean neutral pose (like the Avatar Editor)
@@ -1118,6 +1119,7 @@ local function buildMenu()
 	local STATS_H       = 220
 	local TASKS_Y       = 12
 	local TASKS_H       = 336
+	local tasksPanelHeight = TASKS_H
 	local SIDE_Y        = TASKS_Y + TASKS_H + COLUMN_GAP
 	local SIDE_H        = 146
 
@@ -1154,7 +1156,7 @@ local function buildMenu()
 			tasksPanel.Position = UDim2.new(1, dynamicBleed, 0, TASKS_Y)
 		end
 		if sidePanel then
-			sidePanel.Position = UDim2.new(1, dynamicBleed, 0, SIDE_Y)
+			sidePanel.Position = UDim2.new(1, dynamicBleed, 0, TASKS_Y + tasksPanelHeight + COLUMN_GAP)
 		end
 	end
 	updateResponsiveScale()
@@ -1460,7 +1462,7 @@ local function buildMenu()
 	tasksHolder.Name = "TasksHolder"
 	tasksHolder.BackgroundTransparency = 1
 	tasksHolder.Position = UDim2.fromOffset(0, 40)
-	tasksHolder.Size = UDim2.new(1, 0, 0, 112)
+	tasksHolder.Size = UDim2.new(1, 0, 0, 82)
 	tasksHolder.Parent = tasksPanel
 
 	local tList = Instance.new("UIListLayout")
@@ -1471,14 +1473,14 @@ local function buildMenu()
 	-- Shown in place of the quest rows once every quest is complete.
 	local allDoneLbl = makeLabel(tasksPanel, "All tasks completed!", FONT_TITLE, 15, HOLO_EDGE, Enum.TextXAlignment.Center)
 	allDoneLbl.Position = UDim2.fromOffset(0, 40)
-	allDoneLbl.Size = UDim2.new(1, 0, 0, 112)
+	allDoneLbl.Size = UDim2.new(1, 0, 0, 82)
 	allDoneLbl.Visible = false
 	dailyAllCompleteLabel = allDoneLbl
 
 	-- Reward line: "REWARD" tag + xp chip + iron chip, all on one row.
 	local rewardRow = Instance.new("Frame")
 	rewardRow.BackgroundTransparency = 1
-	rewardRow.Position = UDim2.fromOffset(0, 164)
+	rewardRow.Position = UDim2.fromOffset(0, 134)
 	rewardRow.Size = UDim2.new(1, 0, 0, 18)
 	rewardRow.Parent = tasksPanel
 
@@ -1498,7 +1500,7 @@ local function buildMenu()
 	claimBtn.BackgroundColor3 = Color3.fromRGB(22, 62, 110)
 	claimBtn.BackgroundTransparency = 0.6
 	claimBtn.BorderSizePixel = 0
-	claimBtn.Position = UDim2.fromOffset(0, 196)
+	claimBtn.Position = UDim2.fromOffset(0, 164)
 	claimBtn.Size = UDim2.new(1, 0, 0, 34)
 	claimBtn.Font = FONT_TITLE
 	claimBtn.TextSize = 14
@@ -1519,7 +1521,7 @@ local function buildMenu()
 	resetBtn.BackgroundColor3 = Color3.fromRGB(90, 30, 30)
 	resetBtn.BackgroundTransparency = 0.3
 	resetBtn.BorderSizePixel = 0
-	resetBtn.Position = UDim2.fromOffset(0, 242)
+	resetBtn.Position = UDim2.fromOffset(0, 206)
 	resetBtn.Size = UDim2.new(1, 0, 0, 22)
 	resetBtn.Font = FONT_BODY
 	resetBtn.TextSize = 12
@@ -1538,7 +1540,7 @@ local function buildMenu()
 	xpBtn.BackgroundColor3 = Color3.fromRGB(30, 80, 40)
 	xpBtn.BackgroundTransparency = 0.3
 	xpBtn.BorderSizePixel = 0
-	xpBtn.Position = UDim2.fromOffset(0, 276)
+	xpBtn.Position = UDim2.fromOffset(0, 236)
 	xpBtn.Size = UDim2.new(1, 0, 0, 22)
 	xpBtn.Font = FONT_BODY
 	xpBtn.TextSize = 12
@@ -1556,6 +1558,32 @@ local function buildMenu()
 	dailyClaimButton  = claimBtn
 	dailyResetButton  = resetBtn
 	dailyXPButton     = xpBtn
+
+	-- Collapse/expand the Daily Tasks card to the actual quest-row count so
+	-- the middle dead zone disappears for 2-3 quests but still scales when a
+	-- day has more tasks.
+	reflowDailyTasksLayout = function(questCount)
+		questCount = math.max(questCount or 0, 0)
+		local holderH = 54
+		if questCount > 0 then
+			holderH = (questCount * 22) + (math.max(0, questCount - 1) * 8)
+		end
+		holderH = math.clamp(holderH, 54, 140)
+
+		tasksHolder.Size = UDim2.new(1, 0, 0, holderH)
+		allDoneLbl.Size = UDim2.new(1, 0, 0, holderH)
+
+		local rewardY = 40 + holderH + 8
+		rewardRow.Position = UDim2.fromOffset(0, rewardY)
+		claimBtn.Position = UDim2.fromOffset(0, rewardY + 30)
+		resetBtn.Position = UDim2.fromOffset(0, rewardY + 72)
+		xpBtn.Position = UDim2.fromOffset(0, rewardY + 102)
+
+		tasksPanelHeight = (rewardY + 102 + 22) + 14
+		tasksPanel.Size = UDim2.fromOffset(COLUMN_W, tasksPanelHeight)
+		updateResponsiveScale()
+	end
+	reflowDailyTasksLayout(2)
 
 	-- ── Bottom-right: Loadout ──────────────────────────────────────────
 	-- Matches the Claude Design card: crown header + compact list-row
@@ -2512,6 +2540,10 @@ local function rebuildDailyQuests(folder)
 		end
 
 		repaintQuestRow(id)
+	end
+
+	if reflowDailyTasksLayout then
+		reflowDailyTasksLayout(#questFolders)
 	end
 
 	updateDailyRewardAndButton(folder)
