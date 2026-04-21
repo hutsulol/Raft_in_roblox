@@ -1439,8 +1439,15 @@ buildPage = function(mercNames)
 	leftCol.BackgroundColor3 = HOLO_PANEL_FILL
 	leftCol.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	leftCol.BorderSizePixel = 0
+	local LEFT_MAX_H = REFERENCE_H - (PANELS_TOP_Y + PANELS_BOT_PAD)
+	local LEFT_MIN_H = 170
+	local CARD_ROW_H = 72
+	local CARD_ROW_GAP = 8
+	local visibleRows = math.max(1, #mercNames)
+	local rowsHeight = visibleRows * CARD_ROW_H + math.max(0, visibleRows - 1) * CARD_ROW_GAP
+	local desiredLeftH = math.clamp(58 + rowsHeight + 16, LEFT_MIN_H, LEFT_MAX_H)
 	leftCol.Position = UDim2.fromOffset(-EDGE_BLEED_X, PANELS_TOP_Y)
-	leftCol.Size = UDim2.fromOffset(COLUMN_W, REFERENCE_H - (PANELS_TOP_Y + PANELS_BOT_PAD))
+	leftCol.Size = UDim2.fromOffset(COLUMN_W, desiredLeftH)
 	-- Keep the panel background behind its own content. When the parent frame
 	-- ZIndex is higher than descendants, Roblox can render the fill over labels
 	-- and buttons in Global ZIndexBehavior setups.
@@ -1504,7 +1511,7 @@ buildPage = function(mercNames)
 	cardList.BackgroundTransparency = 1
 	cardList.BorderSizePixel = 0
 	cardList.Position = UDim2.fromOffset(0, 40)
-	cardList.Size = UDim2.new(1, 0, 1, -40)
+	cardList.Size = UDim2.new(1, 0, 1, -48)
 	cardList.CanvasSize = UDim2.new(0, 0, 0, 0)
 	cardList.AutomaticCanvasSize = Enum.AutomaticSize.Y
 	cardList.ScrollBarThickness = 4
