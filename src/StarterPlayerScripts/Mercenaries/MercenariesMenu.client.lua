@@ -1375,7 +1375,7 @@ buildPage = function(mercNames)
 	title.BackgroundTransparency = 1
 	title.BorderSizePixel = 0
 	title.AnchorPoint = Vector2.new(0.5, 0.5)
-	title.Position = UDim2.fromScale(0.5, 0.5)
+	title.Position = UDim2.new(0.5, 0, 0, -90)
 	title.Size = UDim2.fromOffset(240, 22)
 	title.Font = FONT_TITLE
 	title.TextSize = 18
@@ -1394,7 +1394,7 @@ buildPage = function(mercNames)
 	chip.BackgroundColor3 = HOLO_PANEL_FILL
 	chip.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	chip.BorderSizePixel = 0
-	chip.ZIndex = 6
+	chip.ZIndex = 1
 	chip.Parent = scaleWrap
 	local chipStroke = Instance.new("UIStroke")
 	chipStroke.Color     = HOLO_PANEL_BORDER
@@ -1404,6 +1404,7 @@ buildPage = function(mercNames)
 	local gemGlyph = makeGemIcon(chip, 13, COLOR_GOLD)
 	gemGlyph.AnchorPoint = Vector2.new(0, 0.5)
 	gemGlyph.Position = UDim2.new(0, 10, 0.5, 0)
+	gemGlyph.ZIndex = 2
 
 	local chipLabel = Instance.new("TextLabel")
 	chipLabel.Name = "CurrencyLabel"
@@ -1416,6 +1417,7 @@ buildPage = function(mercNames)
 	chipLabel.TextColor3 = COLOR_GOLD
 	chipLabel.TextXAlignment = Enum.TextXAlignment.Left
 	chipLabel.Text = "0"
+	chipLabel.ZIndex = 2
 	chipLabel.Parent = chip
 
 	-- Currency wiring — don't assume which attribute the game uses to
@@ -1699,7 +1701,7 @@ buildPage = function(mercNames)
 	-- (or Hire button for unrecruited mercs — currently only OWNED
 	-- since we only render mercs from player.Mercenaries).
 	local META_HEIGHT = 44
-	local META_TOP_OFFSET = -44
+	local META_TOP_OFFSET = -75
 	local metaBar = Instance.new("Frame")
 	metaBar.Name = "MetaBar"
 	metaBar.BackgroundColor3 = HOLO_PANEL_FILL
