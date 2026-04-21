@@ -1,21 +1,21 @@
--- HandlingPage.lua
--- Placeholder ModuleScript for the mercenary Handling sub-page.
+-- HandlingPage.client.lua
+-- Placeholder LocalScript for the mercenary Handling sub-page.
 --
--- Intentionally minimal — opens a blank holo page with a BACK button so
--- MercenariesMenu can route the "HANDLING" pill here. The real layout
--- (slot tiles, character viewport, detail + DNA cards) lands in later
--- steps. Steps 2-8 will fill this module in from scratch using the
--- Claude Design MercHandlingPage.jsx spec.
+-- Exposes _G.OpenHandlingPage(ctx) + _G.CloseHandlingPage() so
+-- MercenariesMenu can route the "HANDLING" pill here. Same cross-
+-- script _G pattern PhoneMenu ↔ MercenariesMenu already use (keeps
+-- things consistent with the rest of the project, which has no
+-- Rojo-style ModuleScripts elsewhere).
+--
+-- Intentionally minimal — opens a blank holo page with a BACK button
+-- and the selected merc's name. Steps 2-8 will fill this in with the
+-- real Claude Design MercHandlingPage.jsx layout.
 
-local HandlingPage = {}
-
--- Module-level ref to the open page Frame (if any) so close() can tear
--- it down from outside build().
+-- Module-level ref to the open page Frame (if any) so close() can
+-- tear it down from outside build().
 local activePage = nil
 
--- Destroys the current Handling page. Safe to call when nothing is
--- open.
-function HandlingPage.close()
+local function closeHandlingPage()
 	if activePage then
 		activePage:Destroy()
 		activePage = nil
@@ -34,11 +34,11 @@ end
 --   hidePhonePanels()     — phone-panel hide hook
 --   detachCachedViewports() — rig-cache detach hook
 --   buildMercViewport()   — rig builder
-function HandlingPage.build(ctx)
+local function openHandlingPage(ctx)
 	ctx = ctx or {}
 	local screenGui = ctx.screenGui
 	if not screenGui then
-		warn("[HandlingPage] build called without ctx.screenGui")
+		warn("[HandlingPage] open called without ctx.screenGui")
 		return
 	end
 
@@ -57,8 +57,8 @@ function HandlingPage.build(ctx)
 	if ctx.hidePhonePanels then ctx.hidePhonePanels() end
 
 	-- Minimal centred title so we can see which merc the page is for
-	-- and confirm the route works. Gets replaced by the real layout in
-	-- Step 2 onward.
+	-- and confirm the route works. Gets replaced by the real layout
+	-- in Step 2 onward.
 	local title = Instance.new("TextLabel")
 	title.Name = "Placeholder"
 	title.BackgroundTransparency = 1
@@ -75,9 +75,9 @@ function HandlingPage.build(ctx)
 	title.ZIndex = 51
 	title.Parent = page
 
-	-- Minimal BACK button top-left — returns to the mercenaries roster
-	-- via ctx.onBack(). Closes this page first so the roster rebuild
-	-- starts from a clean slate.
+	-- Minimal BACK button top-left — returns to the mercenaries
+	-- roster via ctx.onBack(). Closes this page first so the roster
+	-- rebuild starts from a clean slate.
 	local backBtn = Instance.new("TextButton")
 	backBtn.Name = "BackButton"
 	backBtn.AnchorPoint = Vector2.new(0, 0)
@@ -99,9 +99,10 @@ function HandlingPage.build(ctx)
 	bStroke.Parent    = backBtn
 
 	backBtn.MouseButton1Click:Connect(function()
-		HandlingPage.close()
+		closeHandlingPage()
 		if ctx.onBack then ctx.onBack() end
 	end)
 end
 
-return HandlingPage
+_G.OpenHandlingPage  = openHandlingPage
+_G.CloseHandlingPage = closeHandlingPage

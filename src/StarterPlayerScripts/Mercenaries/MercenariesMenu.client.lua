@@ -13,12 +13,6 @@ local GuiService        = game:GetService("GuiService")
 
 local player = Players.LocalPlayer
 
--- Handling sub-page module (placeholder for now — sibling ModuleScript
--- that this file hands the "HANDLING" pill press off to). Steps 2-8
--- will fill it in with the real layout; for now it's a blank holo
--- page with a BACK button routed via ctx.onBack.
-local HandlingPage = require(script.Parent:WaitForChild("HandlingPage"))
-
 -- ─── Wait for SpawnMercenary remote ─────────────────────────────────────
 local spawnEvent = ReplicatedStorage:WaitForChild("SpawnMercenary", 30)
 
@@ -1898,24 +1892,33 @@ buildPage = function(mercNames)
 		if page then page:Destroy(); page = nil end
 		clearRosterConns()
 
-		HandlingPage.build({
-			screenGui             = screenGui,
-			mercName              = mercName,
-			mercNames             = mercNames,
-			theme                 = MERC_THEMES[mercName] or DEFAULT_THEME,
-			hidePhonePanels       = hidePhonePanels,
-			detachCachedViewports = detachCachedViewports,
-			buildMercViewport     = buildMercViewport,
-			onBack                = function()
-				HandlingPage.close()
-				-- openMercenariesMenu is declared at the bottom of this
-				-- file, so it isn't in scope here — route through the
-				-- _G hook it registers at module load.
-				if typeof(_G.OpenMercenariesMenu) == "function" then
-					_G.OpenMercenariesMenu()
-				end
-			end,
-		})
+		-- HandlingPage is a sibling LocalScript — exposes _G hooks
+		-- (same cross-script pattern PhoneMenu ↔ MercenariesMenu use
+		-- so we avoid the Rojo-less require path the project doesn't
+		-- support). Fall back to no-op if the script hasn't finished
+		-- loading for some reason.
+		if typeof(_G.OpenHandlingPage) == "function" then
+			_G.OpenHandlingPage({
+				screenGui             = screenGui,
+				mercName              = mercName,
+				mercNames             = mercNames,
+				theme                 = MERC_THEMES[mercName] or DEFAULT_THEME,
+				hidePhonePanels       = hidePhonePanels,
+				detachCachedViewports = detachCachedViewports,
+				buildMercViewport     = buildMercViewport,
+				onBack                = function()
+					if typeof(_G.CloseHandlingPage) == "function" then
+						_G.CloseHandlingPage()
+					end
+					-- openMercenariesMenu is declared at the bottom of
+					-- this file, so it isn't in scope here — route
+					-- through the _G hook it registers at module load.
+					if typeof(_G.OpenMercenariesMenu) == "function" then
+						_G.OpenMercenariesMenu()
+					end
+				end,
+			})
+		end
 	end)
 
 	-- Drives the centre column when a card is clicked. Swaps meta bar
