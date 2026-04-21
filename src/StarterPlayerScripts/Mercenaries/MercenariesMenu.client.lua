@@ -1258,7 +1258,7 @@ buildPage = function(mercNames)
 	-- Match PhoneMenu's "cards push toward screen edges" behavior so side
 	-- columns don't feel cramped inside the widened artboard on widescreen.
 	local COLUMN_W      = 380
-	local EDGE_BLEED_X  = 70
+	local EDGE_BLEED_X  = 40
 	local COLUMN_GAP    = 20
 	local PANELS_TOP_Y  = 70
 	local PANELS_BOT_PAD = 24
@@ -1291,9 +1291,9 @@ buildPage = function(mercNames)
 		local artboardScreenW = REFERENCE_W * s
 		local sideGapPx = math.max(0, size.X - artboardScreenW) * 0.5
 		local sideGapArtboard = sideGapPx / s
-		-- Stronger edge pull than PhoneMenu: Mercenaries needs wider side cards
-		-- and visibly tighter alignment to the screen edges.
-		local extraBleed = math.clamp(sideGapArtboard * 1.15, 0, 220)
+		-- Moderate edge pull: keep cards near edges without letting them
+		-- crawl out of the visible screen bounds.
+		local extraBleed = math.clamp(sideGapArtboard * 0.85, 0, 120)
 		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
 
 		if leftColRef then
