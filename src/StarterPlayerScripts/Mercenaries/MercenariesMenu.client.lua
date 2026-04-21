@@ -1731,82 +1731,57 @@ buildPage = function(mercNames)
 	metaList.SortOrder = Enum.SortOrder.LayoutOrder
 	metaList.Padding = UDim.new(0, 12)
 	metaList.Parent = metaBar
-
-	local function metaDivider(order)
-		local d = Instance.new("Frame")
-		d.Name = "Divider"
-		d.BackgroundColor3 = HOLO_PANEL_BORDER
-		d.BackgroundTransparency = 0.3
-		d.BorderSizePixel = 0
-		d.Size = UDim2.fromOffset(1, 22)
-		d.LayoutOrder = order
-		d.Parent = metaBar
-		return d
-	end
+	metaList.Enabled = false
 
 	-- 1) NAME — big display font.
 	local nameLabel = makeLabel(metaBar, "", FONT_TITLE, 22, COLOR_TEXT)
-	nameLabel.LayoutOrder = 1
-	nameLabel.Size = UDim2.fromOffset(130, 22)
+	nameLabel.Position = UDim2.fromOffset(12, 0)
+	nameLabel.Size = UDim2.fromOffset(170, 22)
+	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 
-	metaDivider(2)
-
-	-- 2) RARITY stack — tag label + star row.
-	local rarityStack = Instance.new("Frame")
-	rarityStack.BackgroundTransparency = 1
-	rarityStack.BorderSizePixel = 0
-	rarityStack.Size = UDim2.fromOffset(72, 28)
-	rarityStack.LayoutOrder = 3
-	rarityStack.Parent = metaBar
-	local rarityTag = makeLabel(rarityStack, "RARITY", FONT_BODY, 9, COLOR_TEXT_MUTE)
-	rarityTag.Position = UDim2.fromOffset(0, 0)
-	rarityTag.Size = UDim2.fromOffset(72, 12)
-	local rarityRow -- replaced per selection; tracked so we can destroy it
-
-	metaDivider(4)
-
-	-- 3) CLASS stack — tag label + role name.
-	local classStack = Instance.new("Frame")
-	classStack.BackgroundTransparency = 1
-	classStack.BorderSizePixel = 0
-	classStack.Size = UDim2.fromOffset(110, 28)
-	classStack.LayoutOrder = 5
-	classStack.Parent = metaBar
-	local classTag = makeLabel(classStack, "CLASS", FONT_BODY, 9, COLOR_TEXT_MUTE)
-	classTag.Position = UDim2.fromOffset(0, 0)
-	classTag.Size = UDim2.fromOffset(110, 12)
-	local classLabel = makeLabel(classStack, "", FONT_TITLE, 12, COLOR_TEXT)
-	classLabel.Position = UDim2.fromOffset(0, 13)
-	classLabel.Size = UDim2.fromOffset(110, 14)
-
-	-- 4) Flex spacer — UIListLayout has no flex:1 equivalent, so we
-	-- use a big fixed-width Frame and let the list layout push the
-	-- chip to the end. Computed to take whatever width remains after
-	-- the name + dividers + stacks at the current artboard width.
-	local metaSpacer = Instance.new("Frame")
-	metaSpacer.Name = "Spacer"
-	metaSpacer.BackgroundTransparency = 1
-	metaSpacer.BorderSizePixel = 0
-	metaSpacer.Size = UDim2.new(1, -(130 + 12 + 1 + 12 + 72 + 12 + 1 + 12 + 110 + 12 + 60 + 12 + 28), 1, 0)
-	metaSpacer.LayoutOrder = 6
-	metaSpacer.Parent = metaBar
-
-	-- 5) OWNED chip on the right — every merc we render is in
-	-- player.Mercenaries, so always OWNED.
-	local ownedChip = Instance.new("Frame")
-	ownedChip.Name = "OwnedChip"
-	ownedChip.Size = UDim2.fromOffset(60, 22)
-	ownedChip.BackgroundTransparency = 1
-	ownedChip.BorderSizePixel = 0
-	ownedChip.LayoutOrder = 7
-	ownedChip.Parent = metaBar
-	local ownedStroke = Instance.new("UIStroke")
-	ownedStroke.Color     = Color3.fromRGB(110, 200, 140)
-	ownedStroke.Thickness = 1
-	ownedStroke.Parent    = ownedChip
-	local ownedText = makeLabel(ownedChip, "OWNED", FONT_TITLE, 10,
-		Color3.fromRGB(110, 200, 140), Enum.TextXAlignment.Center)
-	ownedText.Size = UDim2.fromScale(1, 1)
+	-- Rarity stars: image-based icons on the right side of the meta strip.
+	local STAR_EMPTY = "rbxassetid://96860361998800"
+	local STAR_FULL  = "rbxassetid://128398990741410"
+	local STAR_HALF  = "rbxassetid://97995242534538"
+	local rarityIconsRow = Instance.new("Frame")
+	rarityIconsRow.Name = "RarityIconsRow"
+	rarityIconsRow.AnchorPoint = Vector2.new(1, 0.5)
+	rarityIconsRow.Position = UDim2.new(1, -10, 0.5, 0)
+	rarityIconsRow.Size = UDim2.fromOffset(120, 20)
+	rarityIconsRow.BackgroundTransparency = 1
+	rarityIconsRow.BorderSizePixel = 0
+	rarityIconsRow.Parent = metaBar
+	local rarityIconsLayout = Instance.new("UIListLayout")
+	rarityIconsLayout.FillDirection = Enum.FillDirection.Horizontal
+	rarityIconsLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+	rarityIconsLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	rarityIconsLayout.Padding = UDim.new(0, 3)
+	rarityIconsLayout.Parent = rarityIconsRow
+	local function rebuildMetaStars(value, total)
+		for _, child in rarityIconsRow:GetChildren() do
+			if child:IsA("ImageLabel") then
+				child:Destroy()
+			end
+		end
+		local raw = tonumber(value) or 0
+		local full = math.floor(raw)
+		local half = (raw - full) >= 0.5
+		for i = 1, (total or 5) do
+			local star = Instance.new("ImageLabel")
+			star.Name = "Star_" .. i
+			star.BackgroundTransparency = 1
+			star.BorderSizePixel = 0
+			star.Size = UDim2.fromOffset(16, 16)
+			if i <= full then
+				star.Image = STAR_FULL
+			elseif i == full + 1 and half then
+				star.Image = STAR_HALF
+			else
+				star.Image = STAR_EMPTY
+			end
+			star.Parent = rarityIconsRow
+		end
+	end
 
 	-- ── Character slot (rings + ground glow + ViewportFrame) ──────────
 	local slot = Instance.new("Frame")
@@ -1937,15 +1912,11 @@ buildPage = function(mercNames)
 	-- text, rebuilds the rarity star row, and hands off to the shared
 	-- buildMercViewport pipeline (which caches per merc, so the idle
 	-- animation keeps ticking across selections).
-	refreshCentre = function(mercName)
-		local theme = MERC_THEMES[mercName] or DEFAULT_THEME
+		refreshCentre = function(mercName)
+			local theme = MERC_THEMES[mercName] or DEFAULT_THEME
 
-		nameLabel.Text   = theme.displayName or mercName
-		classLabel.Text  = theme.role or "Crew"
-
-		if rarityRow then rarityRow:Destroy() end
-		rarityRow = makeStarRow(rarityStack, theme.stars or 1, 5, 11, COLOR_GOLD)
-		rarityRow.Position = UDim2.fromOffset(0, 13)
+			nameLabel.Text   = theme.displayName or mercName
+			rebuildMetaStars(theme.stars or 1, 5)
 
 		-- Detach the previous merc's ViewportFrame (if any) so it doesn't
 		-- linger next to the new one. The cache keeps the clone alive so
