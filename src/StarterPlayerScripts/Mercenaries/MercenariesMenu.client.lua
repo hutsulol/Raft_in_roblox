@@ -1334,11 +1334,11 @@ buildPage = function(mercNames)
 	local backBtn = Instance.new("TextButton")
 	backBtn.Name = "BackButton"
 	backBtn.AnchorPoint = Vector2.new(0, 0)
-	-- Align vertically with side panels (same Y level as their top edge).
-	backBtn.Position = UDim2.fromOffset(0, PANELS_TOP_Y - 16)
+	-- Keep BACK as a separate top-left action (not inside the left panel band).
+	backBtn.Position = UDim2.fromOffset(-18, 42)
 	backBtn.Size = UDim2.fromOffset(118, 42)
 	backBtn.BackgroundColor3 = HOLO_PANEL_FILL
-	backBtn.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	backBtn.BackgroundTransparency = 0
 	backBtn.BorderSizePixel = 0
 	backBtn.AutoButtonColor = true
 	backBtn.Text = "" -- label drawn as a child for precise positioning
@@ -1351,16 +1351,17 @@ buildPage = function(mercNames)
 	local backGlyph = makeBackIcon(backBtn, 14, COLOR_TEXT)
 	backGlyph.AnchorPoint = Vector2.new(0, 0.5)
 	backGlyph.Position = UDim2.new(0, 14, 0.5, 0)
+	backGlyph.Visible = false
 
 	local backLabel = Instance.new("TextLabel")
 	backLabel.BackgroundTransparency = 1
 	backLabel.BorderSizePixel = 0
-	backLabel.Position = UDim2.fromOffset(36, 0)
-	backLabel.Size = UDim2.new(1, -40, 1, 0)
+	backLabel.Position = UDim2.fromOffset(0, 0)
+	backLabel.Size = UDim2.fromScale(1, 1)
 	backLabel.Font = FONT_TITLE
-	backLabel.TextSize = 15
+	backLabel.TextSize = 34
 	backLabel.TextColor3 = COLOR_TEXT
-	backLabel.TextXAlignment = Enum.TextXAlignment.Left
+	backLabel.TextXAlignment = Enum.TextXAlignment.Center
 	backLabel.Text = "BACK"
 	backLabel.Parent = backBtn
 
@@ -1905,17 +1906,19 @@ buildPage = function(mercNames)
 	hDiamond.AnchorPoint = Vector2.new(0.5, 0.5)
 	hDiamond.Position = UDim2.new(0.5, -58, 0.5, 0)
 	hDiamond.ZIndex = 11
+	hDiamond.Visible = false
 
-	local hLabel = makeLabel(handlingBtn, "HANDLING", FONT_TITLE, 17, COLOR_TEXT, Enum.TextXAlignment.Center)
+	local hLabel = makeLabel(handlingBtn, "SPAWN", FONT_TITLE, 42, COLOR_TEXT, Enum.TextXAlignment.Center)
 	hLabel.AnchorPoint = Vector2.new(0.5, 0.5)
 	hLabel.Position = UDim2.fromScale(0.5, 0.5)
-	hLabel.Size = UDim2.fromOffset(160, 24)
+	hLabel.Size = UDim2.fromScale(1, 1)
 	hLabel.ZIndex = 11
 
 	local hChev = makeChevronRight(handlingBtn, 14, COLOR_TEXT)
 	hChev.AnchorPoint = Vector2.new(0.5, 0.5)
 	hChev.Position = UDim2.new(0.5, 58, 0.5, 0)
 	hChev.ZIndex = 11
+	hChev.Visible = false
 
 	handlingBtn.MouseButton1Click:Connect(function()
 		if spawnEvent and currentSelectedMerc then
