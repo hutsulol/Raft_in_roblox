@@ -1731,7 +1731,7 @@ buildPage = function(mercNames)
 	metaList.SortOrder = Enum.SortOrder.LayoutOrder
 	metaList.Padding = UDim.new(0, 12)
 	metaList.Parent = metaBar
-	metaList.Enabled = false
+	metaList:Destroy()
 
 	-- 1) NAME — big display font.
 	local nameLabel = makeLabel(metaBar, "", FONT_TITLE, 22, COLOR_TEXT)
