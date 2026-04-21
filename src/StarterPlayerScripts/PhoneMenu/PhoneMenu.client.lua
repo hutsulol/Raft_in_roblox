@@ -224,61 +224,6 @@ local function makeSparkIcon(parent, size, color)
 	return c
 end
 
--- Hollow diamond — rotated square outline, no fill. Used as the
--- card-header glyph ("PLAYER STATS", "LOADOUT", etc.) and as the
--- Mutation stat icon.
-local function makeDiamondIcon(parent, size, color)
-	local c = Instance.new("Frame")
-	c.Name = "DiamondIcon"
-	c.BackgroundTransparency = 1
-	c.BorderSizePixel = 0
-	c.Size = UDim2.fromOffset(size, size)
-	c.Parent = parent
-
-	local inner = Instance.new("Frame")
-	inner.AnchorPoint = Vector2.new(0.5, 0.5)
-	inner.Position = UDim2.fromScale(0.5, 0.5)
-	inner.Size = UDim2.fromOffset(size * 0.72, size * 0.72)
-	inner.BackgroundTransparency = 1
-	inner.BorderSizePixel = 0
-	inner.Rotation = 45
-	inner.Parent = c
-
-	local s = Instance.new("UIStroke")
-	s.Color     = color
-	s.Thickness = 1.5
-	s.Parent    = inner
-
-	return c
-end
-
--- Ring / circle outline — used as the Mana stat icon. Thin stroke, no
--- fill.
-local function makeCircleIcon(parent, size, color)
-	local c = Instance.new("Frame")
-	c.Name = "CircleIcon"
-	c.BackgroundTransparency = 1
-	c.BorderSizePixel = 0
-	c.Size = UDim2.fromOffset(size, size)
-	c.Parent = parent
-
-	local ring = Instance.new("Frame")
-	ring.AnchorPoint = Vector2.new(0.5, 0.5)
-	ring.Position = UDim2.fromScale(0.5, 0.5)
-	ring.Size = UDim2.fromOffset(size * 0.9, size * 0.9)
-	ring.BackgroundTransparency = 1
-	ring.BorderSizePixel = 0
-	ring.Parent = c
-	local uc = Instance.new("UICorner")
-	uc.CornerRadius = UDim.new(1, 0)
-	uc.Parent = ring
-	local s = Instance.new("UIStroke")
-	s.Color     = color
-	s.Thickness = 1.5
-	s.Parent    = ring
-
-	return c
-end
 
 -- Holo progress bar — dark track, thin holo border, gradient fill from
 -- mid-holo to HOLO_EDGE. If `segments` > 0 the track is chopped by
@@ -331,119 +276,6 @@ local function makeHoloBar(parent, size, segments)
 	return track, fill
 end
 
--- Crown — short base bar with three small rotated squares on top.
--- Used as the Loadout card header glyph.
-local function makeCrownIcon(parent, size, color)
-	local c = Instance.new("Frame")
-	c.Name = "CrownIcon"
-	c.BackgroundTransparency = 1
-	c.BorderSizePixel = 0
-	c.Size = UDim2.fromOffset(size, size)
-	c.Parent = parent
-
-	local thick = math.max(1, math.floor(size * 0.12))
-	local bar = Instance.new("Frame")
-	bar.AnchorPoint = Vector2.new(0.5, 1)
-	bar.Position = UDim2.fromScale(0.5, 0.85)
-	bar.Size = UDim2.fromOffset(size * 0.9, thick)
-	bar.BackgroundColor3 = color
-	bar.BorderSizePixel = 0
-	bar.Parent = c
-
-	local pointSize = size * 0.3
-	for i = -1, 1 do
-		local p = Instance.new("Frame")
-		p.AnchorPoint = Vector2.new(0.5, 1)
-		p.Position = UDim2.fromScale(0.5 + (i * 0.32), 0.85)
-		p.Size = UDim2.fromOffset(pointSize, pointSize)
-		p.BackgroundColor3 = color
-		p.BorderSizePixel = 0
-		p.Rotation = 45
-		p.Parent = c
-	end
-	return c
-end
-
--- Sword — vertical blade (tall thin Frame) with a short horizontal
--- crossguard near the bottom and a small pommel below. Used as the
--- Arsenal button glyph.
-local function makeSwordIcon(parent, size, color)
-	local c = Instance.new("Frame")
-	c.Name = "SwordIcon"
-	c.BackgroundTransparency = 1
-	c.BorderSizePixel = 0
-	c.Size = UDim2.fromOffset(size, size)
-	c.Parent = parent
-
-	local bladeW = math.max(1, math.floor(size * 0.14))
-	local blade = Instance.new("Frame")
-	blade.AnchorPoint = Vector2.new(0.5, 0)
-	blade.Position = UDim2.fromScale(0.5, 0.05)
-	blade.Size = UDim2.fromOffset(bladeW, size * 0.62)
-	blade.BackgroundColor3 = color
-	blade.BorderSizePixel = 0
-	blade.Parent = c
-
-	local guardH = math.max(1, math.floor(size * 0.1))
-	local guard = Instance.new("Frame")
-	guard.AnchorPoint = Vector2.new(0.5, 0)
-	guard.Position = UDim2.fromScale(0.5, 0.64)
-	guard.Size = UDim2.fromOffset(size * 0.7, guardH)
-	guard.BackgroundColor3 = color
-	guard.BorderSizePixel = 0
-	guard.Parent = c
-
-	local grip = Instance.new("Frame")
-	grip.AnchorPoint = Vector2.new(0.5, 0)
-	grip.Position = UDim2.fromScale(0.5, 0.74)
-	grip.Size = UDim2.fromOffset(bladeW, size * 0.18)
-	grip.BackgroundColor3 = color
-	grip.BorderSizePixel = 0
-	grip.Parent = c
-
-	return c
-end
-
--- Users — two stylised people: one circle (head) over a rounded body,
--- with a second smaller pair overlapping behind. Used as the
--- Mercenaries button glyph.
-local function makeUsersIcon(parent, size, color)
-	local c = Instance.new("Frame")
-	c.Name = "UsersIcon"
-	c.BackgroundTransparency = 1
-	c.BorderSizePixel = 0
-	c.Size = UDim2.fromOffset(size, size)
-	c.Parent = parent
-
-	local function person(cx, headSize, bodyW, bodyH)
-		local head = Instance.new("Frame")
-		head.AnchorPoint = Vector2.new(0.5, 0)
-		head.Position = UDim2.fromScale(cx, 0.1)
-		head.Size = UDim2.fromOffset(headSize, headSize)
-		head.BackgroundColor3 = color
-		head.BorderSizePixel = 0
-		head.Parent = c
-		local hc = Instance.new("UICorner")
-		hc.CornerRadius = UDim.new(1, 0)
-		hc.Parent = head
-
-		local body = Instance.new("Frame")
-		body.AnchorPoint = Vector2.new(0.5, 0)
-		body.Position = UDim2.fromScale(cx, 0.55)
-		body.Size = UDim2.fromOffset(bodyW, bodyH)
-		body.BackgroundColor3 = color
-		body.BorderSizePixel = 0
-		body.Parent = c
-		local bc = Instance.new("UICorner")
-		bc.CornerRadius = UDim.new(0.3, 0)
-		bc.Parent = body
-	end
-
-	person(0.35, size * 0.40, size * 0.60, size * 0.34)
-	person(0.72, size * 0.30, size * 0.44, size * 0.28)
-
-	return c
-end
 
 -- Scroll — rounded rectangle body with three short horizontal lines
 -- inside, hinting at a written parchment. Used as the Daily Tasks
@@ -633,40 +465,6 @@ local function makeLabel(parent, text, font, size, color, align)
 	return t
 end
 
--- Horizontal progress bar with an optional label on the right.
-local function makeBar(parent, fill01, label)
-	local row = Instance.new("Frame")
-	row.BackgroundTransparency = 1
-	row.Size = UDim2.new(1, 0, 0, 26)
-	row.Parent = parent
-
-	local name = makeLabel(row, label or "", FONT_BODY, 14, COLOR_TEXT_DIM)
-	name.Size = UDim2.new(0, 82, 1, 0)
-	name.Position = UDim2.new(0, 0, 0, 0)
-
-	local track = Instance.new("Frame")
-	track.BackgroundColor3 = COLOR_BAR_BG
-	track.BorderSizePixel = 0
-	track.Position = UDim2.new(0, 88, 0.5, -5)
-	track.Size = UDim2.new(1, -130, 0, 10)
-	track.Parent = row
-	corner(track, 5)
-	stroke(track, 1, COLOR_PANEL_EDGE)
-
-	local fill = Instance.new("Frame")
-	fill.BackgroundColor3 = COLOR_BAR_FILL
-	fill.BorderSizePixel = 0
-	fill.Size = UDim2.new(math.clamp(fill01 or 0, 0, 1), 0, 1, 0)
-	fill.Parent = track
-	corner(fill, 5)
-
-	local lvl = makeLabel(row, "lvl 1", FONT_BODY, 14, COLOR_TEXT_DIM, Enum.TextXAlignment.Right)
-	lvl.AnchorPoint = Vector2.new(1, 0.5)
-	lvl.Position = UDim2.new(1, 0, 0.5, 0)
-	lvl.Size = UDim2.new(0, 40, 1, 0)
-
-	return row, fill, lvl
-end
 
 -- ─── Holo background ─────────────────────────────────────────────────────
 -- Deep-ocean sea-mist backdrop ported from the Claude Design mockup.
@@ -679,6 +477,7 @@ local function buildHoloBackground(parent)
 	local BG_MID   = Color3.fromRGB(28, 58, 92)
 	local BG_BOT   = Color3.fromRGB(40, 80, 122)
 	local MOTE_COL = Color3.fromRGB(180, 215, 240)
+	local MOTE_COL = Color3.fromRGB(205, 236, 255)
 
 	local root = Instance.new("Frame")
 	root.Name = "Backdrop"
@@ -773,11 +572,12 @@ local function buildHoloBackground(parent)
 	motes.ZIndex = 3
 	motes.Parent = root
 
-	for _ = 1, 24 do
+	-- +20% motes vs the previous 24 baseline.
+	for _ = 1, 29 do
 		local sizePx     = math.random(12, 32) / 10   -- 1.2 .. 3.2 px
 		local duration   = 14 + math.random() * 14    -- 14 .. 28 s
 		local startDelay = math.random() * 18
-		local opacity    = 0.2 + math.random() * 0.6
+		local opacity    = 0.32 + math.random() * 0.58
 
 		local mote = Instance.new("Frame")
 		mote.Name = "Mote"
@@ -1207,6 +1007,7 @@ local function buildMenu()
 	viewportFrame.LightDirection = Vector3.new(-0.3, -1, -0.5)
 	viewportFrame.Ambient = Color3.fromRGB(180, 200, 230)
 	viewportFrame.Parent = root
+	table.insert(motesOccludeList, viewportFrame)
 
 	-- WorldModel enables PointLight rendering inside the ViewportFrame.
 	viewportWorld = Instance.new("WorldModel")
