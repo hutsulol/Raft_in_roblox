@@ -43,6 +43,9 @@ local HOLO_PANEL_FILL         = Color3.fromRGB(10, 24, 44)   -- rgba(10,24,44,.7
 local HOLO_PANEL_TRANSPARENCY = 0.28
 local HOLO_PANEL_BORDER       = Color3.fromRGB(75, 100, 125) -- oklch(0.55 0.08 220)
 local HOLO_PANEL_LBRACKET     = Color3.fromRGB(118, 155, 190)-- oklch(0.70 0.10 220)
+local HOLO_EDGE               = Color3.fromRGB(190, 220, 245)-- oklch(0.90 0.14 215)
+local HOLO_DEEP               = Color3.fromRGB(40, 60, 90)   -- oklch(0.30 0.06 230)
+local COLOR_GOLD              = Color3.fromRGB(230, 190, 100)-- oklch(0.85 0.14 85)
 
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
@@ -145,6 +148,37 @@ local function cornerLs(parent, size, color, thickness)
 	addL(1, 0,  1, -1) -- top-right
 	addL(0, 1, -1,  1) -- bottom-left
 	addL(1, 1,  1,  1) -- bottom-right
+end
+
+-- Hand-drawn 4-point starburst — two crossed thin Frames inside a
+-- square container. Used for gold accents (Upgrade Points row, XP
+-- rewards). Returns the container so callers can reposition it.
+local function makeSparkIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "SparkIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.2))
+	local vert = Instance.new("Frame")
+	vert.AnchorPoint = Vector2.new(0.5, 0.5)
+	vert.Position = UDim2.fromScale(0.5, 0.5)
+	vert.Size = UDim2.fromOffset(thick, size)
+	vert.BackgroundColor3 = color
+	vert.BorderSizePixel = 0
+	vert.Parent = c
+
+	local horiz = Instance.new("Frame")
+	horiz.AnchorPoint = Vector2.new(0.5, 0.5)
+	horiz.Position = UDim2.fromScale(0.5, 0.5)
+	horiz.Size = UDim2.fromOffset(size, thick)
+	horiz.BackgroundColor3 = color
+	horiz.BorderSizePixel = 0
+	horiz.Parent = c
+
+	return c
 end
 
 local function makePanel(name, parent)
@@ -644,31 +678,62 @@ local function buildMenu()
 	levelPanel.Size = UDim2.fromOffset(300, 70)
 	padding(levelPanel, 10)
 
+	-- Holo level badge: 50×50 square with the holo-edge border, a
+	-- diagonal HOLO_DEEP → transparent sheen, mini corner L brackets,
+	-- "LVL" tag above the big number. Sharp corners on purpose — the
+	-- angular look matches the panel language.
 	local lvlBadge = Instance.new("Frame")
-	lvlBadge.BackgroundColor3 = COLOR_BAR_BG
+	lvlBadge.Name = "LevelBadge"
+	lvlBadge.BackgroundColor3 = HOLO_DEEP
 	lvlBadge.BorderSizePixel = 0
 	lvlBadge.Size = UDim2.fromOffset(50, 50)
 	lvlBadge.Position = UDim2.fromOffset(0, 0)
 	lvlBadge.Parent = levelPanel
-	corner(lvlBadge, 8)
-	stroke(lvlBadge, 1.5, COLOR_ACCENT)
+	local lvlStroke = Instance.new("UIStroke")
+	lvlStroke.Color     = HOLO_EDGE
+	lvlStroke.Thickness = 1
+	lvlStroke.Parent    = lvlBadge
+	local lvlGrad = Instance.new("UIGradient")
+	lvlGrad.Rotation = 135
+	lvlGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0,   0),
+		NumberSequenceKeypoint.new(0.8, 0.85),
+		NumberSequenceKeypoint.new(1,   1),
+	})
+	lvlGrad.Parent = lvlBadge
+	cornerLs(lvlBadge, 5, HOLO_EDGE, 1.5)
 
-	local lvlTag = makeLabel(lvlBadge, "LVL", FONT_BODY, 12, COLOR_TEXT_DIM, Enum.TextXAlignment.Center)
-	lvlTag.Size = UDim2.new(1, 0, 0, 16)
-	lvlTag.Position = UDim2.fromOffset(0, 4)
+	local lvlTag = makeLabel(lvlBadge, "LVL", FONT_TITLE, 10, HOLO_EDGE, Enum.TextXAlignment.Center)
+	lvlTag.Size = UDim2.new(1, 0, 0, 12)
+	lvlTag.Position = UDim2.fromOffset(0, 6)
 
-	local lvlNum = makeLabel(lvlBadge, "1", FONT_TITLE, 22, COLOR_ACCENT, Enum.TextXAlignment.Center)
-	lvlNum.Size = UDim2.new(1, 0, 0, 28)
+	local lvlNum = makeLabel(lvlBadge, "1", FONT_TITLE, 22, COLOR_TEXT, Enum.TextXAlignment.Center)
+	lvlNum.Size = UDim2.new(1, 0, 0, 26)
 	lvlNum.Position = UDim2.fromOffset(0, 18)
 	levelBadgeLabel = lvlNum
 
-	local nameLbl = makeLabel(levelPanel, player.DisplayName ~= "" and player.DisplayName or player.Name, FONT_TITLE, 22, COLOR_TEXT)
+	-- Display name in the display weight, then the "Upgrade points:"
+	-- row. The row is split across three instances so the spark icon,
+	-- static label and live count can each be styled independently;
+	-- refreshCharacteristics() only needs to drive the count.
+	local nameLbl = makeLabel(levelPanel,
+		player.DisplayName ~= "" and player.DisplayName or player.Name,
+		FONT_TITLE, 22, COLOR_TEXT)
 	nameLbl.Position = UDim2.fromOffset(60, 0)
 	nameLbl.Size = UDim2.new(1, -60, 0, 28)
 
-	local pointsLbl = makeLabel(levelPanel, "Upgrade points: 0", FONT_BODY, 14, COLOR_ACCENT)
-	pointsLbl.Position = UDim2.fromOffset(60, 30)
-	pointsLbl.Size = UDim2.new(1, -60, 0, 20)
+	local sparkIcon = makeSparkIcon(levelPanel, 11, COLOR_GOLD)
+	sparkIcon.AnchorPoint = Vector2.new(0, 0.5)
+	sparkIcon.Position = UDim2.fromOffset(60, 41)
+
+	local upgradeLbl = makeLabel(levelPanel, "Upgrade points:", FONT_BODY, 12, COLOR_TEXT_DIM)
+	upgradeLbl.Position = UDim2.fromOffset(76, 32)
+	upgradeLbl.Size = UDim2.fromOffset(110, 18)
+
+	local pointsLbl = makeLabel(levelPanel, "0", FONT_TITLE, 13, COLOR_GOLD)
+	pointsLbl.TextXAlignment = Enum.TextXAlignment.Left
+	pointsLbl.Position = UDim2.fromOffset(188, 32)
+	pointsLbl.Size = UDim2.fromOffset(40, 18)
 	upgradePointsLabel = pointsLbl
 
 	-- ── Left column: attribute bars ────────────────────────────────────
@@ -1395,7 +1460,9 @@ local function refreshCharacteristics()
 	end
 
 	if upgradePointsLabel and upgradePoints then
-		upgradePointsLabel.Text = "Upgrade points: " .. upgradePoints.Value
+		-- Row split into a static "Upgrade points:" label + this live
+		-- count; just drive the count.
+		upgradePointsLabel.Text = tostring(upgradePoints.Value)
 	end
 
 	local hasPoints = upgradePoints and upgradePoints.Value > 0
