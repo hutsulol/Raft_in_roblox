@@ -735,9 +735,10 @@ local function buildHoloBackground(parent)
 	local function makeVignette(yPos, flip)
 		local v = Instance.new("Frame")
 		v.Name = flip and "VignetteBottom" or "VignetteTop"
-		v.Size = UDim2.new(1, 0, 0.38, 0)
+		v.Size = UDim2.new(1, 0, 0.26, 0)
 		v.Position = UDim2.fromScale(0, yPos)
-		v.BackgroundColor3 = Color3.new(0, 0, 0)
+		v.BackgroundColor3 = BG_MID
+		v.BackgroundTransparency = 1
 		v.BorderSizePixel = 0
 		v.ZIndex = 2
 		v.Parent = root
@@ -745,10 +746,10 @@ local function buildHoloBackground(parent)
 		g.Transparency = flip
 			and NumberSequence.new({
 				NumberSequenceKeypoint.new(0, 1),
-				NumberSequenceKeypoint.new(1, 0.20),
+				NumberSequenceKeypoint.new(1, 0.92),
 			})
 			or NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0.20),
+				NumberSequenceKeypoint.new(0, 0.92),
 				NumberSequenceKeypoint.new(1, 1),
 			})
 		g.Rotation = 90
