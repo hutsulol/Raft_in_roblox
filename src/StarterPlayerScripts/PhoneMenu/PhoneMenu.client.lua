@@ -175,6 +175,22 @@ local function cornerLs(parent, size, color, thickness)
 	addL(1, 1,  1,  1) -- bottom-right
 end
 
+-- Drop-in replacement for the hand-drawn icon factories when a real
+-- image asset exists. Same call shape (parent, size, ...) so the
+-- stats/loadout tables can hold either a function or just swap over
+-- to an assetId via this helper.
+local function imageIcon(parent, size, assetId)
+	local img = Instance.new("ImageLabel")
+	img.Name = "IconImage"
+	img.BackgroundTransparency = 1
+	img.BorderSizePixel = 0
+	img.Size = UDim2.fromOffset(size, size)
+	img.ScaleType = Enum.ScaleType.Fit
+	img.Image = assetId
+	img.Parent = parent
+	return img
+end
+
 -- Hand-drawn 4-point starburst — two crossed thin Frames inside a
 -- square container. Used for gold accents (Upgrade Points row, XP
 -- rewards). Returns the container so callers can reposition it.
@@ -1202,7 +1218,7 @@ local function buildMenu()
 	headerRow.Size = UDim2.new(1, 0, 0, 18)
 	headerRow.Parent = statsPanel
 
-	local headerDiamond = makeDiamondIcon(headerRow, 13, HOLO_EDGE)
+	local headerDiamond = imageIcon(headerRow, 15, "rbxassetid://139484845530559")
 	headerDiamond.AnchorPoint = Vector2.new(0, 0.5)
 	headerDiamond.Position = UDim2.fromScale(0, 0.5)
 
@@ -1240,9 +1256,9 @@ local function buildMenu()
 	-- and the button's gold/dim state by hitting the refs we store in
 	-- statRows[key].
 	local stats = {
-		{ key = "Strength", label = "STRENGTH", iconFn = makeSparkIcon,   },
-		{ key = "Mana",     label = "MANA",     iconFn = makeCircleIcon,  },
-		{ key = "Mutation", label = "MUTATION", iconFn = makeDiamondIcon, },
+		{ key = "Strength", label = "STRENGTH", iconId = "rbxassetid://121469289292513" },
+		{ key = "Mana",     label = "MANA",     iconId = "rbxassetid://77622787705265"  },
+		{ key = "Mutation", label = "MUTATION", iconId = "rbxassetid://78141836386820"  },
 	}
 	for i, s in ipairs(stats) do
 		local row = Instance.new("Frame")
@@ -1252,7 +1268,7 @@ local function buildMenu()
 		row.LayoutOrder = i
 		row.Parent = rowHolder
 
-		local rowIcon = s.iconFn(row, 22, HOLO_EDGE)
+		local rowIcon = imageIcon(row, 22, s.iconId)
 		rowIcon.AnchorPoint = Vector2.new(0, 0.5)
 		rowIcon.Position = UDim2.fromScale(0, 0.5)
 
@@ -1478,7 +1494,7 @@ local function buildMenu()
 	sideHeader.Size = UDim2.new(1, 0, 0, 18)
 	sideHeader.Parent = sidePanel
 
-	local crown = makeCrownIcon(sideHeader, 14, HOLO_EDGE)
+	local crown = imageIcon(sideHeader, 16, "rbxassetid://73744559499866")
 	crown.AnchorPoint = Vector2.new(0, 0.5)
 	crown.Position = UDim2.fromScale(0, 0.5)
 
@@ -1507,7 +1523,7 @@ local function buildMenu()
 	btnList.Padding = UDim.new(0, 8)
 	btnList.Parent = btnHolder
 
-	local function makeLoadoutButton(label, iconFn, order)
+	local function makeLoadoutButton(label, iconId, order)
 		local b = Instance.new("TextButton")
 		b.Name = label .. "Button"
 		b.BackgroundColor3 = Color3.fromRGB(10, 24, 44)
@@ -1526,13 +1542,13 @@ local function buildMenu()
 		s.Thickness = 1
 		s.Parent    = b
 
-		local glyph = iconFn(b, 16, HOLO_EDGE)
+		local glyph = imageIcon(b, 18, iconId)
 		glyph.AnchorPoint = Vector2.new(0, 0.5)
 		glyph.Position = UDim2.new(0, 12, 0.5, 0)
 
 		local txt = makeLabel(b, label, FONT_TITLE, 14, COLOR_TEXT)
-		txt.Position = UDim2.fromOffset(36, 0)
-		txt.Size = UDim2.new(1, -66, 1, 0)
+		txt.Position = UDim2.fromOffset(38, 0)
+		txt.Size = UDim2.new(1, -68, 1, 0)
 		txt.TextXAlignment = Enum.TextXAlignment.Left
 
 		local chev = makeChevronRight(b, 12, COLOR_TEXT_DIM)
@@ -1542,8 +1558,8 @@ local function buildMenu()
 		return b
 	end
 
-	makeLoadoutButton("ARSENAL",     makeSwordIcon, 1)
-	local mercButton = makeLoadoutButton("MERCENARIES", makeUsersIcon, 2)
+	makeLoadoutButton("ARSENAL",     "rbxassetid://96460681124178",  1)
+	local mercButton = makeLoadoutButton("MERCENARIES", "rbxassetid://113825300328145", 2)
 	mercButton.MouseButton1Click:Connect(function()
 		if typeof(_G.OpenMercenariesMenu) == "function" then
 			_G.OpenMercenariesMenu()
@@ -1568,25 +1584,21 @@ local function buildMenu()
 	cornerLs(xpPanel, 10, HOLO_PANEL_LBRACKET, 1.5)
 	table.insert(motesOccludeList, xpPanel)
 
-	local xpSpark = makeSparkIcon(xpPanel, 16, HOLO_EDGE)
-	xpSpark.AnchorPoint = Vector2.new(0, 0.5)
-	xpSpark.Position = UDim2.new(0, 0, 0.5, 0)
-
+	-- No spark icon — "XP" sits at the left edge of the bar on its own.
 	local xpTag = makeLabel(xpPanel, "XP", FONT_TITLE, 15, HOLO_EDGE)
-	xpTag.Position = UDim2.fromOffset(22, 0)
+	xpTag.Position = UDim2.fromOffset(0, 0)
 	xpTag.Size = UDim2.new(0, 28, 1, 0)
 
 	local xpAmount = makeLabel(xpPanel, "0 / 50", FONT_BODY, 13, COLOR_TEXT_DIM)
-	xpAmount.Position = UDim2.fromOffset(56, 0)
+	xpAmount.Position = UDim2.fromOffset(34, 0)
 	xpAmount.Size = UDim2.new(0, 62, 1, 0)
 	xpAmountLabel = xpAmount
 
 	-- Holo bar fills the middle. Reserve 52 px on the right for the Lv
-	-- badge (40 + 12 gap), 122 on the left for the spark/tag/amount
-	-- cluster.
-	local xpTrack, xpFill = makeHoloBar(xpPanel, UDim2.new(1, -174, 0, 10), 10)
+	-- badge (40 + 12 gap), 102 on the left for the tag + amount cluster.
+	local xpTrack, xpFill = makeHoloBar(xpPanel, UDim2.new(1, -154, 0, 10), 10)
 	xpTrack.AnchorPoint = Vector2.new(0, 0.5)
-	xpTrack.Position = UDim2.new(0, 122, 0.5, 0)
+	xpTrack.Position = UDim2.new(0, 102, 0.5, 0)
 	xpFillFrame = xpFill
 
 	-- Lv badge on the right. RichText so we can dim the "Lv" prefix
