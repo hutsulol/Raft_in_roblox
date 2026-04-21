@@ -131,11 +131,27 @@ local function cornerLs(parent, size, color, thickness)
 	color     = color     or HOLO_PANEL_LBRACKET
 	thickness = thickness or 1.5
 
+	-- If the parent has UIPadding, every descendant (including these
+	-- brackets) is shifted inward by the pad amount, which would park
+	-- the L's *inside* the content box instead of on the panel's
+	-- outer border. Read the pad offsets and counter them so the
+	-- brackets always sit on the real edge of the parent frame. Peek
+	-- at each side separately so asymmetric padding (XPPanel's 14/8
+	-- case) still lands correctly.
+	local pad = parent:FindFirstChildOfClass("UIPadding")
+	local padL = (pad and pad.PaddingLeft.Offset)   or 0
+	local padR = (pad and pad.PaddingRight.Offset)  or 0
+	local padT = (pad and pad.PaddingTop.Offset)    or 0
+	local padB = (pad and pad.PaddingBottom.Offset) or 0
+
 	local function addL(ax, ay, ox, oy)
+		local effOx = (ax < 0.5) and (ox - padL) or (ox + padR)
+		local effOy = (ay < 0.5) and (oy - padT) or (oy + padB)
+
 		local horiz = Instance.new("Frame")
 		horiz.Name = "CornerL_H"
 		horiz.AnchorPoint = Vector2.new(ax, ay)
-		horiz.Position = UDim2.new(ax, ox, ay, oy)
+		horiz.Position = UDim2.new(ax, effOx, ay, effOy)
 		horiz.Size = UDim2.fromOffset(size, thickness)
 		horiz.BackgroundColor3 = color
 		horiz.BorderSizePixel = 0
@@ -145,7 +161,7 @@ local function cornerLs(parent, size, color, thickness)
 		local vert = Instance.new("Frame")
 		vert.Name = "CornerL_V"
 		vert.AnchorPoint = Vector2.new(ax, ay)
-		vert.Position = UDim2.new(ax, ox, ay, oy)
+		vert.Position = UDim2.new(ax, effOx, ay, effOy)
 		vert.Size = UDim2.fromOffset(thickness, size)
 		vert.BackgroundColor3 = color
 		vert.BorderSizePixel = 0
@@ -564,9 +580,11 @@ end
 
 local function makePanel(name, parent)
 	-- Holo panel ported from the Claude Design mockup: translucent
-	-- navy fill, hairline cyan border, sharp corners with four tiny
-	-- L-shaped brackets tucked just outside each corner. No rounded
-	-- UICorner — the angular look is the whole point of the design.
+	-- navy fill, hairline cyan border, sharp corners. The four corner
+	-- L brackets are NOT added here — callers add them *after* they
+	-- apply UIPadding, so cornerLs can read the pad values and park
+	-- the brackets exactly on the panel's outer edge instead of
+	-- being shoved inward by the pad.
 	local f = Instance.new("Frame")
 	f.Name = name
 	f.BackgroundColor3 = HOLO_PANEL_FILL
@@ -580,7 +598,6 @@ local function makePanel(name, parent)
 	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	s.Parent          = f
 
-	cornerLs(f, 10, HOLO_PANEL_LBRACKET, 1.5)
 	return f
 end
 
@@ -1107,6 +1124,7 @@ local function buildMenu()
 	levelPanel.Position = UDim2.fromOffset(0, 50)
 	levelPanel.Size = UDim2.fromOffset(280, 76)
 	padding(levelPanel, 10)
+	cornerLs(levelPanel, 10, HOLO_PANEL_LBRACKET, 1.5)
 	table.insert(motesOccludeList, levelPanel)
 
 	-- Holo level badge: 50×50 square with the holo-edge border, a
@@ -1174,6 +1192,7 @@ local function buildMenu()
 	statsPanel.Position = UDim2.fromOffset(0, 140)
 	statsPanel.Size = UDim2.fromOffset(280, 180)
 	padding(statsPanel, 14)
+	cornerLs(statsPanel, 10, HOLO_PANEL_LBRACKET, 1.5)
 	table.insert(motesOccludeList, statsPanel)
 
 	-- Card header: diamond glyph + uppercase title + thin divider under.
@@ -1295,6 +1314,7 @@ local function buildMenu()
 	tasksPanel.Position = UDim2.new(1, 0, 0, 14)
 	tasksPanel.Size = UDim2.fromOffset(280, 292)
 	padding(tasksPanel, 14)
+	cornerLs(tasksPanel, 10, HOLO_PANEL_LBRACKET, 1.5)
 	table.insert(motesOccludeList, tasksPanel)
 
 	local taskHeader = Instance.new("Frame")
@@ -1449,6 +1469,7 @@ local function buildMenu()
 	sidePanel.Position = UDim2.new(1, 0, 0, 320)
 	sidePanel.Size = UDim2.fromOffset(280, 122)
 	padding(sidePanel, 14)
+	cornerLs(sidePanel, 10, HOLO_PANEL_LBRACKET, 1.5)
 	table.insert(motesOccludeList, sidePanel)
 
 	local sideHeader = Instance.new("Frame")
@@ -1538,13 +1559,14 @@ local function buildMenu()
 	xpPanel.AnchorPoint = Vector2.new(0.5, 1)
 	xpPanel.Position = UDim2.new(0.5, 0, 1, -24)
 	xpPanel.Size = UDim2.fromOffset(460, 48)
-	table.insert(motesOccludeList, xpPanel)
 	local xpPad = Instance.new("UIPadding")
 	xpPad.PaddingTop    = UDim.new(0, 8)
 	xpPad.PaddingBottom = UDim.new(0, 8)
 	xpPad.PaddingLeft   = UDim.new(0, 14)
 	xpPad.PaddingRight  = UDim.new(0, 14)
 	xpPad.Parent = xpPanel
+	cornerLs(xpPanel, 10, HOLO_PANEL_LBRACKET, 1.5)
+	table.insert(motesOccludeList, xpPanel)
 
 	local xpSpark = makeSparkIcon(xpPanel, 16, HOLO_EDGE)
 	xpSpark.AnchorPoint = Vector2.new(0, 0.5)
