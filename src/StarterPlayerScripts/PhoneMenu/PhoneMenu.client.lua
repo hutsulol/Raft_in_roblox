@@ -25,29 +25,29 @@ local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- ─── Theme ────────────────────────────────────────────────────────────────
-local COLOR_BG          = Color3.fromRGB(5, 15, 35)
-local COLOR_PANEL       = Color3.fromRGB(10, 25, 55)
-local COLOR_PANEL_EDGE  = Color3.fromRGB(80, 180, 255)
-local COLOR_ACCENT      = Color3.fromRGB(120, 210, 255)
+local COLOR_BG          = Color3.fromRGB(10, 24, 46)
+local COLOR_PANEL       = Color3.fromRGB(16, 34, 66)
+local COLOR_PANEL_EDGE  = Color3.fromRGB(92, 195, 255)
+local COLOR_ACCENT      = Color3.fromRGB(130, 220, 255)
 local COLOR_TEXT        = Color3.fromRGB(220, 240, 255)
-local COLOR_TEXT_DIM    = Color3.fromRGB(140, 180, 220)
-local COLOR_BAR_BG      = Color3.fromRGB(15, 35, 70)
-local COLOR_BAR_FILL    = Color3.fromRGB(90, 200, 255)
-local COLOR_XP_FILL     = Color3.fromRGB(120, 220, 255)
+local COLOR_TEXT_DIM    = Color3.fromRGB(155, 198, 232)
+local COLOR_BAR_BG      = Color3.fromRGB(26, 58, 96)
+local COLOR_BAR_FILL    = Color3.fromRGB(118, 210, 255)
+local COLOR_XP_FILL     = Color3.fromRGB(138, 228, 255)
 
 -- Holo panel palette — ported from the Claude Design mockup. Panels use a
 -- translucent navy fill with a hairline oklch-approximated border and a
 -- softer cyan colour for the four corner L-brackets. Declared up top so
 -- the rest of the file can reuse them as we progressively swap old
 -- elements over to the new visual language.
-local HOLO_PANEL_FILL         = Color3.fromRGB(10, 24, 44)   -- rgba(10,24,44,.72)
-local HOLO_PANEL_TRANSPARENCY = 0.28
-local HOLO_PANEL_BORDER       = Color3.fromRGB(75, 100, 125) -- oklch(0.55 0.08 220)
-local HOLO_PANEL_LBRACKET     = Color3.fromRGB(118, 155, 190)-- oklch(0.70 0.10 220)
-local HOLO_EDGE               = Color3.fromRGB(190, 220, 245)-- oklch(0.90 0.14 215)
-local HOLO_DEEP               = Color3.fromRGB(40, 60, 90)   -- oklch(0.30 0.06 230)
+local HOLO_PANEL_FILL         = Color3.fromRGB(14, 34, 62)   -- brighter navy
+local HOLO_PANEL_TRANSPARENCY = 0.22
+local HOLO_PANEL_BORDER       = Color3.fromRGB(90, 132, 172)
+local HOLO_PANEL_LBRACKET     = Color3.fromRGB(116, 188, 232)
+local HOLO_EDGE               = Color3.fromRGB(176, 232, 255)
+local HOLO_DEEP               = Color3.fromRGB(28, 58, 92)
 local COLOR_GOLD              = Color3.fromRGB(230, 190, 100)-- oklch(0.85 0.14 85)
-local HORIZON                 = Color3.fromRGB(80, 140, 190) -- cyan horizon band
+local HORIZON                 = Color3.fromRGB(98, 168, 218) -- cyan horizon band
 
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
@@ -286,8 +286,8 @@ end
 local function makeHoloBar(parent, size, segments)
 	local track = Instance.new("Frame")
 	track.Name = "HoloBar"
-	track.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
-	track.BackgroundTransparency = 0.2
+	track.BackgroundColor3 = Color3.fromRGB(14, 34, 58)
+	track.BackgroundTransparency = 0.15
 	track.BorderSizePixel = 0
 	track.ClipsDescendants = true
 	track.Size = size
@@ -318,8 +318,8 @@ local function makeHoloBar(parent, size, segments)
 			d.AnchorPoint = Vector2.new(0.5, 0)
 			d.Position = UDim2.fromScale(i / segments, 0)
 			d.Size = UDim2.new(0, 1, 1, 0)
-			d.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
-			d.BackgroundTransparency = 0.35
+			d.BackgroundColor3 = Color3.fromRGB(12, 30, 52)
+			d.BackgroundTransparency = 0.28
 			d.BorderSizePixel = 0
 			d.ZIndex = (track.ZIndex or 1) + 2
 			d.Parent = track
@@ -1663,7 +1663,7 @@ local function buildMenu()
 	local xpPanel = makePanel("XPPanel", root)
 	xpPanel.AnchorPoint = Vector2.new(0.5, 1)
 	xpPanel.Position = UDim2.new(0.5, 0, 1, -24)
-	xpPanel.Size = UDim2.fromOffset(500, 54)
+	xpPanel.Size = UDim2.fromOffset(470, 54)
 	xpPanel.BackgroundTransparency = 0.16
 	local xpPad = Instance.new("UIPadding")
 	xpPad.PaddingTop    = UDim.new(0, 10)
@@ -1680,15 +1680,15 @@ local function buildMenu()
 	xpTag.Size = UDim2.new(0, 30, 1, 0)
 
 	local xpAmount = makeLabel(xpPanel, "0 / 50", FONT_BODY, 14, COLOR_TEXT_DIM)
-	xpAmount.Position = UDim2.fromOffset(46, 0)
-	xpAmount.Size = UDim2.new(0, 66, 1, 0)
+	xpAmount.Position = UDim2.fromOffset(44, 0)
+	xpAmount.Size = UDim2.new(0, 62, 1, 0)
 	xpAmountLabel = xpAmount
 
 	-- Holo bar fills the middle. Reserve 52 px on the right for the Lv
 	-- badge (40 + 12 gap), 102 on the left for the tag + amount cluster.
-	local xpTrack, xpFill = makeHoloBar(xpPanel, UDim2.new(1, -164, 0, 12), XP_BAR_SEGMENTS)
+	local xpTrack, xpFill = makeHoloBar(xpPanel, UDim2.new(1, -154, 0, 12), XP_BAR_SEGMENTS)
 	xpTrack.AnchorPoint = Vector2.new(0, 0.5)
-	xpTrack.Position = UDim2.new(0, 108, 0.5, 0)
+	xpTrack.Position = UDim2.new(0, 104, 0.5, 0)
 	xpFillFrame = xpFill
 
 	-- Lv badge on the right. RichText so we can dim the "Lv" prefix
