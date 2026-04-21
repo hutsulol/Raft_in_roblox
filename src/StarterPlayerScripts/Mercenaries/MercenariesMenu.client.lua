@@ -73,6 +73,14 @@ local MERC_THEMES = {
 		-- lie to the player about how tough their merc actually is.
 		stats       = { hp = 250, damage = 18, mana = "20/min" },
 		spawnModel  = "Pirate_2",
+		-- Right-column progression + characteristic distribution
+		-- (Strength / Speed / Luck, 0-100). Values mirror the Claude
+		-- Design MercenaryPage.jsx STATS block so the card numbers stay
+		-- consistent between mock and game.
+		level       = 1,
+		xp          = 0,
+		xpMax       = 500,
+		charStats   = { str = 72, spd = 48, luck = 35 },
 	},
 }
 local DEFAULT_THEME = {
@@ -81,6 +89,10 @@ local DEFAULT_THEME = {
 	stars       = 1,
 	role        = "Crew",
 	stats       = { hp = 50, damage = 5, mana = "0/min" },
+	level       = 1,
+	xp          = 0,
+	xpMax       = 100,
+	charStats   = { str = 30, spd = 30, luck = 30 },
 }
 
 -- ─── Small UI helpers ───────────────────────────────────────────────────
@@ -470,6 +482,170 @@ local function makeLockIcon(parent, size, color)
 	bc.Parent = body
 
 	return c
+end
+
+-- Spark — 4-point star built from two crossed thin Frames. Used for
+-- XP, the ABILITIES header and unlocked-ability tiles.
+local function makeSparkIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "SparkIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.2))
+	local vert = Instance.new("Frame")
+	vert.AnchorPoint = Vector2.new(0.5, 0.5)
+	vert.Position = UDim2.fromScale(0.5, 0.5)
+	vert.Size = UDim2.fromOffset(thick, size)
+	vert.BackgroundColor3 = color
+	vert.BorderSizePixel = 0
+	vert.Parent = c
+
+	local horiz = Instance.new("Frame")
+	horiz.AnchorPoint = Vector2.new(0.5, 0.5)
+	horiz.Position = UDim2.fromScale(0.5, 0.5)
+	horiz.Size = UDim2.fromOffset(size, thick)
+	horiz.BackgroundColor3 = color
+	horiz.BorderSizePixel = 0
+	horiz.Parent = c
+
+	return c
+end
+
+-- Hollow diamond — rotated square outline, no fill. Used as the
+-- CHARACTERISTICS + MANAGE header glyphs and as the Luck stat icon.
+local function makeDiamondIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "DiamondIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local inner = Instance.new("Frame")
+	inner.AnchorPoint = Vector2.new(0.5, 0.5)
+	inner.Position = UDim2.fromScale(0.5, 0.5)
+	inner.Size = UDim2.fromOffset(size * 0.72, size * 0.72)
+	inner.BackgroundTransparency = 1
+	inner.BorderSizePixel = 0
+	inner.Rotation = 45
+	inner.Parent = c
+
+	local s = Instance.new("UIStroke")
+	s.Color     = color
+	s.Thickness = 1.5
+	s.Parent    = inner
+
+	return c
+end
+
+-- Ring — thin circle outline. Used as the Speed stat icon.
+local function makeCircleIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "CircleIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local ring = Instance.new("Frame")
+	ring.AnchorPoint = Vector2.new(0.5, 0.5)
+	ring.Position = UDim2.fromScale(0.5, 0.5)
+	ring.Size = UDim2.fromOffset(size * 0.9, size * 0.9)
+	ring.BackgroundTransparency = 1
+	ring.BorderSizePixel = 0
+	ring.Parent = c
+	local uc = Instance.new("UICorner")
+	uc.CornerRadius = UDim.new(1, 0)
+	uc.Parent = ring
+	local s = Instance.new("UIStroke")
+	s.Color     = color
+	s.Thickness = 1.5
+	s.Parent    = ring
+
+	return c
+end
+
+-- Chevron-right — two thin Frames meeting at the right forming a ">".
+local function makeChevronRight(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "ChevronRight"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.14))
+	local legLen = size * 0.68
+	local top = Instance.new("Frame")
+	top.AnchorPoint = Vector2.new(1, 0.5)
+	top.Position = UDim2.fromScale(0.92, 0.35)
+	top.Size = UDim2.fromOffset(legLen, thick)
+	top.BackgroundColor3 = color
+	top.BorderSizePixel = 0
+	top.Rotation = 45
+	top.Parent = c
+
+	local bot = Instance.new("Frame")
+	bot.AnchorPoint = Vector2.new(1, 0.5)
+	bot.Position = UDim2.fromScale(0.92, 0.65)
+	bot.Size = UDim2.fromOffset(legLen, thick)
+	bot.BackgroundColor3 = color
+	bot.BorderSizePixel = 0
+	bot.Rotation = -45
+	bot.Parent = c
+
+	return c
+end
+
+-- Segmented holo bar — dark track, hairline HOLO_PANEL_BORDER stroke,
+-- holo-gradient fill, optional `segments` divider lines. Returns
+-- (track, fill) so callers can resize the fill to reflect progress.
+local function makeHoloBar(parent, size, segments)
+	local track = Instance.new("Frame")
+	track.Name = "HoloBar"
+	track.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
+	track.BackgroundTransparency = 0.2
+	track.BorderSizePixel = 0
+	track.Size = size
+	track.Parent = parent
+
+	local s = Instance.new("UIStroke")
+	s.Color     = HOLO_PANEL_BORDER
+	s.Thickness = 1
+	s.Parent    = track
+
+	local fill = Instance.new("Frame")
+	fill.Name = "Fill"
+	fill.BackgroundColor3 = HOLO_EDGE
+	fill.BorderSizePixel = 0
+	fill.Size = UDim2.new(0, 0, 1, 0)
+	fill.Parent = track
+	local fGrad = Instance.new("UIGradient")
+	fGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(140, 200, 235)),
+		ColorSequenceKeypoint.new(1, HOLO_EDGE),
+	})
+	fGrad.Parent = fill
+
+	if segments and segments > 0 then
+		for i = 1, segments - 1 do
+			local d = Instance.new("Frame")
+			d.Name = "Seg" .. i
+			d.AnchorPoint = Vector2.new(0.5, 0)
+			d.Position = UDim2.fromScale(i / segments, 0)
+			d.Size = UDim2.new(0, 1, 1, 0)
+			d.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
+			d.BackgroundTransparency = 0.35
+			d.BorderSizePixel = 0
+			d.ZIndex = (track.ZIndex or 1) + 2
+			d.Parent = track
+		end
+	end
+
+	return track, fill
 end
 
 -- Rarity row — N small rotated-square "stars". The first `filled` are
@@ -1645,6 +1821,360 @@ buildPage = function(mercNames)
 		local vp = buildMercViewport(slot, mercName, weaponId)
 		if vp then
 			vp.ZIndex = 5 -- render on top of rings + glow
+		end
+	end
+
+	-- ── Right column: characteristics + MANAGE ────────────────────────
+	-- Position from MercenaryPage.jsx: right 24, top 70, bottom 24,
+	-- width 320. Layout (top → bottom): Level/XP block, hairline
+	-- divider, CHARACTERISTICS section (3 stat rows), ABILITIES
+	-- section (3 rows), flex spacer, MANAGE button pinned to the
+	-- bottom. Absolute positioning so refresh logic can reach each
+	-- piece without walking a UIListLayout.
+	local rightCol = Instance.new("Frame")
+	rightCol.Name = "RightColumn"
+	rightCol.AnchorPoint = Vector2.new(1, 0)
+	rightCol.BackgroundColor3 = HOLO_PANEL_FILL
+	rightCol.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	rightCol.BorderSizePixel = 0
+	rightCol.Position = UDim2.new(1, -24, 0, 70)
+	rightCol.Size = UDim2.new(0, 320, 1, -(70 + 24))
+	rightCol.ZIndex = 3
+	rightCol.Parent = scaleWrap
+
+	local rightStroke = Instance.new("UIStroke")
+	rightStroke.Color     = HOLO_PANEL_BORDER
+	rightStroke.Thickness = 1
+	rightStroke.Parent    = rightCol
+
+	local rightPad = Instance.new("UIPadding")
+	rightPad.PaddingTop    = UDim.new(0, 14)
+	rightPad.PaddingBottom = UDim.new(0, 14)
+	rightPad.PaddingLeft   = UDim.new(0, 14)
+	rightPad.PaddingRight  = UDim.new(0, 14)
+	rightPad.Parent = rightCol
+
+	cornerLs(rightCol, 10, HOLO_PANEL_LBRACKET, 1.5)
+	table.insert(motesOccludeList, rightCol)
+
+	-- ── Level + XP block (top of right column) ─────────────────────────
+	local LVL_H = 76
+
+	local lvlBadge = Instance.new("Frame")
+	lvlBadge.Name = "LevelBadge"
+	lvlBadge.BackgroundColor3 = HOLO_DEEP
+	lvlBadge.BorderSizePixel = 0
+	lvlBadge.Position = UDim2.fromOffset(0, 0)
+	lvlBadge.Size = UDim2.fromOffset(56, 56)
+	lvlBadge.Parent = rightCol
+	local lvlStroke = Instance.new("UIStroke")
+	lvlStroke.Color     = HOLO_EDGE
+	lvlStroke.Thickness = 1
+	lvlStroke.Parent    = lvlBadge
+	local lvlGrad = Instance.new("UIGradient")
+	lvlGrad.Rotation = 135
+	lvlGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0,   0),
+		NumberSequenceKeypoint.new(0.8, 0.85),
+		NumberSequenceKeypoint.new(1,   1),
+	})
+	lvlGrad.Parent = lvlBadge
+	cornerLs(lvlBadge, 5, HOLO_EDGE, 1.5)
+
+	local lvlTag = makeLabel(lvlBadge, "LVL", FONT_TITLE, 10, HOLO_EDGE, Enum.TextXAlignment.Center)
+	lvlTag.Size = UDim2.new(1, 0, 0, 12)
+	lvlTag.Position = UDim2.fromOffset(0, 8)
+	local lvlNum = makeLabel(lvlBadge, "0", FONT_TITLE, 24, COLOR_TEXT, Enum.TextXAlignment.Center)
+	lvlNum.Size = UDim2.new(1, 0, 0, 28)
+	lvlNum.Position = UDim2.fromOffset(0, 22)
+
+	-- XP column to the right of the badge.
+	local xpCol = Instance.new("Frame")
+	xpCol.Name = "XpColumn"
+	xpCol.BackgroundTransparency = 1
+	xpCol.BorderSizePixel = 0
+	xpCol.Position = UDim2.fromOffset(68, 0)
+	xpCol.Size = UDim2.new(1, -68, 0, 56)
+	xpCol.Parent = rightCol
+
+	local xpTop = Instance.new("Frame")
+	xpTop.BackgroundTransparency = 1
+	xpTop.BorderSizePixel = 0
+	xpTop.Size = UDim2.new(1, 0, 0, 16)
+	xpTop.Parent = xpCol
+
+	local xpGlyph = makeSparkIcon(xpTop, 12, HOLO_EDGE)
+	xpGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	xpGlyph.Position = UDim2.new(0, 0, 0.5, 0)
+
+	local xpTag = makeLabel(xpTop, "EXPERIENCE", FONT_TITLE, 10, COLOR_TEXT_DIM)
+	xpTag.Position = UDim2.fromOffset(16, 0)
+	xpTag.Size = UDim2.fromOffset(120, 16)
+
+	local xpAmount = makeLabel(xpTop, "0 / 0", FONT_TITLE, 12, COLOR_TEXT_DIM, Enum.TextXAlignment.Right)
+	xpAmount.AnchorPoint = Vector2.new(1, 0.5)
+	xpAmount.Position = UDim2.new(1, 0, 0.5, 0)
+	xpAmount.Size = UDim2.fromOffset(90, 16)
+
+	local xpTrack, xpFill = makeHoloBar(xpCol, UDim2.new(1, 0, 0, 7), 10)
+	xpTrack.Position = UDim2.fromOffset(0, 22)
+
+	local xpHint = makeLabel(xpCol, "", FONT_BODY, 10, COLOR_TEXT_MUTE)
+	xpHint.Position = UDim2.fromOffset(0, 36)
+	xpHint.Size = UDim2.new(1, 0, 0, 14)
+
+	-- Divider under the Level/XP block.
+	local lvlDivider = Instance.new("Frame")
+	lvlDivider.Name = "Divider"
+	lvlDivider.BackgroundColor3 = HOLO_PANEL_BORDER
+	lvlDivider.BackgroundTransparency = 0.3
+	lvlDivider.BorderSizePixel = 0
+	lvlDivider.Size = UDim2.new(1, 0, 0, 1)
+	lvlDivider.Position = UDim2.fromOffset(0, LVL_H + 12)
+	lvlDivider.Parent = rightCol
+
+	-- ── Characteristics section ────────────────────────────────────────
+	local CHARS_Y = LVL_H + 24
+
+	local charsHeader = Instance.new("Frame")
+	charsHeader.Name = "CharsHeader"
+	charsHeader.BackgroundTransparency = 1
+	charsHeader.BorderSizePixel = 0
+	charsHeader.Position = UDim2.fromOffset(0, CHARS_Y)
+	charsHeader.Size = UDim2.new(1, 0, 0, 18)
+	charsHeader.Parent = rightCol
+
+	local charsGlyph = makeDiamondIcon(charsHeader, 13, HOLO_EDGE)
+	charsGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	charsGlyph.Position = UDim2.fromScale(0, 0.5)
+
+	makeLabel(charsHeader, "CHARACTERISTICS", FONT_TITLE, 14, COLOR_TEXT).Position = UDim2.fromOffset(22, 0)
+	charsHeader:FindFirstChildOfClass("TextLabel").Size = UDim2.fromOffset(240, 18)
+
+	local charsDivider = Instance.new("Frame")
+	charsDivider.BackgroundColor3 = HOLO_PANEL_BORDER
+	charsDivider.BackgroundTransparency = 0.3
+	charsDivider.BorderSizePixel = 0
+	charsDivider.Size = UDim2.new(1, 0, 0, 1)
+	charsDivider.Position = UDim2.fromOffset(0, CHARS_Y + 28)
+	charsDivider.Parent = rightCol
+
+	-- Three stat rows. Each row is 28 tall: [icon 14] [label / value]
+	-- on top line, holo bar (5 tall) below.
+	local statDefs = {
+		{ key = "str",  label = "STRENGTH", iconFn = makeSparkIcon   },
+		{ key = "spd",  label = "SPEED",    iconFn = makeCircleIcon  },
+		{ key = "luck", label = "LUCK",     iconFn = makeDiamondIcon },
+	}
+	local statRefs = {}
+	for i, s in ipairs(statDefs) do
+		local row = Instance.new("Frame")
+		row.Name = "Stat_" .. s.key
+		row.BackgroundTransparency = 1
+		row.BorderSizePixel = 0
+		row.Position = UDim2.fromOffset(0, CHARS_Y + 40 + (i - 1) * 28)
+		row.Size = UDim2.new(1, 0, 0, 22)
+		row.Parent = rightCol
+
+		local topLine = Instance.new("Frame")
+		topLine.BackgroundTransparency = 1
+		topLine.BorderSizePixel = 0
+		topLine.Size = UDim2.new(1, 0, 0, 14)
+		topLine.Parent = row
+
+		local statIcon = s.iconFn(topLine, 14, HOLO_EDGE)
+		statIcon.AnchorPoint = Vector2.new(0, 0.5)
+		statIcon.Position = UDim2.new(0, 0, 0.5, 0)
+
+		local statLbl = makeLabel(topLine, s.label, FONT_BODY, 10, COLOR_TEXT_DIM)
+		statLbl.Position = UDim2.fromOffset(20, 0)
+		statLbl.Size = UDim2.new(1, -80, 1, 0)
+
+		local statVal = makeLabel(topLine, "0", FONT_TITLE, 14, COLOR_TEXT, Enum.TextXAlignment.Right)
+		statVal.AnchorPoint = Vector2.new(1, 0.5)
+		statVal.Position = UDim2.new(1, 0, 0.5, 0)
+		statVal.Size = UDim2.fromOffset(50, 14)
+
+		local sTrack, sFill = makeHoloBar(row, UDim2.new(1, 0, 0, 5), 0)
+		sTrack.Position = UDim2.fromOffset(0, 16)
+
+		statRefs[s.key] = { value = statVal, fill = sFill }
+	end
+
+	-- ── Abilities section ──────────────────────────────────────────────
+	local ABIL_Y = CHARS_Y + 40 + 3 * 28 + 8
+
+	local abilHeader = Instance.new("Frame")
+	abilHeader.Name = "AbilHeader"
+	abilHeader.BackgroundTransparency = 1
+	abilHeader.BorderSizePixel = 0
+	abilHeader.Position = UDim2.fromOffset(0, ABIL_Y)
+	abilHeader.Size = UDim2.new(1, 0, 0, 18)
+	abilHeader.Parent = rightCol
+
+	local abilGlyph = makeSparkIcon(abilHeader, 13, HOLO_EDGE)
+	abilGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	abilGlyph.Position = UDim2.fromScale(0, 0.5)
+
+	local abilTitle = makeLabel(abilHeader, "ABILITIES", FONT_TITLE, 14, COLOR_TEXT)
+	abilTitle.Position = UDim2.fromOffset(22, 0)
+	abilTitle.Size = UDim2.fromOffset(200, 18)
+
+	local abilDivider = Instance.new("Frame")
+	abilDivider.BackgroundColor3 = HOLO_PANEL_BORDER
+	abilDivider.BackgroundTransparency = 0.3
+	abilDivider.BorderSizePixel = 0
+	abilDivider.Size = UDim2.new(1, 0, 0, 1)
+	abilDivider.Position = UDim2.fromOffset(0, ABIL_Y + 26)
+	abilDivider.Parent = rightCol
+
+	-- Three ability rows. Each row: 30×30 icon box (spark when
+	-- unlocked, lock when not) + name + description line.
+	local abilDefs = {
+		{ name = "Iron Grip",   desc = "+15% melee damage while boarding.",           raritySpan = 1 },
+		{ name = "Plunder",     desc = "Chance to double loot drops.",                raritySpan = 3 },
+		{ name = "Sea Veteran", desc = "Reduces stamina cost on long voyages.",       raritySpan = 4 },
+	}
+	local abilRefs = {}
+	local ABIL_ROW_H = 44
+	for i, a in ipairs(abilDefs) do
+		local row = Instance.new("Frame")
+		row.Name = "Ability_" .. i
+		row.BackgroundColor3 = HOLO_PANEL_FILL
+		row.BackgroundTransparency = 0.55
+		row.BorderSizePixel = 0
+		row.Position = UDim2.fromOffset(0, ABIL_Y + 36 + (i - 1) * (ABIL_ROW_H + 6))
+		row.Size = UDim2.new(1, 0, 0, ABIL_ROW_H)
+		row.Parent = rightCol
+		local rStroke = Instance.new("UIStroke")
+		rStroke.Color     = HOLO_PANEL_BORDER
+		rStroke.Thickness = 1
+		rStroke.Parent    = row
+		cornerLs(row, 4, HOLO_PANEL_LBRACKET, 1)
+		local brackets = {}
+		for _, child in row:GetChildren() do
+			if child.Name == "CornerL_H" or child.Name == "CornerL_V" then
+				table.insert(brackets, child)
+			end
+		end
+
+		local iconBox = Instance.new("Frame")
+		iconBox.Name = "IconBox"
+		iconBox.AnchorPoint = Vector2.new(0, 0.5)
+		iconBox.Position = UDim2.new(0, 8, 0.5, 0)
+		iconBox.Size = UDim2.fromOffset(30, 30)
+		iconBox.BackgroundColor3 = HOLO_PANEL_FILL
+		iconBox.BackgroundTransparency = 0.3
+		iconBox.BorderSizePixel = 0
+		iconBox.Parent = row
+		local iStroke = Instance.new("UIStroke")
+		iStroke.Color     = HOLO_PANEL_BORDER
+		iStroke.Thickness = 1
+		iStroke.Parent    = iconBox
+
+		local nameLbl = makeLabel(row, a.name, FONT_TITLE, 13, COLOR_TEXT)
+		nameLbl.Position = UDim2.fromOffset(46, 6)
+		nameLbl.Size = UDim2.new(1, -52, 0, 15)
+
+		local descLbl = makeLabel(row, a.desc, FONT_BODY, 10, COLOR_TEXT_DIM)
+		descLbl.Position = UDim2.fromOffset(46, 22)
+		descLbl.Size = UDim2.new(1, -52, 0, 14)
+		descLbl.TextWrapped = true
+
+		abilRefs[i] = {
+			row      = row,
+			stroke   = rStroke,
+			brackets = brackets,
+			iconBox  = iconBox,
+			iStroke  = iStroke,
+			name     = nameLbl,
+			desc     = descLbl,
+			glyph    = nil, -- populated per refresh
+			span     = a.raritySpan,
+		}
+	end
+
+	-- ── MANAGE button (pinned to the bottom of the column) ─────────────
+	local manageBtn = Instance.new("TextButton")
+	manageBtn.Name = "ManageButton"
+	manageBtn.AnchorPoint = Vector2.new(0, 1)
+	manageBtn.Position = UDim2.new(0, 0, 1, 0)
+	manageBtn.Size = UDim2.new(1, 0, 0, 42)
+	manageBtn.BackgroundColor3 = Color3.fromRGB(40, 90, 150)
+	manageBtn.BackgroundTransparency = 0.3
+	manageBtn.BorderSizePixel = 0
+	manageBtn.AutoButtonColor = true
+	manageBtn.Text = ""
+	manageBtn.Parent = rightCol
+	local mStroke = Instance.new("UIStroke")
+	mStroke.Color     = HOLO_EDGE
+	mStroke.Thickness = 1
+	mStroke.Parent    = manageBtn
+	cornerLs(manageBtn, 6, HOLO_EDGE, 1.5)
+
+	local manageDiamond = makeDiamondIcon(manageBtn, 14, COLOR_TEXT)
+	manageDiamond.AnchorPoint = Vector2.new(0.5, 0.5)
+	manageDiamond.Position = UDim2.new(0.5, -56, 0.5, 0)
+
+	local manageLabel = makeLabel(manageBtn, "MANAGE", FONT_TITLE, 14, COLOR_TEXT, Enum.TextXAlignment.Center)
+	manageLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	manageLabel.Position = UDim2.fromScale(0.5, 0.5)
+	manageLabel.Size = UDim2.fromOffset(120, 18)
+
+	local manageChev = makeChevronRight(manageBtn, 14, COLOR_TEXT)
+	manageChev.AnchorPoint = Vector2.new(0.5, 0.5)
+	manageChev.Position = UDim2.new(0.5, 56, 0.5, 0)
+
+	manageBtn.MouseButton1Click:Connect(function()
+		if buildEquipmentPage and currentSelectedMerc then
+			buildEquipmentPage(currentSelectedMerc, currentMercNames)
+		end
+	end)
+
+	-- Drives the entire right column on card selection: level badge,
+	-- XP numbers + bar, stat values + fills, ability lock states.
+	refreshRight = function(mercName)
+		local theme = MERC_THEMES[mercName] or DEFAULT_THEME
+
+		lvlNum.Text = tostring(theme.level or 1)
+
+		local xp, xpMax = theme.xp or 0, theme.xpMax or 100
+		xpAmount.Text = string.format("%d / %d", xp, xpMax)
+		local pct = xpMax > 0 and math.clamp(xp / xpMax, 0, 1) or 0
+		xpFill.Size = UDim2.new(pct, 0, 1, 0)
+		xpHint.Text = string.format("%d XP to next level", math.max(0, xpMax - xp))
+
+		local s = theme.charStats or DEFAULT_THEME.charStats
+		for key, rec in pairs(statRefs) do
+			local v = s[key] or 0
+			rec.value.Text = tostring(v)
+			rec.fill.Size = UDim2.new(math.clamp(v / 100, 0, 1), 0, 1, 0)
+		end
+
+		-- Ability unlock depends on rarity (stars). Iron Grip always
+		-- unlocked (span 1), others gate at star >= span.
+		local rarity = theme.stars or 1
+		for i, rec in ipairs(abilRefs) do
+			local unlocked = rarity >= rec.span
+			local accent = unlocked and HOLO_EDGE or HOLO_PANEL_BORDER
+			rec.stroke.Color  = accent
+			rec.iStroke.Color = accent
+			for _, bracket in rec.brackets do
+				bracket.BackgroundColor3 = unlocked and HOLO_EDGE or HOLO_PANEL_LBRACKET
+			end
+			rec.name.TextColor3 = unlocked and COLOR_TEXT or COLOR_TEXT_DIM
+			rec.row.BackgroundTransparency = unlocked and 0.4 or 0.65
+
+			-- Swap the glyph in the icon box: spark when unlocked,
+			-- padlock when not.
+			if rec.glyph then rec.glyph:Destroy() end
+			if unlocked then
+				rec.glyph = makeSparkIcon(rec.iconBox, 15, HOLO_EDGE)
+			else
+				rec.glyph = makeLockIcon(rec.iconBox, 13, COLOR_TEXT_MUTE)
+			end
+			rec.glyph.AnchorPoint = Vector2.new(0.5, 0.5)
+			rec.glyph.Position = UDim2.fromScale(0.5, 0.5)
 		end
 	end
 
