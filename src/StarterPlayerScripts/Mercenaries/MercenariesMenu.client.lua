@@ -1430,7 +1430,10 @@ buildPage = function(mercNames)
 	leftCol.BorderSizePixel = 0
 	leftCol.Position = UDim2.fromOffset(24, 70)
 	leftCol.Size = UDim2.new(0, 300, 1, -(70 + 24))
-	leftCol.ZIndex = 3
+	-- Keep the panel background behind its own content. When the parent frame
+	-- ZIndex is higher than descendants, Roblox can render the fill over labels
+	-- and buttons in Global ZIndexBehavior setups.
+	leftCol.ZIndex = 1
 	leftCol.Parent = scaleWrap
 
 	local leftStroke = Instance.new("UIStroke")
@@ -1937,7 +1940,8 @@ buildPage = function(mercNames)
 	rightCol.BorderSizePixel = 0
 	rightCol.Position = UDim2.new(1, -24, 0, 70)
 	rightCol.Size = UDim2.new(0, 320, 1, -(70 + 24))
-	rightCol.ZIndex = 3
+	-- Same layering rule as LeftColumn: panel chrome stays below inner content.
+	rightCol.ZIndex = 1
 	rightCol.Parent = scaleWrap
 
 	local rightStroke = Instance.new("UIStroke")
