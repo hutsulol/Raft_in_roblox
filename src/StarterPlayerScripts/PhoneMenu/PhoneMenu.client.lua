@@ -1073,8 +1073,11 @@ local function buildMenu()
 	-- holoCover siblings created below sit on top of it.
 	local backdrop = buildHoloBackground(screenGui)
 
-	-- Responsive artboard: the Claude Design mockup is authored at the
-	-- 960x600 canvas. Make `scaleWrap` a *fixed* 960x600 frame centred
+	-- Responsive artboard: keep a fixed reference canvas and scale it to
+	-- fit the player viewport. A slightly smaller reference frame than
+	-- before makes cards/rows read larger on common desktop resolutions
+	-- while still remaining fully adaptive on smaller windows.
+	-- Make `scaleWrap` a fixed frame centred
 	-- on screen and drive its UIScale so the whole artboard grows or
 	-- shrinks to match the viewport. Because UIScale multiplies the
 	-- scale *and* offset parts of children's UDim2s, a screen-sized
@@ -1084,7 +1087,7 @@ local function buildMenu()
 	-- on the artboard's own 960 mark, which the UIScale then maps
 	-- correctly back onto the player's screen.
 	local topInset = GuiService:GetGuiInset().Y
-	local REFERENCE_W, REFERENCE_H = 960, 600
+	local REFERENCE_W, REFERENCE_H = 860, 540
 
 	local scaleWrap = Instance.new("Frame")
 	scaleWrap.Name = "ScaleWrap"
@@ -1143,14 +1146,28 @@ local function buildMenu()
 	menuRootBasePosition = root.Position
 	menuRootScale        = rootScale
 
+	-- Layout metrics used by all main cards so the menu can be tuned in one
+	-- place. Wider columns + taller right cards reduce dead space and keep
+	-- the composition dense (closer to the target Photoshop mockup).
+	local COLUMN_W      = 320
+	local LEVEL_Y       = 46
+	local LEVEL_H       = 88
+	local COLUMN_GAP    = 14
+	local STATS_Y       = LEVEL_Y + LEVEL_H + COLUMN_GAP
+	local STATS_H       = 220
+	local TASKS_Y       = 12
+	local TASKS_H       = 336
+	local SIDE_Y        = TASKS_Y + TASKS_H + COLUMN_GAP
+	local SIDE_H        = 146
+
 	-- ── Center: character viewport ───────────────────────────────────────
 	-- Plain ViewportFrame — no pedestal / rim rings / corner brackets.
 	-- The character reads cleanest against the raw holo backdrop.
 	viewportFrame = Instance.new("ViewportFrame")
 	viewportFrame.Name = "CharacterViewport"
 	viewportFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-	viewportFrame.Position = UDim2.fromScale(0.5, 0.45)
-	viewportFrame.Size = UDim2.fromOffset(360, 500)
+	viewportFrame.Position = UDim2.fromScale(0.5, 0.46)
+	viewportFrame.Size = UDim2.fromOffset(420, 560)
 	viewportFrame.BackgroundTransparency = 1
 	viewportFrame.BorderSizePixel = 0
 	viewportFrame.LightColor = Color3.fromRGB(255, 255, 255)
@@ -1180,9 +1197,9 @@ local function buildMenu()
 	-- (logo / menu / chat at top-left) never sit behind the LevelCard.
 	local levelPanel = makePanel("LevelPanel", root)
 	levelPanel.AnchorPoint = Vector2.new(0, 0)
-	levelPanel.Position = UDim2.fromOffset(0, 50)
-	levelPanel.Size = UDim2.fromOffset(280, 76)
-	padding(levelPanel, 10)
+	levelPanel.Position = UDim2.fromOffset(0, LEVEL_Y)
+	levelPanel.Size = UDim2.fromOffset(COLUMN_W, LEVEL_H)
+	padding(levelPanel, 12)
 	cornerLs(levelPanel, 10, HOLO_PANEL_LBRACKET, 1.5)
 	table.insert(motesOccludeList, levelPanel)
 
@@ -1194,7 +1211,7 @@ local function buildMenu()
 	lvlBadge.Name = "LevelBadge"
 	lvlBadge.BackgroundColor3 = HOLO_DEEP
 	lvlBadge.BorderSizePixel = 0
-	lvlBadge.Size = UDim2.fromOffset(50, 50)
+	lvlBadge.Size = UDim2.fromOffset(58, 58)
 	lvlBadge.Position = UDim2.fromOffset(0, 0)
 	lvlBadge.Parent = levelPanel
 	local lvlStroke = Instance.new("UIStroke")
@@ -1211,13 +1228,13 @@ local function buildMenu()
 	lvlGrad.Parent = lvlBadge
 	cornerLs(lvlBadge, 5, HOLO_EDGE, 1.5)
 
-	local lvlTag = makeLabel(lvlBadge, "LVL", FONT_TITLE, 10, HOLO_EDGE, Enum.TextXAlignment.Center)
-	lvlTag.Size = UDim2.new(1, 0, 0, 12)
+	local lvlTag = makeLabel(lvlBadge, "LVL", FONT_TITLE, 11, HOLO_EDGE, Enum.TextXAlignment.Center)
+	lvlTag.Size = UDim2.new(1, 0, 0, 14)
 	lvlTag.Position = UDim2.fromOffset(0, 6)
 
-	local lvlNum = makeLabel(lvlBadge, "1", FONT_TITLE, 22, COLOR_TEXT, Enum.TextXAlignment.Center)
-	lvlNum.Size = UDim2.new(1, 0, 0, 26)
-	lvlNum.Position = UDim2.fromOffset(0, 18)
+	local lvlNum = makeLabel(lvlBadge, "1", FONT_TITLE, 26, COLOR_TEXT, Enum.TextXAlignment.Center)
+	lvlNum.Size = UDim2.new(1, 0, 0, 30)
+	lvlNum.Position = UDim2.fromOffset(0, 20)
 	levelBadgeLabel = lvlNum
 
 	-- Display name in the display weight, then the "Upgrade points:"
@@ -1227,29 +1244,29 @@ local function buildMenu()
 	local nameLbl = makeLabel(levelPanel,
 		player.DisplayName ~= "" and player.DisplayName or player.Name,
 		FONT_TITLE, 22, COLOR_TEXT)
-	nameLbl.Position = UDim2.fromOffset(60, 0)
-	nameLbl.Size = UDim2.new(1, -60, 0, 28)
+	nameLbl.Position = UDim2.fromOffset(70, 0)
+	nameLbl.Size = UDim2.new(1, -70, 0, 32)
 
-	local sparkIcon = makeSparkIcon(levelPanel, 11, COLOR_GOLD)
+	local sparkIcon = makeSparkIcon(levelPanel, 13, COLOR_GOLD)
 	sparkIcon.AnchorPoint = Vector2.new(0, 0.5)
-	sparkIcon.Position = UDim2.fromOffset(60, 41)
+	sparkIcon.Position = UDim2.fromOffset(70, 48)
 
-	local upgradeLbl = makeLabel(levelPanel, "Upgrade points:", FONT_BODY, 12, COLOR_TEXT_DIM)
-	upgradeLbl.Position = UDim2.fromOffset(76, 32)
-	upgradeLbl.Size = UDim2.fromOffset(110, 18)
+	local upgradeLbl = makeLabel(levelPanel, "Upgrade points:", FONT_BODY, 14, COLOR_TEXT_DIM)
+	upgradeLbl.Position = UDim2.fromOffset(88, 38)
+	upgradeLbl.Size = UDim2.fromOffset(136, 20)
 
-	local pointsLbl = makeLabel(levelPanel, "0", FONT_TITLE, 13, COLOR_GOLD)
+	local pointsLbl = makeLabel(levelPanel, "0", FONT_TITLE, 16, COLOR_GOLD)
 	pointsLbl.TextXAlignment = Enum.TextXAlignment.Left
-	pointsLbl.Position = UDim2.fromOffset(188, 32)
-	pointsLbl.Size = UDim2.fromOffset(40, 18)
+	pointsLbl.Position = UDim2.fromOffset(228, 38)
+	pointsLbl.Size = UDim2.fromOffset(56, 20)
 	upgradePointsLabel = pointsLbl
 
 	-- ── Left column: player stats card ───────────────────────────────
 	-- Stacked under LevelPanel: y = 50 (top) + 76 (LevelPanel) + 14 (gap).
 	local statsPanel = makePanel("StatsPanel", root)
 	statsPanel.AnchorPoint = Vector2.new(0, 0)
-	statsPanel.Position = UDim2.fromOffset(0, 140)
-	statsPanel.Size = UDim2.fromOffset(280, 180)
+	statsPanel.Position = UDim2.fromOffset(0, STATS_Y)
+	statsPanel.Size = UDim2.fromOffset(COLUMN_W, STATS_H)
 	padding(statsPanel, 14)
 	cornerLs(statsPanel, 10, HOLO_PANEL_LBRACKET, 1.5)
 	table.insert(motesOccludeList, statsPanel)
@@ -1289,7 +1306,7 @@ local function buildMenu()
 	local list = Instance.new("UIListLayout")
 	list.FillDirection = Enum.FillDirection.Vertical
 	list.SortOrder = Enum.SortOrder.LayoutOrder
-	list.Padding = UDim.new(0, 12)
+	list.Padding = UDim.new(0, 14)
 	list.Parent = rowHolder
 
 	-- Stat row: 22×22 icon (left) + [label / LV line + segmented holo
@@ -1307,37 +1324,37 @@ local function buildMenu()
 		local row = Instance.new("Frame")
 		row.Name = "StatRow_" .. s.key
 		row.BackgroundTransparency = 1
-		row.Size = UDim2.new(1, 0, 0, 32)
+		row.Size = UDim2.new(1, 0, 0, 38)
 		row.LayoutOrder = i
 		row.Parent = rowHolder
 
-		local rowIcon = imageIcon(row, 22, s.iconId)
+		local rowIcon = imageIcon(row, 24, s.iconId)
 		rowIcon.AnchorPoint = Vector2.new(0, 0.5)
 		rowIcon.Position = UDim2.fromScale(0, 0.5)
 
 		local content = Instance.new("Frame")
 		content.Name = "Content"
 		content.BackgroundTransparency = 1
-		content.Position = UDim2.fromOffset(32, 0)
-		content.Size = UDim2.new(1, -64, 1, 0)
+		content.Position = UDim2.fromOffset(36, 0)
+		content.Size = UDim2.new(1, -70, 1, 0)
 		content.Parent = row
 
-		local labelLine = makeLabel(content, s.label, FONT_BODY, 11, COLOR_TEXT_DIM)
+		local labelLine = makeLabel(content, s.label, FONT_BODY, 13, COLOR_TEXT_DIM)
 		labelLine.Position = UDim2.fromOffset(0, 0)
 		labelLine.Size = UDim2.new(0.6, 0, 0, 14)
 
-		local lvlLabel = makeLabel(content, "LV 0", FONT_TITLE, 12, COLOR_TEXT, Enum.TextXAlignment.Right)
+		local lvlLabel = makeLabel(content, "LV 0", FONT_TITLE, 14, COLOR_TEXT, Enum.TextXAlignment.Right)
 		lvlLabel.Position = UDim2.new(0.6, 0, 0, 0)
 		lvlLabel.Size = UDim2.new(0.4, 0, 0, 14)
 
-		local track, fill = makeHoloBar(content, UDim2.new(1, 0, 0, 6), 10)
-		track.Position = UDim2.fromOffset(0, 20)
+		local track, fill = makeHoloBar(content, UDim2.new(1, 0, 0, 8), 12)
+		track.Position = UDim2.fromOffset(0, 24)
 
 		local btn = Instance.new("TextButton")
 		btn.Name = s.key .. "Upgrade"
 		btn.AnchorPoint = Vector2.new(1, 0.5)
 		btn.Position = UDim2.new(1, 0, 0.5, 0)
-		btn.Size = UDim2.fromOffset(22, 22)
+		btn.Size = UDim2.fromOffset(24, 24)
 		btn.BackgroundColor3 = HOLO_PANEL_FILL
 		btn.BackgroundTransparency = 0.28
 		btn.BorderSizePixel = 0
@@ -1350,7 +1367,7 @@ local function buildMenu()
 		bStroke.Thickness = 1
 		bStroke.Parent    = btn
 
-		local plus = makeSparkIcon(btn, 12, COLOR_TEXT_DIM)
+		local plus = makeSparkIcon(btn, 13, COLOR_TEXT_DIM)
 		plus.AnchorPoint = Vector2.new(0.5, 0.5)
 		plus.Position = UDim2.fromScale(0.5, 0.5)
 
@@ -1370,8 +1387,8 @@ local function buildMenu()
 	-- two DEV buttons muted underneath.
 	local tasksPanel = makePanel("TasksPanel", root)
 	tasksPanel.AnchorPoint = Vector2.new(1, 0)
-	tasksPanel.Position = UDim2.new(1, 0, 0, 14)
-	tasksPanel.Size = UDim2.fromOffset(280, 292)
+	tasksPanel.Position = UDim2.new(1, 0, 0, TASKS_Y)
+	tasksPanel.Size = UDim2.fromOffset(COLUMN_W, TASKS_H)
 	padding(tasksPanel, 14)
 	cornerLs(tasksPanel, 10, HOLO_PANEL_LBRACKET, 1.5)
 	table.insert(motesOccludeList, tasksPanel)
@@ -1418,7 +1435,7 @@ local function buildMenu()
 	tasksHolder.Name = "TasksHolder"
 	tasksHolder.BackgroundTransparency = 1
 	tasksHolder.Position = UDim2.fromOffset(0, 40)
-	tasksHolder.Size = UDim2.new(1, 0, 0, 82)
+	tasksHolder.Size = UDim2.new(1, 0, 0, 112)
 	tasksHolder.Parent = tasksPanel
 
 	local tList = Instance.new("UIListLayout")
@@ -1429,14 +1446,14 @@ local function buildMenu()
 	-- Shown in place of the quest rows once every quest is complete.
 	local allDoneLbl = makeLabel(tasksPanel, "All tasks completed!", FONT_TITLE, 15, HOLO_EDGE, Enum.TextXAlignment.Center)
 	allDoneLbl.Position = UDim2.fromOffset(0, 40)
-	allDoneLbl.Size = UDim2.new(1, 0, 0, 82)
+	allDoneLbl.Size = UDim2.new(1, 0, 0, 112)
 	allDoneLbl.Visible = false
 	dailyAllCompleteLabel = allDoneLbl
 
 	-- Reward line: "REWARD" tag + xp chip + iron chip, all on one row.
 	local rewardRow = Instance.new("Frame")
 	rewardRow.BackgroundTransparency = 1
-	rewardRow.Position = UDim2.fromOffset(0, 132)
+	rewardRow.Position = UDim2.fromOffset(0, 164)
 	rewardRow.Size = UDim2.new(1, 0, 0, 18)
 	rewardRow.Parent = tasksPanel
 
@@ -1456,7 +1473,7 @@ local function buildMenu()
 	claimBtn.BackgroundColor3 = Color3.fromRGB(22, 62, 110)
 	claimBtn.BackgroundTransparency = 0.6
 	claimBtn.BorderSizePixel = 0
-	claimBtn.Position = UDim2.fromOffset(0, 160)
+	claimBtn.Position = UDim2.fromOffset(0, 196)
 	claimBtn.Size = UDim2.new(1, 0, 0, 34)
 	claimBtn.Font = FONT_TITLE
 	claimBtn.TextSize = 14
@@ -1477,7 +1494,7 @@ local function buildMenu()
 	resetBtn.BackgroundColor3 = Color3.fromRGB(90, 30, 30)
 	resetBtn.BackgroundTransparency = 0.3
 	resetBtn.BorderSizePixel = 0
-	resetBtn.Position = UDim2.fromOffset(0, 202)
+	resetBtn.Position = UDim2.fromOffset(0, 242)
 	resetBtn.Size = UDim2.new(1, 0, 0, 22)
 	resetBtn.Font = FONT_BODY
 	resetBtn.TextSize = 12
@@ -1496,7 +1513,7 @@ local function buildMenu()
 	xpBtn.BackgroundColor3 = Color3.fromRGB(30, 80, 40)
 	xpBtn.BackgroundTransparency = 0.3
 	xpBtn.BorderSizePixel = 0
-	xpBtn.Position = UDim2.fromOffset(0, 232)
+	xpBtn.Position = UDim2.fromOffset(0, 276)
 	xpBtn.Size = UDim2.new(1, 0, 0, 22)
 	xpBtn.Font = FONT_BODY
 	xpBtn.TextSize = 12
@@ -1525,8 +1542,8 @@ local function buildMenu()
 	-- right edge with AnchorPoint (1, 0) so it mirrors the left column.
 	local sidePanel = makePanel("SidePanel", root)
 	sidePanel.AnchorPoint = Vector2.new(1, 0)
-	sidePanel.Position = UDim2.new(1, 0, 0, 320)
-	sidePanel.Size = UDim2.fromOffset(280, 122)
+	sidePanel.Position = UDim2.new(1, 0, 0, SIDE_Y)
+	sidePanel.Size = UDim2.fromOffset(COLUMN_W, SIDE_H)
 	padding(sidePanel, 14)
 	cornerLs(sidePanel, 10, HOLO_PANEL_LBRACKET, 1.5)
 	table.insert(motesOccludeList, sidePanel)
@@ -1563,7 +1580,7 @@ local function buildMenu()
 	local btnList = Instance.new("UIListLayout")
 	btnList.FillDirection = Enum.FillDirection.Vertical
 	btnList.SortOrder = Enum.SortOrder.LayoutOrder
-	btnList.Padding = UDim.new(0, 8)
+	btnList.Padding = UDim.new(0, 10)
 	btnList.Parent = btnHolder
 
 	local function makeLoadoutButton(label, iconId, order)
@@ -1572,7 +1589,7 @@ local function buildMenu()
 		b.BackgroundColor3 = Color3.fromRGB(10, 24, 44)
 		b.BackgroundTransparency = 0.5
 		b.BorderSizePixel = 0
-		b.Size = UDim2.new(1, 0, 0, 34)
+		b.Size = UDim2.new(1, 0, 0, 40)
 		b.Font = FONT_TITLE
 		b.TextSize = 14
 		b.TextColor3 = COLOR_TEXT
@@ -1617,42 +1634,42 @@ local function buildMenu()
 	local xpPanel = makePanel("XPPanel", root)
 	xpPanel.AnchorPoint = Vector2.new(0.5, 1)
 	xpPanel.Position = UDim2.new(0.5, 0, 1, -24)
-	xpPanel.Size = UDim2.fromOffset(460, 48)
+	xpPanel.Size = UDim2.fromOffset(560, 56)
 	local xpPad = Instance.new("UIPadding")
-	xpPad.PaddingTop    = UDim.new(0, 8)
-	xpPad.PaddingBottom = UDim.new(0, 8)
-	xpPad.PaddingLeft   = UDim.new(0, 14)
-	xpPad.PaddingRight  = UDim.new(0, 14)
+	xpPad.PaddingTop    = UDim.new(0, 10)
+	xpPad.PaddingBottom = UDim.new(0, 10)
+	xpPad.PaddingLeft   = UDim.new(0, 16)
+	xpPad.PaddingRight  = UDim.new(0, 16)
 	xpPad.Parent = xpPanel
 	cornerLs(xpPanel, 10, HOLO_PANEL_LBRACKET, 1.5)
 	table.insert(motesOccludeList, xpPanel)
 
 	-- No spark icon — "XP" sits at the left edge of the bar on its own.
-	local xpTag = makeLabel(xpPanel, "XP", FONT_TITLE, 15, HOLO_EDGE)
+	local xpTag = makeLabel(xpPanel, "XP", FONT_TITLE, 17, HOLO_EDGE)
 	xpTag.Position = UDim2.fromOffset(0, 0)
 	xpTag.Size = UDim2.new(0, 28, 1, 0)
 
-	local xpAmount = makeLabel(xpPanel, "0 / 50", FONT_BODY, 13, COLOR_TEXT_DIM)
-	xpAmount.Position = UDim2.fromOffset(34, 0)
-	xpAmount.Size = UDim2.new(0, 62, 1, 0)
+	local xpAmount = makeLabel(xpPanel, "0 / 50", FONT_BODY, 14, COLOR_TEXT_DIM)
+	xpAmount.Position = UDim2.fromOffset(40, 0)
+	xpAmount.Size = UDim2.new(0, 74, 1, 0)
 	xpAmountLabel = xpAmount
 
 	-- Holo bar fills the middle. Reserve 52 px on the right for the Lv
 	-- badge (40 + 12 gap), 102 on the left for the tag + amount cluster.
-	local xpTrack, xpFill = makeHoloBar(xpPanel, UDim2.new(1, -154, 0, 10), 10)
+	local xpTrack, xpFill = makeHoloBar(xpPanel, UDim2.new(1, -174, 0, 12), 12)
 	xpTrack.AnchorPoint = Vector2.new(0, 0.5)
-	xpTrack.Position = UDim2.new(0, 102, 0.5, 0)
+	xpTrack.Position = UDim2.new(0, 116, 0.5, 0)
 	xpFillFrame = xpFill
 
 	-- Lv badge on the right. RichText so we can dim the "Lv" prefix
 	-- and gold-accent the number in a single label.
 	local xpLv = makeLabel(xpPanel,
 		'Lv <font color="rgb(230,190,100)">0</font>',
-		FONT_TITLE, 13, COLOR_TEXT)
+		FONT_TITLE, 15, COLOR_TEXT)
 	xpLv.RichText = true
 	xpLv.AnchorPoint = Vector2.new(1, 0.5)
 	xpLv.Position = UDim2.new(1, 0, 0.5, 0)
-	xpLv.Size = UDim2.fromOffset(46, 16)
+	xpLv.Size = UDim2.fromOffset(52, 18)
 	xpLv.TextXAlignment = Enum.TextXAlignment.Right
 	xpLevelLabel = xpLv
 
