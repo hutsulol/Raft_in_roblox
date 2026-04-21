@@ -13,6 +13,12 @@ local GuiService        = game:GetService("GuiService")
 
 local player = Players.LocalPlayer
 
+-- Handling sub-page module (placeholder for now — sibling ModuleScript
+-- that this file hands the "HANDLING" pill press off to). Steps 2-8
+-- will fill it in with the real layout; for now it's a blank holo
+-- page with a BACK button routed via ctx.onBack.
+local HandlingPage = require(script.Parent:WaitForChild("HandlingPage"))
+
 -- ─── Wait for SpawnMercenary remote ─────────────────────────────────────
 local spawnEvent = ReplicatedStorage:WaitForChild("SpawnMercenary", 30)
 
@@ -1881,13 +1887,35 @@ buildPage = function(mercNames)
 	hChev.ZIndex = 11
 
 	handlingBtn.MouseButton1Click:Connect(function()
-		if spawnEvent and currentSelectedMerc then
-			spawnEvent:FireServer(currentSelectedMerc)
-		end
-		closePage()
-		if typeof(_G.ClosePhoneMenu) == "function" then
-			_G.ClosePhoneMenu()
-		end
+		if not currentSelectedMerc then return end
+		local mercName  = currentSelectedMerc
+		local mercNames = currentMercNames
+
+		-- Tear down our roster page (but keep phone panels hidden — we
+		-- navigate forward into the Handling screen, not close out to
+		-- the PhoneMenu).
+		detachCachedViewports()
+		if page then page:Destroy(); page = nil end
+		clearRosterConns()
+
+		HandlingPage.build({
+			screenGui             = screenGui,
+			mercName              = mercName,
+			mercNames             = mercNames,
+			theme                 = MERC_THEMES[mercName] or DEFAULT_THEME,
+			hidePhonePanels       = hidePhonePanels,
+			detachCachedViewports = detachCachedViewports,
+			buildMercViewport     = buildMercViewport,
+			onBack                = function()
+				HandlingPage.close()
+				-- openMercenariesMenu is declared at the bottom of this
+				-- file, so it isn't in scope here — route through the
+				-- _G hook it registers at module load.
+				if typeof(_G.OpenMercenariesMenu) == "function" then
+					_G.OpenMercenariesMenu()
+				end
+			end,
+		})
 	end)
 
 	-- Drives the centre column when a card is clicked. Swaps meta bar
