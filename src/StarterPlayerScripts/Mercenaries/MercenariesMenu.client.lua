@@ -300,6 +300,78 @@ local function buildHoloBackground(parent)
 	return root
 end
 
+-- ─── Hand-drawn icons ───────────────────────────────────────────────────
+-- Drop-in geometry helpers matching the style used in PhoneMenu — each
+-- takes (parent, size, color), builds itself inside a square container
+-- and returns that container so the caller can reposition it.
+
+local function makeBackIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "BackIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.14))
+	local legLen = size * 0.68
+
+	local top = Instance.new("Frame")
+	top.AnchorPoint = Vector2.new(0, 0.5)
+	top.Position = UDim2.fromScale(0.1, 0.35)
+	top.Size = UDim2.fromOffset(legLen, thick)
+	top.BackgroundColor3 = color
+	top.BorderSizePixel = 0
+	top.Rotation = -45
+	top.Parent = c
+
+	local bot = Instance.new("Frame")
+	bot.AnchorPoint = Vector2.new(0, 0.5)
+	bot.Position = UDim2.fromScale(0.1, 0.65)
+	bot.Size = UDim2.fromOffset(legLen, thick)
+	bot.BackgroundColor3 = color
+	bot.BorderSizePixel = 0
+	bot.Rotation = 45
+	bot.Parent = c
+
+	return c
+end
+
+local function makeGemIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "GemIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	-- Outer rotated-square outline.
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0.5)
+	body.Position = UDim2.fromScale(0.5, 0.5)
+	body.Size = UDim2.fromOffset(size * 0.7, size * 0.7)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.Rotation = 45
+	body.Parent = c
+	local s = Instance.new("UIStroke")
+	s.Color     = color
+	s.Thickness = 1.4
+	s.Parent    = body
+
+	-- Short horizontal "table" facet line across the upper third so
+	-- the silhouette reads as a cut gem, not just a plain diamond.
+	local facet = Instance.new("Frame")
+	facet.AnchorPoint = Vector2.new(0.5, 0.5)
+	facet.Position = UDim2.fromScale(0.5, 0.33)
+	facet.Size = UDim2.fromOffset(size * 0.5, math.max(1, math.floor(size * 0.08)))
+	facet.BackgroundColor3 = color
+	facet.BorderSizePixel = 0
+	facet.Parent = c
+
+	return c
+end
+
 -- ─── State ──────────────────────────────────────────────────────────────
 local page = nil
 local hiddenPanels = {}    -- panels hidden while mercenaries page is open
@@ -861,33 +933,105 @@ buildPage = function(mercNames)
 		end
 	end)
 
-	-- Placeholder back button (Step 1 only — Step 2 will swap this
-	-- for the fully-styled top bar with centred title + currency).
-	-- Anchored at the top-left of the screen, NOT the artboard, so
-	-- it's always reachable regardless of responsive scale.
+	-- ── Top bar ────────────────────────────────────────────────────────
+	-- Matches the MercenaryPage.jsx header: translucent holo BACK button
+	-- on the left, centred uppercase MERCENARIES title, gem currency
+	-- chip on the right. Lives inside scaleWrap so it resizes with the
+	-- rest of the artboard on large monitors.
+	local topBar = Instance.new("Frame")
+	topBar.Name = "TopBar"
+	topBar.BackgroundTransparency = 1
+	topBar.BorderSizePixel = 0
+	topBar.Position = UDim2.fromOffset(16, 16)
+	topBar.Size = UDim2.new(1, -32, 0, 34)
+	topBar.ZIndex = 5
+	topBar.Parent = scaleWrap
+
+	-- Back button: holo stroke + hand-drawn back-arrow glyph + uppercase
+	-- letter-spaced label.
 	local backBtn = Instance.new("TextButton")
 	backBtn.Name = "BackButton"
+	backBtn.AnchorPoint = Vector2.new(0, 0)
+	backBtn.Position = UDim2.fromOffset(0, 0)
+	backBtn.Size = UDim2.fromOffset(88, 34)
 	backBtn.BackgroundColor3 = HOLO_PANEL_FILL
 	backBtn.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	backBtn.BorderSizePixel = 0
 	backBtn.AutoButtonColor = true
-	backBtn.AnchorPoint = Vector2.new(0, 0)
-	backBtn.Position = UDim2.new(0, 20, 0, topInset + 14)
-	backBtn.Size = UDim2.fromOffset(84, 34)
-	backBtn.Font = FONT_TITLE
-	backBtn.TextSize = 13
-	backBtn.TextColor3 = COLOR_TEXT
-	backBtn.Text = "← BACK"
-	backBtn.ZIndex = 60
-	backBtn.Parent = page
-	local bStroke = Instance.new("UIStroke")
-	bStroke.Color     = HOLO_PANEL_BORDER
-	bStroke.Thickness = 1
-	bStroke.Parent    = backBtn
+	backBtn.Text = "" -- label drawn as a child for precise positioning
+	backBtn.Parent = topBar
+	local backStroke = Instance.new("UIStroke")
+	backStroke.Color     = HOLO_PANEL_BORDER
+	backStroke.Thickness = 1
+	backStroke.Parent    = backBtn
+
+	local backGlyph = makeBackIcon(backBtn, 14, COLOR_TEXT)
+	backGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	backGlyph.Position = UDim2.new(0, 12, 0.5, 0)
+
+	local backLabel = Instance.new("TextLabel")
+	backLabel.BackgroundTransparency = 1
+	backLabel.BorderSizePixel = 0
+	backLabel.Position = UDim2.fromOffset(30, 0)
+	backLabel.Size = UDim2.new(1, -34, 1, 0)
+	backLabel.Font = FONT_TITLE
+	backLabel.TextSize = 13
+	backLabel.TextColor3 = COLOR_TEXT
+	backLabel.TextXAlignment = Enum.TextXAlignment.Left
+	backLabel.Text = "BACK"
+	backLabel.Parent = backBtn
 
 	backBtn.MouseButton1Click:Connect(function()
 		closePage()
 	end)
+
+	-- Centred uppercase MERCENARIES title in holo-edge cyan.
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.BackgroundTransparency = 1
+	title.BorderSizePixel = 0
+	title.AnchorPoint = Vector2.new(0.5, 0.5)
+	title.Position = UDim2.fromScale(0.5, 0.5)
+	title.Size = UDim2.fromOffset(240, 22)
+	title.Font = FONT_TITLE
+	title.TextSize = 18
+	title.TextColor3 = HOLO_EDGE
+	title.Text = "MERCENARIES"
+	title.Parent = topBar
+
+	-- Gem currency chip. Static "0" placeholder for now — wire to a
+	-- real player attribute when Step 7 lands. Chip autosizes around
+	-- the gem + number so a 5-digit count still reads cleanly.
+	local chip = Instance.new("Frame")
+	chip.Name = "CurrencyChip"
+	chip.AnchorPoint = Vector2.new(1, 0.5)
+	chip.Position = UDim2.new(1, 0, 0.5, 0)
+	chip.Size = UDim2.fromOffset(96, 28)
+	chip.BackgroundColor3 = HOLO_PANEL_FILL
+	chip.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	chip.BorderSizePixel = 0
+	chip.Parent = topBar
+	local chipStroke = Instance.new("UIStroke")
+	chipStroke.Color     = HOLO_PANEL_BORDER
+	chipStroke.Thickness = 1
+	chipStroke.Parent    = chip
+
+	local gemGlyph = makeGemIcon(chip, 13, COLOR_GOLD)
+	gemGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	gemGlyph.Position = UDim2.new(0, 10, 0.5, 0)
+
+	local chipLabel = Instance.new("TextLabel")
+	chipLabel.Name = "CurrencyLabel"
+	chipLabel.BackgroundTransparency = 1
+	chipLabel.BorderSizePixel = 0
+	chipLabel.Position = UDim2.fromOffset(28, 0)
+	chipLabel.Size = UDim2.new(1, -36, 1, 0)
+	chipLabel.Font = FONT_TITLE
+	chipLabel.TextSize = 13
+	chipLabel.TextColor3 = COLOR_GOLD
+	chipLabel.TextXAlignment = Enum.TextXAlignment.Left
+	chipLabel.Text = "0"
+	chipLabel.Parent = chip
 end
 
 -- ─── Equipment data ─────────────────────────────────────────────────────
