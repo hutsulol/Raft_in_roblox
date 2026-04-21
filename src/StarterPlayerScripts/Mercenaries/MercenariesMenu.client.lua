@@ -8,6 +8,8 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
 local SoundService      = game:GetService("SoundService")
+local RunService        = game:GetService("RunService")
+local GuiService        = game:GetService("GuiService")
 
 local player = Players.LocalPlayer
 
@@ -35,10 +37,28 @@ local COLOR_PANEL_EDGE = Color3.fromRGB(80, 180, 255)
 local COLOR_ACCENT     = Color3.fromRGB(120, 210, 255)
 local COLOR_TEXT       = Color3.fromRGB(220, 240, 255)
 local COLOR_TEXT_DIM   = Color3.fromRGB(140, 180, 220)
+local COLOR_TEXT_MUTE  = Color3.fromRGB(100, 125, 155)
 local COLOR_BAR_BG     = Color3.fromRGB(15, 35, 70)
 local COLOR_BAR_FILL   = Color3.fromRGB(90, 200, 255)
 local FONT_TITLE       = Enum.Font.GothamBold
 local FONT_BODY        = Enum.Font.Gotham
+
+-- Holo palette ported from Claude Design primitives.jsx so the
+-- Mercenaries page shares the exact panel / backdrop language with
+-- the refreshed PhoneMenu.
+local HOLO_PANEL_FILL         = Color3.fromRGB(10, 24, 44)
+local HOLO_PANEL_TRANSPARENCY = 0.28
+local HOLO_PANEL_BORDER       = Color3.fromRGB(75, 100, 125)
+local HOLO_PANEL_LBRACKET     = Color3.fromRGB(118, 155, 190)
+local HOLO_EDGE               = Color3.fromRGB(190, 220, 245)
+local HOLO_DEEP               = Color3.fromRGB(40, 60, 90)
+local COLOR_GOLD              = Color3.fromRGB(230, 190, 100)
+-- Horizon stripe + motes stay on PhoneMenu's holo-cyan; only the base
+-- gradient underneath is swapped to near-black (see buildHoloBackground
+-- below) so the Mercenary page reads as a distinct darker section
+-- while the cyan accent language stays consistent with the rest of
+-- the menu system.
+local HORIZON                 = Color3.fromRGB(80, 140, 190)
 
 local IDLE_ANIMATION_ID = "rbxassetid://107139405334393"
 
@@ -48,6 +68,7 @@ local MERC_THEMES = {
 		accent      = Color3.fromRGB(255, 80, 80),
 		displayName = "Pirate",
 		stars       = 1,
+		role        = "Sailor · Melee",
 		-- Stats mirror src/Pirate_2/Combat.script ATTR so the card doesn't
 		-- lie to the player about how tough their merc actually is.
 		stats       = { hp = 250, damage = 18, mana = "20/min" },
@@ -58,6 +79,7 @@ local DEFAULT_THEME = {
 	accent      = COLOR_ACCENT,
 	displayName = "Unknown",
 	stars       = 1,
+	role        = "Crew",
 	stats       = { hp = 50, damage = 5, mana = "0/min" },
 }
 
@@ -75,6 +97,456 @@ local function stroke(parent, thickness, color)
 	s.Color           = color or COLOR_PANEL_EDGE
 	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	s.Parent          = parent
+end
+
+-- Panels registered here fade the drifting backdrop motes — same
+-- technique as PhoneMenu. Populated as panels are created in
+-- subsequent steps.
+local motesOccludeList = {}
+
+-- Four small L brackets tucked 1 px outside each corner of `parent`.
+-- Counter-offsets any UIPadding on the parent so the brackets always
+-- sit on the panel's outer edge, not on the padded content box.
+local function cornerLs(parent, size, color, thickness)
+	size      = size      or 10
+	color     = color     or HOLO_PANEL_LBRACKET
+	thickness = thickness or 1.5
+
+	local pad = parent:FindFirstChildOfClass("UIPadding")
+	local padL = (pad and pad.PaddingLeft.Offset)   or 0
+	local padR = (pad and pad.PaddingRight.Offset)  or 0
+	local padT = (pad and pad.PaddingTop.Offset)    or 0
+	local padB = (pad and pad.PaddingBottom.Offset) or 0
+
+	local function addL(ax, ay, ox, oy)
+		local effOx = (ax < 0.5) and (ox - padL) or (ox + padR)
+		local effOy = (ay < 0.5) and (oy - padT) or (oy + padB)
+
+		local horiz = Instance.new("Frame")
+		horiz.Name = "CornerL_H"
+		horiz.AnchorPoint = Vector2.new(ax, ay)
+		horiz.Position = UDim2.new(ax, effOx, ay, effOy)
+		horiz.Size = UDim2.fromOffset(size, thickness)
+		horiz.BackgroundColor3 = color
+		horiz.BorderSizePixel = 0
+		horiz.ZIndex = (parent.ZIndex or 1) + 1
+		horiz.Parent = parent
+
+		local vert = Instance.new("Frame")
+		vert.Name = "CornerL_V"
+		vert.AnchorPoint = Vector2.new(ax, ay)
+		vert.Position = UDim2.new(ax, effOx, ay, effOy)
+		vert.Size = UDim2.fromOffset(thickness, size)
+		vert.BackgroundColor3 = color
+		vert.BorderSizePixel = 0
+		vert.ZIndex = (parent.ZIndex or 1) + 1
+		vert.Parent = parent
+	end
+
+	addL(0, 0, -1, -1)
+	addL(1, 0,  1, -1)
+	addL(0, 1, -1,  1)
+	addL(1, 1,  1,  1)
+end
+
+-- Near-black holo backdrop — same five-layer composition as PhoneMenu
+-- (base vertical gradient → horizon glow band → top + bottom vignette
+-- → drifting motes with panel-occlusion fade). Only the base gradient
+-- differs: PhoneMenu uses a navy wash, the Mercenary page darkens all
+-- the way to near-black so the two screens are clearly distinct while
+-- the cyan horizon stripe and motes stay identical for continuity.
+local function buildHoloBackground(parent)
+	local BG_TOP   = Color3.fromRGB(2,  2,  6)    -- almost pure black
+	local BG_MID   = Color3.fromRGB(4,  6, 12)
+	local BG_BOT   = Color3.fromRGB(8, 12, 22)    -- barely-there navy hint
+	local MOTE_COL = Color3.fromRGB(180, 215, 240) -- cyan-white, matches PhoneMenu
+
+	local root = Instance.new("Frame")
+	root.Name = "Backdrop"
+	root.Size = UDim2.fromScale(1, 1)
+	root.BackgroundColor3 = BG_MID
+	root.BorderSizePixel = 0
+	root.ZIndex = 0
+	root.Parent = parent
+
+	local grad = Instance.new("UIGradient")
+	grad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0,    BG_TOP),
+		ColorSequenceKeypoint.new(0.45, BG_MID),
+		ColorSequenceKeypoint.new(1,    BG_BOT),
+	})
+	grad.Rotation = 90
+	grad.Parent = root
+
+	local function horizonLayer(scaleX, scaleY, bgTrans, centerTrans)
+		local h = Instance.new("Frame")
+		h.Name = "Horizon"
+		h.AnchorPoint = Vector2.new(0.5, 0.5)
+		h.Position = UDim2.fromScale(0.5, 0.42)
+		h.Size = UDim2.fromScale(scaleX, scaleY)
+		h.BackgroundColor3 = HORIZON
+		h.BackgroundTransparency = bgTrans
+		h.BorderSizePixel = 0
+		h.ZIndex = 1
+		h.Parent = root
+		local g = Instance.new("UIGradient")
+		g.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0,    1),
+			NumberSequenceKeypoint.new(0.28, 0.85),
+			NumberSequenceKeypoint.new(0.5,  centerTrans),
+			NumberSequenceKeypoint.new(0.72, 0.85),
+			NumberSequenceKeypoint.new(1,    1),
+		})
+		g.Rotation = 0
+		g.Parent = h
+	end
+	horizonLayer(1.6, 0.22, 0.90, 0.50)
+	horizonLayer(1.0, 0.08, 0.72, 0.15)
+
+	local function makeVignette(yPos, flip)
+		local v = Instance.new("Frame")
+		v.Name = flip and "VignetteBottom" or "VignetteTop"
+		v.Size = UDim2.new(1, 0, 0.38, 0)
+		v.Position = UDim2.fromScale(0, yPos)
+		v.BackgroundColor3 = Color3.new(0, 0, 0)
+		v.BorderSizePixel = 0
+		v.ZIndex = 2
+		v.Parent = root
+		local g = Instance.new("UIGradient")
+		g.Transparency = flip
+			and NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 1),
+				NumberSequenceKeypoint.new(1, 0.35),
+			})
+			or NumberSequence.new({
+				NumberSequenceKeypoint.new(0, 0.35),
+				NumberSequenceKeypoint.new(1, 1),
+			})
+		g.Rotation = 90
+		g.Parent = v
+	end
+	makeVignette(0,    false)
+	makeVignette(0.62, true)
+
+	local motes = Instance.new("Frame")
+	motes.Name = "Motes"
+	motes.Size = UDim2.fromScale(1, 1)
+	motes.BackgroundTransparency = 1
+	motes.BorderSizePixel = 0
+	motes.ClipsDescendants = true
+	motes.ZIndex = 3
+	motes.Parent = root
+
+	for _ = 1, 20 do
+		local sizePx     = math.random(12, 32) / 10
+		local duration   = 14 + math.random() * 14
+		local startDelay = math.random() * 18
+		local opacity    = 0.2 + math.random() * 0.6
+
+		local mote = Instance.new("Frame")
+		mote.Name = "Mote"
+		mote.AnchorPoint = Vector2.new(0.5, 0.5)
+		mote.Size = UDim2.fromOffset(sizePx, sizePx)
+		mote.BackgroundColor3 = MOTE_COL
+		mote.BackgroundTransparency = 1 - opacity
+		mote.BorderSizePixel = 0
+		mote.ZIndex = 4
+		mote.Parent = motes
+		mote:SetAttribute("BaseTransparency", 1 - opacity)
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(1, 0)
+		c.Parent = mote
+
+		task.spawn(function()
+			task.wait(startDelay)
+			while mote.Parent do
+				local startX = math.random()
+				local driftX = (math.random() - 0.5) * 0.06
+				mote.Position = UDim2.new(startX, 0, 1.05, 0)
+				local goal = UDim2.new(startX + driftX, 0, -0.05, 0)
+				local tw = TweenService:Create(mote,
+					TweenInfo.new(duration, Enum.EasingStyle.Linear),
+					{ Position = goal })
+				tw:Play()
+				tw.Completed:Wait()
+			end
+		end)
+	end
+
+	RunService.Heartbeat:Connect(function()
+		if #motesOccludeList == 0 then return end
+		for _, mote in motes:GetChildren() do
+			if mote:IsA("Frame") then
+				local base = mote:GetAttribute("BaseTransparency") or 0.5
+				local p = mote.AbsolutePosition
+				local s = mote.AbsoluteSize
+				local cx = p.X + s.X * 0.5
+				local cy = p.Y + s.Y * 0.5
+				local hidden = false
+				for _, panel in motesOccludeList do
+					if panel.Visible then
+						local pp = panel.AbsolutePosition
+						local ps = panel.AbsoluteSize
+						if cx >= pp.X and cx <= pp.X + ps.X
+							and cy >= pp.Y and cy <= pp.Y + ps.Y then
+							hidden = true
+							break
+						end
+					end
+				end
+				mote.BackgroundTransparency = hidden and 0.97 or base
+			end
+		end
+	end)
+
+	return root
+end
+
+-- ─── Text label helper ─────────────────────────────────────────────────
+local function makeLabel(parent, text, font, size, color, align)
+	local t = Instance.new("TextLabel")
+	t.BackgroundTransparency = 1
+	t.BorderSizePixel = 0
+	t.Font = font or FONT_BODY
+	t.TextSize = size or 14
+	t.TextColor3 = color or COLOR_TEXT
+	t.TextXAlignment = align or Enum.TextXAlignment.Left
+	t.TextYAlignment = Enum.TextYAlignment.Center
+	t.Text = text or ""
+	t.Parent = parent
+	return t
+end
+
+-- ─── Hand-drawn icons ───────────────────────────────────────────────────
+-- Drop-in geometry helpers matching the style used in PhoneMenu — each
+-- takes (parent, size, color), builds itself inside a square container
+-- and returns that container so the caller can reposition it.
+
+local function makeBackIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "BackIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.14))
+	local legLen = size * 0.68
+
+	local top = Instance.new("Frame")
+	top.AnchorPoint = Vector2.new(0, 0.5)
+	top.Position = UDim2.fromScale(0.1, 0.35)
+	top.Size = UDim2.fromOffset(legLen, thick)
+	top.BackgroundColor3 = color
+	top.BorderSizePixel = 0
+	top.Rotation = -45
+	top.Parent = c
+
+	local bot = Instance.new("Frame")
+	bot.AnchorPoint = Vector2.new(0, 0.5)
+	bot.Position = UDim2.fromScale(0.1, 0.65)
+	bot.Size = UDim2.fromOffset(legLen, thick)
+	bot.BackgroundColor3 = color
+	bot.BorderSizePixel = 0
+	bot.Rotation = 45
+	bot.Parent = c
+
+	return c
+end
+
+-- Users — two stylised people, one slightly behind and smaller.
+local function makeUsersIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "UsersIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local function person(cx, headSize, bodyW, bodyH)
+		local head = Instance.new("Frame")
+		head.AnchorPoint = Vector2.new(0.5, 0)
+		head.Position = UDim2.fromScale(cx, 0.1)
+		head.Size = UDim2.fromOffset(headSize, headSize)
+		head.BackgroundColor3 = color
+		head.BorderSizePixel = 0
+		head.Parent = c
+		local hc = Instance.new("UICorner")
+		hc.CornerRadius = UDim.new(1, 0)
+		hc.Parent = head
+
+		local body = Instance.new("Frame")
+		body.AnchorPoint = Vector2.new(0.5, 0)
+		body.Position = UDim2.fromScale(cx, 0.55)
+		body.Size = UDim2.fromOffset(bodyW, bodyH)
+		body.BackgroundColor3 = color
+		body.BorderSizePixel = 0
+		body.Parent = c
+		local bc = Instance.new("UICorner")
+		bc.CornerRadius = UDim.new(0.3, 0)
+		bc.Parent = body
+	end
+
+	person(0.35, size * 0.40, size * 0.60, size * 0.34)
+	person(0.72, size * 0.30, size * 0.44, size * 0.28)
+
+	return c
+end
+
+-- Character silhouette — round head + rounded body block. Used as the
+-- placeholder glyph inside a MercCard portrait slot.
+local function makeCharacterIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "CharacterIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local head = Instance.new("Frame")
+	head.AnchorPoint = Vector2.new(0.5, 0)
+	head.Position = UDim2.fromScale(0.5, 0.1)
+	head.Size = UDim2.fromOffset(size * 0.42, size * 0.42)
+	head.BackgroundColor3 = color
+	head.BorderSizePixel = 0
+	head.Parent = c
+	local hc = Instance.new("UICorner")
+	hc.CornerRadius = UDim.new(1, 0)
+	hc.Parent = head
+
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0)
+	body.Position = UDim2.fromScale(0.5, 0.58)
+	body.Size = UDim2.fromOffset(size * 0.78, size * 0.36)
+	body.BackgroundColor3 = color
+	body.BorderSizePixel = 0
+	body.Parent = c
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0.4, 0)
+	bc.Parent = body
+
+	return c
+end
+
+-- Padlock — rounded body + half-circle shackle. Used for locked
+-- mercenary cards.
+local function makeLockIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "LockIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	-- Shackle: hollow-top half of a circle via a circle Frame with
+	-- UIStroke, clipped by a covering Frame below.
+	local shackleH = size * 0.46
+	local shackle = Instance.new("Frame")
+	shackle.AnchorPoint = Vector2.new(0.5, 0)
+	shackle.Position = UDim2.fromScale(0.5, 0.06)
+	shackle.Size = UDim2.fromOffset(size * 0.56, shackleH)
+	shackle.BackgroundTransparency = 1
+	shackle.BorderSizePixel = 0
+	shackle.Parent = c
+	local sc = Instance.new("UICorner")
+	sc.CornerRadius = UDim.new(0.5, 0)
+	sc.Parent = shackle
+	local ss = Instance.new("UIStroke")
+	ss.Color     = color
+	ss.Thickness = math.max(1, math.floor(size * 0.12))
+	ss.Parent    = shackle
+
+	-- Body: rounded-top rectangle that covers the lower half of the
+	-- shackle, leaving only the U-shape visible above.
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0)
+	body.Position = UDim2.fromScale(0.5, 0.42)
+	body.Size = UDim2.fromOffset(size * 0.78, size * 0.5)
+	body.BackgroundColor3 = color
+	body.BorderSizePixel = 0
+	body.Parent = c
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, math.max(1, math.floor(size * 0.08)))
+	bc.Parent = body
+
+	return c
+end
+
+-- Rarity row — N small rotated-square "stars". The first `filled` are
+-- solid gold, the rest are hollow outlines at reduced opacity. Returns
+-- a container Frame sized to fit `total` stars with a 2 px gap.
+local function makeStarRow(parent, filled, total, size, color)
+	size  = size  or 10
+	color = color or COLOR_GOLD
+	total = total or 5
+	filled = math.clamp(filled or 0, 0, total)
+
+	local gap = 2
+	local c = Instance.new("Frame")
+	c.Name = "StarRow"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(total * size + (total - 1) * gap, size)
+	c.Parent = parent
+
+	for i = 1, total do
+		local star = Instance.new("Frame")
+		star.AnchorPoint = Vector2.new(0.5, 0.5)
+		star.Position = UDim2.new(0, (i - 1) * (size + gap) + size * 0.5, 0.5, 0)
+		star.Size = UDim2.fromOffset(size * 0.72, size * 0.72)
+		star.Rotation = 45
+		star.BorderSizePixel = 0
+		if i <= filled then
+			star.BackgroundColor3 = color
+			star.BackgroundTransparency = 0
+			star.Parent = c
+		else
+			star.BackgroundTransparency = 1
+			star.Parent = c
+			local ss = Instance.new("UIStroke")
+			ss.Color       = color
+			ss.Thickness   = 1
+			ss.Transparency = 0.6
+			ss.Parent      = star
+		end
+	end
+
+	return c
+end
+
+local function makeGemIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "GemIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	-- Outer rotated-square outline.
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0.5)
+	body.Position = UDim2.fromScale(0.5, 0.5)
+	body.Size = UDim2.fromOffset(size * 0.7, size * 0.7)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.Rotation = 45
+	body.Parent = c
+	local s = Instance.new("UIStroke")
+	s.Color     = color
+	s.Thickness = 1.4
+	s.Parent    = body
+
+	-- Short horizontal "table" facet line across the upper third so
+	-- the silhouette reads as a cut gem, not just a plain diamond.
+	local facet = Instance.new("Frame")
+	facet.AnchorPoint = Vector2.new(0.5, 0.5)
+	facet.Position = UDim2.fromScale(0.5, 0.33)
+	facet.Size = UDim2.fromOffset(size * 0.5, math.max(1, math.floor(size * 0.08)))
+	facet.BackgroundColor3 = color
+	facet.BorderSizePixel = 0
+	facet.Parent = c
+
+	return c
 end
 
 -- ─── State ──────────────────────────────────────────────────────────────
@@ -571,14 +1043,14 @@ buildPage = function(mercNames)
 	currentMercNames = mercNames
 	local selectedName = mercNames[1]
 	currentSelectedMerc = selectedName
-	local theme        = MERC_THEMES[selectedName] or DEFAULT_THEME
 
-	-- ── Full-page container (phone-style blue background) ────────────
+	-- Full-screen page container, fully transparent — the holo
+	-- backdrop below occludes the phone's own backdrop and gives the
+	-- Mercenaries screen its own atmosphere.
 	page = Instance.new("Frame")
 	page.Name = "MercenariesPage"
 	page.Size = UDim2.fromScale(1, 1)
-	page.BackgroundColor3 = COLOR_BG
-	page.BackgroundTransparency = 0.15
+	page.BackgroundTransparency = 1
 	page.BorderSizePixel = 0
 	page.ZIndex = 50
 	page.Parent = screenGui
@@ -586,277 +1058,377 @@ buildPage = function(mercNames)
 	-- Hide phone main panels so they don't show through
 	hidePhonePanels()
 
-	-- ── Top bar: character selector ──────────────────────────────────
+	-- Reset any panels registered from a previous mercenaries-page
+	-- lifetime — subsequent steps will push cards here as they're
+	-- built so the mote-fade heartbeat finds them.
+	table.clear(motesOccludeList)
+
+	-- Holo sea-mist backdrop — first child so everything below
+	-- renders on top of it.
+	buildHoloBackground(page)
+
+	-- ── Responsive artboard (matches PhoneMenu) ──────────────────────
+	-- The Claude Design canvas is 960x600; make `scaleWrap` that exact
+	-- size and centre it on screen so right-anchored panels land on
+	-- the artboard's own 960 mark instead of the viewport edge (which
+	-- UIScale would push off-screen on large monitors).
+	local topInset = GuiService:GetGuiInset().Y
+	local REFERENCE_W, REFERENCE_H = 960, 600
+
+	local scaleWrap = Instance.new("Frame")
+	scaleWrap.Name = "ScaleWrap"
+	scaleWrap.BackgroundTransparency = 1
+	scaleWrap.BorderSizePixel = 0
+	scaleWrap.AnchorPoint = Vector2.new(0.5, 0.5)
+	scaleWrap.Position = UDim2.new(0.5, 0, 0.5, topInset / 2)
+	scaleWrap.Size = UDim2.fromOffset(REFERENCE_W, REFERENCE_H)
+	scaleWrap.ZIndex = 50
+	scaleWrap.Parent = page
+
+	local responsiveScale = Instance.new("UIScale")
+	responsiveScale.Name = "ResponsiveScale"
+	responsiveScale.Scale = 1
+	responsiveScale.Parent = scaleWrap
+
+	local function updateResponsiveScale()
+		local size = screenGui.AbsoluteSize
+		if size.X <= 0 or size.Y <= 0 then return end
+		local sx = size.X / REFERENCE_W
+		local sy = (size.Y - topInset) / REFERENCE_H
+		local s = math.min(sx, sy)
+		if s < 0.5 then s = 0.5 end
+		responsiveScale.Scale = s
+	end
+	updateResponsiveScale()
+	local scaleConn = screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateResponsiveScale)
+	-- Disconnect when the page goes away so we don't leak listeners
+	-- across repeated open/close cycles.
+	page.AncestryChanged:Connect(function(_, newParent)
+		if not newParent and scaleConn then
+			scaleConn:Disconnect()
+			scaleConn = nil
+		end
+	end)
+
+	-- ── Top bar ────────────────────────────────────────────────────────
+	-- Matches the MercenaryPage.jsx header: translucent holo BACK button
+	-- on the left, centred uppercase MERCENARIES title, gem currency
+	-- chip on the right. Lives inside scaleWrap so it resizes with the
+	-- rest of the artboard on large monitors.
 	local topBar = Instance.new("Frame")
 	topBar.Name = "TopBar"
 	topBar.BackgroundTransparency = 1
-	topBar.Size = UDim2.new(1, 0, 0, 56)
-	topBar.Position = UDim2.fromOffset(0, 36)
-	topBar.ZIndex = 51
-	topBar.Parent = page
+	topBar.BorderSizePixel = 0
+	topBar.Position = UDim2.fromOffset(16, 16)
+	topBar.Size = UDim2.new(1, -32, 0, 34)
+	topBar.ZIndex = 5
+	topBar.Parent = scaleWrap
 
-	-- Back button
+	-- Back button: holo stroke + hand-drawn back-arrow glyph + uppercase
+	-- letter-spaced label.
 	local backBtn = Instance.new("TextButton")
 	backBtn.Name = "BackButton"
-	backBtn.BackgroundColor3 = COLOR_BAR_BG
-	backBtn.BackgroundTransparency = 0.3
+	backBtn.AnchorPoint = Vector2.new(0, 0)
+	backBtn.Position = UDim2.fromOffset(0, 0)
+	backBtn.Size = UDim2.fromOffset(88, 34)
+	backBtn.BackgroundColor3 = HOLO_PANEL_FILL
+	backBtn.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	backBtn.BorderSizePixel = 0
-	backBtn.Size = UDim2.fromOffset(70, 36)
-	backBtn.Position = UDim2.fromOffset(12, 10)
-	backBtn.Font = FONT_TITLE
-	backBtn.TextSize = 16
-	backBtn.TextColor3 = COLOR_ACCENT
-	backBtn.Text = "← Back"
 	backBtn.AutoButtonColor = true
-	backBtn.ZIndex = 52
+	backBtn.Text = "" -- label drawn as a child for precise positioning
 	backBtn.Parent = topBar
-	corner(backBtn, 8)
+	local backStroke = Instance.new("UIStroke")
+	backStroke.Color     = HOLO_PANEL_BORDER
+	backStroke.Thickness = 1
+	backStroke.Parent    = backBtn
 
-	-- Character circles (centered)
-	local circleSize = 42
-	local circleGap = 8
-	local totalW = #mercNames * circleSize + (#mercNames - 1) * circleGap
+	local backGlyph = makeBackIcon(backBtn, 14, COLOR_TEXT)
+	backGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	backGlyph.Position = UDim2.new(0, 12, 0.5, 0)
 
-	local circleContainer = Instance.new("Frame")
-	circleContainer.BackgroundTransparency = 1
-	circleContainer.AnchorPoint = Vector2.new(0.5, 0)
-	circleContainer.Position = UDim2.new(0.5, 0, 0, 7)
-	circleContainer.Size = UDim2.fromOffset(totalW, circleSize)
-	circleContainer.ZIndex = 51
-	circleContainer.Parent = topBar
+	local backLabel = Instance.new("TextLabel")
+	backLabel.BackgroundTransparency = 1
+	backLabel.BorderSizePixel = 0
+	backLabel.Position = UDim2.fromOffset(30, 0)
+	backLabel.Size = UDim2.new(1, -34, 1, 0)
+	backLabel.Font = FONT_TITLE
+	backLabel.TextSize = 13
+	backLabel.TextColor3 = COLOR_TEXT
+	backLabel.TextXAlignment = Enum.TextXAlignment.Left
+	backLabel.Text = "BACK"
+	backLabel.Parent = backBtn
 
-	for i, name in mercNames do
-		local cTheme = MERC_THEMES[name] or DEFAULT_THEME
-
-		local circle = Instance.new("Frame")
-		circle.BackgroundColor3 = cTheme.accent
-		circle.BackgroundTransparency = 0.3
-		circle.BorderSizePixel = 0
-		circle.Size = UDim2.fromOffset(circleSize, circleSize)
-		circle.Position = UDim2.fromOffset((i - 1) * (circleSize + circleGap), 0)
-		circle.ZIndex = 52
-		circle.Parent = circleContainer
-		corner(circle, circleSize / 2)
-
-		local ring = Instance.new("UIStroke")
-		ring.Thickness = i == 1 and 3 or 1.5
-		ring.Color = i == 1 and Color3.fromRGB(255, 255, 255) or COLOR_PANEL_EDGE
-		ring.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		ring.Parent = circle
-
-		local initLabel = Instance.new("TextLabel")
-		initLabel.BackgroundTransparency = 1
-		initLabel.Size = UDim2.fromScale(1, 1)
-		initLabel.Font = FONT_TITLE
-		initLabel.TextSize = 18
-		initLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
-		initLabel.Text = string.sub(cTheme.displayName, 1, 1)
-		initLabel.ZIndex = 53
-		initLabel.Parent = circle
-	end
-
-	-- ── Left side: menu buttons ─────────────────────────────────────
-	local leftPanel = Instance.new("Frame")
-	leftPanel.BackgroundTransparency = 1
-	leftPanel.Size = UDim2.fromOffset(200, 260)
-	leftPanel.Position = UDim2.new(0, 20, 0.5, -100)
-	leftPanel.ZIndex = 51
-	leftPanel.Parent = page
-
-	local menuItems = {
-		"Characteristics",
-		"Current Tasks",
-		"Equipment",
-		"Mutation",
-		"About character",
-	}
-
-	for i, itemText in menuItems do
-		local row = Instance.new("TextButton")
-		row.BackgroundTransparency = 1
-		row.Size = UDim2.new(1, 0, 0, 32)
-		row.Position = UDim2.fromOffset(0, (i - 1) * 40)
-		row.Font = FONT_BODY
-		row.TextSize = 17
-		row.TextColor3 = COLOR_TEXT
-		row.Text = "◇ " .. itemText
-		row.TextXAlignment = Enum.TextXAlignment.Left
-		row.AutoButtonColor = false
-		row.ZIndex = 51
-		row.Parent = leftPanel
-
-		if itemText == "Equipment" then
-			row.MouseButton1Click:Connect(function()
-				buildEquipmentPage(selectedName, mercNames)
-			end)
-		end
-	end
-
-	-- ── Right side: stats panel ──────────────────────────────────────
-	local rightPanel = Instance.new("Frame")
-	rightPanel.Name = "RightStats"
-	rightPanel.BackgroundColor3 = COLOR_PANEL
-	rightPanel.BackgroundTransparency = 0.4
-	rightPanel.BorderSizePixel = 0
-	rightPanel.AnchorPoint = Vector2.new(1, 0)
-	rightPanel.Size = UDim2.fromOffset(260, 320)
-	rightPanel.Position = UDim2.new(1, -20, 0, 106)
-	rightPanel.ZIndex = 51
-	rightPanel.Parent = page
-	corner(rightPanel, 10)
-
-	local rPad = Instance.new("UIPadding")
-	rPad.PaddingTop    = UDim.new(0, 16)
-	rPad.PaddingBottom = UDim.new(0, 16)
-	rPad.PaddingLeft   = UDim.new(0, 18)
-	rPad.PaddingRight  = UDim.new(0, 18)
-	rPad.Parent = rightPanel
-
-	-- Name
-	local nameLabel = Instance.new("TextLabel")
-	nameLabel.BackgroundTransparency = 1
-	nameLabel.Size = UDim2.new(1, 0, 0, 28)
-	nameLabel.Position = UDim2.fromOffset(0, 0)
-	nameLabel.Font = FONT_TITLE
-	nameLabel.TextSize = 22
-	nameLabel.TextColor3 = COLOR_TEXT
-	nameLabel.Text = theme.displayName
-	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-	nameLabel.ZIndex = 52
-	nameLabel.Parent = rightPanel
-
-	-- Stars
-	local starsLabel = Instance.new("TextLabel")
-	starsLabel.BackgroundTransparency = 1
-	starsLabel.Size = UDim2.new(1, 0, 0, 20)
-	starsLabel.Position = UDim2.fromOffset(0, 30)
-	starsLabel.Font = FONT_BODY
-	starsLabel.TextSize = 16
-	starsLabel.TextColor3 = Color3.fromRGB(255, 220, 100)
-	starsLabel.Text = string.rep("★", theme.stars) .. string.rep("☆", 6 - theme.stars)
-	starsLabel.TextXAlignment = Enum.TextXAlignment.Left
-	starsLabel.ZIndex = 52
-	starsLabel.Parent = rightPanel
-
-	-- Level
-	local levelLabel = Instance.new("TextLabel")
-	levelLabel.BackgroundTransparency = 1
-	levelLabel.Size = UDim2.new(1, 0, 0, 22)
-	levelLabel.Position = UDim2.fromOffset(0, 56)
-	levelLabel.Font = FONT_TITLE
-	levelLabel.TextSize = 17
-	levelLabel.TextColor3 = COLOR_TEXT
-	levelLabel.Text = "Level 1"
-	levelLabel.TextXAlignment = Enum.TextXAlignment.Left
-	levelLabel.ZIndex = 52
-	levelLabel.Parent = rightPanel
-
-	-- XP bar
-	local xpBarBg = Instance.new("Frame")
-	xpBarBg.BackgroundColor3 = COLOR_BAR_BG
-	xpBarBg.BorderSizePixel = 0
-	xpBarBg.Size = UDim2.new(1, 0, 0, 12)
-	xpBarBg.Position = UDim2.fromOffset(0, 82)
-	xpBarBg.ZIndex = 52
-	xpBarBg.Parent = rightPanel
-	corner(xpBarBg, 6)
-
-	local xpFill = Instance.new("Frame")
-	xpFill.BackgroundColor3 = theme.accent
-	xpFill.BorderSizePixel = 0
-	xpFill.Size = UDim2.new(0, 0, 1, 0)
-	xpFill.ZIndex = 53
-	xpFill.Parent = xpBarBg
-	corner(xpFill, 6)
-
-	local xpLabel = Instance.new("TextLabel")
-	xpLabel.BackgroundTransparency = 1
-	xpLabel.Size = UDim2.new(1, 0, 0, 14)
-	xpLabel.Position = UDim2.fromOffset(0, 96)
-	xpLabel.Font = FONT_BODY
-	xpLabel.TextSize = 12
-	xpLabel.TextColor3 = COLOR_TEXT_DIM
-	xpLabel.Text = "0/100"
-	xpLabel.TextXAlignment = Enum.TextXAlignment.Right
-	xpLabel.ZIndex = 52
-	xpLabel.Parent = rightPanel
-
-	-- Stat rows
-	local statDefs = {
-		{ label = "Max HP",           value = tostring(theme.stats.hp)     },
-		{ label = "Damage",           value = tostring(theme.stats.damage) },
-		{ label = "Mana consumption", value = theme.stats.mana            },
-	}
-
-	local statY = 124
-	for _, def in statDefs do
-		local lbl = Instance.new("TextLabel")
-		lbl.BackgroundTransparency = 1
-		lbl.Size = UDim2.new(0.65, 0, 0, 26)
-		lbl.Position = UDim2.fromOffset(0, statY)
-		lbl.Font = FONT_BODY
-		lbl.TextSize = 14
-		lbl.TextColor3 = COLOR_TEXT_DIM
-		lbl.Text = def.label
-		lbl.TextXAlignment = Enum.TextXAlignment.Left
-		lbl.ZIndex = 52
-		lbl.Parent = rightPanel
-
-		local val = Instance.new("TextLabel")
-		val.BackgroundTransparency = 1
-		val.Size = UDim2.new(0.35, 0, 0, 26)
-		val.AnchorPoint = Vector2.new(1, 0)
-		val.Position = UDim2.new(1, 0, 0, statY)
-		val.Font = FONT_TITLE
-		val.TextSize = 15
-		val.TextColor3 = COLOR_TEXT
-		val.Text = def.value
-		val.TextXAlignment = Enum.TextXAlignment.Right
-		val.ZIndex = 52
-		val.Parent = rightPanel
-
-		statY += 30
-	end
-
-	-- ── SPAWN button ────────────────────────────────────────────────
-	local spawnBtn = Instance.new("TextButton")
-	spawnBtn.Name = "SpawnButton"
-	spawnBtn.BackgroundColor3 = theme.accent
-	spawnBtn.BorderSizePixel = 0
-	spawnBtn.AnchorPoint = Vector2.new(1, 0)
-	spawnBtn.Size = UDim2.fromOffset(260, 44)
-	spawnBtn.Position = UDim2.new(1, -20, 0, 400)
-	spawnBtn.Font = FONT_TITLE
-	spawnBtn.TextSize = 20
-	spawnBtn.TextColor3 = Color3.fromRGB(255, 255, 255)
-	spawnBtn.Text = "SPAWN"
-	spawnBtn.AutoButtonColor = true
-	spawnBtn.ZIndex = 52
-	spawnBtn.Parent = page
-	corner(spawnBtn, 10)
-
-	spawnBtn.MouseButton1Click:Connect(function()
-		if spawnEvent then
-			spawnEvent:FireServer(selectedName)
-		end
-		closePage()
-		if typeof(_G.ClosePhoneMenu) == "function" then
-			_G.ClosePhoneMenu()
-		end
-	end)
-
-	-- ── Center: 3D character viewport ────────────────────────────────
-	-- Show the mercenary's currently equipped weapon (not always the
-	-- default sword). Fall back to "Sword" when no weapon is equipped.
-	local mercFolder = player:FindFirstChild("Mercenaries")
-	local mercEntry = mercFolder and mercFolder:FindFirstChild(selectedName)
-	local equippedWeapon = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
-	buildMercViewport(page, selectedName, equippedWeapon)
-
-	-- ── Back button handler ──────────────────────────────────────────
 	backBtn.MouseButton1Click:Connect(function()
 		closePage()
 	end)
+
+	-- Centred uppercase MERCENARIES title in holo-edge cyan.
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.BackgroundTransparency = 1
+	title.BorderSizePixel = 0
+	title.AnchorPoint = Vector2.new(0.5, 0.5)
+	title.Position = UDim2.fromScale(0.5, 0.5)
+	title.Size = UDim2.fromOffset(240, 22)
+	title.Font = FONT_TITLE
+	title.TextSize = 18
+	title.TextColor3 = HOLO_EDGE
+	title.Text = "MERCENARIES"
+	title.Parent = topBar
+
+	-- Gem currency chip. Static "0" placeholder for now — wire to a
+	-- real player attribute when Step 7 lands. Chip autosizes around
+	-- the gem + number so a 5-digit count still reads cleanly.
+	local chip = Instance.new("Frame")
+	chip.Name = "CurrencyChip"
+	chip.AnchorPoint = Vector2.new(1, 0.5)
+	chip.Position = UDim2.new(1, 0, 0.5, 0)
+	chip.Size = UDim2.fromOffset(96, 28)
+	chip.BackgroundColor3 = HOLO_PANEL_FILL
+	chip.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	chip.BorderSizePixel = 0
+	chip.Parent = topBar
+	local chipStroke = Instance.new("UIStroke")
+	chipStroke.Color     = HOLO_PANEL_BORDER
+	chipStroke.Thickness = 1
+	chipStroke.Parent    = chip
+
+	local gemGlyph = makeGemIcon(chip, 13, COLOR_GOLD)
+	gemGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	gemGlyph.Position = UDim2.new(0, 10, 0.5, 0)
+
+	local chipLabel = Instance.new("TextLabel")
+	chipLabel.Name = "CurrencyLabel"
+	chipLabel.BackgroundTransparency = 1
+	chipLabel.BorderSizePixel = 0
+	chipLabel.Position = UDim2.fromOffset(28, 0)
+	chipLabel.Size = UDim2.new(1, -36, 1, 0)
+	chipLabel.Font = FONT_TITLE
+	chipLabel.TextSize = 13
+	chipLabel.TextColor3 = COLOR_GOLD
+	chipLabel.TextXAlignment = Enum.TextXAlignment.Left
+	chipLabel.Text = "0"
+	chipLabel.Parent = chip
+
+	-- ── Left column: mercenary list ────────────────────────────────────
+	-- Position from MercenaryPage.jsx: left 24, top 70, bottom 24,
+	-- width 300. All panels live inside scaleWrap so they share the
+	-- responsive UIScale.
+	local leftCol = Instance.new("Frame")
+	leftCol.Name = "LeftColumn"
+	leftCol.BackgroundColor3 = HOLO_PANEL_FILL
+	leftCol.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	leftCol.BorderSizePixel = 0
+	leftCol.Position = UDim2.fromOffset(24, 70)
+	leftCol.Size = UDim2.new(0, 300, 1, -(70 + 24))
+	leftCol.ZIndex = 3
+	leftCol.Parent = scaleWrap
+
+	local leftStroke = Instance.new("UIStroke")
+	leftStroke.Color     = HOLO_PANEL_BORDER
+	leftStroke.Thickness = 1
+	leftStroke.Parent    = leftCol
+
+	local leftPad = Instance.new("UIPadding")
+	leftPad.PaddingTop    = UDim.new(0, 12)
+	leftPad.PaddingBottom = UDim.new(0, 12)
+	leftPad.PaddingLeft   = UDim.new(0, 12)
+	leftPad.PaddingRight  = UDim.new(0, 12)
+	leftPad.Parent = leftCol
+
+	cornerLs(leftCol, 10, HOLO_PANEL_LBRACKET, 1.5)
+	table.insert(motesOccludeList, leftCol)
+
+	-- Header row: users glyph + "MERCENARIES" + "X / Y HIRED" count
+	-- aligned right, with a hairline divider under it.
+	local leftHeader = Instance.new("Frame")
+	leftHeader.Name = "HeaderRow"
+	leftHeader.BackgroundTransparency = 1
+	leftHeader.Size = UDim2.new(1, 0, 0, 18)
+	leftHeader.Parent = leftCol
+
+	local headerGlyph = makeUsersIcon(leftHeader, 14, HOLO_EDGE)
+	headerGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	headerGlyph.Position = UDim2.fromScale(0, 0.5)
+
+	local leftTitle = makeLabel(leftHeader, "MERCENARIES", FONT_TITLE, 15, COLOR_TEXT)
+	leftTitle.Position = UDim2.fromOffset(22, 0)
+	leftTitle.Size = UDim2.new(1, -132, 1, 0)
+
+	-- Cap of 6 matches the design's MERCS roster — it's purely a text
+	-- hint; actual slot count is driven by what's in player.Mercenaries.
+	local ROSTER_CAP = 6
+	local countLabel = makeLabel(leftHeader,
+		string.format("%d / %d HIRED", #mercNames, ROSTER_CAP),
+		FONT_BODY, 11, COLOR_TEXT_DIM, Enum.TextXAlignment.Right)
+	countLabel.AnchorPoint = Vector2.new(1, 0.5)
+	countLabel.Position = UDim2.new(1, 0, 0.5, 0)
+	countLabel.Size = UDim2.fromOffset(110, 18)
+
+	local leftDivider = Instance.new("Frame")
+	leftDivider.Name = "Divider"
+	leftDivider.BackgroundColor3 = HOLO_PANEL_BORDER
+	leftDivider.BackgroundTransparency = 0.3
+	leftDivider.BorderSizePixel = 0
+	leftDivider.Size = UDim2.new(1, 0, 0, 1)
+	leftDivider.Position = UDim2.fromOffset(0, 28)
+	leftDivider.Parent = leftCol
+
+	-- Scrolling card list.
+	local cardList = Instance.new("ScrollingFrame")
+	cardList.Name = "CardList"
+	cardList.BackgroundTransparency = 1
+	cardList.BorderSizePixel = 0
+	cardList.Position = UDim2.fromOffset(0, 40)
+	cardList.Size = UDim2.new(1, 0, 1, -40)
+	cardList.CanvasSize = UDim2.new(0, 0, 0, 0)
+	cardList.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	cardList.ScrollBarThickness = 4
+	cardList.ScrollBarImageColor3 = HOLO_PANEL_BORDER
+	cardList.ScrollBarImageTransparency = 0.3
+	cardList.Parent = leftCol
+
+	local cardLayout = Instance.new("UIListLayout")
+	cardLayout.FillDirection = Enum.FillDirection.Vertical
+	cardLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	cardLayout.Padding = UDim.new(0, 8)
+	cardLayout.Parent = cardList
+
+	-- Per-card refs keyed by merc name, populated below. setSelectedCard
+	-- iterates this to refresh stroke + corner-bracket + portrait-stroke
+	-- colours on the selected and previously-selected rows.
+	local mercCards = {}
+
+	local function setSelectedCard(mercName)
+		currentSelectedMerc = mercName
+		for name, rec in pairs(mercCards) do
+			local isSel = (name == mercName)
+			local color = isSel and HOLO_EDGE or HOLO_PANEL_BORDER
+			rec.stroke.Color = color
+			rec.portraitStroke.Color = color
+			for _, bracket in rec.brackets do
+				bracket.BackgroundColor3 = isSel and HOLO_EDGE or HOLO_PANEL_LBRACKET
+			end
+		end
+		-- Later steps will hook into this to refresh the centre viewport
+		-- and the right-column characteristics panel.
+	end
+
+	-- Build one holo card per recruited mercenary.
+	for i, mercName in mercNames do
+		local theme = MERC_THEMES[mercName] or DEFAULT_THEME
+		local displayName = theme.displayName or mercName
+
+		local card = Instance.new("TextButton")
+		card.Name = "Card_" .. mercName
+		card.BackgroundColor3 = HOLO_PANEL_FILL
+		card.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+		card.BorderSizePixel = 0
+		card.AutoButtonColor = false
+		card.Text = ""
+		card.Size = UDim2.new(1, -6, 0, 72)
+		card.LayoutOrder = i
+		card.Parent = cardList
+
+		local cardStroke = Instance.new("UIStroke")
+		cardStroke.Color     = HOLO_PANEL_BORDER
+		cardStroke.Thickness = 1
+		cardStroke.Parent    = card
+
+		local cardPad = Instance.new("UIPadding")
+		cardPad.PaddingTop    = UDim.new(0, 10)
+		cardPad.PaddingBottom = UDim.new(0, 10)
+		cardPad.PaddingLeft   = UDim.new(0, 10)
+		cardPad.PaddingRight  = UDim.new(0, 10)
+		cardPad.Parent = card
+
+		-- Portrait slot — 52x52, translucent fill, hairline border, mini
+		-- corner L's. Character icon sits centred inside.
+		local portrait = Instance.new("Frame")
+		portrait.Name = "Portrait"
+		portrait.AnchorPoint = Vector2.new(0, 0.5)
+		portrait.Position = UDim2.new(0, 0, 0.5, 0)
+		portrait.Size = UDim2.fromOffset(52, 52)
+		portrait.BackgroundColor3 = Color3.fromRGB(15, 35, 65)
+		portrait.BackgroundTransparency = 0.65
+		portrait.BorderSizePixel = 0
+		portrait.Parent = card
+
+		local portraitStroke = Instance.new("UIStroke")
+		portraitStroke.Color     = HOLO_PANEL_BORDER
+		portraitStroke.Thickness = 1
+		portraitStroke.Parent    = portrait
+
+		cornerLs(portrait, 5, HOLO_PANEL_LBRACKET, 1.5)
+
+		local charGlyph = makeCharacterIcon(portrait, 28, HOLO_PANEL_LBRACKET)
+		charGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+		charGlyph.Position = UDim2.fromScale(0.5, 0.5)
+
+		-- Right side of the card: name row (+ OWNED chip) / star row / role
+		-- line, all left-aligned starting 62 px in so they sit clear of
+		-- the 52-wide portrait plus its 10 px gap.
+		local name = makeLabel(card, displayName, FONT_TITLE, 15, COLOR_TEXT)
+		name.Position = UDim2.fromOffset(62, 0)
+		name.Size = UDim2.fromOffset(130, 18)
+
+		-- OWNED chip in green stroke — every merc we render here comes
+		-- from player.Mercenaries, so they're by definition recruited.
+		local ownedChip = Instance.new("Frame")
+		ownedChip.Name = "OwnedChip"
+		ownedChip.AnchorPoint = Vector2.new(0, 0.5)
+		ownedChip.Position = UDim2.new(0, 62 + 80, 0, 9)
+		ownedChip.Size = UDim2.fromOffset(44, 14)
+		ownedChip.BackgroundTransparency = 1
+		ownedChip.BorderSizePixel = 0
+		ownedChip.Parent = card
+		local ownedStroke = Instance.new("UIStroke")
+		ownedStroke.Color     = Color3.fromRGB(110, 200, 140)
+		ownedStroke.Thickness = 1
+		ownedStroke.Parent    = ownedChip
+		local ownedLbl = makeLabel(ownedChip, "OWNED", FONT_TITLE, 8,
+			Color3.fromRGB(110, 200, 140), Enum.TextXAlignment.Center)
+		ownedLbl.Size = UDim2.fromScale(1, 1)
+
+		local starRow = makeStarRow(card, theme.stars or 1, 5, 9, COLOR_GOLD)
+		starRow.Position = UDim2.fromOffset(62, 24)
+
+		local role = makeLabel(card, theme.role or "Crew", FONT_BODY, 10, COLOR_TEXT_DIM)
+		role.Position = UDim2.fromOffset(62, 38)
+		role.Size = UDim2.fromOffset(150, 14)
+
+		-- Collect bracket refs so selection recolouring can tint them
+		-- without re-creating the Frames.
+		local brackets = {}
+		for _, child in card:GetChildren() do
+			if child.Name == "CornerL_H" or child.Name == "CornerL_V" then
+				table.insert(brackets, child)
+			end
+		end
+		-- Panel-level brackets haven't been added yet — do it now so
+		-- they can also tint with selection.
+		cornerLs(card, 8, HOLO_PANEL_LBRACKET, 1.5)
+		for _, child in card:GetChildren() do
+			if (child.Name == "CornerL_H" or child.Name == "CornerL_V")
+				and not table.find(brackets, child) then
+				table.insert(brackets, child)
+			end
+		end
+
+		card.MouseButton1Click:Connect(function()
+			setSelectedCard(mercName)
+		end)
+
+		mercCards[mercName] = {
+			frame          = card,
+			stroke         = cardStroke,
+			portraitStroke = portraitStroke,
+			brackets       = brackets,
+		}
+	end
+
+	-- Apply initial selection (first merc in the roster).
+	if selectedName then setSelectedCard(selectedName) end
 end
 
 -- ─── Equipment data ─────────────────────────────────────────────────────

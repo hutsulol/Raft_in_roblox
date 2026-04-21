@@ -476,6 +476,7 @@ local function buildHoloBackground(parent)
 	local BG_TOP   = Color3.fromRGB(18, 38, 66)
 	local BG_MID   = Color3.fromRGB(28, 58, 92)
 	local BG_BOT   = Color3.fromRGB(40, 80, 122)
+	local MOTE_COL = Color3.fromRGB(180, 215, 240)
 	local MOTE_COL = Color3.fromRGB(205, 236, 255)
 
 	local root = Instance.new("Frame")
