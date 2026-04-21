@@ -1254,12 +1254,12 @@ buildPage = function(mercNames)
 	local topInset = GuiService:GetGuiInset().Y
 	-- Wider artboard so the mercenary layout occupies more horizontal space
 	-- (closer to the target mock where side cards sit near screen edges).
-	local REFERENCE_W, REFERENCE_H = 1120, 600
+	local REFERENCE_W, REFERENCE_H = 1180, 600
 	-- Match PhoneMenu's "cards push toward screen edges" behavior so side
 	-- columns don't feel cramped inside the widened artboard on widescreen.
-	local COLUMN_W      = 350
-	local EDGE_BLEED_X  = 52
-	local COLUMN_GAP    = 18
+	local COLUMN_W      = 380
+	local EDGE_BLEED_X  = 70
+	local COLUMN_GAP    = 20
 	local PANELS_TOP_Y  = 70
 	local PANELS_BOT_PAD = 24
 
@@ -1293,7 +1293,7 @@ buildPage = function(mercNames)
 		local sideGapArtboard = sideGapPx / s
 		-- Stronger edge pull than PhoneMenu: Mercenaries needs wider side cards
 		-- and visibly tighter alignment to the screen edges.
-		local extraBleed = math.clamp(sideGapArtboard * 1.0, 0, 180)
+		local extraBleed = math.clamp(sideGapArtboard * 1.15, 0, 220)
 		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
 
 		if leftColRef then
@@ -1975,6 +1975,8 @@ buildPage = function(mercNames)
 	rightCol.ZIndex = 1
 	rightCol.Parent = scaleWrap
 	rightColRef = rightCol
+	-- Re-apply responsive placement now that left/right refs exist.
+	updateResponsiveScale()
 
 	local rightStroke = Instance.new("UIStroke")
 	rightStroke.Color     = HOLO_PANEL_BORDER
