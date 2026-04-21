@@ -53,7 +53,11 @@ local HOLO_PANEL_LBRACKET     = Color3.fromRGB(118, 155, 190)
 local HOLO_EDGE               = Color3.fromRGB(190, 220, 245)
 local HOLO_DEEP               = Color3.fromRGB(40, 60, 90)
 local COLOR_GOLD              = Color3.fromRGB(230, 190, 100)
-local HORIZON                 = Color3.fromRGB(80, 140, 190)
+-- Amethyst variant — Claude Design ships "Variant B: Amethyst"
+-- alongside the default holo-cyan; using it here so the Mercenary
+-- page reads as a distinct app section while keeping the same
+-- gradient + horizon + vignette + motes composition.
+local HORIZON                 = Color3.fromRGB(165, 125, 210)
 
 local IDLE_ANIMATION_ID = "rbxassetid://107139405334393"
 
@@ -142,15 +146,16 @@ local function cornerLs(parent, size, color, thickness)
 	addL(1, 1,  1,  1)
 end
 
--- Deep-ocean sea-mist holo backdrop — the same five-layer composition
--- PhoneMenu uses: base vertical gradient → horizon glow band → top +
--- bottom vignette → drifting light motes that fade when they pass
--- behind a registered panel.
+-- Amethyst holo backdrop — same five-layer composition as PhoneMenu
+-- (base vertical gradient → horizon glow band → top + bottom vignette
+-- → drifting motes with panel-occlusion fade), shifted from holo-cyan
+-- navy to a deep purple/amethyst so the Mercenary screen reads as a
+-- clearly distinct app section.
 local function buildHoloBackground(parent)
-	local BG_TOP   = Color3.fromRGB(8, 19, 34)
-	local BG_MID   = Color3.fromRGB(13, 31, 53)
-	local BG_BOT   = Color3.fromRGB(21, 51, 82)
-	local MOTE_COL = Color3.fromRGB(180, 215, 240)
+	local BG_TOP   = Color3.fromRGB(14,  8, 28)   -- near-black amethyst
+	local BG_MID   = Color3.fromRGB(26, 16, 46)
+	local BG_BOT   = Color3.fromRGB(46, 28, 74)   -- deep purple haze
+	local MOTE_COL = Color3.fromRGB(215, 200, 240) -- pale lavender
 
 	local root = Instance.new("Frame")
 	root.Name = "Backdrop"
