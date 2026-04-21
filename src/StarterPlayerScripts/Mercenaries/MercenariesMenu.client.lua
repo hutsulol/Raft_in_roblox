@@ -1792,6 +1792,71 @@ buildPage = function(mercNames)
 	rimCircle(340, HOLO_EDGE,          0.70) -- outer faint
 	rimCircle(280, HOLO_PANEL_BORDER,  0.55) -- inner denser
 
+	-- ── Handling button ──────────────────────────────────────────────
+	-- Gradient pill floating at the foot of the character slot, matching
+	-- MercCharacterSlot's overlap in MercenaryPage.jsx. Wired to the
+	-- existing SpawnMercenary remote (preserves the old SPAWN action),
+	-- then closes both menus so the merc lands in-world.
+	-- If you'd rather the button open the dedicated "Handling" sub-page
+	-- (Claude Design ships MercHandlingPage.jsx for that flow), swap the
+	-- MouseButton1Click body for a call to a new buildHandlingPage().
+	local handlingBtn = Instance.new("TextButton")
+	handlingBtn.Name = "HandlingButton"
+	handlingBtn.AnchorPoint = Vector2.new(0.5, 1)
+	handlingBtn.Position = UDim2.new(0.5, 0, 1, -4)
+	handlingBtn.Size = UDim2.fromOffset(200, 40)
+	handlingBtn.BackgroundColor3 = Color3.fromRGB(40, 90, 150)
+	handlingBtn.BackgroundTransparency = 0.15
+	handlingBtn.BorderSizePixel = 0
+	handlingBtn.AutoButtonColor = true
+	handlingBtn.Text = ""
+	handlingBtn.ZIndex = 10
+	handlingBtn.Parent = slot
+
+	-- Vertical gradient — brighter cyan-blue at the top, deeper navy
+	-- at the bottom, matching the design's linear-gradient(180deg,
+	-- rgba(40,90,150,.85) 0%, rgba(20,50,90,.85) 100%).
+	local hGrad = Instance.new("UIGradient")
+	hGrad.Rotation = 90
+	hGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(50, 110, 170)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(20,  50,  90)),
+	})
+	hGrad.Parent = handlingBtn
+
+	local hStroke = Instance.new("UIStroke")
+	hStroke.Color     = HOLO_EDGE
+	hStroke.Thickness = 1
+	hStroke.Parent    = handlingBtn
+
+	cornerLs(handlingBtn, 8, HOLO_EDGE, 1.5)
+
+	local hDiamond = makeDiamondIcon(handlingBtn, 14, COLOR_TEXT)
+	hDiamond.AnchorPoint = Vector2.new(0.5, 0.5)
+	hDiamond.Position = UDim2.new(0.5, -58, 0.5, 0)
+	hDiamond.ZIndex = 11
+
+	local hLabel = makeLabel(handlingBtn, "HANDLING", FONT_TITLE, 13, COLOR_TEXT, Enum.TextXAlignment.Center)
+	hLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	hLabel.Position = UDim2.fromScale(0.5, 0.5)
+	hLabel.Size = UDim2.fromOffset(120, 18)
+	hLabel.ZIndex = 11
+
+	local hChev = makeChevronRight(handlingBtn, 14, COLOR_TEXT)
+	hChev.AnchorPoint = Vector2.new(0.5, 0.5)
+	hChev.Position = UDim2.new(0.5, 58, 0.5, 0)
+	hChev.ZIndex = 11
+
+	handlingBtn.MouseButton1Click:Connect(function()
+		if spawnEvent and currentSelectedMerc then
+			spawnEvent:FireServer(currentSelectedMerc)
+		end
+		closePage()
+		if typeof(_G.ClosePhoneMenu) == "function" then
+			_G.ClosePhoneMenu()
+		end
+	end)
+
 	-- Drives the centre column when a card is clicked. Swaps meta bar
 	-- text, rebuilds the rarity star row, and hands off to the shared
 	-- buildMercViewport pipeline (which caches per merc, so the idle
