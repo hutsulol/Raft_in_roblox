@@ -48,6 +48,8 @@ local HOLO_EDGE               = Color3.fromRGB(176, 232, 255)
 local HOLO_DEEP               = Color3.fromRGB(28, 58, 92)
 local COLOR_GOLD              = Color3.fromRGB(230, 190, 100)-- oklch(0.85 0.14 85)
 local HORIZON                 = Color3.fromRGB(98, 168, 218) -- cyan horizon band
+local PLUS_BTN_BG_ACTIVE      = Color3.fromRGB(52, 64, 82)
+local PLUS_BTN_BG_INACTIVE    = Color3.fromRGB(16, 34, 58)
 
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
@@ -1382,8 +1384,8 @@ local function buildMenu()
 		btn.AnchorPoint = Vector2.new(1, 0.5)
 		btn.Position = UDim2.new(1, 0, 0.5, 0)
 		btn.Size = UDim2.fromOffset(24, 24)
-		btn.BackgroundColor3 = HOLO_PANEL_FILL
-		btn.BackgroundTransparency = 0.28
+		btn.BackgroundColor3 = PLUS_BTN_BG_INACTIVE
+		btn.BackgroundTransparency = 0.08
 		btn.BorderSizePixel = 0
 		btn.Text = ""
 		btn.AutoButtonColor = true
@@ -2260,6 +2262,8 @@ local function refreshCharacteristics()
 			-- is available, dim otherwise. No text on the button any
 			-- more — the plus is drawn as a Frame icon.
 			rec.button.AutoButtonColor = hasPoints or false
+			rec.button.BackgroundColor3 = hasPoints and PLUS_BTN_BG_ACTIVE or PLUS_BTN_BG_INACTIVE
+			rec.button.BackgroundTransparency = hasPoints and 0 or 0.08
 			if rec.stroke then
 				rec.stroke.Color = hasPoints and COLOR_GOLD or HOLO_PANEL_BORDER
 			end
