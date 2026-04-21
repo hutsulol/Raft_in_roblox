@@ -935,7 +935,7 @@ local function buildMercViewport(parent, mercName, weaponId)
 	local vp = Instance.new("ViewportFrame")
 	vp.Name = "MercViewport"
 	vp.AnchorPoint = Vector2.new(0.5, 0.5)
-	vp.Position = UDim2.fromScale(0.5, 0.44)
+	vp.Position = UDim2.fromScale(0.5, 0.34)
 	-- Scale up the merc preview to match PhoneMenu's larger hero character
 	-- feel. The frame intentionally overhangs the slot a bit.
 	vp.Size = UDim2.fromOffset(440, 580)
@@ -1258,7 +1258,7 @@ buildPage = function(mercNames)
 	-- Match PhoneMenu's "cards push toward screen edges" behavior so side
 	-- columns don't feel cramped inside the widened artboard on widescreen.
 	local COLUMN_W      = 380
-	local EDGE_BLEED_X  = 38
+	local EDGE_BLEED_X  = 20
 	local COLUMN_GAP    = 20
 	local PANELS_TOP_Y  = 70
 	local PANELS_BOT_PAD = 24
@@ -1293,7 +1293,7 @@ buildPage = function(mercNames)
 		local sideGapArtboard = sideGapPx / s
 		-- Moderate edge pull: keep cards near edges without letting them
 		-- crawl out of the visible screen bounds.
-		local extraBleed = math.clamp(sideGapArtboard * 0.82, 0, 115)
+		local extraBleed = math.clamp(sideGapArtboard * 0.6, 0, 80)
 		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
 
 		if leftColRef then
@@ -1695,7 +1695,7 @@ buildPage = function(mercNames)
 	-- (or Hire button for unrecruited mercs — currently only OWNED
 	-- since we only render mercs from player.Mercenaries).
 	local META_HEIGHT = 44
-	local META_TOP_OFFSET = -8
+	local META_TOP_OFFSET = -24
 	local metaBar = Instance.new("Frame")
 	metaBar.Name = "MetaBar"
 	metaBar.BackgroundColor3 = HOLO_PANEL_FILL
@@ -1807,8 +1807,8 @@ buildPage = function(mercNames)
 	slot.Name = "CharacterSlot"
 	slot.BackgroundTransparency = 1
 	slot.BorderSizePixel = 0
-	slot.Position = UDim2.fromOffset(0, META_HEIGHT + 4)
-	slot.Size = UDim2.new(1, 0, 1, -(META_HEIGHT + 4))
+	slot.Position = UDim2.fromOffset(0, META_HEIGHT - 10)
+	slot.Size = UDim2.new(1, 0, 1, -(META_HEIGHT - 10))
 	slot.Parent = centreCol
 
 	-- Ground glow — wide horizontal ellipse at the feet, faded at both
@@ -1871,8 +1871,8 @@ buildPage = function(mercNames)
 	local handlingBtn = Instance.new("TextButton")
 	handlingBtn.Name = "HandlingButton"
 	handlingBtn.AnchorPoint = Vector2.new(0.5, 1)
-	handlingBtn.Position = UDim2.new(0.5, 0, 1, -16)
-	handlingBtn.Size = UDim2.fromOffset(260, 72)
+	handlingBtn.Position = UDim2.new(0.5, 0, 1, -24)
+	handlingBtn.Size = UDim2.fromOffset(280, 82)
 	handlingBtn.BackgroundColor3 = Color3.fromRGB(40, 90, 150)
 	handlingBtn.BackgroundTransparency = 0.15
 	handlingBtn.BorderSizePixel = 0
