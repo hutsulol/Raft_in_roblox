@@ -181,6 +181,112 @@ local function makeSparkIcon(parent, size, color)
 	return c
 end
 
+-- Hollow diamond — rotated square outline, no fill. Used as the
+-- card-header glyph ("PLAYER STATS", "LOADOUT", etc.) and as the
+-- Mutation stat icon.
+local function makeDiamondIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "DiamondIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local inner = Instance.new("Frame")
+	inner.AnchorPoint = Vector2.new(0.5, 0.5)
+	inner.Position = UDim2.fromScale(0.5, 0.5)
+	inner.Size = UDim2.fromOffset(size * 0.72, size * 0.72)
+	inner.BackgroundTransparency = 1
+	inner.BorderSizePixel = 0
+	inner.Rotation = 45
+	inner.Parent = c
+
+	local s = Instance.new("UIStroke")
+	s.Color     = color
+	s.Thickness = 1.5
+	s.Parent    = inner
+
+	return c
+end
+
+-- Ring / circle outline — used as the Mana stat icon. Thin stroke, no
+-- fill.
+local function makeCircleIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "CircleIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local ring = Instance.new("Frame")
+	ring.AnchorPoint = Vector2.new(0.5, 0.5)
+	ring.Position = UDim2.fromScale(0.5, 0.5)
+	ring.Size = UDim2.fromOffset(size * 0.9, size * 0.9)
+	ring.BackgroundTransparency = 1
+	ring.BorderSizePixel = 0
+	ring.Parent = c
+	local uc = Instance.new("UICorner")
+	uc.CornerRadius = UDim.new(1, 0)
+	uc.Parent = ring
+	local s = Instance.new("UIStroke")
+	s.Color     = color
+	s.Thickness = 1.5
+	s.Parent    = ring
+
+	return c
+end
+
+-- Holo progress bar — dark track, thin holo border, gradient fill from
+-- mid-holo to HOLO_EDGE. If `segments` > 0 the track is chopped by
+-- (segments - 1) thin vertical dividers — matches the design's segment
+-- indicator on stat and XP bars. Returns (track, fillFrame) so callers
+-- resize the fill later to reflect progress.
+local function makeHoloBar(parent, size, segments)
+	local track = Instance.new("Frame")
+	track.Name = "HoloBar"
+	track.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
+	track.BackgroundTransparency = 0.2
+	track.BorderSizePixel = 0
+	track.Size = size
+	track.Parent = parent
+
+	local s = Instance.new("UIStroke")
+	s.Color     = HOLO_PANEL_BORDER
+	s.Thickness = 1
+	s.Parent    = track
+
+	local fill = Instance.new("Frame")
+	fill.Name = "Fill"
+	fill.BackgroundColor3 = HOLO_EDGE
+	fill.BorderSizePixel = 0
+	fill.Size = UDim2.new(0, 0, 1, 0)
+	fill.Parent = track
+	local fGrad = Instance.new("UIGradient")
+	fGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(140, 200, 235)),
+		ColorSequenceKeypoint.new(1, HOLO_EDGE),
+	})
+	fGrad.Parent = fill
+
+	if segments and segments > 0 then
+		for i = 1, segments - 1 do
+			local d = Instance.new("Frame")
+			d.Name = "Seg" .. i
+			d.AnchorPoint = Vector2.new(0.5, 0)
+			d.Position = UDim2.fromScale(i / segments, 0)
+			d.Size = UDim2.new(0, 1, 1, 0)
+			d.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
+			d.BackgroundTransparency = 0.35
+			d.BorderSizePixel = 0
+			d.ZIndex = (track.ZIndex or 1) + 2
+			d.Parent = track
+		end
+	end
+
+	return track, fill
+end
+
 local function makePanel(name, parent)
 	-- Holo panel ported from the Claude Design mockup: translucent
 	-- navy fill, hairline cyan border, sharp corners with four tiny
@@ -396,9 +502,9 @@ local upgradePointsLabel = nil
 -- consumed by refreshCharacteristics() to drive the bar, level label and
 -- "+" button state from the replicated Characteristics folder.
 local statRows = {
-	Strength = { fill = nil, lvl = nil, button = nil, action = "upgradeStrength" },
-	Mana     = { fill = nil, lvl = nil, button = nil, action = "upgradeMana"     },
-	Mutation = { fill = nil, lvl = nil, button = nil, action = "upgradeMutation" },
+	Strength = { fill = nil, lvl = nil, button = nil, stroke = nil, plusIcon = nil, action = "upgradeStrength" },
+	Mana     = { fill = nil, lvl = nil, button = nil, stroke = nil, plusIcon = nil, action = "upgradeMana"     },
+	Mutation = { fill = nil, lvl = nil, button = nil, stroke = nil, plusIcon = nil, action = "upgradeMutation" },
 }
 local xpAmountLabel      = nil
 local xpFillFrame        = nil
@@ -736,62 +842,119 @@ local function buildMenu()
 	pointsLbl.Size = UDim2.fromOffset(40, 18)
 	upgradePointsLabel = pointsLbl
 
-	-- ── Left column: attribute bars ────────────────────────────────────
+	-- ── Left column: player stats card ───────────────────────────────
 	local statsPanel = makePanel("StatsPanel", root)
 	statsPanel.AnchorPoint = Vector2.new(0, 0)
 	statsPanel.Position = UDim2.fromOffset(0, 145)
 	statsPanel.Size = UDim2.fromOffset(340, 190)
-	padding(statsPanel, 12)
+	padding(statsPanel, 14)
 
-	local statsTitle = makeLabel(statsPanel, "Player stats", FONT_TITLE, 18, COLOR_TEXT)
-	statsTitle.Size = UDim2.new(1, 0, 0, 22)
+	-- Card header: diamond glyph + uppercase title + thin divider under.
+	local headerRow = Instance.new("Frame")
+	headerRow.Name = "HeaderRow"
+	headerRow.BackgroundTransparency = 1
+	headerRow.Size = UDim2.new(1, 0, 0, 18)
+	headerRow.Parent = statsPanel
 
+	local headerDiamond = makeDiamondIcon(headerRow, 13, HOLO_EDGE)
+	headerDiamond.AnchorPoint = Vector2.new(0, 0.5)
+	headerDiamond.Position = UDim2.fromScale(0, 0.5)
+
+	local statsTitle = makeLabel(headerRow, "PLAYER STATS", FONT_TITLE, 15, COLOR_TEXT)
+	statsTitle.Position = UDim2.fromOffset(22, 0)
+	statsTitle.Size = UDim2.new(1, -22, 1, 0)
+
+	local headerDivider = Instance.new("Frame")
+	headerDivider.Name = "Divider"
+	headerDivider.BackgroundColor3 = HOLO_PANEL_BORDER
+	headerDivider.BackgroundTransparency = 0.3
+	headerDivider.BorderSizePixel = 0
+	headerDivider.Size = UDim2.new(1, 0, 0, 1)
+	headerDivider.Position = UDim2.fromOffset(0, 28)
+	headerDivider.Parent = statsPanel
+
+	-- Row holder — vertical list of 3 stat rows.
 	local rowHolder = Instance.new("Frame")
+	rowHolder.Name = "StatRows"
 	rowHolder.BackgroundTransparency = 1
-	rowHolder.Position = UDim2.fromOffset(0, 28)
-	rowHolder.Size = UDim2.new(1, 0, 1, -28)
+	rowHolder.Position = UDim2.fromOffset(0, 40)
+	rowHolder.Size = UDim2.new(1, 0, 1, -40)
 	rowHolder.Parent = statsPanel
 
 	local list = Instance.new("UIListLayout")
 	list.FillDirection = Enum.FillDirection.Vertical
 	list.SortOrder = Enum.SortOrder.LayoutOrder
-	list.Padding = UDim.new(0, 10)
+	list.Padding = UDim.new(0, 12)
 	list.Parent = rowHolder
 
-	-- Attribute rows — Strength / Mana / Mutation. All three are
-	-- upgradable: each has a "+" button that fires its action string on
-	-- PhoneMenuAction, and Characteristics.server.lua bumps the matching
-	-- IntValue back down into refreshCharacteristics().
+	-- Stat row: 22×22 icon (left) + [label / LV line + segmented holo
+	-- bar] (middle) + 22×22 upgrade button (right). Each stat picks a
+	-- distinct hand-drawn glyph so the eye can find the row without
+	-- reading the label. refreshCharacteristics() drives fill, LV label
+	-- and the button's gold/dim state by hitting the refs we store in
+	-- statRows[key].
 	local stats = {
-		{ name = "Strength", key = "Strength" },
-		{ name = "Mana",     key = "Mana"     },
-		{ name = "Mutation", key = "Mutation" },
+		{ key = "Strength", label = "STRENGTH", iconFn = makeSparkIcon,   },
+		{ key = "Mana",     label = "MANA",     iconFn = makeCircleIcon,  },
+		{ key = "Mutation", label = "MUTATION", iconFn = makeDiamondIcon, },
 	}
 	for i, s in ipairs(stats) do
-		local row, fill, lvlLabel = makeBar(rowHolder, 0, s.name)
+		local row = Instance.new("Frame")
+		row.Name = "StatRow_" .. s.key
+		row.BackgroundTransparency = 1
+		row.Size = UDim2.new(1, 0, 0, 32)
 		row.LayoutOrder = i
-		lvlLabel.Text = "lvl 0"
+		row.Parent = rowHolder
+
+		local rowIcon = s.iconFn(row, 22, HOLO_EDGE)
+		rowIcon.AnchorPoint = Vector2.new(0, 0.5)
+		rowIcon.Position = UDim2.fromScale(0, 0.5)
+
+		local content = Instance.new("Frame")
+		content.Name = "Content"
+		content.BackgroundTransparency = 1
+		content.Position = UDim2.fromOffset(32, 0)
+		content.Size = UDim2.new(1, -64, 1, 0)
+		content.Parent = row
+
+		local labelLine = makeLabel(content, s.label, FONT_BODY, 11, COLOR_TEXT_DIM)
+		labelLine.Position = UDim2.fromOffset(0, 0)
+		labelLine.Size = UDim2.new(0.6, 0, 0, 14)
+
+		local lvlLabel = makeLabel(content, "LV 0", FONT_TITLE, 12, COLOR_TEXT, Enum.TextXAlignment.Right)
+		lvlLabel.Position = UDim2.new(0.6, 0, 0, 0)
+		lvlLabel.Size = UDim2.new(0.4, 0, 0, 14)
+
+		local track, fill = makeHoloBar(content, UDim2.new(1, 0, 0, 6), 10)
+		track.Position = UDim2.fromOffset(0, 20)
 
 		local btn = Instance.new("TextButton")
 		btn.Name = s.key .. "Upgrade"
-		btn.BackgroundColor3 = COLOR_BAR_BG
-		btn.BorderSizePixel = 0
-		btn.AutoButtonColor = true
-		btn.Size = UDim2.fromOffset(26, 26)
 		btn.AnchorPoint = Vector2.new(1, 0.5)
-		btn.Position = UDim2.new(1, -46, 0.5, 0)
-		btn.Font = FONT_TITLE
-		btn.TextSize = 18
-		btn.TextColor3 = COLOR_ACCENT
-		btn.Text = "+"
+		btn.Position = UDim2.new(1, 0, 0.5, 0)
+		btn.Size = UDim2.fromOffset(22, 22)
+		btn.BackgroundColor3 = HOLO_PANEL_FILL
+		btn.BackgroundTransparency = 0.28
+		btn.BorderSizePixel = 0
+		btn.Text = ""
+		btn.AutoButtonColor = true
 		btn.Parent = row
-		corner(btn, 6)
-		stroke(btn, 1, COLOR_PANEL_EDGE)
+
+		local bStroke = Instance.new("UIStroke")
+		bStroke.Color     = HOLO_PANEL_BORDER
+		bStroke.Thickness = 1
+		bStroke.Parent    = btn
+
+		local plus = makeSparkIcon(btn, 12, COLOR_TEXT_DIM)
+		plus.AnchorPoint = Vector2.new(0.5, 0.5)
+		plus.Position = UDim2.fromScale(0.5, 0.5)
 
 		local rec = statRows[s.key]
-		rec.fill   = fill
-		rec.lvl    = lvlLabel
-		rec.button = btn
+		rec.fill     = fill
+		rec.lvl      = lvlLabel
+		rec.button   = btn
+		rec.stroke   = bStroke
+		rec.plusIcon = plus
 	end
 
 	-- ── Top-right: daily tasks ─────────────────────────────────────────
@@ -1470,7 +1633,7 @@ local function refreshCharacteristics()
 		local stat = folder:FindFirstChild(key)
 		if stat then
 			if rec.lvl then
-				rec.lvl.Text = "lvl " .. stat.Value
+				rec.lvl.Text = "LV " .. stat.Value
 			end
 			if rec.fill then
 				local ratio = math.clamp(stat.Value / STAT_BAR_MAX, 0, 1)
@@ -1478,8 +1641,21 @@ local function refreshCharacteristics()
 			end
 		end
 		if rec.button then
+			-- Holo button: gold stroke + gold plus glyph when upgrade
+			-- is available, dim otherwise. No text on the button any
+			-- more — the plus is drawn as a Frame icon.
 			rec.button.AutoButtonColor = hasPoints or false
-			rec.button.TextTransparency = hasPoints and 0 or 0.5
+			if rec.stroke then
+				rec.stroke.Color = hasPoints and COLOR_GOLD or HOLO_PANEL_BORDER
+			end
+			if rec.plusIcon then
+				for _, child in rec.plusIcon:GetChildren() do
+					if child:IsA("Frame") then
+						child.BackgroundColor3 = hasPoints and COLOR_GOLD or COLOR_TEXT_DIM
+						child.BackgroundTransparency = hasPoints and 0 or 0.4
+					end
+				end
+			end
 		end
 	end
 
