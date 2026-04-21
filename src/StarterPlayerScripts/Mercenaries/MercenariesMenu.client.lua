@@ -935,7 +935,7 @@ local function buildMercViewport(parent, mercName, weaponId)
 	local vp = Instance.new("ViewportFrame")
 	vp.Name = "MercViewport"
 	vp.AnchorPoint = Vector2.new(0.5, 0.5)
-	vp.Position = UDim2.fromScale(0.5, 0.55)
+	vp.Position = UDim2.fromScale(0.5, 0.5)
 	-- Scale up the merc preview to match PhoneMenu's larger hero character
 	-- feel. The frame intentionally overhangs the slot a bit.
 	vp.Size = UDim2.fromOffset(440, 580)
@@ -1258,7 +1258,7 @@ buildPage = function(mercNames)
 	-- Match PhoneMenu's "cards push toward screen edges" behavior so side
 	-- columns don't feel cramped inside the widened artboard on widescreen.
 	local COLUMN_W      = 380
-	local EDGE_BLEED_X  = 40
+	local EDGE_BLEED_X  = 34
 	local COLUMN_GAP    = 20
 	local PANELS_TOP_Y  = 70
 	local PANELS_BOT_PAD = 24
@@ -1293,7 +1293,7 @@ buildPage = function(mercNames)
 		local sideGapArtboard = sideGapPx / s
 		-- Moderate edge pull: keep cards near edges without letting them
 		-- crawl out of the visible screen bounds.
-		local extraBleed = math.clamp(sideGapArtboard * 0.85, 0, 120)
+		local extraBleed = math.clamp(sideGapArtboard * 0.8, 0, 110)
 		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
 
 		if leftColRef then
@@ -1695,12 +1695,13 @@ buildPage = function(mercNames)
 	-- (or Hire button for unrecruited mercs — currently only OWNED
 	-- since we only render mercs from player.Mercenaries).
 	local META_HEIGHT = 44
+	local META_TOP_OFFSET = -8
 	local metaBar = Instance.new("Frame")
 	metaBar.Name = "MetaBar"
 	metaBar.BackgroundColor3 = HOLO_PANEL_FILL
 	metaBar.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	metaBar.BorderSizePixel = 0
-	metaBar.Position = UDim2.fromOffset(0, 0)
+	metaBar.Position = UDim2.fromOffset(0, META_TOP_OFFSET)
 	metaBar.Size = UDim2.new(1, 0, 0, META_HEIGHT)
 	metaBar.Parent = centreCol
 	local metaStroke = Instance.new("UIStroke")
@@ -1806,8 +1807,8 @@ buildPage = function(mercNames)
 	slot.Name = "CharacterSlot"
 	slot.BackgroundTransparency = 1
 	slot.BorderSizePixel = 0
-	slot.Position = UDim2.fromOffset(0, META_HEIGHT + 14)
-	slot.Size = UDim2.new(1, 0, 1, -(META_HEIGHT + 14))
+	slot.Position = UDim2.fromOffset(0, META_HEIGHT + 8)
+	slot.Size = UDim2.new(1, 0, 1, -(META_HEIGHT + 8))
 	slot.Parent = centreCol
 
 	-- Ground glow — wide horizontal ellipse at the feet, faded at both
@@ -1870,8 +1871,8 @@ buildPage = function(mercNames)
 	local handlingBtn = Instance.new("TextButton")
 	handlingBtn.Name = "HandlingButton"
 	handlingBtn.AnchorPoint = Vector2.new(0.5, 1)
-	handlingBtn.Position = UDim2.new(0.5, 0, 1, -4)
-	handlingBtn.Size = UDim2.fromOffset(200, 40)
+	handlingBtn.Position = UDim2.new(0.5, 0, 1, -2)
+	handlingBtn.Size = UDim2.fromOffset(230, 52)
 	handlingBtn.BackgroundColor3 = Color3.fromRGB(40, 90, 150)
 	handlingBtn.BackgroundTransparency = 0.15
 	handlingBtn.BorderSizePixel = 0
