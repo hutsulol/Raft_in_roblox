@@ -15,6 +15,7 @@ local UserInputService  = game:GetService("UserInputService")
 local GuiService        = game:GetService("GuiService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
+local RunService        = game:GetService("RunService")
 
 -- Pose used for the viewport character. Custom looping idle that keeps the
 -- rig in a clean standing stance for the UI preview.
@@ -50,6 +51,13 @@ local HORIZON                 = Color3.fromRGB(80, 140, 190) -- cyan horizon ban
 
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
+
+-- Panels registered here occlude the drifting backdrop motes — when a
+-- mote drifts behind any of these rects, the Heartbeat loop inside
+-- buildHoloBackground bumps its transparency to nearly 1 so the holo
+-- surfaces don't read as "speckled". Populated by buildMenu() once
+-- each card is created.
+local motesOccludeList = {}
 
 -- ─── State ────────────────────────────────────────────────────────────────
 local menuOpen              = false
@@ -740,6 +748,9 @@ local function buildHoloBackground(parent)
 		mote.BorderSizePixel = 0
 		mote.ZIndex = 4
 		mote.Parent = motes
+		-- Base transparency so the Heartbeat occlusion check below can
+		-- restore it when a mote leaves a panel rect.
+		mote:SetAttribute("BaseTransparency", 1 - opacity)
 		local c = Instance.new("UICorner")
 		c.CornerRadius = UDim.new(1, 0)
 		c.Parent = mote
@@ -760,8 +771,39 @@ local function buildHoloBackground(parent)
 		end)
 	end
 
+	-- Expose the motes container so the panel code below can register
+	-- occluders (panels that should hide motes drifting behind them).
+	-- Heartbeat runs the check every frame — 24 motes × ~6 panels is a
+	-- trivial workload.
+	RunService.Heartbeat:Connect(function()
+		if #motesOccludeList == 0 then return end
+		for _, mote in motes:GetChildren() do
+			if mote:IsA("Frame") then
+				local base = mote:GetAttribute("BaseTransparency") or 0.5
+				local p = mote.AbsolutePosition
+				local s = mote.AbsoluteSize
+				local cx = p.X + s.X * 0.5
+				local cy = p.Y + s.Y * 0.5
+				local hidden = false
+				for _, panel in motesOccludeList do
+					if panel.Visible then
+						local pp = panel.AbsolutePosition
+						local ps = panel.AbsoluteSize
+						if cx >= pp.X and cx <= pp.X + ps.X
+							and cy >= pp.Y and cy <= pp.Y + ps.Y then
+							hidden = true
+							break
+						end
+					end
+				end
+				mote.BackgroundTransparency = hidden and 0.97 or base
+			end
+		end
+	end)
+
 	return root
 end
+
 
 -- ─── Menu construction ────────────────────────────────────────────────────
 local viewportFrame = nil
@@ -1025,73 +1067,9 @@ local function buildMenu()
 	menuRootBasePosition = root.Position
 	menuRootScale        = rootScale
 
-	-- ── Center: character viewport pedestal ──────────────────────────────
-	-- Decorative frame built BEFORE the ViewportFrame so it renders
-	-- behind the character: a soft ground-glow disc under the feet, two
-	-- concentric rim rings (outer soft + inner tight), and four corner
-	-- L brackets framing where the character stands. Matches the
-	-- CharacterSlot composition in MainMenu.jsx.
-	local pedestal = Instance.new("Frame")
-	pedestal.Name = "ViewportPedestal"
-	pedestal.AnchorPoint = Vector2.new(0.5, 0.5)
-	pedestal.Position = UDim2.fromScale(0.5, 0.45)
-	pedestal.Size = UDim2.fromOffset(360, 500)
-	pedestal.BackgroundTransparency = 1
-	pedestal.BorderSizePixel = 0
-	pedestal.Parent = root
-
-	-- Ground glow: wide horizontal ellipse that fades at both ends so
-	-- it reads as a pool of light under the feet.
-	local ground = Instance.new("Frame")
-	ground.Name = "GroundGlow"
-	ground.AnchorPoint = Vector2.new(0.5, 1)
-	ground.Position = UDim2.fromScale(0.5, 0.92)
-	ground.Size = UDim2.fromOffset(240, 40)
-	ground.BackgroundColor3 = HORIZON
-	ground.BackgroundTransparency = 0.75
-	ground.BorderSizePixel = 0
-	ground.Parent = pedestal
-	local groundCorner = Instance.new("UICorner")
-	groundCorner.CornerRadius = UDim.new(1, 0)
-	groundCorner.Parent = ground
-	local groundGrad = Instance.new("UIGradient")
-	groundGrad.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0,    1),
-		NumberSequenceKeypoint.new(0.5,  0),
-		NumberSequenceKeypoint.new(1,    1),
-	})
-	groundGrad.Rotation = 0
-	groundGrad.Parent = ground
-
-	-- Concentric rim rings behind the character.
-	local function rimCircle(sizePx, strokeColor, strokeTransparency)
-		local r = Instance.new("Frame")
-		r.Name = "RimCircle"
-		r.AnchorPoint = Vector2.new(0.5, 0.5)
-		r.Position = UDim2.fromScale(0.5, 0.48)
-		r.Size = UDim2.fromOffset(sizePx, sizePx)
-		r.BackgroundTransparency = 1
-		r.BorderSizePixel = 0
-		r.Parent = pedestal
-		local rc = Instance.new("UICorner")
-		rc.CornerRadius = UDim.new(1, 0)
-		rc.Parent = r
-		local rs = Instance.new("UIStroke")
-		rs.Color        = strokeColor
-		rs.Thickness    = 1
-		rs.Transparency = strokeTransparency or 0
-		rs.Parent       = r
-	end
-	rimCircle(320, HOLO_PANEL_LBRACKET, 0.55) -- outer halo
-	rimCircle(260, HOLO_PANEL_BORDER,   0.45) -- inner core
-
-	-- Corner L brackets on the pedestal frame — same size as the
-	-- LevelBadge's, so the viewport slot matches the rest of the
-	-- panel language.
-	cornerLs(pedestal, 14, HOLO_EDGE, 2)
-
-	-- Actual ViewportFrame: occupies the same space as the pedestal,
-	-- parented AFTER it so the rig renders on top of the rings.
+	-- ── Center: character viewport ───────────────────────────────────────
+	-- Plain ViewportFrame — no pedestal / rim rings / corner brackets.
+	-- The character reads cleanest against the raw holo backdrop.
 	viewportFrame = Instance.new("ViewportFrame")
 	viewportFrame.Name = "CharacterViewport"
 	viewportFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1121,12 +1099,15 @@ local function buildMenu()
 	-- on non-Studio clients where those buttons extend past GuiInset.
 	-- Column geometry from MainMenu.jsx: left/right 24, top 70 (screen);
 	-- Root is already inset by (30, topInset+20) so we position the
-	-- panels at Root-relative y=14 with fixed 280 width and 14 px gaps.
+	-- panels inside it with fixed 280 width and 14 px gaps. Left column
+	-- is pushed down further (y=50) so the Roblox default topbar icons
+	-- (logo / menu / chat at top-left) never sit behind the LevelCard.
 	local levelPanel = makePanel("LevelPanel", root)
 	levelPanel.AnchorPoint = Vector2.new(0, 0)
-	levelPanel.Position = UDim2.fromOffset(0, 14)
+	levelPanel.Position = UDim2.fromOffset(0, 50)
 	levelPanel.Size = UDim2.fromOffset(280, 76)
 	padding(levelPanel, 10)
+	table.insert(motesOccludeList, levelPanel)
 
 	-- Holo level badge: 50×50 square with the holo-edge border, a
 	-- diagonal HOLO_DEEP → transparent sheen, mini corner L brackets,
@@ -1187,12 +1168,13 @@ local function buildMenu()
 	upgradePointsLabel = pointsLbl
 
 	-- ── Left column: player stats card ───────────────────────────────
-	-- Stacked under LevelPanel: y = 14 (top) + 76 (LevelPanel) + 14 (gap).
+	-- Stacked under LevelPanel: y = 50 (top) + 76 (LevelPanel) + 14 (gap).
 	local statsPanel = makePanel("StatsPanel", root)
 	statsPanel.AnchorPoint = Vector2.new(0, 0)
-	statsPanel.Position = UDim2.fromOffset(0, 104)
+	statsPanel.Position = UDim2.fromOffset(0, 140)
 	statsPanel.Size = UDim2.fromOffset(280, 180)
 	padding(statsPanel, 14)
+	table.insert(motesOccludeList, statsPanel)
 
 	-- Card header: diamond glyph + uppercase title + thin divider under.
 	local headerRow = Instance.new("Frame")
@@ -1313,6 +1295,7 @@ local function buildMenu()
 	tasksPanel.Position = UDim2.new(1, 0, 0, 14)
 	tasksPanel.Size = UDim2.fromOffset(280, 292)
 	padding(tasksPanel, 14)
+	table.insert(motesOccludeList, tasksPanel)
 
 	local taskHeader = Instance.new("Frame")
 	taskHeader.Name = "HeaderRow"
@@ -1330,17 +1313,19 @@ local function buildMenu()
 
 	-- Countdown until the next UTC midnight. dailyTimerLabel is a
 	-- module-level ref so the heartbeat task below can rewrite it
-	-- every second while the menu exists. Sits right-aligned beside
-	-- the clock glyph.
-	local clockGlyph = makeClockIcon(taskHeader, 11, COLOR_TEXT_DIM)
-	clockGlyph.AnchorPoint = Vector2.new(1, 0.5)
-	clockGlyph.Position = UDim2.new(1, -58, 0.5, 0)
-
+	-- every second while the menu exists. HH:MM:SS needs ~56 px at
+	-- 11 pt Gotham; leave a little slack, then park the clock glyph
+	-- just to the left with a 4 px gap.
+	local TIMER_WIDTH = 60
 	local timerLbl = makeLabel(taskHeader, "", FONT_BODY, 11, COLOR_TEXT_DIM, Enum.TextXAlignment.Right)
 	timerLbl.AnchorPoint = Vector2.new(1, 0.5)
 	timerLbl.Position = UDim2.new(1, 0, 0.5, 0)
-	timerLbl.Size = UDim2.fromOffset(54, 18)
+	timerLbl.Size = UDim2.fromOffset(TIMER_WIDTH, 18)
 	dailyTimerLabel = timerLbl
+
+	local clockGlyph = makeClockIcon(taskHeader, 11, COLOR_TEXT_DIM)
+	clockGlyph.AnchorPoint = Vector2.new(1, 0.5)
+	clockGlyph.Position = UDim2.new(1, -(TIMER_WIDTH + 4), 0.5, 0)
 
 	local taskDivider = Instance.new("Frame")
 	taskDivider.BackgroundColor3 = HOLO_PANEL_BORDER
@@ -1464,6 +1449,7 @@ local function buildMenu()
 	sidePanel.Position = UDim2.new(1, 0, 0, 320)
 	sidePanel.Size = UDim2.fromOffset(280, 122)
 	padding(sidePanel, 14)
+	table.insert(motesOccludeList, sidePanel)
 
 	local sideHeader = Instance.new("Frame")
 	sideHeader.Name = "HeaderRow"
@@ -1552,6 +1538,7 @@ local function buildMenu()
 	xpPanel.AnchorPoint = Vector2.new(0.5, 1)
 	xpPanel.Position = UDim2.new(0.5, 0, 1, -24)
 	xpPanel.Size = UDim2.fromOffset(460, 48)
+	table.insert(motesOccludeList, xpPanel)
 	local xpPad = Instance.new("UIPadding")
 	xpPad.PaddingTop    = UDim.new(0, 8)
 	xpPad.PaddingBottom = UDim.new(0, 8)
@@ -2460,7 +2447,10 @@ local function formatResetCountdown(secs)
 	local h = math.floor(secs / 3600)
 	local m = math.floor((secs % 3600) / 60)
 	local s = secs % 60
-	return string.format("Resets in %02d:%02d:%02d", h, m, s)
+	-- HH:MM:SS only — the clock glyph beside the label already tells
+	-- the player what the number represents, matching the
+	-- Daily Tasks header in MainMenu.jsx.
+	return string.format("%02d:%02d:%02d", h, m, s)
 end
 
 task.spawn(function()
