@@ -1138,9 +1138,9 @@ local function buildMenu()
 		local artboardScreenW = REFERENCE_W * s
 		local sideGapPx = math.max(0, size.X - artboardScreenW) * 0.5
 		-- Pull columns back from the absolute edge so cards stay fully visible.
-		-- We only use ~55% of free side space and clamp the extra bleed.
+		-- We use only part of free side space and clamp the extra bleed.
 		local sideGapArtboard = sideGapPx / s
-		local extraBleed = math.clamp(sideGapArtboard * 0.55, 0, 90)
+		local extraBleed = math.clamp(sideGapArtboard * 0.62, 0, 100)
 		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
 
 		if levelPanel then
@@ -2173,6 +2173,25 @@ local phoneMenuEvent = ReplicatedStorage:WaitForChild("PhoneMenuAction")
 
 -- Dev-phase: treat 10 levels in any attribute as a full bar.
 local STAT_BAR_MAX = 10
+local STAT_BAR_SEGMENTS = 10
+
+-- Align filled width to exact segment steps (1/10, 2/10, ...). This avoids
+-- the visual "slightly more than one level" effect caused by fractional
+-- interpolation/anti-aliasing on segmented tracks.
+local function getSteppedBarRatio(value, maxValue, segments)
+	if maxValue <= 0 then return 0 end
+	local raw = math.clamp(value / maxValue, 0, 1)
+	if not segments or segments <= 0 then
+		return raw
+	end
+	local stepped = math.floor(raw * segments + 1e-6) / segments
+	-- Tiny inset keeps the fill from touching the next segment divider
+	-- prematurely; full bars still end exactly at 100%.
+	if stepped > 0 and stepped < 1 then
+		stepped = math.max(0, stepped - 0.002)
+	end
+	return stepped
+end
 
 local function refreshCharacteristics()
 	local folder = player:FindFirstChild("Characteristics")
@@ -2201,7 +2220,7 @@ local function refreshCharacteristics()
 				rec.lvl.Text = "LV " .. stat.Value
 			end
 			if rec.fill then
-				local ratio = math.clamp(stat.Value / STAT_BAR_MAX, 0, 1)
+				local ratio = getSteppedBarRatio(stat.Value, STAT_BAR_MAX, STAT_BAR_SEGMENTS)
 				rec.fill.Size = UDim2.new(ratio, 0, 1, 0)
 			end
 		end
