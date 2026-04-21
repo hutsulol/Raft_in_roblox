@@ -1266,19 +1266,13 @@ buildPage = function(mercNames)
 		if s < 0.5 then s = 0.5 end
 		responsiveScale.Scale = s
 
-		local artboardScreenW = REFERENCE_W * s
-		local sideGapPx = math.max(0, size.X - artboardScreenW) * 0.5
-		local sideGapArtboard = sideGapPx / s
-		-- Moderate edge pull: keep cards near edges without letting them
-		-- crawl out of the visible screen bounds.
-		local extraBleed = math.clamp(sideGapArtboard * 0.6, 0, 80)
-		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
-
+		-- Keep UI blocks in stable artboard-relative coordinates so fullscreen
+		-- and windowed modes preserve the same composition around centre.
 		if leftColRef then
-			leftColRef.Position = UDim2.fromOffset(-dynamicBleed, PANELS_TOP_Y)
+			leftColRef.Position = UDim2.fromOffset(-EDGE_BLEED_X, PANELS_TOP_Y)
 		end
 		if rightColRef then
-			rightColRef.Position = UDim2.new(1, dynamicBleed, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET)
+			rightColRef.Position = UDim2.new(1, EDGE_BLEED_X, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET)
 		end
 	end
 	updateResponsiveScale()
