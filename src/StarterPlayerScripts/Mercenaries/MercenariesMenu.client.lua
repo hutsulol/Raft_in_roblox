@@ -1386,6 +1386,39 @@ buildPage = function(mercNames)
 	chipLabel.Text = "0"
 	chipLabel.Parent = chip
 
+	-- Currency wiring — don't assume which attribute the game uses to
+	-- store the spendable "hire" currency. Read whichever of Gems /
+	-- Iron / Currency / IronIngots is present on the player, and
+	-- rewire whenever any of them change. Game code can also bypass
+	-- attributes entirely by calling _G.SetMercenariesCurrency(n).
+	local CURRENCY_ATTRS = { "Gems", "Iron", "Currency", "IronIngots" }
+	local function readCurrency()
+		for _, key in ipairs(CURRENCY_ATTRS) do
+			local v = player:GetAttribute(key)
+			if v ~= nil then return v end
+		end
+		return 0
+	end
+	local function pushCurrency(n)
+		if chipLabel and chipLabel.Parent then
+			chipLabel.Text = tostring(n or 0)
+		end
+	end
+	pushCurrency(readCurrency())
+	local currencyConns = {}
+	for _, key in ipairs(CURRENCY_ATTRS) do
+		table.insert(currencyConns,
+			player:GetAttributeChangedSignal(key):Connect(function()
+				pushCurrency(readCurrency())
+			end))
+	end
+	page.AncestryChanged:Connect(function(_, newParent)
+		if not newParent then
+			for _, c in ipairs(currencyConns) do c:Disconnect() end
+		end
+	end)
+	_G.SetMercenariesCurrency = pushCurrency
+
 	-- ── Left column: mercenary list ────────────────────────────────────
 	-- Position from MercenaryPage.jsx: left 24, top 70, bottom 24,
 	-- width 300. All panels live inside scaleWrap so they share the
@@ -2893,12 +2926,37 @@ buildEquipmentPage = function(mercName, mercNames)
 	end)
 end
 
+-- ─── Roster-change listeners ───────────────────────────────────────────
+-- player.Mercenaries StringValue children drive the left list. When
+-- the folder gains / loses a child while the page is open, rebuild
+-- the page from the fresh list so newly-hired mercs appear and lost
+-- ones disappear without the player having to close + reopen.
+local rosterConns = {}
+local function clearRosterConns()
+	for _, c in ipairs(rosterConns) do c:Disconnect() end
+	table.clear(rosterConns)
+end
+
+local function collectMercNames()
+	local folder = player:FindFirstChild("Mercenaries")
+	local names = {}
+	if folder then
+		for _, child in folder:GetChildren() do
+			if child:IsA("StringValue") then
+				table.insert(names, child.Value)
+			end
+		end
+	end
+	return names
+end
+
 -- ─── Close the page ─────────────────────────────────────────────────────
 
 function closePage()
 	if not page then return end
 	local p = page
 	page = nil
+	clearRosterConns()
 	-- Clear the viewport cache before tearing down the page. The cached
 	-- ViewportFrames live inside `page`, so p:Destroy() below kills them
 	-- anyway — but if we leave stale entries in the table, the next
@@ -2917,22 +2975,29 @@ end
 local function openMercenariesMenu()
 	if page then return end
 
-	-- Read recruited mercenaries from the replicated Folder
-	local folder = player:FindFirstChild("Mercenaries")
-	local mercNames = {}
-	if folder then
-		for _, child in folder:GetChildren() do
-			if child:IsA("StringValue") then
-				table.insert(mercNames, child.Value)
-			end
-		end
-	end
-
-	if #mercNames == 0 then
-		return
-	end
+	local mercNames = collectMercNames()
+	if #mercNames == 0 then return end
 
 	buildPage(mercNames)
+
+	-- Watch the Mercenaries folder so hiring / losing a merc updates
+	-- the page live. rebuild() collects the fresh list and re-runs
+	-- buildPage, which handles viewport detach + page teardown for us.
+	clearRosterConns()
+	local folder = player:FindFirstChild("Mercenaries")
+	if folder then
+		local function rebuild()
+			if not page then return end
+			local names = collectMercNames()
+			if #names > 0 then
+				buildPage(names)
+			else
+				closePage()
+			end
+		end
+		table.insert(rosterConns, folder.ChildAdded:Connect(rebuild))
+		table.insert(rosterConns, folder.ChildRemoved:Connect(rebuild))
+	end
 end
 
 _G.OpenMercenariesMenu = openMercenariesMenu
