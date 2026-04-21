@@ -784,6 +784,7 @@ local statRows = {
 }
 local xpAmountLabel      = nil
 local xpFillFrame        = nil
+local xpLevelLabel       = nil
 
 -- Tasks panel refs. `dailyQuestRows` is rebuilt every time the
 -- replicated DailyQuests folder changes shape (new day, different
@@ -1024,9 +1025,73 @@ local function buildMenu()
 	menuRootBasePosition = root.Position
 	menuRootScale        = rootScale
 
-	-- ── Center: character viewport ───────────────────────────────────────
-	-- ViewportFrame occupies the same space as before; only its contents
-	-- (WorldModel + cloned character + camera + light) changed.
+	-- ── Center: character viewport pedestal ──────────────────────────────
+	-- Decorative frame built BEFORE the ViewportFrame so it renders
+	-- behind the character: a soft ground-glow disc under the feet, two
+	-- concentric rim rings (outer soft + inner tight), and four corner
+	-- L brackets framing where the character stands. Matches the
+	-- CharacterSlot composition in MainMenu.jsx.
+	local pedestal = Instance.new("Frame")
+	pedestal.Name = "ViewportPedestal"
+	pedestal.AnchorPoint = Vector2.new(0.5, 0.5)
+	pedestal.Position = UDim2.fromScale(0.5, 0.45)
+	pedestal.Size = UDim2.fromOffset(360, 500)
+	pedestal.BackgroundTransparency = 1
+	pedestal.BorderSizePixel = 0
+	pedestal.Parent = root
+
+	-- Ground glow: wide horizontal ellipse that fades at both ends so
+	-- it reads as a pool of light under the feet.
+	local ground = Instance.new("Frame")
+	ground.Name = "GroundGlow"
+	ground.AnchorPoint = Vector2.new(0.5, 1)
+	ground.Position = UDim2.fromScale(0.5, 0.92)
+	ground.Size = UDim2.fromOffset(240, 40)
+	ground.BackgroundColor3 = HORIZON
+	ground.BackgroundTransparency = 0.75
+	ground.BorderSizePixel = 0
+	ground.Parent = pedestal
+	local groundCorner = Instance.new("UICorner")
+	groundCorner.CornerRadius = UDim.new(1, 0)
+	groundCorner.Parent = ground
+	local groundGrad = Instance.new("UIGradient")
+	groundGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0,    1),
+		NumberSequenceKeypoint.new(0.5,  0),
+		NumberSequenceKeypoint.new(1,    1),
+	})
+	groundGrad.Rotation = 0
+	groundGrad.Parent = ground
+
+	-- Concentric rim rings behind the character.
+	local function rimCircle(sizePx, strokeColor, strokeTransparency)
+		local r = Instance.new("Frame")
+		r.Name = "RimCircle"
+		r.AnchorPoint = Vector2.new(0.5, 0.5)
+		r.Position = UDim2.fromScale(0.5, 0.48)
+		r.Size = UDim2.fromOffset(sizePx, sizePx)
+		r.BackgroundTransparency = 1
+		r.BorderSizePixel = 0
+		r.Parent = pedestal
+		local rc = Instance.new("UICorner")
+		rc.CornerRadius = UDim.new(1, 0)
+		rc.Parent = r
+		local rs = Instance.new("UIStroke")
+		rs.Color        = strokeColor
+		rs.Thickness    = 1
+		rs.Transparency = strokeTransparency or 0
+		rs.Parent       = r
+	end
+	rimCircle(320, HOLO_PANEL_LBRACKET, 0.55) -- outer halo
+	rimCircle(260, HOLO_PANEL_BORDER,   0.45) -- inner core
+
+	-- Corner L brackets on the pedestal frame — same size as the
+	-- LevelBadge's, so the viewport slot matches the rest of the
+	-- panel language.
+	cornerLs(pedestal, 14, HOLO_EDGE, 2)
+
+	-- Actual ViewportFrame: occupies the same space as the pedestal,
+	-- parented AFTER it so the rig renders on top of the rings.
 	viewportFrame = Instance.new("ViewportFrame")
 	viewportFrame.Name = "CharacterViewport"
 	viewportFrame.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -1478,47 +1543,54 @@ local function buildMenu()
 		end
 	end)
 
-	-- ── Bottom: XP counter ─────────────────────────────────────────────
-	-- Anchored to the bottom edge of the ViewportFrame so that the XP bar
-	-- always sits directly under the character no matter the screen size.
-	-- The ViewportFrame is centered at (0.5, 0.45) with Size (360, 500),
-	-- so its bottom edge = (0.5 scale, 0.45 scale + 250 offset). Place the
-	-- XP panel's top edge 10 px below that via AnchorPoint (0.5, 0) and
-	-- Position (0.5, 0, 0.45, 260). Fixed-offset width keeps the bar the
-	-- same visual size across resolutions (desktop and mobile alike).
+	-- ── Bottom: XP bar ─────────────────────────────────────────────────
+	-- Matches XPBar in MainMenu.jsx: holo-framed row pinned to the
+	-- bottom-centre of the menu, 460 wide / 48 tall / 24 px above the
+	-- screen edge. Contents left-to-right: spark + "XP" label, live
+	-- amount, segmented holo bar, Lv badge with gold-accent number.
 	local xpPanel = makePanel("XPPanel", root)
-	xpPanel.AnchorPoint = Vector2.new(0.5, 0)
-	-- Offset 240 puts the top edge of the XP bar exactly on the crop
-	-- line of the viewport character (waist height) — touching the
-	-- character without overlapping and without leaving a gap.
-	xpPanel.Position = UDim2.new(0.5, 0, 0.45, 240)
-	xpPanel.Size = UDim2.fromOffset(440, 48)
-	padding(xpPanel, 10)
+	xpPanel.AnchorPoint = Vector2.new(0.5, 1)
+	xpPanel.Position = UDim2.new(0.5, 0, 1, -24)
+	xpPanel.Size = UDim2.fromOffset(460, 48)
+	local xpPad = Instance.new("UIPadding")
+	xpPad.PaddingTop    = UDim.new(0, 8)
+	xpPad.PaddingBottom = UDim.new(0, 8)
+	xpPad.PaddingLeft   = UDim.new(0, 14)
+	xpPad.PaddingRight  = UDim.new(0, 14)
+	xpPad.Parent = xpPanel
 
-	local xpTag = makeLabel(xpPanel, "XP", FONT_TITLE, 18, COLOR_TEXT)
+	local xpSpark = makeSparkIcon(xpPanel, 16, HOLO_EDGE)
+	xpSpark.AnchorPoint = Vector2.new(0, 0.5)
+	xpSpark.Position = UDim2.new(0, 0, 0.5, 0)
+
+	local xpTag = makeLabel(xpPanel, "XP", FONT_TITLE, 15, HOLO_EDGE)
+	xpTag.Position = UDim2.fromOffset(22, 0)
 	xpTag.Size = UDim2.new(0, 28, 1, 0)
 
-	local xpAmount = makeLabel(xpPanel, "0 / 50", FONT_BODY, 16, COLOR_TEXT_DIM)
-	xpAmount.Position = UDim2.fromOffset(30, 0)
-	xpAmount.Size = UDim2.new(0, 50, 1, 0)
+	local xpAmount = makeLabel(xpPanel, "0 / 50", FONT_BODY, 13, COLOR_TEXT_DIM)
+	xpAmount.Position = UDim2.fromOffset(56, 0)
+	xpAmount.Size = UDim2.new(0, 62, 1, 0)
 	xpAmountLabel = xpAmount
 
-	local xpTrack = Instance.new("Frame")
-	xpTrack.BackgroundColor3 = COLOR_BAR_BG
-	xpTrack.BorderSizePixel = 0
-	xpTrack.Position = UDim2.fromOffset(82, 9)
-	xpTrack.Size = UDim2.new(1, -92, 0, 14)
-	xpTrack.Parent = xpPanel
-	corner(xpTrack, 7)
-	stroke(xpTrack, 1, COLOR_PANEL_EDGE)
-
-	local xpFill = Instance.new("Frame")
-	xpFill.BackgroundColor3 = COLOR_XP_FILL
-	xpFill.BorderSizePixel = 0
-	xpFill.Size = UDim2.fromScale(0, 1)
-	xpFill.Parent = xpTrack
-	corner(xpFill, 7)
+	-- Holo bar fills the middle. Reserve 52 px on the right for the Lv
+	-- badge (40 + 12 gap), 122 on the left for the spark/tag/amount
+	-- cluster.
+	local xpTrack, xpFill = makeHoloBar(xpPanel, UDim2.new(1, -174, 0, 10), 10)
+	xpTrack.AnchorPoint = Vector2.new(0, 0.5)
+	xpTrack.Position = UDim2.new(0, 122, 0.5, 0)
 	xpFillFrame = xpFill
+
+	-- Lv badge on the right. RichText so we can dim the "Lv" prefix
+	-- and gold-accent the number in a single label.
+	local xpLv = makeLabel(xpPanel,
+		'Lv <font color="rgb(230,190,100)">0</font>',
+		FONT_TITLE, 13, COLOR_TEXT)
+	xpLv.RichText = true
+	xpLv.AnchorPoint = Vector2.new(1, 0.5)
+	xpLv.Position = UDim2.new(1, 0, 0.5, 0)
+	xpLv.Size = UDim2.fromOffset(46, 16)
+	xpLv.TextXAlignment = Enum.TextXAlignment.Right
+	xpLevelLabel = xpLv
 
 	-- ── Holo-open cover ────────────────────────────────────────────────
 	-- Opaque fullscreen Frame stacked over `root` (created AFTER root so
@@ -2049,6 +2121,12 @@ local function refreshCharacteristics()
 	if xpFillFrame and xp and xpRequired then
 		local ratio = xpRequired.Value > 0 and xp.Value / xpRequired.Value or 0
 		xpFillFrame.Size = UDim2.new(math.clamp(ratio, 0, 1), 0, 1, 0)
+	end
+	if xpLevelLabel and level then
+		-- Dim "Lv" prefix + gold level number to match MainMenu.jsx.
+		xpLevelLabel.Text = string.format(
+			'Lv <font color="rgb(230,190,100)">%d</font>',
+			level.Value)
 	end
 end
 
