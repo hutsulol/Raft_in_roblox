@@ -1266,13 +1266,23 @@ buildPage = function(mercNames)
 		if s < 0.5 then s = 0.5 end
 		responsiveScale.Scale = s
 
-		-- Keep UI blocks in stable artboard-relative coordinates so fullscreen
-		-- and windowed modes preserve the same composition around centre.
+		-- Adaptive side spread:
+		-- - small/regular widths keep baseline composition unchanged
+		-- - wider screens gradually push side blocks outward
+		local artboardScreenW = REFERENCE_W * s
+		local sideGapPx = math.max(0, size.X - artboardScreenW) * 0.5
+		local sideGapArtboard = sideGapPx / s
+		local extraBleed = 0
+		if sideGapArtboard > 40 then
+			extraBleed = math.clamp((sideGapArtboard - 40) * 0.55, 0, 90)
+		end
+		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
+
 		if leftColRef then
-			leftColRef.Position = UDim2.fromOffset(-EDGE_BLEED_X, PANELS_TOP_Y)
+			leftColRef.Position = UDim2.fromOffset(-dynamicBleed, PANELS_TOP_Y)
 		end
 		if rightColRef then
-			rightColRef.Position = UDim2.new(1, EDGE_BLEED_X, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET)
+			rightColRef.Position = UDim2.new(1, dynamicBleed, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET)
 		end
 	end
 	updateResponsiveScale()
