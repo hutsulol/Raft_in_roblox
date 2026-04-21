@@ -1262,6 +1262,7 @@ buildPage = function(mercNames)
 	local COLUMN_GAP    = 20
 	local PANELS_TOP_Y  = 70
 	local PANELS_BOT_PAD = 24
+	local RIGHT_PANEL_Y_OFFSET = -8
 
 	local scaleWrap = Instance.new("Frame")
 	scaleWrap.Name = "ScaleWrap"
@@ -1300,7 +1301,7 @@ buildPage = function(mercNames)
 			leftColRef.Position = UDim2.fromOffset(-dynamicBleed, PANELS_TOP_Y)
 		end
 		if rightColRef then
-			rightColRef.Position = UDim2.new(1, dynamicBleed, 0, PANELS_TOP_Y)
+			rightColRef.Position = UDim2.new(1, dynamicBleed, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET)
 		end
 	end
 	updateResponsiveScale()
@@ -1333,8 +1334,9 @@ buildPage = function(mercNames)
 	local backBtn = Instance.new("TextButton")
 	backBtn.Name = "BackButton"
 	backBtn.AnchorPoint = Vector2.new(0, 0)
-	backBtn.Position = UDim2.fromOffset(0, 0)
-	backBtn.Size = UDim2.fromOffset(88, 34)
+	-- Align vertically with side panels (same Y level as their top edge).
+	backBtn.Position = UDim2.fromOffset(0, PANELS_TOP_Y - 16)
+	backBtn.Size = UDim2.fromOffset(118, 42)
 	backBtn.BackgroundColor3 = HOLO_PANEL_FILL
 	backBtn.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	backBtn.BorderSizePixel = 0
@@ -1348,15 +1350,15 @@ buildPage = function(mercNames)
 
 	local backGlyph = makeBackIcon(backBtn, 14, COLOR_TEXT)
 	backGlyph.AnchorPoint = Vector2.new(0, 0.5)
-	backGlyph.Position = UDim2.new(0, 12, 0.5, 0)
+	backGlyph.Position = UDim2.new(0, 14, 0.5, 0)
 
 	local backLabel = Instance.new("TextLabel")
 	backLabel.BackgroundTransparency = 1
 	backLabel.BorderSizePixel = 0
-	backLabel.Position = UDim2.fromOffset(30, 0)
-	backLabel.Size = UDim2.new(1, -34, 1, 0)
+	backLabel.Position = UDim2.fromOffset(36, 0)
+	backLabel.Size = UDim2.new(1, -40, 1, 0)
 	backLabel.Font = FONT_TITLE
-	backLabel.TextSize = 13
+	backLabel.TextSize = 15
 	backLabel.TextColor3 = COLOR_TEXT
 	backLabel.TextXAlignment = Enum.TextXAlignment.Left
 	backLabel.Text = "BACK"
@@ -1904,10 +1906,10 @@ buildPage = function(mercNames)
 	hDiamond.Position = UDim2.new(0.5, -58, 0.5, 0)
 	hDiamond.ZIndex = 11
 
-	local hLabel = makeLabel(handlingBtn, "HANDLING", FONT_TITLE, 13, COLOR_TEXT, Enum.TextXAlignment.Center)
+	local hLabel = makeLabel(handlingBtn, "HANDLING", FONT_TITLE, 17, COLOR_TEXT, Enum.TextXAlignment.Center)
 	hLabel.AnchorPoint = Vector2.new(0.5, 0.5)
 	hLabel.Position = UDim2.fromScale(0.5, 0.5)
-	hLabel.Size = UDim2.fromOffset(120, 18)
+	hLabel.Size = UDim2.fromOffset(160, 24)
 	hLabel.ZIndex = 11
 
 	local hChev = makeChevronRight(handlingBtn, 14, COLOR_TEXT)
@@ -1970,7 +1972,7 @@ buildPage = function(mercNames)
 	rightCol.BackgroundColor3 = HOLO_PANEL_FILL
 	rightCol.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	rightCol.BorderSizePixel = 0
-	rightCol.Position = UDim2.new(1, EDGE_BLEED_X, 0, PANELS_TOP_Y)
+	rightCol.Position = UDim2.new(1, EDGE_BLEED_X, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET)
 	rightCol.Size = UDim2.fromOffset(COLUMN_W, REFERENCE_H - (PANELS_TOP_Y + PANELS_BOT_PAD))
 	-- Same layering rule as LeftColumn: panel chrome stays below inner content.
 	rightCol.ZIndex = 1
