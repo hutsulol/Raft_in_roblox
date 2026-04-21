@@ -401,6 +401,125 @@ local function makeUsersIcon(parent, size, color)
 	return c
 end
 
+-- Scroll — rounded rectangle body with three short horizontal lines
+-- inside, hinting at a written parchment. Used as the Daily Tasks
+-- header glyph.
+local function makeScrollIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "ScrollIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0.5)
+	body.Position = UDim2.fromScale(0.5, 0.5)
+	body.Size = UDim2.fromOffset(size * 0.78, size * 0.9)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.Parent = c
+	local uc = Instance.new("UICorner")
+	uc.CornerRadius = UDim.new(0, math.max(1, math.floor(size * 0.15)))
+	uc.Parent = body
+	local bs = Instance.new("UIStroke")
+	bs.Color     = color
+	bs.Thickness = 1.5
+	bs.Parent    = body
+
+	local thick = math.max(1, math.floor(size * 0.08))
+	for i = 1, 3 do
+		local line = Instance.new("Frame")
+		line.AnchorPoint = Vector2.new(0.5, 0)
+		line.Position = UDim2.fromScale(0.5, 0.25 + (i - 1) * 0.2)
+		line.Size = UDim2.fromOffset(size * 0.44, thick)
+		line.BackgroundColor3 = color
+		line.BorderSizePixel = 0
+		line.Parent = body
+	end
+
+	return c
+end
+
+-- Clock — circle outline with a minute hand (vertical up) and an hour
+-- hand (short horizontal right). Used beside the daily-reset
+-- countdown.
+local function makeClockIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "ClockIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local ring = Instance.new("Frame")
+	ring.AnchorPoint = Vector2.new(0.5, 0.5)
+	ring.Position = UDim2.fromScale(0.5, 0.5)
+	ring.Size = UDim2.fromOffset(size * 0.9, size * 0.9)
+	ring.BackgroundTransparency = 1
+	ring.BorderSizePixel = 0
+	ring.Parent = c
+	local rc = Instance.new("UICorner")
+	rc.CornerRadius = UDim.new(1, 0)
+	rc.Parent = ring
+	local rs = Instance.new("UIStroke")
+	rs.Color     = color
+	rs.Thickness = 1.2
+	rs.Parent    = ring
+
+	local thick = math.max(1, math.floor(size * 0.09))
+	local minute = Instance.new("Frame")
+	minute.AnchorPoint = Vector2.new(0.5, 1)
+	minute.Position = UDim2.fromScale(0.5, 0.5)
+	minute.Size = UDim2.fromOffset(thick, size * 0.3)
+	minute.BackgroundColor3 = color
+	minute.BorderSizePixel = 0
+	minute.Parent = c
+
+	local hour = Instance.new("Frame")
+	hour.AnchorPoint = Vector2.new(0, 0.5)
+	hour.Position = UDim2.fromScale(0.5, 0.5)
+	hour.Size = UDim2.fromOffset(size * 0.22, thick)
+	hour.BackgroundColor3 = color
+	hour.BorderSizePixel = 0
+	hour.Parent = c
+
+	return c
+end
+
+-- Check — two thin rotated Frames forming a ✓. Short leg at 45°, long
+-- leg at -45°, meeting near the bottom-left. Used inside the Daily
+-- Tasks checkbox when a quest is complete.
+local function makeCheckIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "CheckIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.18))
+	local short = Instance.new("Frame")
+	short.AnchorPoint = Vector2.new(0.5, 1)
+	short.Position = UDim2.fromScale(0.30, 0.78)
+	short.Size = UDim2.fromOffset(thick, size * 0.44)
+	short.BackgroundColor3 = color
+	short.BorderSizePixel = 0
+	short.Rotation = 45
+	short.Parent = c
+
+	local long = Instance.new("Frame")
+	long.AnchorPoint = Vector2.new(0.5, 1)
+	long.Position = UDim2.fromScale(0.62, 0.64)
+	long.Size = UDim2.fromOffset(thick, size * 0.80)
+	long.BackgroundColor3 = color
+	long.BorderSizePixel = 0
+	long.Rotation = -45
+	long.Parent = c
+
+	return c
+end
+
 -- Chevron-right — two thin Frames meeting at the right forming a ">"
 -- arrowhead. Used as the list-row affordance on Loadout buttons.
 local function makeChevronRight(parent, size, color)
@@ -1119,34 +1238,58 @@ local function buildMenu()
 	end
 
 	-- ── Top-right: daily tasks ─────────────────────────────────────────
-	-- Structure only — the quest rows, reward label and claim button
-	-- are all (re)populated by refreshDailyQuests() from the replicated
-	-- DailyQuests folder.
-	-- Right column, top slot. Same 14 px top inset + 280 width as the
-	-- left column. Height stays wider than the design until TasksCard
-	-- is restyled to its final holo layout.
+	-- Holo-style card matching the TasksCard in MainMenu.jsx. Header =
+	-- scroll glyph + "DAILY TASKS" title + clock glyph + countdown on
+	-- the right; quests holder mid-card; reward summary with gold XP
+	-- and iron chips; full-width claim button at the bottom, then the
+	-- two DEV buttons muted underneath.
 	local tasksPanel = makePanel("TasksPanel", root)
 	tasksPanel.AnchorPoint = Vector2.new(1, 0)
 	tasksPanel.Position = UDim2.new(1, 0, 0, 14)
 	tasksPanel.Size = UDim2.fromOffset(280, 292)
-	padding(tasksPanel, 12)
+	padding(tasksPanel, 14)
 
-	local tasksTitle = makeLabel(tasksPanel, "Tasks for today:", FONT_TITLE, 18, COLOR_TEXT)
-	tasksTitle.Size = UDim2.new(0, 170, 0, 22)
+	local taskHeader = Instance.new("Frame")
+	taskHeader.Name = "HeaderRow"
+	taskHeader.BackgroundTransparency = 1
+	taskHeader.Size = UDim2.new(1, 0, 0, 18)
+	taskHeader.Parent = tasksPanel
+
+	local scrollGlyph = makeScrollIcon(taskHeader, 13, HOLO_EDGE)
+	scrollGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	scrollGlyph.Position = UDim2.fromScale(0, 0.5)
+
+	local tasksTitle = makeLabel(taskHeader, "DAILY TASKS", FONT_TITLE, 15, COLOR_TEXT)
+	tasksTitle.Position = UDim2.fromOffset(22, 0)
+	tasksTitle.Size = UDim2.fromOffset(140, 18)
 
 	-- Countdown until the next UTC midnight. dailyTimerLabel is a
 	-- module-level ref so the heartbeat task below can rewrite it
-	-- every second while the menu exists.
-	local timerLbl = makeLabel(tasksPanel, "", FONT_BODY, 14, COLOR_TEXT_DIM, Enum.TextXAlignment.Right)
-	timerLbl.Position = UDim2.new(1, -170, 0, 2)
-	timerLbl.Size = UDim2.fromOffset(170, 20)
+	-- every second while the menu exists. Sits right-aligned beside
+	-- the clock glyph.
+	local clockGlyph = makeClockIcon(taskHeader, 11, COLOR_TEXT_DIM)
+	clockGlyph.AnchorPoint = Vector2.new(1, 0.5)
+	clockGlyph.Position = UDim2.new(1, -58, 0.5, 0)
+
+	local timerLbl = makeLabel(taskHeader, "", FONT_BODY, 11, COLOR_TEXT_DIM, Enum.TextXAlignment.Right)
+	timerLbl.AnchorPoint = Vector2.new(1, 0.5)
+	timerLbl.Position = UDim2.new(1, 0, 0.5, 0)
+	timerLbl.Size = UDim2.fromOffset(54, 18)
 	dailyTimerLabel = timerLbl
+
+	local taskDivider = Instance.new("Frame")
+	taskDivider.BackgroundColor3 = HOLO_PANEL_BORDER
+	taskDivider.BackgroundTransparency = 0.3
+	taskDivider.BorderSizePixel = 0
+	taskDivider.Size = UDim2.new(1, 0, 0, 1)
+	taskDivider.Position = UDim2.fromOffset(0, 28)
+	taskDivider.Parent = tasksPanel
 
 	local tasksHolder = Instance.new("Frame")
 	tasksHolder.Name = "TasksHolder"
 	tasksHolder.BackgroundTransparency = 1
-	tasksHolder.Position = UDim2.fromOffset(0, 30)
-	tasksHolder.Size = UDim2.new(1, 0, 0, 110)
+	tasksHolder.Position = UDim2.fromOffset(0, 40)
+	tasksHolder.Size = UDim2.new(1, 0, 0, 82)
 	tasksHolder.Parent = tasksPanel
 
 	local tList = Instance.new("UIListLayout")
@@ -1154,68 +1297,88 @@ local function buildMenu()
 	tList.Padding = UDim.new(0, 8)
 	tList.Parent = tasksHolder
 
-	-- Shown in place of the quest rows once every quest is complete — the
-	-- individual rows still live in `tasksHolder` so rebuilding for a new
-	-- day just re-shows the holder and hides this label again.
-	local allDoneLbl = makeLabel(tasksPanel, "All tasks completed!", FONT_TITLE, 18, COLOR_ACCENT, Enum.TextXAlignment.Center)
-	allDoneLbl.Position = UDim2.fromOffset(0, 30)
-	allDoneLbl.Size = UDim2.new(1, 0, 0, 110)
+	-- Shown in place of the quest rows once every quest is complete.
+	local allDoneLbl = makeLabel(tasksPanel, "All tasks completed!", FONT_TITLE, 15, HOLO_EDGE, Enum.TextXAlignment.Center)
+	allDoneLbl.Position = UDim2.fromOffset(0, 40)
+	allDoneLbl.Size = UDim2.new(1, 0, 0, 82)
 	allDoneLbl.Visible = false
 	dailyAllCompleteLabel = allDoneLbl
 
-	local rewardLbl = makeLabel(tasksPanel, "Reward:", FONT_TITLE, 16, COLOR_TEXT)
-	rewardLbl.Position = UDim2.fromOffset(0, 146)
-	rewardLbl.Size = UDim2.fromOffset(80, 22)
+	-- Reward line: "REWARD" tag + xp chip + iron chip, all on one row.
+	local rewardRow = Instance.new("Frame")
+	rewardRow.BackgroundTransparency = 1
+	rewardRow.Position = UDim2.fromOffset(0, 132)
+	rewardRow.Size = UDim2.new(1, 0, 0, 18)
+	rewardRow.Parent = tasksPanel
 
-	local rewardValue = makeLabel(tasksPanel, "", FONT_TITLE, 16, COLOR_ACCENT)
-	rewardValue.Position = UDim2.fromOffset(82, 146)
-	rewardValue.Size = UDim2.new(1, -82, 0, 22)
+	local rewardLbl = makeLabel(rewardRow, "REWARD", FONT_TITLE, 11, COLOR_TEXT)
+	rewardLbl.Position = UDim2.fromOffset(0, 0)
+	rewardLbl.Size = UDim2.fromOffset(54, 18)
+
+	-- The "+X XP  +Y Iron" string lands here verbatim from
+	-- updateDailyRewardAndButton. HOLO_EDGE so the count reads as an
+	-- accent against the dim REWARD tag.
+	local rewardValue = makeLabel(rewardRow, "", FONT_TITLE, 12, HOLO_EDGE)
+	rewardValue.Position = UDim2.fromOffset(58, 0)
+	rewardValue.Size = UDim2.new(1, -58, 1, 0)
 
 	local claimBtn = Instance.new("TextButton")
 	claimBtn.Name = "ClaimButton"
-	claimBtn.BackgroundColor3 = COLOR_BAR_BG
+	claimBtn.BackgroundColor3 = Color3.fromRGB(22, 62, 110)
+	claimBtn.BackgroundTransparency = 0.6
 	claimBtn.BorderSizePixel = 0
-	claimBtn.Position = UDim2.fromOffset(0, 175)
-	claimBtn.Size = UDim2.new(1, 0, 0, 32)
+	claimBtn.Position = UDim2.fromOffset(0, 160)
+	claimBtn.Size = UDim2.new(1, 0, 0, 34)
 	claimBtn.Font = FONT_TITLE
-	claimBtn.TextSize = 16
+	claimBtn.TextSize = 14
 	claimBtn.TextColor3 = COLOR_TEXT_DIM
 	claimBtn.AutoButtonColor = false
-	claimBtn.Text = "Claim reward"
+	claimBtn.Text = "CLAIM REWARD"
 	claimBtn.Active = false
 	claimBtn.Parent = tasksPanel
-	corner(claimBtn, 8)
-	stroke(claimBtn, 1.5, COLOR_PANEL_EDGE)
+	local claimStroke = Instance.new("UIStroke")
+	claimStroke.Color = HOLO_PANEL_BORDER
+	claimStroke.Thickness = 1
+	claimStroke.Parent = claimBtn
 
-	-- DEV: reset tasks button (rerolls quests for testing)
+	-- DEV: reset tasks button (rerolls quests for testing). Muted red
+	-- variant of the holo button style.
 	local resetBtn = Instance.new("TextButton")
 	resetBtn.Name = "ResetTasksButton"
-	resetBtn.BackgroundColor3 = Color3.fromRGB(120, 50, 50)
+	resetBtn.BackgroundColor3 = Color3.fromRGB(90, 30, 30)
+	resetBtn.BackgroundTransparency = 0.3
 	resetBtn.BorderSizePixel = 0
-	resetBtn.Position = UDim2.fromOffset(0, 212)
-	resetBtn.Size = UDim2.new(1, 0, 0, 24)
+	resetBtn.Position = UDim2.fromOffset(0, 202)
+	resetBtn.Size = UDim2.new(1, 0, 0, 22)
 	resetBtn.Font = FONT_BODY
-	resetBtn.TextSize = 13
+	resetBtn.TextSize = 12
 	resetBtn.TextColor3 = Color3.fromRGB(255, 180, 180)
 	resetBtn.AutoButtonColor = true
-	resetBtn.Text = "Reset Tasks (DEV)"
+	resetBtn.Text = "RESET TASKS (DEV)"
 	resetBtn.Parent = tasksPanel
-	corner(resetBtn, 6)
+	local resetStroke = Instance.new("UIStroke")
+	resetStroke.Color = Color3.fromRGB(180, 80, 80)
+	resetStroke.Thickness = 1
+	resetStroke.Parent = resetBtn
 
 	-- DEV: +25 XP button for testing level-ups
 	local xpBtn = Instance.new("TextButton")
 	xpBtn.Name = "AddXPButton"
-	xpBtn.BackgroundColor3 = Color3.fromRGB(50, 100, 50)
+	xpBtn.BackgroundColor3 = Color3.fromRGB(30, 80, 40)
+	xpBtn.BackgroundTransparency = 0.3
 	xpBtn.BorderSizePixel = 0
-	xpBtn.Position = UDim2.fromOffset(0, 240)
-	xpBtn.Size = UDim2.new(1, 0, 0, 24)
+	xpBtn.Position = UDim2.fromOffset(0, 232)
+	xpBtn.Size = UDim2.new(1, 0, 0, 22)
 	xpBtn.Font = FONT_BODY
-	xpBtn.TextSize = 13
+	xpBtn.TextSize = 12
 	xpBtn.TextColor3 = Color3.fromRGB(180, 255, 180)
 	xpBtn.AutoButtonColor = true
 	xpBtn.Text = "+25 XP (DEV)"
 	xpBtn.Parent = tasksPanel
-	corner(xpBtn, 6)
+	local xpStroke = Instance.new("UIStroke")
+	xpStroke.Color = Color3.fromRGB(80, 160, 90)
+	xpStroke.Thickness = 1
+	xpStroke.Parent = xpBtn
 
 	dailyQuestsHolder = tasksHolder
 	dailyRewardLabel  = rewardValue
@@ -1972,13 +2135,21 @@ local function repaintQuestRow(id)
 		rec.label.TextColor3 = COLOR_TEXT
 	end
 
+	-- Holo checkbox: hairline border when empty, edge-bright when done,
+	-- with a hand-drawn ✓ glyph inside. The box is a plain Frame now
+	-- (no solid fill), so toggling the stroke colour is enough to
+	-- communicate the state — the glyph adds the check.
+	local boxStroke = rec.box:FindFirstChildOfClass("UIStroke")
 	if done then
+		if boxStroke then boxStroke.Color = HOLO_EDGE end
 		if not rec.check then
-			local check = makeLabel(rec.box, "X", FONT_TITLE, 18, COLOR_ACCENT, Enum.TextXAlignment.Center)
-			check.Size = UDim2.fromScale(1, 1)
+			local check = makeCheckIcon(rec.box, 16, HOLO_EDGE)
+			check.AnchorPoint = Vector2.new(0.5, 0.5)
+			check.Position = UDim2.fromScale(0.5, 0.5)
 			rec.check = check
 		end
 	else
+		if boxStroke then boxStroke.Color = HOLO_PANEL_BORDER end
 		if rec.check then
 			rec.check:Destroy()
 			rec.check = nil
@@ -2032,21 +2203,28 @@ local function updateDailyRewardAndButton(folder)
 
 	local claimed = claimedVal and claimedVal.Value or false
 
+	-- Holo claim button: bright holo-edge text + matching stroke when
+	-- ready, dim when claimed or not yet eligible. UIStroke is the
+	-- first UIStroke child we attached during buildMenu().
+	local claimStroke = dailyClaimButton:FindFirstChildOfClass("UIStroke")
 	if claimed then
-		dailyClaimButton.Text        = "Reward claimed"
+		dailyClaimButton.Text        = "REWARD CLAIMED"
 		dailyClaimButton.TextColor3  = COLOR_TEXT_DIM
 		dailyClaimButton.Active      = false
 		dailyClaimButton.AutoButtonColor = false
+		if claimStroke then claimStroke.Color = HOLO_PANEL_BORDER end
 	elseif allDone then
-		dailyClaimButton.Text        = "Claim reward"
-		dailyClaimButton.TextColor3  = COLOR_ACCENT
+		dailyClaimButton.Text        = "CLAIM REWARD"
+		dailyClaimButton.TextColor3  = HOLO_EDGE
 		dailyClaimButton.Active      = true
 		dailyClaimButton.AutoButtonColor = true
+		if claimStroke then claimStroke.Color = HOLO_EDGE end
 	else
-		dailyClaimButton.Text        = "Claim reward"
+		dailyClaimButton.Text        = "CLAIM REWARD"
 		dailyClaimButton.TextColor3  = COLOR_TEXT_DIM
 		dailyClaimButton.Active      = false
 		dailyClaimButton.AutoButtonColor = false
+		if claimStroke then claimStroke.Color = HOLO_PANEL_BORDER end
 	end
 end
 
@@ -2075,22 +2253,26 @@ local function rebuildDailyQuests(folder)
 		local row = Instance.new("Frame")
 		row.Name = "Row_" .. id
 		row.BackgroundTransparency = 1
-		row.Size = UDim2.new(1, 0, 0, 26)
+		row.Size = UDim2.new(1, 0, 0, 22)
 		row.LayoutOrder = i
 		row.Parent = dailyQuestsHolder
 
 		local box = Instance.new("Frame")
-		box.BackgroundColor3 = COLOR_BAR_BG
+		box.Name = "Checkbox"
+		box.BackgroundTransparency = 1
 		box.BorderSizePixel = 0
-		box.Size = UDim2.fromOffset(22, 22)
-		box.Position = UDim2.fromOffset(0, 2)
+		box.Size = UDim2.fromOffset(18, 18)
+		box.AnchorPoint = Vector2.new(0, 0.5)
+		box.Position = UDim2.new(0, 0, 0.5, 0)
 		box.Parent = row
-		corner(box, 4)
-		stroke(box, 1.5, COLOR_PANEL_EDGE)
+		local boxStroke = Instance.new("UIStroke")
+		boxStroke.Color     = HOLO_PANEL_BORDER
+		boxStroke.Thickness = 1
+		boxStroke.Parent    = box
 
-		local label = makeLabel(row, quest.Name, FONT_BODY, 15, COLOR_TEXT)
-		label.Position = UDim2.fromOffset(32, 0)
-		label.Size = UDim2.new(1, -32, 1, 0)
+		local label = makeLabel(row, quest.Name, FONT_BODY, 13, COLOR_TEXT)
+		label.Position = UDim2.fromOffset(28, 0)
+		label.Size = UDim2.new(1, -28, 1, 0)
 		-- RichText lets repaintQuestRow wrap the text in <s>…</s> to
 		-- strike through completed quests.
 		label.RichText = true
