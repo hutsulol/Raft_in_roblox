@@ -1137,7 +1137,11 @@ local function buildMenu()
 
 		local artboardScreenW = REFERENCE_W * s
 		local sideGapPx = math.max(0, size.X - artboardScreenW) * 0.5
-		local dynamicBleed = EDGE_BLEED_X + math.floor((sideGapPx / s) + 0.5)
+		-- Pull columns back from the absolute edge so cards stay fully visible.
+		-- We only use ~55% of free side space and clamp the extra bleed.
+		local sideGapArtboard = sideGapPx / s
+		local extraBleed = math.clamp(sideGapArtboard * 0.55, 0, 90)
+		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
 
 		if levelPanel then
 			levelPanel.Position = UDim2.fromOffset(-dynamicBleed, LEVEL_Y)
