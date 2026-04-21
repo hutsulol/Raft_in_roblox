@@ -936,7 +936,9 @@ local function buildMercViewport(parent, mercName, weaponId)
 	vp.Name = "MercViewport"
 	vp.AnchorPoint = Vector2.new(0.5, 0.5)
 	vp.Position = UDim2.fromScale(0.5, 0.55)
-	vp.Size = UDim2.fromOffset(360, 480)
+	-- Scale up the merc preview to match PhoneMenu's larger hero character
+	-- feel. The frame intentionally overhangs the slot a bit.
+	vp.Size = UDim2.fromOffset(440, 580)
 	vp.BackgroundTransparency = 1
 	vp.LightColor = Color3.fromRGB(255, 255, 255)
 	vp.LightDirection = Vector3.new(-0.3, -1, -0.5)
@@ -948,8 +950,8 @@ local function buildMercViewport(parent, mercName, weaponId)
 	world.Parent = vp
 
 	local cam = Instance.new("Camera")
-	cam.FieldOfView = 50
-	cam.CFrame = CFrame.new(Vector3.new(0, 2.2, 7.5), Vector3.new(0, 0, 0))
+	cam.FieldOfView = 55
+	cam.CFrame = CFrame.new(Vector3.new(0.6, 2.3, 6.2), Vector3.new(0, 1, 0))
 	cam.Parent = vp
 	vp.CurrentCamera = cam
 
@@ -1250,6 +1252,13 @@ buildPage = function(mercNames)
 	-- UIScale would push off-screen on large monitors).
 	local topInset = GuiService:GetGuiInset().Y
 	local REFERENCE_W, REFERENCE_H = 960, 600
+	-- Match PhoneMenu's "cards push toward screen edges" behavior so side
+	-- columns don't feel cramped inside the 960x600 artboard on widescreen.
+	local COLUMN_W      = 320
+	local EDGE_BLEED_X  = 28
+	local COLUMN_GAP    = 14
+	local PANELS_TOP_Y  = 70
+	local PANELS_BOT_PAD = 24
 
 	local scaleWrap = Instance.new("Frame")
 	scaleWrap.Name = "ScaleWrap"
@@ -1265,6 +1274,7 @@ buildPage = function(mercNames)
 	responsiveScale.Name = "ResponsiveScale"
 	responsiveScale.Scale = 1
 	responsiveScale.Parent = scaleWrap
+	local leftColRef, rightColRef
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
@@ -1274,6 +1284,19 @@ buildPage = function(mercNames)
 		local s = math.min(sx, sy)
 		if s < 0.5 then s = 0.5 end
 		responsiveScale.Scale = s
+
+		local artboardScreenW = REFERENCE_W * s
+		local sideGapPx = math.max(0, size.X - artboardScreenW) * 0.5
+		local sideGapArtboard = sideGapPx / s
+		local extraBleed = math.clamp(sideGapArtboard * 0.75, 0, 120)
+		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
+
+		if leftColRef then
+			leftColRef.Position = UDim2.fromOffset(-dynamicBleed, PANELS_TOP_Y)
+		end
+		if rightColRef then
+			rightColRef.Position = UDim2.new(1, dynamicBleed, 0, PANELS_TOP_Y)
+		end
 	end
 	updateResponsiveScale()
 	local scaleConn = screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateResponsiveScale)
@@ -1428,13 +1451,14 @@ buildPage = function(mercNames)
 	leftCol.BackgroundColor3 = HOLO_PANEL_FILL
 	leftCol.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	leftCol.BorderSizePixel = 0
-	leftCol.Position = UDim2.fromOffset(24, 70)
-	leftCol.Size = UDim2.new(0, 300, 1, -(70 + 24))
+	leftCol.Position = UDim2.fromOffset(-EDGE_BLEED_X, PANELS_TOP_Y)
+	leftCol.Size = UDim2.fromOffset(COLUMN_W, REFERENCE_H - (PANELS_TOP_Y + PANELS_BOT_PAD))
 	-- Keep the panel background behind its own content. When the parent frame
 	-- ZIndex is higher than descendants, Roblox can render the fill over labels
 	-- and buttons in Global ZIndexBehavior setups.
 	leftCol.ZIndex = 1
 	leftCol.Parent = scaleWrap
+	leftColRef = leftCol
 
 	local leftStroke = Instance.new("UIStroke")
 	leftStroke.Color     = HOLO_PANEL_BORDER
@@ -1654,8 +1678,11 @@ buildPage = function(mercNames)
 	centreCol.Name = "CentreColumn"
 	centreCol.BackgroundTransparency = 1
 	centreCol.BorderSizePixel = 0
-	centreCol.Position = UDim2.fromOffset(344, 70)
-	centreCol.Size = UDim2.new(0, 960 - 344 - 364, 1, -(70 + 24))
+	centreCol.Position = UDim2.fromOffset(COLUMN_W + COLUMN_GAP, PANELS_TOP_Y)
+	centreCol.Size = UDim2.fromOffset(
+		REFERENCE_W - (COLUMN_W * 2) - (COLUMN_GAP * 2),
+		REFERENCE_H - (PANELS_TOP_Y + PANELS_BOT_PAD)
+	)
 	centreCol.ZIndex = 2
 	centreCol.Parent = scaleWrap
 
@@ -1938,11 +1965,12 @@ buildPage = function(mercNames)
 	rightCol.BackgroundColor3 = HOLO_PANEL_FILL
 	rightCol.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	rightCol.BorderSizePixel = 0
-	rightCol.Position = UDim2.new(1, -24, 0, 70)
-	rightCol.Size = UDim2.new(0, 320, 1, -(70 + 24))
+	rightCol.Position = UDim2.new(1, EDGE_BLEED_X, 0, PANELS_TOP_Y)
+	rightCol.Size = UDim2.fromOffset(COLUMN_W, REFERENCE_H - (PANELS_TOP_Y + PANELS_BOT_PAD))
 	-- Same layering rule as LeftColumn: panel chrome stays below inner content.
 	rightCol.ZIndex = 1
 	rightCol.Parent = scaleWrap
+	rightColRef = rightCol
 
 	local rightStroke = Instance.new("UIStroke")
 	rightStroke.Color     = HOLO_PANEL_BORDER
