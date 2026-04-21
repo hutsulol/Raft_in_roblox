@@ -1105,6 +1105,23 @@ local function buildMenu()
 	responsiveScale.Scale = 1
 	responsiveScale.Parent = scaleWrap
 
+	-- Layout metrics used by all main cards so the menu can be tuned in one
+	-- place. Wider columns + taller right cards reduce dead space and keep
+	-- the composition dense (closer to the target Photoshop mockup).
+	local COLUMN_W      = 320
+	local EDGE_BLEED_X  = 18
+	local LEVEL_Y       = 46
+	local LEVEL_H       = 88
+	local COLUMN_GAP    = 14
+	local STATS_Y       = LEVEL_Y + LEVEL_H + COLUMN_GAP
+	local STATS_H       = 220
+	local TASKS_Y       = 12
+	local TASKS_H       = 336
+	local SIDE_Y        = TASKS_Y + TASKS_H + COLUMN_GAP
+	local SIDE_H        = 146
+
+	local levelPanel, statsPanel, tasksPanel, sidePanel
+
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
 		if size.X <= 0 or size.Y <= 0 then return end
@@ -1117,6 +1134,23 @@ local function buildMenu()
 		local s = math.min(sx, sy)
 		if s < 0.5 then s = 0.5 end
 		responsiveScale.Scale = s
+
+		local artboardScreenW = REFERENCE_W * s
+		local sideGapPx = math.max(0, size.X - artboardScreenW) * 0.5
+		local dynamicBleed = EDGE_BLEED_X + math.floor((sideGapPx / s) + 0.5)
+
+		if levelPanel then
+			levelPanel.Position = UDim2.fromOffset(-dynamicBleed, LEVEL_Y)
+		end
+		if statsPanel then
+			statsPanel.Position = UDim2.fromOffset(-dynamicBleed, STATS_Y)
+		end
+		if tasksPanel then
+			tasksPanel.Position = UDim2.new(1, dynamicBleed, 0, TASKS_Y)
+		end
+		if sidePanel then
+			sidePanel.Position = UDim2.new(1, dynamicBleed, 0, SIDE_Y)
+		end
 	end
 	updateResponsiveScale()
 	screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateResponsiveScale)
@@ -1145,21 +1179,6 @@ local function buildMenu()
 	menuRoot             = root
 	menuRootBasePosition = root.Position
 	menuRootScale        = rootScale
-
-	-- Layout metrics used by all main cards so the menu can be tuned in one
-	-- place. Wider columns + taller right cards reduce dead space and keep
-	-- the composition dense (closer to the target Photoshop mockup).
-	local COLUMN_W      = 320
-	local EDGE_BLEED_X  = 18
-	local LEVEL_Y       = 46
-	local LEVEL_H       = 88
-	local COLUMN_GAP    = 14
-	local STATS_Y       = LEVEL_Y + LEVEL_H + COLUMN_GAP
-	local STATS_H       = 220
-	local TASKS_Y       = 12
-	local TASKS_H       = 336
-	local SIDE_Y        = TASKS_Y + TASKS_H + COLUMN_GAP
-	local SIDE_H        = 146
 
 	-- ── Center: character viewport ───────────────────────────────────────
 	-- Plain ViewportFrame — no pedestal / rim rings / corner brackets.
@@ -1196,7 +1215,7 @@ local function buildMenu()
 	-- panels inside it with fixed 280 width and 14 px gaps. Left column
 	-- is pushed down further (y=50) so the Roblox default topbar icons
 	-- (logo / menu / chat at top-left) never sit behind the LevelCard.
-	local levelPanel = makePanel("LevelPanel", root)
+	levelPanel = makePanel("LevelPanel", root)
 	levelPanel.AnchorPoint = Vector2.new(0, 0)
 	levelPanel.Position = UDim2.fromOffset(-EDGE_BLEED_X, LEVEL_Y)
 	levelPanel.Size = UDim2.fromOffset(COLUMN_W, LEVEL_H)
@@ -1264,7 +1283,7 @@ local function buildMenu()
 
 	-- ── Left column: player stats card ───────────────────────────────
 	-- Stacked under LevelPanel: y = 50 (top) + 76 (LevelPanel) + 14 (gap).
-	local statsPanel = makePanel("StatsPanel", root)
+	statsPanel = makePanel("StatsPanel", root)
 	statsPanel.AnchorPoint = Vector2.new(0, 0)
 	statsPanel.Position = UDim2.fromOffset(-EDGE_BLEED_X, STATS_Y)
 	statsPanel.Size = UDim2.fromOffset(COLUMN_W, STATS_H)
@@ -1386,7 +1405,7 @@ local function buildMenu()
 	-- the right; quests holder mid-card; reward summary with gold XP
 	-- and iron chips; full-width claim button at the bottom, then the
 	-- two DEV buttons muted underneath.
-	local tasksPanel = makePanel("TasksPanel", root)
+	tasksPanel = makePanel("TasksPanel", root)
 	tasksPanel.AnchorPoint = Vector2.new(1, 0)
 	tasksPanel.Position = UDim2.new(1, EDGE_BLEED_X, 0, TASKS_Y)
 	tasksPanel.Size = UDim2.fromOffset(COLUMN_W, TASKS_H)
@@ -1541,7 +1560,7 @@ local function buildMenu()
 	-- Stacked directly under TasksPanel in the right column:
 	-- y = 14 (top) + 292 (TasksPanel) + 14 (gap) = 320. Pinned to the
 	-- right edge with AnchorPoint (1, 0) so it mirrors the left column.
-	local sidePanel = makePanel("SidePanel", root)
+	sidePanel = makePanel("SidePanel", root)
 	sidePanel.AnchorPoint = Vector2.new(1, 0)
 	sidePanel.Position = UDim2.new(1, EDGE_BLEED_X, 0, SIDE_Y)
 	sidePanel.Size = UDim2.fromOffset(COLUMN_W, SIDE_H)
@@ -1626,6 +1645,10 @@ local function buildMenu()
 			_G.OpenMercenariesMenu()
 		end
 	end)
+
+	-- Re-apply now that side-column panels exist (first call happened before
+	-- panel creation), so they immediately push toward screen edges.
+	updateResponsiveScale()
 
 	-- ── Bottom: XP bar ─────────────────────────────────────────────────
 	-- Matches XPBar in MainMenu.jsx: holo-framed row pinned to the
