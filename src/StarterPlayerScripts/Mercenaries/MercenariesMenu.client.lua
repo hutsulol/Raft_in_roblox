@@ -1299,6 +1299,13 @@ buildPage = function(mercNames)
 	-- colours on the selected and previously-selected rows.
 	local mercCards = {}
 
+	-- Forward-declared: the centre column (built after the cards) will
+	-- assign a setMerc(name) closure here so selectedCard clicks can
+	-- refresh the meta bar + viewport. Right-column hooks from Step 5
+	-- will do the same.
+	local refreshCentre = function(_) end
+	local refreshRight  = function(_) end
+
 	local function setSelectedCard(mercName)
 		currentSelectedMerc = mercName
 		for name, rec in pairs(mercCards) do
@@ -1310,8 +1317,8 @@ buildPage = function(mercNames)
 				bracket.BackgroundColor3 = isSel and HOLO_EDGE or HOLO_PANEL_LBRACKET
 			end
 		end
-		-- Later steps will hook into this to refresh the centre viewport
-		-- and the right-column characteristics panel.
+		refreshCentre(mercName)
+		refreshRight(mercName)
 	end
 
 	-- Build one holo card per recruited mercenary.
@@ -1425,6 +1432,220 @@ buildPage = function(mercNames)
 			portraitStroke = portraitStroke,
 			brackets       = brackets,
 		}
+	end
+
+	-- ── Centre column: meta bar + character viewport ──────────────────
+	-- Position from MercenaryPage.jsx: left 344, right 364, top 70,
+	-- bottom 24 within the 960x600 artboard (so width = 252, height =
+	-- 506). Meta bar at the top, character slot below with 14 px gap.
+	local centreCol = Instance.new("Frame")
+	centreCol.Name = "CentreColumn"
+	centreCol.BackgroundTransparency = 1
+	centreCol.BorderSizePixel = 0
+	centreCol.Position = UDim2.fromOffset(344, 70)
+	centreCol.Size = UDim2.new(0, 960 - 344 - 364, 1, -(70 + 24))
+	centreCol.ZIndex = 2
+	centreCol.Parent = scaleWrap
+
+	-- Meta bar: translucent holo strip with corner L's, holding
+	-- [NAME] | [RARITY + stars] | [CLASS + role] | spacer | OWNED chip
+	-- (or Hire button for unrecruited mercs — currently only OWNED
+	-- since we only render mercs from player.Mercenaries).
+	local META_HEIGHT = 44
+	local metaBar = Instance.new("Frame")
+	metaBar.Name = "MetaBar"
+	metaBar.BackgroundColor3 = HOLO_PANEL_FILL
+	metaBar.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	metaBar.BorderSizePixel = 0
+	metaBar.Position = UDim2.fromOffset(0, 0)
+	metaBar.Size = UDim2.new(1, 0, 0, META_HEIGHT)
+	metaBar.Parent = centreCol
+	local metaStroke = Instance.new("UIStroke")
+	metaStroke.Color     = HOLO_PANEL_LBRACKET
+	metaStroke.Thickness = 1
+	metaStroke.Parent    = metaBar
+	local metaPad = Instance.new("UIPadding")
+	metaPad.PaddingTop    = UDim.new(0, 10)
+	metaPad.PaddingBottom = UDim.new(0, 10)
+	metaPad.PaddingLeft   = UDim.new(0, 14)
+	metaPad.PaddingRight  = UDim.new(0, 14)
+	metaPad.Parent = metaBar
+	cornerLs(metaBar, 8, HOLO_EDGE, 1.5)
+	table.insert(motesOccludeList, metaBar)
+
+	-- Horizontal list layout so children auto-flow left-to-right; we
+	-- insert two 1px vertical dividers between groups.
+	local metaList = Instance.new("UIListLayout")
+	metaList.FillDirection = Enum.FillDirection.Horizontal
+	metaList.VerticalAlignment = Enum.VerticalAlignment.Center
+	metaList.SortOrder = Enum.SortOrder.LayoutOrder
+	metaList.Padding = UDim.new(0, 12)
+	metaList.Parent = metaBar
+
+	local function metaDivider(order)
+		local d = Instance.new("Frame")
+		d.Name = "Divider"
+		d.BackgroundColor3 = HOLO_PANEL_BORDER
+		d.BackgroundTransparency = 0.3
+		d.BorderSizePixel = 0
+		d.Size = UDim2.fromOffset(1, 22)
+		d.LayoutOrder = order
+		d.Parent = metaBar
+		return d
+	end
+
+	-- 1) NAME — big display font.
+	local nameLabel = makeLabel(metaBar, "", FONT_TITLE, 22, COLOR_TEXT)
+	nameLabel.LayoutOrder = 1
+	nameLabel.Size = UDim2.fromOffset(130, 22)
+
+	metaDivider(2)
+
+	-- 2) RARITY stack — tag label + star row.
+	local rarityStack = Instance.new("Frame")
+	rarityStack.BackgroundTransparency = 1
+	rarityStack.BorderSizePixel = 0
+	rarityStack.Size = UDim2.fromOffset(72, 28)
+	rarityStack.LayoutOrder = 3
+	rarityStack.Parent = metaBar
+	local rarityTag = makeLabel(rarityStack, "RARITY", FONT_BODY, 9, COLOR_TEXT_MUTE)
+	rarityTag.Position = UDim2.fromOffset(0, 0)
+	rarityTag.Size = UDim2.fromOffset(72, 12)
+	local rarityRow -- replaced per selection; tracked so we can destroy it
+
+	metaDivider(4)
+
+	-- 3) CLASS stack — tag label + role name.
+	local classStack = Instance.new("Frame")
+	classStack.BackgroundTransparency = 1
+	classStack.BorderSizePixel = 0
+	classStack.Size = UDim2.fromOffset(110, 28)
+	classStack.LayoutOrder = 5
+	classStack.Parent = metaBar
+	local classTag = makeLabel(classStack, "CLASS", FONT_BODY, 9, COLOR_TEXT_MUTE)
+	classTag.Position = UDim2.fromOffset(0, 0)
+	classTag.Size = UDim2.fromOffset(110, 12)
+	local classLabel = makeLabel(classStack, "", FONT_TITLE, 12, COLOR_TEXT)
+	classLabel.Position = UDim2.fromOffset(0, 13)
+	classLabel.Size = UDim2.fromOffset(110, 14)
+
+	-- 4) Flex spacer — UIListLayout has no flex:1 equivalent, so we
+	-- use a big fixed-width Frame and let the list layout push the
+	-- chip to the end. Computed to take whatever width remains after
+	-- the name + dividers + stacks at the current artboard width.
+	local metaSpacer = Instance.new("Frame")
+	metaSpacer.Name = "Spacer"
+	metaSpacer.BackgroundTransparency = 1
+	metaSpacer.BorderSizePixel = 0
+	metaSpacer.Size = UDim2.new(1, -(130 + 12 + 1 + 12 + 72 + 12 + 1 + 12 + 110 + 12 + 60 + 12 + 28), 1, 0)
+	metaSpacer.LayoutOrder = 6
+	metaSpacer.Parent = metaBar
+
+	-- 5) OWNED chip on the right — every merc we render is in
+	-- player.Mercenaries, so always OWNED.
+	local ownedChip = Instance.new("Frame")
+	ownedChip.Name = "OwnedChip"
+	ownedChip.Size = UDim2.fromOffset(60, 22)
+	ownedChip.BackgroundTransparency = 1
+	ownedChip.BorderSizePixel = 0
+	ownedChip.LayoutOrder = 7
+	ownedChip.Parent = metaBar
+	local ownedStroke = Instance.new("UIStroke")
+	ownedStroke.Color     = Color3.fromRGB(110, 200, 140)
+	ownedStroke.Thickness = 1
+	ownedStroke.Parent    = ownedChip
+	local ownedText = makeLabel(ownedChip, "OWNED", FONT_TITLE, 10,
+		Color3.fromRGB(110, 200, 140), Enum.TextXAlignment.Center)
+	ownedText.Size = UDim2.fromScale(1, 1)
+
+	-- ── Character slot (rings + ground glow + ViewportFrame) ──────────
+	local slot = Instance.new("Frame")
+	slot.Name = "CharacterSlot"
+	slot.BackgroundTransparency = 1
+	slot.BorderSizePixel = 0
+	slot.Position = UDim2.fromOffset(0, META_HEIGHT + 14)
+	slot.Size = UDim2.new(1, 0, 1, -(META_HEIGHT + 14))
+	slot.Parent = centreCol
+
+	-- Ground glow — wide horizontal ellipse at the feet, faded at both
+	-- ends via UIGradient so it reads as a soft pool of light.
+	local ground = Instance.new("Frame")
+	ground.Name = "GroundGlow"
+	ground.AnchorPoint = Vector2.new(0.5, 1)
+	ground.Position = UDim2.new(0.5, 0, 1, -14)
+	ground.Size = UDim2.fromOffset(260, 44)
+	ground.BackgroundColor3 = HORIZON
+	ground.BackgroundTransparency = 0.72
+	ground.BorderSizePixel = 0
+	ground.ZIndex = 1
+	ground.Parent = slot
+	local groundCorner = Instance.new("UICorner")
+	groundCorner.CornerRadius = UDim.new(1, 0)
+	groundCorner.Parent = ground
+	local groundGrad = Instance.new("UIGradient")
+	groundGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0,   1),
+		NumberSequenceKeypoint.new(0.5, 0),
+		NumberSequenceKeypoint.new(1,   1),
+	})
+	groundGrad.Rotation = 0
+	groundGrad.Parent = ground
+
+	-- Concentric rim rings behind the character, slightly above centre
+	-- so the ViewportFrame sits inside them.
+	local function rimCircle(sizePx, strokeColor, strokeTransparency)
+		local r = Instance.new("Frame")
+		r.Name = "RimCircle"
+		r.AnchorPoint = Vector2.new(0.5, 0.5)
+		r.Position = UDim2.fromScale(0.5, 0.48)
+		r.Size = UDim2.fromOffset(sizePx, sizePx)
+		r.BackgroundTransparency = 1
+		r.BorderSizePixel = 0
+		r.ZIndex = 2
+		r.Parent = slot
+		local rc = Instance.new("UICorner")
+		rc.CornerRadius = UDim.new(1, 0)
+		rc.Parent = r
+		local rs = Instance.new("UIStroke")
+		rs.Color        = strokeColor
+		rs.Thickness    = 1
+		rs.Transparency = strokeTransparency or 0
+		rs.Parent       = r
+		return r
+	end
+	rimCircle(340, HOLO_EDGE,          0.70) -- outer faint
+	rimCircle(280, HOLO_PANEL_BORDER,  0.55) -- inner denser
+
+	-- Drives the centre column when a card is clicked. Swaps meta bar
+	-- text, rebuilds the rarity star row, and hands off to the shared
+	-- buildMercViewport pipeline (which caches per merc, so the idle
+	-- animation keeps ticking across selections).
+	refreshCentre = function(mercName)
+		local theme = MERC_THEMES[mercName] or DEFAULT_THEME
+
+		nameLabel.Text   = theme.displayName or mercName
+		classLabel.Text  = theme.role or "Crew"
+
+		if rarityRow then rarityRow:Destroy() end
+		rarityRow = makeStarRow(rarityStack, theme.stars or 1, 5, 11, COLOR_GOLD)
+		rarityRow.Position = UDim2.fromOffset(0, 13)
+
+		-- Detach the previous merc's ViewportFrame (if any) so it doesn't
+		-- linger next to the new one. The cache keeps the clone alive so
+		-- reparenting later is free.
+		for _, child in slot:GetChildren() do
+			if child:IsA("ViewportFrame") then
+				child.Parent = nil
+			end
+		end
+
+		local mercFolder = player:FindFirstChild("Mercenaries")
+		local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
+		local weaponId = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+		local vp = buildMercViewport(slot, mercName, weaponId)
+		if vp then
+			vp.ZIndex = 5 -- render on top of rings + glow
+		end
 	end
 
 	-- Apply initial selection (first merc in the roster).
