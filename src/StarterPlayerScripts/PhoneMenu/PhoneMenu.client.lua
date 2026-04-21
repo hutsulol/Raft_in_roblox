@@ -1150,6 +1150,7 @@ local function buildMenu()
 	-- place. Wider columns + taller right cards reduce dead space and keep
 	-- the composition dense (closer to the target Photoshop mockup).
 	local COLUMN_W      = 320
+	local EDGE_BLEED_X  = 18
 	local LEVEL_Y       = 46
 	local LEVEL_H       = 88
 	local COLUMN_GAP    = 14
@@ -1197,7 +1198,7 @@ local function buildMenu()
 	-- (logo / menu / chat at top-left) never sit behind the LevelCard.
 	local levelPanel = makePanel("LevelPanel", root)
 	levelPanel.AnchorPoint = Vector2.new(0, 0)
-	levelPanel.Position = UDim2.fromOffset(0, LEVEL_Y)
+	levelPanel.Position = UDim2.fromOffset(-EDGE_BLEED_X, LEVEL_Y)
 	levelPanel.Size = UDim2.fromOffset(COLUMN_W, LEVEL_H)
 	padding(levelPanel, 12)
 	cornerLs(levelPanel, 10, HOLO_PANEL_LBRACKET, 1.5)
@@ -1265,7 +1266,7 @@ local function buildMenu()
 	-- Stacked under LevelPanel: y = 50 (top) + 76 (LevelPanel) + 14 (gap).
 	local statsPanel = makePanel("StatsPanel", root)
 	statsPanel.AnchorPoint = Vector2.new(0, 0)
-	statsPanel.Position = UDim2.fromOffset(0, STATS_Y)
+	statsPanel.Position = UDim2.fromOffset(-EDGE_BLEED_X, STATS_Y)
 	statsPanel.Size = UDim2.fromOffset(COLUMN_W, STATS_H)
 	padding(statsPanel, 14)
 	cornerLs(statsPanel, 10, HOLO_PANEL_LBRACKET, 1.5)
@@ -1387,7 +1388,7 @@ local function buildMenu()
 	-- two DEV buttons muted underneath.
 	local tasksPanel = makePanel("TasksPanel", root)
 	tasksPanel.AnchorPoint = Vector2.new(1, 0)
-	tasksPanel.Position = UDim2.new(1, 0, 0, TASKS_Y)
+	tasksPanel.Position = UDim2.new(1, EDGE_BLEED_X, 0, TASKS_Y)
 	tasksPanel.Size = UDim2.fromOffset(COLUMN_W, TASKS_H)
 	padding(tasksPanel, 14)
 	cornerLs(tasksPanel, 10, HOLO_PANEL_LBRACKET, 1.5)
@@ -1542,7 +1543,7 @@ local function buildMenu()
 	-- right edge with AnchorPoint (1, 0) so it mirrors the left column.
 	local sidePanel = makePanel("SidePanel", root)
 	sidePanel.AnchorPoint = Vector2.new(1, 0)
-	sidePanel.Position = UDim2.new(1, 0, 0, SIDE_Y)
+	sidePanel.Position = UDim2.new(1, EDGE_BLEED_X, 0, SIDE_Y)
 	sidePanel.Size = UDim2.fromOffset(COLUMN_W, SIDE_H)
 	padding(sidePanel, 14)
 	cornerLs(sidePanel, 10, HOLO_PANEL_LBRACKET, 1.5)
