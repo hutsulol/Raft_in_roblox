@@ -287,6 +287,153 @@ local function makeHoloBar(parent, size, segments)
 	return track, fill
 end
 
+-- Crown — short base bar with three small rotated squares on top.
+-- Used as the Loadout card header glyph.
+local function makeCrownIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "CrownIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.12))
+	local bar = Instance.new("Frame")
+	bar.AnchorPoint = Vector2.new(0.5, 1)
+	bar.Position = UDim2.fromScale(0.5, 0.85)
+	bar.Size = UDim2.fromOffset(size * 0.9, thick)
+	bar.BackgroundColor3 = color
+	bar.BorderSizePixel = 0
+	bar.Parent = c
+
+	local pointSize = size * 0.3
+	for i = -1, 1 do
+		local p = Instance.new("Frame")
+		p.AnchorPoint = Vector2.new(0.5, 1)
+		p.Position = UDim2.fromScale(0.5 + (i * 0.32), 0.85)
+		p.Size = UDim2.fromOffset(pointSize, pointSize)
+		p.BackgroundColor3 = color
+		p.BorderSizePixel = 0
+		p.Rotation = 45
+		p.Parent = c
+	end
+	return c
+end
+
+-- Sword — vertical blade (tall thin Frame) with a short horizontal
+-- crossguard near the bottom and a small pommel below. Used as the
+-- Arsenal button glyph.
+local function makeSwordIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "SwordIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local bladeW = math.max(1, math.floor(size * 0.14))
+	local blade = Instance.new("Frame")
+	blade.AnchorPoint = Vector2.new(0.5, 0)
+	blade.Position = UDim2.fromScale(0.5, 0.05)
+	blade.Size = UDim2.fromOffset(bladeW, size * 0.62)
+	blade.BackgroundColor3 = color
+	blade.BorderSizePixel = 0
+	blade.Parent = c
+
+	local guardH = math.max(1, math.floor(size * 0.1))
+	local guard = Instance.new("Frame")
+	guard.AnchorPoint = Vector2.new(0.5, 0)
+	guard.Position = UDim2.fromScale(0.5, 0.64)
+	guard.Size = UDim2.fromOffset(size * 0.7, guardH)
+	guard.BackgroundColor3 = color
+	guard.BorderSizePixel = 0
+	guard.Parent = c
+
+	local grip = Instance.new("Frame")
+	grip.AnchorPoint = Vector2.new(0.5, 0)
+	grip.Position = UDim2.fromScale(0.5, 0.74)
+	grip.Size = UDim2.fromOffset(bladeW, size * 0.18)
+	grip.BackgroundColor3 = color
+	grip.BorderSizePixel = 0
+	grip.Parent = c
+
+	return c
+end
+
+-- Users — two stylised people: one circle (head) over a rounded body,
+-- with a second smaller pair overlapping behind. Used as the
+-- Mercenaries button glyph.
+local function makeUsersIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "UsersIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local function person(cx, headSize, bodyW, bodyH)
+		local head = Instance.new("Frame")
+		head.AnchorPoint = Vector2.new(0.5, 0)
+		head.Position = UDim2.fromScale(cx, 0.1)
+		head.Size = UDim2.fromOffset(headSize, headSize)
+		head.BackgroundColor3 = color
+		head.BorderSizePixel = 0
+		head.Parent = c
+		local hc = Instance.new("UICorner")
+		hc.CornerRadius = UDim.new(1, 0)
+		hc.Parent = head
+
+		local body = Instance.new("Frame")
+		body.AnchorPoint = Vector2.new(0.5, 0)
+		body.Position = UDim2.fromScale(cx, 0.55)
+		body.Size = UDim2.fromOffset(bodyW, bodyH)
+		body.BackgroundColor3 = color
+		body.BorderSizePixel = 0
+		body.Parent = c
+		local bc = Instance.new("UICorner")
+		bc.CornerRadius = UDim.new(0.3, 0)
+		bc.Parent = body
+	end
+
+	person(0.35, size * 0.40, size * 0.60, size * 0.34)
+	person(0.72, size * 0.30, size * 0.44, size * 0.28)
+
+	return c
+end
+
+-- Chevron-right — two thin Frames meeting at the right forming a ">"
+-- arrowhead. Used as the list-row affordance on Loadout buttons.
+local function makeChevronRight(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "ChevronRight"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.14))
+	local legLen = size * 0.68
+	local top = Instance.new("Frame")
+	top.AnchorPoint = Vector2.new(1, 0.5)
+	top.Position = UDim2.fromScale(0.92, 0.35)
+	top.Size = UDim2.fromOffset(legLen, thick)
+	top.BackgroundColor3 = color
+	top.BorderSizePixel = 0
+	top.Rotation = 45
+	top.Parent = c
+
+	local bot = Instance.new("Frame")
+	bot.AnchorPoint = Vector2.new(1, 0.5)
+	bot.Position = UDim2.fromScale(0.92, 0.65)
+	bot.Size = UDim2.fromOffset(legLen, thick)
+	bot.BackgroundColor3 = color
+	bot.BorderSizePixel = 0
+	bot.Rotation = -45
+	bot.Parent = c
+
+	return c
+end
+
 local function makePanel(name, parent)
 	-- Holo panel ported from the Claude Design mockup: translucent
 	-- navy fill, hairline cyan border, sharp corners with four tiny
@@ -388,27 +535,37 @@ local function buildHoloBackground(parent)
 	grad.Rotation = 90 -- top → bottom
 	grad.Parent = root
 
-	-- Horizon light band, slightly above centre, with soft horizontal fade
-	local horizon = Instance.new("Frame")
-	horizon.Name = "Horizon"
-	horizon.AnchorPoint = Vector2.new(0.5, 0.5)
-	horizon.Position = UDim2.fromScale(0.5, 0.42)
-	horizon.Size = UDim2.fromScale(1.2, 0.22)
-	horizon.BackgroundColor3 = HORIZON
-	horizon.BackgroundTransparency = 0.55
-	horizon.BorderSizePixel = 0
-	horizon.ZIndex = 1
-	horizon.Parent = root
-	local hGrad = Instance.new("UIGradient")
-	hGrad.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0,    1),
-		NumberSequenceKeypoint.new(0.35, 0.55),
-		NumberSequenceKeypoint.new(0.5,  0.35),
-		NumberSequenceKeypoint.new(0.65, 0.55),
-		NumberSequenceKeypoint.new(1,    1),
-	})
-	hGrad.Rotation = 0
-	hGrad.Parent = horizon
+	-- Horizon glow — built as two stacked Frames to fake the blurred
+	-- radial feel of the Claude Design mockup. UIGradient is linear
+	-- only, so we layer a wide faint outer halo behind a tighter inner
+	-- core: each layer fades horizontally to fully transparent at the
+	-- screen edges and is already mostly transparent in the middle, so
+	-- the whole band reads as diffuse light rather than a hard stripe.
+	local function horizonLayer(scaleX, scaleY, bgTrans, centerTrans)
+		local h = Instance.new("Frame")
+		h.Name = "Horizon"
+		h.AnchorPoint = Vector2.new(0.5, 0.5)
+		h.Position = UDim2.fromScale(0.5, 0.42)
+		h.Size = UDim2.fromScale(scaleX, scaleY)
+		h.BackgroundColor3 = HORIZON
+		h.BackgroundTransparency = bgTrans
+		h.BorderSizePixel = 0
+		h.ZIndex = 1
+		h.Parent = root
+		local g = Instance.new("UIGradient")
+		g.Transparency = NumberSequence.new({
+			NumberSequenceKeypoint.new(0,    1),
+			NumberSequenceKeypoint.new(0.28, 0.85),
+			NumberSequenceKeypoint.new(0.5,  centerTrans),
+			NumberSequenceKeypoint.new(0.72, 0.85),
+			NumberSequenceKeypoint.new(1,    1),
+		})
+		g.Rotation = 0
+		g.Parent = h
+		return h
+	end
+	horizonLayer(1.6, 0.22, 0.90, 0.50) -- wide outer halo
+	horizonLayer(1.0, 0.08, 0.72, 0.15) -- tight inner core
 
 	-- Vignette: darken top and bottom toward the screen edges so the
 	-- panels sit in a soft tunnel of light.
@@ -1059,35 +1216,89 @@ local function buildMenu()
 	dailyResetButton  = resetBtn
 	dailyXPButton     = xpBtn
 
-	-- ── Bottom-right: Arsenal / Mercenaries ────────────────────────────
+	-- ── Bottom-right: Loadout ──────────────────────────────────────────
+	-- Matches the Claude Design card: crown header + compact list-row
+	-- buttons with [icon] [label] [> chevron]. Buttons sit against the
+	-- card's own translucent fill — no rounded corners, thin holo-dim
+	-- stroke — so they read as rows rather than CTA pills.
 	local sidePanel = makePanel("SidePanel", root)
 	sidePanel.AnchorPoint = Vector2.new(1, 1)
 	sidePanel.Position = UDim2.new(1, 0, 1, -70)
-	sidePanel.Size = UDim2.fromOffset(220, 140)
-	padding(sidePanel, 12)
+	sidePanel.Size = UDim2.fromOffset(260, 134)
+	padding(sidePanel, 14)
 
-	local sideTitle = makeLabel(sidePanel, "Loadout", FONT_TITLE, 16, COLOR_TEXT)
-	sideTitle.Size = UDim2.new(1, 0, 0, 20)
+	local sideHeader = Instance.new("Frame")
+	sideHeader.Name = "HeaderRow"
+	sideHeader.BackgroundTransparency = 1
+	sideHeader.Size = UDim2.new(1, 0, 0, 18)
+	sideHeader.Parent = sidePanel
 
-	local function makeSideButton(text, y)
+	local crown = makeCrownIcon(sideHeader, 14, HOLO_EDGE)
+	crown.AnchorPoint = Vector2.new(0, 0.5)
+	crown.Position = UDim2.fromScale(0, 0.5)
+
+	local sideTitle = makeLabel(sideHeader, "LOADOUT", FONT_TITLE, 15, COLOR_TEXT)
+	sideTitle.Position = UDim2.fromOffset(22, 0)
+	sideTitle.Size = UDim2.new(1, -22, 1, 0)
+
+	local sideDivider = Instance.new("Frame")
+	sideDivider.BackgroundColor3 = HOLO_PANEL_BORDER
+	sideDivider.BackgroundTransparency = 0.3
+	sideDivider.BorderSizePixel = 0
+	sideDivider.Size = UDim2.new(1, 0, 0, 1)
+	sideDivider.Position = UDim2.fromOffset(0, 28)
+	sideDivider.Parent = sidePanel
+
+	local btnHolder = Instance.new("Frame")
+	btnHolder.Name = "Buttons"
+	btnHolder.BackgroundTransparency = 1
+	btnHolder.Position = UDim2.fromOffset(0, 40)
+	btnHolder.Size = UDim2.new(1, 0, 1, -40)
+	btnHolder.Parent = sidePanel
+
+	local btnList = Instance.new("UIListLayout")
+	btnList.FillDirection = Enum.FillDirection.Vertical
+	btnList.SortOrder = Enum.SortOrder.LayoutOrder
+	btnList.Padding = UDim.new(0, 8)
+	btnList.Parent = btnHolder
+
+	local function makeLoadoutButton(label, iconFn, order)
 		local b = Instance.new("TextButton")
-		b.BackgroundColor3 = COLOR_BAR_BG
+		b.Name = label .. "Button"
+		b.BackgroundColor3 = Color3.fromRGB(10, 24, 44)
+		b.BackgroundTransparency = 0.5
 		b.BorderSizePixel = 0
-		b.Position = UDim2.fromOffset(0, y)
-		b.Size = UDim2.new(1, 0, 0, 38)
+		b.Size = UDim2.new(1, 0, 0, 34)
 		b.Font = FONT_TITLE
-		b.TextSize = 16
+		b.TextSize = 14
 		b.TextColor3 = COLOR_TEXT
-		b.Text = text
+		b.Text = ""           -- label drawn as a child for precise positioning
 		b.AutoButtonColor = true
-		b.Parent = sidePanel
-		corner(b, 8)
-		stroke(b, 1.5, COLOR_ACCENT)
+		b.LayoutOrder = order
+		b.Parent = btnHolder
+		local s = Instance.new("UIStroke")
+		s.Color     = HOLO_PANEL_BORDER
+		s.Thickness = 1
+		s.Parent    = b
+
+		local glyph = iconFn(b, 16, HOLO_EDGE)
+		glyph.AnchorPoint = Vector2.new(0, 0.5)
+		glyph.Position = UDim2.new(0, 12, 0.5, 0)
+
+		local txt = makeLabel(b, label, FONT_TITLE, 14, COLOR_TEXT)
+		txt.Position = UDim2.fromOffset(36, 0)
+		txt.Size = UDim2.new(1, -66, 1, 0)
+		txt.TextXAlignment = Enum.TextXAlignment.Left
+
+		local chev = makeChevronRight(b, 12, COLOR_TEXT_DIM)
+		chev.AnchorPoint = Vector2.new(1, 0.5)
+		chev.Position = UDim2.new(1, -12, 0.5, 0)
+
 		return b
 	end
 
-	makeSideButton("ARSENAL",    28)
-	local mercButton = makeSideButton("MERCENARIES", 74)
+	makeLoadoutButton("ARSENAL",     makeSwordIcon, 1)
+	local mercButton = makeLoadoutButton("MERCENARIES", makeUsersIcon, 2)
 	mercButton.MouseButton1Click:Connect(function()
 		if typeof(_G.OpenMercenariesMenu) == "function" then
 			_G.OpenMercenariesMenu()
