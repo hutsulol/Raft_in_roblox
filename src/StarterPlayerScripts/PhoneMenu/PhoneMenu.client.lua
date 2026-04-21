@@ -289,6 +289,7 @@ local function makeHoloBar(parent, size, segments)
 	track.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
 	track.BackgroundTransparency = 0.2
 	track.BorderSizePixel = 0
+	track.ClipsDescendants = true
 	track.Size = size
 	track.Parent = parent
 
@@ -1109,7 +1110,7 @@ local function buildMenu()
 	-- place. Wider columns + taller right cards reduce dead space and keep
 	-- the composition dense (closer to the target Photoshop mockup).
 	local COLUMN_W      = 320
-	local EDGE_BLEED_X  = 18
+	local EDGE_BLEED_X  = 28
 	local LEVEL_Y       = 46
 	local LEVEL_H       = 88
 	local COLUMN_GAP    = 14
@@ -1140,7 +1141,7 @@ local function buildMenu()
 		-- Pull columns back from the absolute edge so cards stay fully visible.
 		-- We use only part of free side space and clamp the extra bleed.
 		local sideGapArtboard = sideGapPx / s
-		local extraBleed = math.clamp(sideGapArtboard * 0.62, 0, 100)
+		local extraBleed = math.clamp(sideGapArtboard * 0.75, 0, 120)
 		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
 
 		if levelPanel then
