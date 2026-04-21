@@ -53,11 +53,12 @@ local HOLO_PANEL_LBRACKET     = Color3.fromRGB(118, 155, 190)
 local HOLO_EDGE               = Color3.fromRGB(190, 220, 245)
 local HOLO_DEEP               = Color3.fromRGB(40, 60, 90)
 local COLOR_GOLD              = Color3.fromRGB(230, 190, 100)
--- Amethyst variant — Claude Design ships "Variant B: Amethyst"
--- alongside the default holo-cyan; using it here so the Mercenary
--- page reads as a distinct app section while keeping the same
--- gradient + horizon + vignette + motes composition.
-local HORIZON                 = Color3.fromRGB(165, 125, 210)
+-- Horizon stripe + motes stay on PhoneMenu's holo-cyan; only the base
+-- gradient underneath is swapped to near-black (see buildHoloBackground
+-- below) so the Mercenary page reads as a distinct darker section
+-- while the cyan accent language stays consistent with the rest of
+-- the menu system.
+local HORIZON                 = Color3.fromRGB(80, 140, 190)
 
 local IDLE_ANIMATION_ID = "rbxassetid://107139405334393"
 
@@ -146,16 +147,17 @@ local function cornerLs(parent, size, color, thickness)
 	addL(1, 1,  1,  1)
 end
 
--- Amethyst holo backdrop — same five-layer composition as PhoneMenu
+-- Near-black holo backdrop — same five-layer composition as PhoneMenu
 -- (base vertical gradient → horizon glow band → top + bottom vignette
--- → drifting motes with panel-occlusion fade), shifted from holo-cyan
--- navy to a deep purple/amethyst so the Mercenary screen reads as a
--- clearly distinct app section.
+-- → drifting motes with panel-occlusion fade). Only the base gradient
+-- differs: PhoneMenu uses a navy wash, the Mercenary page darkens all
+-- the way to near-black so the two screens are clearly distinct while
+-- the cyan horizon stripe and motes stay identical for continuity.
 local function buildHoloBackground(parent)
-	local BG_TOP   = Color3.fromRGB(14,  8, 28)   -- near-black amethyst
-	local BG_MID   = Color3.fromRGB(26, 16, 46)
-	local BG_BOT   = Color3.fromRGB(46, 28, 74)   -- deep purple haze
-	local MOTE_COL = Color3.fromRGB(215, 200, 240) -- pale lavender
+	local BG_TOP   = Color3.fromRGB(2,  2,  6)    -- almost pure black
+	local BG_MID   = Color3.fromRGB(4,  6, 12)
+	local BG_BOT   = Color3.fromRGB(8, 12, 22)    -- barely-there navy hint
+	local MOTE_COL = Color3.fromRGB(180, 215, 240) -- cyan-white, matches PhoneMenu
 
 	local root = Instance.new("Frame")
 	root.Name = "Backdrop"
