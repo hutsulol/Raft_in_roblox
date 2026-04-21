@@ -476,7 +476,7 @@ local function buildHoloBackground(parent)
 	local BG_TOP   = Color3.fromRGB(18, 38, 66)
 	local BG_MID   = Color3.fromRGB(28, 58, 92)
 	local BG_BOT   = Color3.fromRGB(40, 80, 122)
-	local MOTE_COL = Color3.fromRGB(180, 215, 240)
+	local MOTE_COL = Color3.fromRGB(205, 236, 255)
 
 	local root = Instance.new("Frame")
 	root.Name = "Backdrop"
@@ -571,11 +571,12 @@ local function buildHoloBackground(parent)
 	motes.ZIndex = 3
 	motes.Parent = root
 
-	for _ = 1, 24 do
+	-- +20% motes vs the previous 24 baseline.
+	for _ = 1, 29 do
 		local sizePx     = math.random(12, 32) / 10   -- 1.2 .. 3.2 px
 		local duration   = 14 + math.random() * 14    -- 14 .. 28 s
 		local startDelay = math.random() * 18
-		local opacity    = 0.2 + math.random() * 0.6
+		local opacity    = 0.32 + math.random() * 0.58
 
 		local mote = Instance.new("Frame")
 		mote.Name = "Mote"
@@ -1005,6 +1006,7 @@ local function buildMenu()
 	viewportFrame.LightDirection = Vector3.new(-0.3, -1, -0.5)
 	viewportFrame.Ambient = Color3.fromRGB(180, 200, 230)
 	viewportFrame.Parent = root
+	table.insert(motesOccludeList, viewportFrame)
 
 	-- WorldModel enables PointLight rendering inside the ViewportFrame.
 	viewportWorld = Instance.new("WorldModel")
