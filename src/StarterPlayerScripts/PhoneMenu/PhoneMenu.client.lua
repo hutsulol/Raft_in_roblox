@@ -34,6 +34,16 @@ local COLOR_BAR_BG      = Color3.fromRGB(15, 35, 70)
 local COLOR_BAR_FILL    = Color3.fromRGB(90, 200, 255)
 local COLOR_XP_FILL     = Color3.fromRGB(120, 220, 255)
 
+-- Holo panel palette — ported from the Claude Design mockup. Panels use a
+-- translucent navy fill with a hairline oklch-approximated border and a
+-- softer cyan colour for the four corner L-brackets. Declared up top so
+-- the rest of the file can reuse them as we progressively swap old
+-- elements over to the new visual language.
+local HOLO_PANEL_FILL         = Color3.fromRGB(10, 24, 44)   -- rgba(10,24,44,.72)
+local HOLO_PANEL_TRANSPARENCY = 0.28
+local HOLO_PANEL_BORDER       = Color3.fromRGB(75, 100, 125) -- oklch(0.55 0.08 220)
+local HOLO_PANEL_LBRACKET     = Color3.fromRGB(118, 155, 190)-- oklch(0.70 0.10 220)
+
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
 
@@ -99,15 +109,63 @@ local function padding(parent, px)
 	return p
 end
 
+-- Four small L-shaped brackets tucked just outside each corner of a panel
+-- — the signature angular accent from the Claude Design mockup. Each
+-- bracket is two thin Frames (horizontal + vertical) sharing the corner
+-- anchor. Offset 1px outward so the brackets kiss the panel border
+-- cleanly instead of overlapping it.
+local function cornerLs(parent, size, color, thickness)
+	size      = size      or 10
+	color     = color     or HOLO_PANEL_LBRACKET
+	thickness = thickness or 1.5
+
+	local function addL(ax, ay, ox, oy)
+		local horiz = Instance.new("Frame")
+		horiz.Name = "CornerL_H"
+		horiz.AnchorPoint = Vector2.new(ax, ay)
+		horiz.Position = UDim2.new(ax, ox, ay, oy)
+		horiz.Size = UDim2.fromOffset(size, thickness)
+		horiz.BackgroundColor3 = color
+		horiz.BorderSizePixel = 0
+		horiz.ZIndex = (parent.ZIndex or 1) + 1
+		horiz.Parent = parent
+
+		local vert = Instance.new("Frame")
+		vert.Name = "CornerL_V"
+		vert.AnchorPoint = Vector2.new(ax, ay)
+		vert.Position = UDim2.new(ax, ox, ay, oy)
+		vert.Size = UDim2.fromOffset(thickness, size)
+		vert.BackgroundColor3 = color
+		vert.BorderSizePixel = 0
+		vert.ZIndex = (parent.ZIndex or 1) + 1
+		vert.Parent = parent
+	end
+
+	addL(0, 0, -1, -1) -- top-left
+	addL(1, 0,  1, -1) -- top-right
+	addL(0, 1, -1,  1) -- bottom-left
+	addL(1, 1,  1,  1) -- bottom-right
+end
+
 local function makePanel(name, parent)
+	-- Holo panel ported from the Claude Design mockup: translucent
+	-- navy fill, hairline cyan border, sharp corners with four tiny
+	-- L-shaped brackets tucked just outside each corner. No rounded
+	-- UICorner — the angular look is the whole point of the design.
 	local f = Instance.new("Frame")
 	f.Name = name
-	f.BackgroundColor3 = COLOR_PANEL
-	f.BackgroundTransparency = 0.15
+	f.BackgroundColor3 = HOLO_PANEL_FILL
+	f.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	f.BorderSizePixel = 0
 	f.Parent = parent
-	corner(f, 10)
-	stroke(f, 1.5, COLOR_PANEL_EDGE)
+
+	local s = Instance.new("UIStroke")
+	s.Color           = HOLO_PANEL_BORDER
+	s.Thickness       = 1
+	s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	s.Parent          = f
+
+	cornerLs(f, 10, HOLO_PANEL_LBRACKET, 1.5)
 	return f
 end
 
