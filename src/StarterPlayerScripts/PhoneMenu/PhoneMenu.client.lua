@@ -1096,6 +1096,31 @@ local function buildMenu()
 	rootScale.Scale = 1
 	rootScale.Parent = root
 
+	-- Responsive UIScale: the Claude Design mockup is authored at the
+	-- 960x600 artboard, so scale Root up proportionally when the player
+	-- runs the game full-screen on a big monitor, but never shrink
+	-- below 1 (the layout already fits the intended Studio / small-
+	-- window case at scale 1). Multiple UIScales on the same parent
+	-- compound, so this multiplies cleanly with the holo-open
+	-- animation's HoloScale above.
+	local REFERENCE_W, REFERENCE_H = 960, 600
+	local responsiveScale = Instance.new("UIScale")
+	responsiveScale.Name = "ResponsiveScale"
+	responsiveScale.Scale = 1
+	responsiveScale.Parent = root
+
+	local function updateResponsiveScale()
+		local size = screenGui.AbsoluteSize
+		if size.X <= 0 or size.Y <= 0 then return end
+		local s = math.min(size.X / REFERENCE_W, size.Y / REFERENCE_H)
+		if s < 1 then s = 1 end
+		responsiveScale.Scale = s
+	end
+	updateResponsiveScale()
+	-- Fires whenever the window resizes or the player rotates their
+	-- phone — keeps the menu proportionally sized on every device.
+	screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateResponsiveScale)
+
 	menuRoot             = root
 	menuRootBasePosition = root.Position
 	menuRootScale        = rootScale
