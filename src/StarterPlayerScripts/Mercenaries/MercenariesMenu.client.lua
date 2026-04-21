@@ -31,34 +31,34 @@ if not phoneRoot then
 end
 
 -- ─── Theme (matches PhoneMenu) ──────────────────────────────────────────
-local COLOR_BG         = Color3.fromRGB(5, 15, 35)
-local COLOR_PANEL      = Color3.fromRGB(10, 25, 55)
-local COLOR_PANEL_EDGE = Color3.fromRGB(80, 180, 255)
-local COLOR_ACCENT     = Color3.fromRGB(120, 210, 255)
+local COLOR_BG         = Color3.fromRGB(10, 24, 46)
+local COLOR_PANEL      = Color3.fromRGB(16, 34, 66)
+local COLOR_PANEL_EDGE = Color3.fromRGB(92, 195, 255)
+local COLOR_ACCENT     = Color3.fromRGB(130, 220, 255)
 local COLOR_TEXT       = Color3.fromRGB(220, 240, 255)
-local COLOR_TEXT_DIM   = Color3.fromRGB(140, 180, 220)
+local COLOR_TEXT_DIM   = Color3.fromRGB(155, 198, 232)
 local COLOR_TEXT_MUTE  = Color3.fromRGB(100, 125, 155)
-local COLOR_BAR_BG     = Color3.fromRGB(15, 35, 70)
-local COLOR_BAR_FILL   = Color3.fromRGB(90, 200, 255)
+local COLOR_BAR_BG     = Color3.fromRGB(26, 58, 96)
+local COLOR_BAR_FILL   = Color3.fromRGB(118, 210, 255)
 local FONT_TITLE       = Enum.Font.GothamBold
 local FONT_BODY        = Enum.Font.Gotham
 
 -- Holo palette ported from Claude Design primitives.jsx so the
 -- Mercenaries page shares the exact panel / backdrop language with
 -- the refreshed PhoneMenu.
-local HOLO_PANEL_FILL         = Color3.fromRGB(10, 24, 44)
-local HOLO_PANEL_TRANSPARENCY = 0.28
-local HOLO_PANEL_BORDER       = Color3.fromRGB(75, 100, 125)
-local HOLO_PANEL_LBRACKET     = Color3.fromRGB(118, 155, 190)
-local HOLO_EDGE               = Color3.fromRGB(190, 220, 245)
-local HOLO_DEEP               = Color3.fromRGB(40, 60, 90)
+local HOLO_PANEL_FILL         = Color3.fromRGB(14, 34, 62)
+local HOLO_PANEL_TRANSPARENCY = 0.22
+local HOLO_PANEL_BORDER       = Color3.fromRGB(90, 132, 172)
+local HOLO_PANEL_LBRACKET     = Color3.fromRGB(116, 188, 232)
+local HOLO_EDGE               = Color3.fromRGB(176, 232, 255)
+local HOLO_DEEP               = Color3.fromRGB(28, 58, 92)
 local COLOR_GOLD              = Color3.fromRGB(230, 190, 100)
 -- Horizon stripe + motes stay on PhoneMenu's holo-cyan; only the base
 -- gradient underneath is swapped to near-black (see buildHoloBackground
 -- below) so the Mercenary page reads as a distinct darker section
 -- while the cyan accent language stays consistent with the rest of
 -- the menu system.
-local HORIZON                 = Color3.fromRGB(80, 140, 190)
+local HORIZON                 = Color3.fromRGB(98, 168, 218)
 
 local IDLE_ANIMATION_ID = "rbxassetid://107139405334393"
 
@@ -168,10 +168,10 @@ end
 -- the way to near-black so the two screens are clearly distinct while
 -- the cyan horizon stripe and motes stay identical for continuity.
 local function buildHoloBackground(parent)
-	local BG_TOP   = Color3.fromRGB(2,  2,  6)    -- almost pure black
-	local BG_MID   = Color3.fromRGB(4,  6, 12)
-	local BG_BOT   = Color3.fromRGB(8, 12, 22)    -- barely-there navy hint
-	local MOTE_COL = Color3.fromRGB(180, 215, 240) -- cyan-white, matches PhoneMenu
+	local BG_TOP   = Color3.fromRGB(18, 38, 66)
+	local BG_MID   = Color3.fromRGB(28, 58, 92)
+	local BG_BOT   = Color3.fromRGB(40, 80, 122)
+	local MOTE_COL = Color3.fromRGB(205, 236, 255)
 
 	local root = Instance.new("Frame")
 	root.Name = "Backdrop"
