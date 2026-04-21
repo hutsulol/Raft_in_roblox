@@ -935,10 +935,13 @@ local function buildMenu()
 	-- Left column (level badge + stats) is nudged ~60px below the root's
 	-- top edge so it clears the Roblox topbar icons (logo / menu / chat)
 	-- on non-Studio clients where those buttons extend past GuiInset.
+	-- Column geometry from MainMenu.jsx: left/right 24, top 70 (screen);
+	-- Root is already inset by (30, topInset+20) so we position the
+	-- panels at Root-relative y=14 with fixed 280 width and 14 px gaps.
 	local levelPanel = makePanel("LevelPanel", root)
 	levelPanel.AnchorPoint = Vector2.new(0, 0)
-	levelPanel.Position = UDim2.fromOffset(0, 60)
-	levelPanel.Size = UDim2.fromOffset(300, 70)
+	levelPanel.Position = UDim2.fromOffset(0, 14)
+	levelPanel.Size = UDim2.fromOffset(280, 76)
 	padding(levelPanel, 10)
 
 	-- Holo level badge: 50×50 square with the holo-edge border, a
@@ -1000,10 +1003,11 @@ local function buildMenu()
 	upgradePointsLabel = pointsLbl
 
 	-- ── Left column: player stats card ───────────────────────────────
+	-- Stacked under LevelPanel: y = 14 (top) + 76 (LevelPanel) + 14 (gap).
 	local statsPanel = makePanel("StatsPanel", root)
 	statsPanel.AnchorPoint = Vector2.new(0, 0)
-	statsPanel.Position = UDim2.fromOffset(0, 145)
-	statsPanel.Size = UDim2.fromOffset(340, 190)
+	statsPanel.Position = UDim2.fromOffset(0, 104)
+	statsPanel.Size = UDim2.fromOffset(280, 180)
 	padding(statsPanel, 14)
 
 	-- Card header: diamond glyph + uppercase title + thin divider under.
@@ -1118,10 +1122,13 @@ local function buildMenu()
 	-- Structure only — the quest rows, reward label and claim button
 	-- are all (re)populated by refreshDailyQuests() from the replicated
 	-- DailyQuests folder.
+	-- Right column, top slot. Same 14 px top inset + 280 width as the
+	-- left column. Height stays wider than the design until TasksCard
+	-- is restyled to its final holo layout.
 	local tasksPanel = makePanel("TasksPanel", root)
 	tasksPanel.AnchorPoint = Vector2.new(1, 0)
-	tasksPanel.Position = UDim2.new(1, 0, 0, 0)
-	tasksPanel.Size = UDim2.fromOffset(320, 292)
+	tasksPanel.Position = UDim2.new(1, 0, 0, 14)
+	tasksPanel.Size = UDim2.fromOffset(280, 292)
 	padding(tasksPanel, 12)
 
 	local tasksTitle = makeLabel(tasksPanel, "Tasks for today:", FONT_TITLE, 18, COLOR_TEXT)
@@ -1221,10 +1228,13 @@ local function buildMenu()
 	-- buttons with [icon] [label] [> chevron]. Buttons sit against the
 	-- card's own translucent fill — no rounded corners, thin holo-dim
 	-- stroke — so they read as rows rather than CTA pills.
+	-- Stacked directly under TasksPanel in the right column:
+	-- y = 14 (top) + 292 (TasksPanel) + 14 (gap) = 320. Pinned to the
+	-- right edge with AnchorPoint (1, 0) so it mirrors the left column.
 	local sidePanel = makePanel("SidePanel", root)
-	sidePanel.AnchorPoint = Vector2.new(1, 1)
-	sidePanel.Position = UDim2.new(1, 0, 1, -70)
-	sidePanel.Size = UDim2.fromOffset(260, 134)
+	sidePanel.AnchorPoint = Vector2.new(1, 0)
+	sidePanel.Position = UDim2.new(1, 0, 0, 320)
+	sidePanel.Size = UDim2.fromOffset(280, 122)
 	padding(sidePanel, 14)
 
 	local sideHeader = Instance.new("Frame")
