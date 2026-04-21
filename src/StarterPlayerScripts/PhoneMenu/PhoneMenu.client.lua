@@ -698,6 +698,31 @@ local function buildHoloBackground(parent)
 	grad.Rotation = 90 -- top → bottom
 	grad.Parent = root
 
+	-- Global scanline overlay across the whole backdrop so the entire menu
+	-- background gets the subtle "striped monitor" treatment.
+	local scanlines = Instance.new("Frame")
+	scanlines.Name = "Scanlines"
+	scanlines.Size = UDim2.fromScale(1, 1)
+	scanlines.BackgroundTransparency = 1
+	scanlines.BorderSizePixel = 0
+	scanlines.ZIndex = 1
+	scanlines.ClipsDescendants = true
+	scanlines.Parent = root
+
+	local SCAN_COUNT = 270
+	local SCAN_ALPHA = 0.92
+	for i = 0, SCAN_COUNT do
+		local line = Instance.new("Frame")
+		line.Name = "Scanline"
+		line.Size = UDim2.new(1, 0, 0, 1)
+		line.Position = UDim2.new(0, 0, i / SCAN_COUNT, 0)
+		line.BackgroundColor3 = Color3.fromRGB(140, 210, 255)
+		line.BackgroundTransparency = SCAN_ALPHA
+		line.BorderSizePixel = 0
+		line.ZIndex = 1
+		line.Parent = scanlines
+	end
+
 	-- Horizon fog (no hard top/bottom borders): build many thin,
 	-- overlapping horizontal-fade bands with Gaussian-weighted opacity.
 	-- The stack approximates a blurred volumetric mist strip.
