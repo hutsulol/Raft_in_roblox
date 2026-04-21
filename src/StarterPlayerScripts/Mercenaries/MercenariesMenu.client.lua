@@ -1246,17 +1246,20 @@ buildPage = function(mercNames)
 	buildHoloBackground(page)
 
 	-- ── Responsive artboard (matches PhoneMenu) ──────────────────────
-	-- The Claude Design canvas is 960x600; make `scaleWrap` that exact
+	-- The Claude Design canvas base is 960x600; we use a wider artboard here
+	-- so side cards can breathe and sit closer to screen edges.
 	-- size and centre it on screen so right-anchored panels land on
-	-- the artboard's own 960 mark instead of the viewport edge (which
+	-- the artboard's own width mark instead of the viewport edge (which
 	-- UIScale would push off-screen on large monitors).
 	local topInset = GuiService:GetGuiInset().Y
-	local REFERENCE_W, REFERENCE_H = 960, 600
+	-- Wider artboard so the mercenary layout occupies more horizontal space
+	-- (closer to the target mock where side cards sit near screen edges).
+	local REFERENCE_W, REFERENCE_H = 1120, 600
 	-- Match PhoneMenu's "cards push toward screen edges" behavior so side
-	-- columns don't feel cramped inside the 960x600 artboard on widescreen.
-	local COLUMN_W      = 320
-	local EDGE_BLEED_X  = 28
-	local COLUMN_GAP    = 14
+	-- columns don't feel cramped inside the widened artboard on widescreen.
+	local COLUMN_W      = 350
+	local EDGE_BLEED_X  = 52
+	local COLUMN_GAP    = 18
 	local PANELS_TOP_Y  = 70
 	local PANELS_BOT_PAD = 24
 
@@ -1288,7 +1291,9 @@ buildPage = function(mercNames)
 		local artboardScreenW = REFERENCE_W * s
 		local sideGapPx = math.max(0, size.X - artboardScreenW) * 0.5
 		local sideGapArtboard = sideGapPx / s
-		local extraBleed = math.clamp(sideGapArtboard * 0.75, 0, 120)
+		-- Stronger edge pull than PhoneMenu: Mercenaries needs wider side cards
+		-- and visibly tighter alignment to the screen edges.
+		local extraBleed = math.clamp(sideGapArtboard * 1.0, 0, 180)
 		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
 
 		if leftColRef then
@@ -1671,9 +1676,8 @@ buildPage = function(mercNames)
 	end
 
 	-- ── Centre column: meta bar + character viewport ──────────────────
-	-- Position from MercenaryPage.jsx: left 344, right 364, top 70,
-	-- bottom 24 within the 960x600 artboard (so width = 252, height =
-	-- 506). Meta bar at the top, character slot below with 14 px gap.
+	-- Centre column now uses derived geometry between widened side cards.
+	-- Meta bar at the top, character slot below with 14 px gap.
 	local centreCol = Instance.new("Frame")
 	centreCol.Name = "CentreColumn"
 	centreCol.BackgroundTransparency = 1
