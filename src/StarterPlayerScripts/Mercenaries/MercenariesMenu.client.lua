@@ -2301,8 +2301,40 @@ buildPage = function(mercNames)
 	manageChev.Position = UDim2.new(0.5, 56, 0.5, 0)
 
 	manageBtn.MouseButton1Click:Connect(function()
-		if buildEquipmentPage and currentSelectedMerc then
-			buildEquipmentPage(currentSelectedMerc, currentMercNames)
+		if not currentSelectedMerc then return end
+		local mercName  = currentSelectedMerc
+		local mercNames = currentMercNames
+
+		-- Tear down the roster page (but keep phone panels hidden —
+		-- we navigate forward into the Handling screen, not close out
+		-- to the PhoneMenu) before handing off so the Handling page
+		-- starts from a clean ScreenGui.
+		detachCachedViewports()
+		if page then page:Destroy(); page = nil end
+		clearRosterConns()
+
+		if typeof(_G.OpenHandlingPage) == "function" then
+			_G.OpenHandlingPage({
+				screenGui             = screenGui,
+				mercName              = mercName,
+				mercNames             = mercNames,
+				theme                 = MERC_THEMES[mercName] or DEFAULT_THEME,
+				hidePhonePanels       = hidePhonePanels,
+				detachCachedViewports = detachCachedViewports,
+				buildMercViewport     = buildMercViewport,
+				onBack                = function()
+					if typeof(_G.CloseHandlingPage) == "function" then
+						_G.CloseHandlingPage()
+					end
+					-- openMercenariesMenu sits at the bottom of this
+					-- file, so it isn't in scope here — route via the
+					-- _G hook it registers at module load so the user
+					-- lands back on the roster.
+					if typeof(_G.OpenMercenariesMenu) == "function" then
+						_G.OpenMercenariesMenu()
+					end
+				end,
+			})
 		end
 	end)
 
