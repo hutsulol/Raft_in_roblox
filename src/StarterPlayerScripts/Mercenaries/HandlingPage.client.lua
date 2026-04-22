@@ -56,6 +56,7 @@ local COLOR_TEXT_MUTE = Color3.fromRGB(100, 125, 155)
 local COLOR_GOLD      = Color3.fromRGB(230, 190, 100)
 local DNA_RESEARCH_ICON = "rbxassetid://78141836386820"
 local SKINS_TILE_IMAGE  = "rbxassetid://86890035031466"
+local MAIN_HAND_TILE_IMAGE = "rbxassetid://77239024300843"
 
 local function setZIndexRecursive(root, z)
 	if not root then return end
@@ -711,7 +712,7 @@ local function buildSlotTile(parent, opts)
 	return handle
 end
 
-local function applySkinsTilePreview(handle)
+local function applySlotTilePreview(handle, imageId)
 	local tile = handle and handle.tile
 	if not tile then return end
 
@@ -723,12 +724,12 @@ local function applySkinsTilePreview(handle)
 	end
 
 	local preview = Instance.new("ImageLabel")
-	preview.Name = "SkinPreview"
+	preview.Name = "SlotPreview"
 	preview.BackgroundTransparency = 1
 	preview.BorderSizePixel = 0
 	preview.Position = UDim2.fromOffset(0, 0)
 	preview.Size = UDim2.fromScale(1, 1)
-	preview.Image = SKINS_TILE_IMAGE
+	preview.Image = imageId
 	preview.ScaleType = Enum.ScaleType.Crop
 	preview.Parent = iconZone
 	setZIndexRecursive(preview, (tile.ZIndex or 55) + 2)
@@ -1167,6 +1168,7 @@ local function openHandlingPage(ctx)
 		zIndex       = 55,
 		onClick      = function() selectSlot("MainHand") end,
 	})
+	applySlotTilePreview(slotHandles.MainHand, MAIN_HAND_TILE_IMAGE)
 
 	slotHandles.Relic = buildSlotTile(scaleWrap, {
 		name         = "RELIC",
@@ -1187,7 +1189,7 @@ local function openHandlingPage(ctx)
 		zIndex       = 55,
 		onClick      = function() selectSlot("Skins") end,
 	})
-	applySkinsTilePreview(slotHandles.Skins)
+	applySlotTilePreview(slotHandles.Skins, SKINS_TILE_IMAGE)
 
 	slotHandles.Artifacts = buildSlotTile(scaleWrap, {
 		name         = "ARTIFACTS",
