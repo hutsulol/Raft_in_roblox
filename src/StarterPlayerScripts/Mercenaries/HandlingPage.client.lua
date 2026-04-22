@@ -1146,10 +1146,17 @@ local function openHandlingPage(ctx)
 	viewportHost.Name = "ViewportHost"
 	viewportHost.BackgroundTransparency = 1
 	viewportHost.BorderSizePixel = 0
-	-- Pixel-match MercenariesMenu's centreCol so buildMercViewport's
-	-- cached vp lands at identical global coords.
-	viewportHost.Position = UDim2.fromOffset(400, 70)
-	viewportHost.Size = UDim2.fromOffset(160, 506)
+	-- Mirrors MercenariesMenu's `slot` (which is the vp's direct parent
+	-- there): slot lives at centreCol (Y=70) + (META_HEIGHT - 10) = 104
+	-- with height = centreCol.H - 34 = 472. buildMercViewport positions
+	-- the cached vp at UDim2.fromScale(0.5, 0.34), so matching the slot
+	-- geometry here puts the vp center Y at 104 + 472*0.34 = 264.48 —
+	-- the exact same global coord as on the roster page. Matching X
+	-- doesn't need the centreCol width because vp is centred (0.5, 0.5)
+	-- and scaleWrap itself is screen-centred (so local x=480 = screen
+	-- center regardless of the 960 vs 1180 artboard width delta).
+	viewportHost.Position = UDim2.fromOffset(400, 104)
+	viewportHost.Size = UDim2.fromOffset(160, 472)
 	viewportHost.ZIndex = 55
 	viewportHost.Parent = scaleWrap
 
