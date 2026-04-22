@@ -1927,7 +1927,7 @@ buildPage = function(mercNames)
 		end
 	end
 
-	-- ── Character slot (rings + ground glow + ViewportFrame) ──────────
+	-- ── Character slot (ground glow + ViewportFrame) ───────────────────
 	local slot = Instance.new("Frame")
 	slot.Name = "CharacterSlot"
 	slot.BackgroundTransparency = 1
@@ -1959,31 +1959,6 @@ buildPage = function(mercNames)
 	})
 	groundGrad.Rotation = 0
 	groundGrad.Parent = ground
-
-	-- Concentric rim rings behind the character, slightly above centre
-	-- so the ViewportFrame sits inside them.
-	local function rimCircle(sizePx, strokeColor, strokeTransparency)
-		local r = Instance.new("Frame")
-		r.Name = "RimCircle"
-		r.AnchorPoint = Vector2.new(0.5, 0.5)
-		r.Position = UDim2.fromScale(0.5, 0.48)
-		r.Size = UDim2.fromOffset(sizePx, sizePx)
-		r.BackgroundTransparency = 1
-		r.BorderSizePixel = 0
-		r.ZIndex = 2
-		r.Parent = slot
-		local rc = Instance.new("UICorner")
-		rc.CornerRadius = UDim.new(1, 0)
-		rc.Parent = r
-		local rs = Instance.new("UIStroke")
-		rs.Color        = strokeColor
-		rs.Thickness    = 1
-		rs.Transparency = strokeTransparency or 0
-		rs.Parent       = r
-		return r
-	end
-	rimCircle(340, HOLO_EDGE,          0.70) -- outer faint
-	rimCircle(280, HOLO_PANEL_BORDER,  0.55) -- inner denser
 
 	-- ── Handling button ──────────────────────────────────────────────
 	-- Gradient pill floating at the foot of the character slot, matching
