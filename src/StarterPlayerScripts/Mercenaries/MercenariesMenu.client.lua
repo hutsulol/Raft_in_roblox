@@ -1707,7 +1707,7 @@ buildPage = function(mercNames)
 		card.BorderSizePixel = 0
 		card.AutoButtonColor = false
 		card.Text = ""
-		card.Size = UDim2.new(1, -6, 0, 72)
+		card.Size = UDim2.new(1, -6, 0, 112)
 		card.LayoutOrder = i
 		card.Parent = cardList
 
@@ -1717,19 +1717,20 @@ buildPage = function(mercNames)
 		cardStroke.Parent    = card
 
 		local cardPad = Instance.new("UIPadding")
-		cardPad.PaddingTop    = UDim.new(0, 10)
-		cardPad.PaddingBottom = UDim.new(0, 10)
+		cardPad.PaddingTop    = UDim.new(0, 12)
+		cardPad.PaddingBottom = UDim.new(0, 12)
 		cardPad.PaddingLeft   = UDim.new(0, 10)
 		cardPad.PaddingRight  = UDim.new(0, 10)
 		cardPad.Parent = card
 
-		-- Portrait slot — 52x52, translucent fill, hairline border, mini
+		-- Portrait slot — enlarged for readability, translucent fill,
+		-- hairline border, mini corner L's.
 		-- corner L's. Character icon sits centred inside.
 		local portrait = Instance.new("Frame")
 		portrait.Name = "Portrait"
 		portrait.AnchorPoint = Vector2.new(0, 0.5)
 		portrait.Position = UDim2.new(0, 0, 0.5, 0)
-		portrait.Size = UDim2.fromOffset(52, 52)
+		portrait.Size = UDim2.fromOffset(88, 88)
 		portrait.BackgroundColor3 = Color3.fromRGB(15, 35, 65)
 		portrait.BackgroundTransparency = 0.65
 		portrait.BorderSizePixel = 0
@@ -1744,30 +1745,30 @@ buildPage = function(mercNames)
 
 		local portraitIconId = theme.portraitIcon
 		if portraitIconId then
-			local charIcon = makeAssetIcon(portrait, portraitIconId, 42)
+			local charIcon = makeAssetIcon(portrait, portraitIconId, 84)
 			charIcon.Name = "PortraitIcon"
 			charIcon.AnchorPoint = Vector2.new(0.5, 0.5)
 			charIcon.Position = UDim2.fromScale(0.5, 0.5)
 		else
-			local charGlyph = makeCharacterIcon(portrait, 28, HOLO_PANEL_LBRACKET)
+			local charGlyph = makeCharacterIcon(portrait, 56, HOLO_PANEL_LBRACKET)
 			charGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
 			charGlyph.Position = UDim2.fromScale(0.5, 0.5)
 		end
 
 		-- Right side of the card: name row (+ OWNED chip) / star row / role
-		-- line, all left-aligned starting 62 px in so they sit clear of
-		-- the 52-wide portrait plus its 10 px gap.
-		local name = makeLabel(card, displayName, FONT_TITLE, 15, COLOR_TEXT)
-		name.Position = UDim2.fromOffset(62, 0)
-		name.Size = UDim2.fromOffset(130, 18)
+		-- line, all left-aligned starting 100 px in so they sit clear of
+		-- the 88-wide portrait plus its 12 px gap.
+		local name = makeLabel(card, displayName, FONT_TITLE, 22, COLOR_TEXT)
+		name.Position = UDim2.fromOffset(100, 4)
+		name.Size = UDim2.new(1, -210, 0, 26)
 
 		-- OWNED chip in green stroke — every merc we render here comes
 		-- from player.Mercenaries, so they're by definition recruited.
 		local ownedChip = Instance.new("Frame")
 		ownedChip.Name = "OwnedChip"
-		ownedChip.AnchorPoint = Vector2.new(0, 0.5)
-		ownedChip.Position = UDim2.new(0, 62 + 80, 0, 9)
-		ownedChip.Size = UDim2.fromOffset(44, 14)
+		ownedChip.AnchorPoint = Vector2.new(1, 0.5)
+		ownedChip.Position = UDim2.new(1, -10, 0, 16)
+		ownedChip.Size = UDim2.fromOffset(56, 18)
 		ownedChip.BackgroundTransparency = 1
 		ownedChip.BorderSizePixel = 0
 		ownedChip.Parent = card
@@ -1775,17 +1776,17 @@ buildPage = function(mercNames)
 		ownedStroke.Color     = Color3.fromRGB(110, 200, 140)
 		ownedStroke.Thickness = 1
 		ownedStroke.Parent    = ownedChip
-		local ownedLbl = makeLabel(ownedChip, "OWNED", FONT_TITLE, 8,
+		local ownedLbl = makeLabel(ownedChip, "OWNED", FONT_TITLE, 9,
 			Color3.fromRGB(110, 200, 140), Enum.TextXAlignment.Center)
 		ownedLbl.Size = UDim2.fromScale(1, 1)
 
 		local starRow = makeImageStarRow(card, theme.stars or 1, 5, 12)
 		starRow.AnchorPoint = Vector2.new(1, 0)
-		starRow.Position = UDim2.new(1, -10, 0, 22)
+		starRow.Position = UDim2.new(1, -10, 0, 44)
 
-		local role = makeLabel(card, theme.role or "Crew", FONT_BODY, 10, COLOR_TEXT_DIM)
-		role.Position = UDim2.fromOffset(62, 38)
-		role.Size = UDim2.fromOffset(150, 14)
+		local role = makeLabel(card, theme.role or "Crew", FONT_BODY, 16, COLOR_TEXT_DIM)
+		role.Position = UDim2.fromOffset(100, 64)
+		role.Size = UDim2.new(1, -210, 0, 22)
 
 		-- Collect bracket refs so selection recolouring can tint them
 		-- without re-creating the Frames.
