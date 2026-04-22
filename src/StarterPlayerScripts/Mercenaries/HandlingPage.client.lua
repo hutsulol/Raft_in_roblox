@@ -13,9 +13,15 @@
 --            as empty placeholders (no server state for either in the
 --            current data model) with a "+" badge in the icon zone.
 --            Selection is tracked across all four tiles.
+--   Step 5 — centre character viewport. Visible 280×320 frame with
+--            corner L brackets + concentric rings + ground glow wraps
+--            the intended viewport area; an invisible 160×506 host
+--            pixel-matches MercenariesMenu's centreCol so the cached
+--            ViewportFrame reparents to identical global coords
+--            (no idle-animation restart, no character jump).
 --
--- Still to land: centre character viewport, bottom detail + DNA
--- research cards, and finally equip-remote wiring.
+-- Still to land: bottom detail + DNA research cards, and finally
+-- equip-remote wiring.
 
 local Players        = game:GetService("Players")
 local RunService     = game:GetService("RunService")
@@ -236,6 +242,44 @@ local function makeCrownIcon(parent, size, color)
 	peak(0.78, 0.46)
 
 	return c
+end
+
+-- Four L-shaped corner brackets pinned to the inside corners of
+-- `parent`. Each L is a horizontal + vertical Frame pair sharing an
+-- anchor point so the elbow lines up regardless of stroke thickness.
+-- Mirrors MercenariesMenu.cornerLs minus the UIPadding-aware offset
+-- math (nothing inside the Handling centre frame uses UIPadding).
+local function cornerLs(parent, size, color, thickness)
+	size      = size      or 10
+	color     = color     or HOLO_EDGE
+	thickness = thickness or 1.5
+
+	local function addL(ax, ay, ox, oy)
+		local horiz = Instance.new("Frame")
+		horiz.Name = "CornerL_H"
+		horiz.AnchorPoint = Vector2.new(ax, ay)
+		horiz.Position = UDim2.new(ax, ox, ay, oy)
+		horiz.Size = UDim2.fromOffset(size, thickness)
+		horiz.BackgroundColor3 = color
+		horiz.BorderSizePixel = 0
+		horiz.ZIndex = (parent.ZIndex or 1) + 1
+		horiz.Parent = parent
+
+		local vert = Instance.new("Frame")
+		vert.Name = "CornerL_V"
+		vert.AnchorPoint = Vector2.new(ax, ay)
+		vert.Position = UDim2.new(ax, ox, ay, oy)
+		vert.Size = UDim2.fromOffset(thickness, size)
+		vert.BackgroundColor3 = color
+		vert.BorderSizePixel = 0
+		vert.ZIndex = (parent.ZIndex or 1) + 1
+		vert.Parent = parent
+	end
+
+	addL(0, 0,  0,  0)
+	addL(1, 0,  0,  0)
+	addL(0, 1,  0,  0)
+	addL(1, 1,  0,  0)
 end
 
 -- Plain outlined diamond glyph (ARTIFACTS slot placeholder). Same
@@ -487,6 +531,11 @@ end
 -- ─── Module state ────────────────────────────────────────────────────
 local activePage = nil
 local activeConnections = {}
+-- Stashed across open/close so closeHandlingPage can call ctx.detach-
+-- CachedViewports() before destroying the page — otherwise Destroy
+-- cascades into the cached ViewportFrame and the idle animation
+-- restarts when the user goes back to the mercenary roster.
+local activeCtx = nil
 
 local function disconnectAll(tbl)
 	for _, conn in ipairs(tbl) do conn:Disconnect() end
@@ -648,10 +697,19 @@ end
 local function closeHandlingPage()
 	disconnectAll(activeConnections)
 	table.clear(motesOccludeList)
+	-- Detach the cached merc ViewportFrame FIRST so activePage:Destroy()
+	-- below doesn't take the rig + idle animation tracks down with it.
+	-- MercenariesMenu's own detachCachedViewports repoints every cached
+	-- vp.Parent to nil, leaving the cache entry intact so buildMerc-
+	-- Viewport can reparent it on the next open.
+	if activeCtx and activeCtx.detachCachedViewports then
+		activeCtx.detachCachedViewports()
+	end
 	if activePage then
 		activePage:Destroy()
 		activePage = nil
 	end
+	activeCtx = nil
 end
 
 -- ─── Open ────────────────────────────────────────────────────────────
@@ -673,6 +731,7 @@ local function openHandlingPage(ctx)
 	end
 
 	closeHandlingPage()
+	activeCtx = ctx
 
 	local page = Instance.new("Frame")
 	page.Name = "HandlingPage"
@@ -1009,6 +1068,97 @@ local function openHandlingPage(ctx)
 		zIndex       = 55,
 		onClick      = function() selectSlot("Artifacts") end,
 	})
+
+	-- ── Centre: character viewport ───────────────────────────────────
+	-- Two containers, same scaleWrap:
+	--
+	--   centreFrame  — visible 280×320 "viewport box" framed by
+	--                  corner L brackets + two concentric rings + a
+	--                  ground-glow ellipse. This is the Handling
+	--                  mockup's decorative frame.
+	--   viewportHost — invisible 160×506 host whose position + size
+	--                  match MercenariesMenu's centreCol (400, 70,
+	--                  160×506) 1:1. buildMercViewport reparents the
+	--                  cached ViewportFrame here via UDim2.fromScale
+	--                  (0.5, 0.34), so the character lands at the
+	--                  exact same global artboard coords as on the
+	--                  roster page — no animation restart, no jump.
+	--
+	-- vp.ZIndex is bumped above the frame decorations so the rig
+	-- renders on top of the rings / L's / glow.
+	local centreFrame = Instance.new("Frame")
+	centreFrame.Name = "CentreFrame"
+	centreFrame.BackgroundTransparency = 1
+	centreFrame.BorderSizePixel = 0
+	centreFrame.Position = UDim2.fromOffset(340, 130)
+	centreFrame.Size = UDim2.fromOffset(280, 320)
+	centreFrame.ZIndex = 50
+	centreFrame.Parent = scaleWrap
+
+	local groundGlow = Instance.new("Frame")
+	groundGlow.Name = "GroundGlow"
+	groundGlow.AnchorPoint = Vector2.new(0.5, 1)
+	groundGlow.Position = UDim2.new(0.5, 0, 1, -14)
+	groundGlow.Size = UDim2.fromOffset(200, 36)
+	groundGlow.BackgroundColor3 = HORIZON
+	groundGlow.BackgroundTransparency = 0.25
+	groundGlow.BorderSizePixel = 0
+	groundGlow.ZIndex = 51
+	groundGlow.Parent = centreFrame
+	local groundCorner = Instance.new("UICorner")
+	groundCorner.CornerRadius = UDim.new(1, 0)
+	groundCorner.Parent = groundGlow
+	local groundGrad = Instance.new("UIGradient")
+	groundGrad.Transparency = NumberSequence.new({
+		NumberSequenceKeypoint.new(0,   1),
+		NumberSequenceKeypoint.new(0.5, 0),
+		NumberSequenceKeypoint.new(1,   1),
+	})
+	groundGrad.Rotation = 0
+	groundGrad.Parent = groundGlow
+
+	local function rimCircle(sizePx, strokeColor, strokeTransparency)
+		local r = Instance.new("Frame")
+		r.Name = "RimCircle"
+		r.AnchorPoint = Vector2.new(0.5, 0.5)
+		r.Position = UDim2.fromScale(0.5, 0.48)
+		r.Size = UDim2.fromOffset(sizePx, sizePx)
+		r.BackgroundTransparency = 1
+		r.BorderSizePixel = 0
+		r.ZIndex = 52
+		r.Parent = centreFrame
+		local rc = Instance.new("UICorner")
+		rc.CornerRadius = UDim.new(1, 0)
+		rc.Parent = r
+		local rs = Instance.new("UIStroke")
+		rs.Color        = strokeColor
+		rs.Thickness    = 1
+		rs.Transparency = strokeTransparency or 0
+		rs.Parent       = r
+		return r
+	end
+	rimCircle(240, HOLO_EDGE,          0.70)
+	rimCircle(200, HOLO_PANEL_BORDER,  0.55)
+
+	cornerLs(centreFrame, 16, HOLO_EDGE, 1.5)
+
+	local viewportHost = Instance.new("Frame")
+	viewportHost.Name = "ViewportHost"
+	viewportHost.BackgroundTransparency = 1
+	viewportHost.BorderSizePixel = 0
+	-- Pixel-match MercenariesMenu's centreCol so buildMercViewport's
+	-- cached vp lands at identical global coords.
+	viewportHost.Position = UDim2.fromOffset(400, 70)
+	viewportHost.Size = UDim2.fromOffset(160, 506)
+	viewportHost.ZIndex = 55
+	viewportHost.Parent = scaleWrap
+
+	if ctx.buildMercViewport and ctx.mercName then
+		local vp = ctx.buildMercViewport(viewportHost, ctx.mercName, equippedWeaponId)
+		if vp then
+			vp.ZIndex = 60 -- above rings / glow / L brackets
+		end
+	end
 
 	-- Force the first scale computation now that the refs are all
 	-- set (the earlier updateResponsiveScale() call happened before
