@@ -34,8 +34,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- ─── Constants ────────────────────────────────────────────────────────
 local FRAGMENT_COUNT     = 9
-local STUDY_DURATION     = 60   -- seconds per study tick
-local STUDY_FILL_PCT     = 10   -- % each completed study tick adds
+local STUDY_DURATION     = 30   -- seconds per study tick
+local FIRST_BAR_FILL_PCT = 10   -- % each study adds while F01 < 100
+local LATER_BAR_FILL_PCT = 5    -- % each study adds once F01 is full
 local TICK_INTERVAL      = 1    -- how often the server checks for expired slots
 local AUTO_SAVE_INTERVAL = 120  -- seconds, mirrors InventoryManager
 
@@ -344,37 +345,66 @@ end)
 -- point) land in Step 4 — see the TODO at `wasFull` below.
 
 local function applyStudyTick(player, mercName, mercState)
-	local idx = math.random(1, FRAGMENT_COUNT)
-	local before = mercState.fragments[idx] or 0
-	local after  = math.clamp(before + STUDY_FILL_PCT, 0, 100)
-	mercState.fragments[idx] = after
+	-- User-spec advance rule:
+	--   * F01 is the "first strip". While it is below 100 % every study
+	--     adds FIRST_BAR_FILL_PCT (10 %) to F01 specifically → 10 studies
+	--     to fill the first bar.
+	--   * Once F01 is full, every study picks a uniform-random bar from
+	--     the remaining-unfilled F02..F09 and adds LATER_BAR_FILL_PCT
+	--     (5 %) → 20 studies to fill each of the other bars.
+	--   * When every bar is at 100 % the helix is fully decoded; we
+	--     still fire a snapshot so the client can reflect the RP /
+	--     stat gains but no fragment moves.
+	local idx
+	local delta
+	if (mercState.fragments[1] or 0) < 100 then
+		idx   = 1
+		delta = FIRST_BAR_FILL_PCT
+	else
+		local candidates = {}
+		for i = 2, FRAGMENT_COUNT do
+			if (mercState.fragments[i] or 0) < 100 then
+				table.insert(candidates, i)
+			end
+		end
+		if #candidates > 0 then
+			idx   = candidates[math.random(1, #candidates)]
+			delta = LATER_BAR_FILL_PCT
+		end
+	end
+
+	local before, after = 0, 0
+	if idx then
+		before = mercState.fragments[idx] or 0
+		after  = math.clamp(before + delta, 0, 100)
+		mercState.fragments[idx] = after
+	end
 
 	mercState.activeSlot.bloodType = nil
 	mercState.activeSlot.endsAt    = 0
 
-	-- Every tick grants a small random increment to the stat this
-	-- fragment's section maps to (strength / luck / speed). User spec:
-	-- "these stats will improve based on the randomness that occurs
-	-- after the blood is studied".
-	local statName  = SECTION_STAT[idx] or "strength"
-	local statDelta = math.random(STAT_TICK_MIN, STAT_TICK_MAX)
-	mercState.stats[statName] = (mercState.stats[statName] or 0) + statDelta
+	-- Per-tick stat bump — rolled random inside the section the bar
+	-- lives in. No-op when the helix is already fully decoded (idx nil).
+	local statName, statDelta
+	if idx then
+		statName  = SECTION_STAT[idx] or "strength"
+		statDelta = math.random(STAT_TICK_MIN, STAT_TICK_MAX)
+		mercState.stats[statName] = (mercState.stats[statName] or 0) + statDelta
+	end
 
-	-- If the fragment just filled (crossed 100 %), credit the merc:
-	-- +1 level, +1 upgrade point (per-merc — spent later from within
-	-- the DNA Study / Handling panel), +1 research point (spent on
-	-- mutation effect % in the right column).
-	local barCompleted = (before < 100 and after >= 100)
+	-- +1 research point per *study completion*, not per bar completion.
+	-- User spec: "Points are awarded immediately after the study is
+	-- completed, at the end of the time".
+	mercState.researchPoints = (mercState.researchPoints or 0) + 1
+
+	-- Level + upgrade point still fire only when a bar hits 100 %.
+	local barCompleted = idx ~= nil and (before < 100 and after >= 100)
 	if barCompleted then
 		mercState.stats.level         = (mercState.stats.level or 1) + 1
 		mercState.stats.upgradePoints = (mercState.stats.upgradePoints or 0) + 1
-		mercState.researchPoints      = (mercState.researchPoints or 0) + 1
 	end
 
 	local snapshot = snapshotMerc(mercState)
-	-- Carry the stat delta + completion flag on the per-fragment event
-	-- so the client can float "+1 LUCK" text next to the bar and
-	-- trigger a level-up flourish when a whole strip finishes.
 	dnaEvent:FireClient(player, "studyComplete", mercName, idx, snapshot, {
 		statName     = statName,
 		statDelta    = statDelta,
