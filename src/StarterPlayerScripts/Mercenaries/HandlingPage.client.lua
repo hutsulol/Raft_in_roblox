@@ -48,7 +48,7 @@ local HOLO_PANEL_FILL         = Color3.fromRGB(10, 24, 44)
 local HOLO_PANEL_TRANSPARENCY = 0.28
 local HOLO_PANEL_BORDER       = Color3.fromRGB(75, 100, 125)
 local HOLO_EDGE               = Color3.fromRGB(190, 220, 245)
-local HORIZON                 = Color3.fromRGB(80, 140, 190)
+local HORIZON                 = Color3.fromRGB(98, 168, 218)
 
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
@@ -710,14 +710,14 @@ local function disconnectAll(tbl)
 end
 
 -- ─── Holo backdrop (shared five-layer composition) ───────────────────
--- Same recipe as PhoneMenu / MercenariesMenu: base vertical gradient →
--- horizon glow band → top + bottom vignette → drifting motes. Returned
+-- Same recipe as MercenariesMenu: base vertical gradient →
+-- horizon glow band → drifting motes (no vignette). Returned
 -- Frame fills `parent`.
 local function buildHoloBackground(parent)
-	local BG_TOP   = Color3.fromRGB(2,  2,  6)
-	local BG_MID   = Color3.fromRGB(4,  6, 12)
-	local BG_BOT   = Color3.fromRGB(8, 12, 22)
-	local MOTE_COL = Color3.fromRGB(180, 215, 240)
+	local BG_TOP   = Color3.fromRGB(18, 38, 66)
+	local BG_MID   = Color3.fromRGB(28, 58, 92)
+	local BG_BOT   = Color3.fromRGB(40, 80, 122)
+	local MOTE_COL = Color3.fromRGB(205, 236, 255)
 
 	local root = Instance.new("Frame")
 	root.Name = "Backdrop"
@@ -755,36 +755,14 @@ local function buildHoloBackground(parent)
 			NumberSequenceKeypoint.new(0.72, 0.85),
 			NumberSequenceKeypoint.new(1,    1),
 		})
-		g.Rotation = 0
+		g.Rotation = 90
 		g.Parent = h
 	end
 	horizonLayer(1.6, 0.22, 0.90, 0.50)
 	horizonLayer(1.0, 0.08, 0.72, 0.15)
 
-	local function makeVignette(yPos, flip)
-		local v = Instance.new("Frame")
-		v.Name = flip and "VignetteBottom" or "VignetteTop"
-		v.Size = UDim2.new(1, 0, 0.38, 0)
-		v.Position = UDim2.fromScale(0, yPos)
-		v.BackgroundColor3 = Color3.new(0, 0, 0)
-		v.BorderSizePixel = 0
-		v.ZIndex = 2
-		v.Parent = root
-		local g = Instance.new("UIGradient")
-		g.Transparency = flip
-			and NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 1),
-				NumberSequenceKeypoint.new(1, 0.35),
-			})
-			or NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0.35),
-				NumberSequenceKeypoint.new(1, 1),
-			})
-		g.Rotation = 90
-		g.Parent = v
-	end
-	makeVignette(0,    false)
-	makeVignette(0.62, true)
+	-- No vignette on Handling page so it mirrors MercenariesMenu's
+	-- cleaner backdrop treatment.
 
 	local motes = Instance.new("Frame")
 	motes.Name = "Motes"
