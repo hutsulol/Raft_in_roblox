@@ -211,7 +211,9 @@ local function buildHoloBackground(parent)
 			NumberSequenceKeypoint.new(0.72, 0.85),
 			NumberSequenceKeypoint.new(1,    1),
 		})
-		g.Rotation = 0
+		-- Vertical feathering prevents hard top/bottom band edges behind
+		-- the character; width already overflows screen so side edges are hidden.
+		g.Rotation = 90
 		g.Parent = h
 	end
 	horizonLayer(1.6, 0.22, 0.90, 0.50)
@@ -917,7 +919,7 @@ local function buildMercViewport(parent, mercName, weaponId)
 	vp.Position = UDim2.fromScale(0.5, 0.34)
 	-- Scale up the merc preview to match PhoneMenu's larger hero character
 	-- feel. The frame intentionally overhangs the slot a bit.
-	vp.Size = UDim2.fromOffset(440, 580)
+	vp.Size = UDim2.fromOffset(418, 551)
 	vp.BackgroundTransparency = 1
 	vp.LightColor = Color3.fromRGB(255, 255, 255)
 	vp.LightDirection = Vector3.new(-0.3, -1, -0.5)
@@ -1322,7 +1324,7 @@ buildPage = function(mercNames)
 	backBtn.Position = UDim2.fromOffset(-40, 18)
 	backBtn.Size = UDim2.fromOffset(84, 34)
 	backBtn.BackgroundColor3 = HOLO_PANEL_FILL
-	backBtn.BackgroundTransparency = 0
+	backBtn.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	backBtn.BorderSizePixel = 0
 	backBtn.AutoButtonColor = true
 	backBtn.Text = "" -- label drawn as a child for precise positioning
@@ -1331,7 +1333,6 @@ buildPage = function(mercNames)
 	backStroke.Color     = HOLO_PANEL_BORDER
 	backStroke.Thickness = 1
 	backStroke.Parent    = backBtn
-	cornerLs(backBtn, 8, HOLO_EDGE, 1.5)
 
 	local backGlyph = makeBackIcon(backBtn, 14, COLOR_TEXT)
 	backGlyph.AnchorPoint = Vector2.new(0, 0.5)
@@ -1844,7 +1845,7 @@ buildPage = function(mercNames)
 	local handlingBtn = Instance.new("TextButton")
 	handlingBtn.Name = "HandlingButton"
 	handlingBtn.AnchorPoint = Vector2.new(0.5, 1)
-	handlingBtn.Position = UDim2.new(0.5, 0, 1, -8)
+	handlingBtn.Position = UDim2.new(0.5, 0, 1, -30)
 	handlingBtn.Size = UDim2.fromOffset(280, 82)
 	handlingBtn.BackgroundColor3 = Color3.fromRGB(40, 90, 150)
 	handlingBtn.BackgroundTransparency = 0.15
