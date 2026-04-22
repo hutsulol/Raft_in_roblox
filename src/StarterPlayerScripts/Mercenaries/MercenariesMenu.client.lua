@@ -1239,12 +1239,14 @@ buildPage = function(mercNames)
 	local PANELS_BOT_PAD = 24
 	local RIGHT_PANEL_Y_OFFSET = -60
 
+	local MENU_VERTICAL_SHIFT = 30
+
 	local scaleWrap = Instance.new("Frame")
 	scaleWrap.Name = "ScaleWrap"
 	scaleWrap.BackgroundTransparency = 1
 	scaleWrap.BorderSizePixel = 0
 	scaleWrap.AnchorPoint = Vector2.new(0.5, 0.5)
-	scaleWrap.Position = UDim2.fromScale(0.5, 0.5)
+	scaleWrap.Position = UDim2.new(0.5, 0, 0.5, MENU_VERTICAL_SHIFT)
 	scaleWrap.Size = UDim2.fromOffset(REFERENCE_W, REFERENCE_H)
 	scaleWrap.ZIndex = 50
 	scaleWrap.Parent = page
@@ -1314,7 +1316,7 @@ buildPage = function(mercNames)
 	backBtn.Name = "BackButton"
 	backBtn.AnchorPoint = Vector2.new(0, 0)
 	-- Keep BACK as a separate top-left action (not inside the left panel band).
-	backBtn.Position = UDim2.fromOffset(-70, 18)
+	backBtn.Position = UDim2.fromOffset(-40, 18)
 	backBtn.Size = UDim2.fromOffset(84, 34)
 	backBtn.BackgroundColor3 = HOLO_PANEL_FILL
 	backBtn.BackgroundTransparency = 0
