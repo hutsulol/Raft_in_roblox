@@ -76,8 +76,8 @@ local function makeBackIcon(parent, size, color)
 	return c
 end
 
--- Asset id for the DNA-sample (blood-capsule) icon used throughout
--- this page. User-supplied — swap here to rebrand every call site.
+-- Asset id for the DNA-sample (blood-capsule) icon used for the top
+-- SAMPLES chip and the SAMPLE SLOT card-header counter.
 local SAMPLE_ICON_ID = "rbxassetid://115522744020445"
 
 -- ─── Flask / capsule glyph (SAMPLES chip + sample-slot icons) ───────
@@ -96,6 +96,44 @@ local function makeFlaskIcon(parent, size, color)
 	img.ScaleType = Enum.ScaleType.Fit
 	img.Parent = parent
 	return img
+end
+
+-- Older primitive-Frame flask outline — tall rectangle with a rounded
+-- bottom, pinched neck, and a cap tick. Used ONLY in the centre of
+-- the sample-slot drop zone (big, subtle "empty" placeholder) so the
+-- image-based icon isn't repeated three times on the same card.
+local function makeDrawnFlaskIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "DrawnFlaskIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0.5)
+	body.Position = UDim2.fromScale(0.5, 0.58)
+	body.Size = UDim2.fromOffset(size * 0.55, size * 0.72)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.Parent = c
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, math.max(1, math.floor(size * 0.14)))
+	bc.Parent = body
+	local bs = Instance.new("UIStroke")
+	bs.Color     = color
+	bs.Thickness = 1.4
+	bs.Parent    = body
+
+	local cap = Instance.new("Frame")
+	cap.AnchorPoint = Vector2.new(0.5, 0)
+	cap.Position = UDim2.fromScale(0.5, 0.12)
+	cap.Size = UDim2.fromOffset(size * 0.4, math.max(1, math.floor(size * 0.08)))
+	cap.BackgroundColor3 = color
+	cap.BorderSizePixel = 0
+	cap.Parent = c
+
+	return c
 end
 
 -- ─── Simple trait glyphs (all drawn from primitive Frames) ──────────
@@ -1031,7 +1069,7 @@ local function openDNAStudyPage(ctx)
 
 	-- Big flask glyph inside the drop zone, biased slightly upward so
 	-- the "DROP DNA SAMPLE" label sits below it comfortably.
-	local bigFlask = makeFlaskIcon(dropZone, 34, COLOR_TEXT_DIM)
+	local bigFlask = makeDrawnFlaskIcon(dropZone, 34, COLOR_TEXT_DIM)
 	bigFlask.AnchorPoint = Vector2.new(0.5, 0.5)
 	bigFlask.Position = UDim2.fromScale(0.5, 0.38)
 	bigFlask.ZIndex = 54
