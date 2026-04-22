@@ -9,11 +9,13 @@
 --   Step 3 — left column: MAIN HAND + RELIC slot tiles. MAIN HAND
 --            reflects the equipped weapon's rarity (via ctx.equipItems);
 --            RELIC is a decorative placeholder (no server state).
---            Selection is tracked locally for future card refreshes.
+--   Step 4 — right column: SKINS + ARTIFACTS slot tiles. Both render
+--            as empty placeholders (no server state for either in the
+--            current data model) with a "+" badge in the icon zone.
+--            Selection is tracked across all four tiles.
 --
--- Still to land: right column (SKINS + ARTIFACTS) empty tiles, centre
--- character viewport, bottom detail + DNA research cards, and finally
--- equip-remote wiring.
+-- Still to land: centre character viewport, bottom detail + DNA
+-- research cards, and finally equip-remote wiring.
 
 local Players        = game:GetService("Players")
 local RunService     = game:GetService("RunService")
@@ -232,6 +234,33 @@ local function makeCrownIcon(parent, size, color)
 	peak(0.22, 0.46)
 	peak(0.50, 0.60)
 	peak(0.78, 0.46)
+
+	return c
+end
+
+-- Plain outlined diamond glyph (ARTIFACTS slot placeholder). Same
+-- rotated-square shape as the gem, minus the facet line — so the two
+-- right-column slots read as related-but-distinct.
+local function makeDiamondIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "DiamondIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0.5)
+	body.Position = UDim2.fromScale(0.5, 0.5)
+	body.Size = UDim2.fromOffset(size * 0.7, size * 0.7)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.Rotation = 45
+	body.Parent = c
+	local s = Instance.new("UIStroke")
+	s.Color     = color
+	s.Thickness = 1.4
+	s.Parent    = body
 
 	return c
 end
@@ -784,8 +813,6 @@ local function openHandlingPage(ctx)
 		if ctx.onBack then ctx.onBack() end
 	end)
 
-	print("[HandlingPage] checkpoint A: back button done")
-
 	-- ── Centred MERCENARY / <NAME> / LV N cluster ────────────────────
 	-- Fixed widths + absolute positioning inside a centred container,
 	-- sized generously so long merc names still fit without cropping.
@@ -899,82 +926,94 @@ local function openHandlingPage(ctx)
 	chipLabel.ZIndex = 53
 	chipLabel.Parent = chip
 
-	print("[HandlingPage] checkpoint B: top bar done")
+	-- ── Equipment columns: MAIN HAND + RELIC (left) / SKINS + ARTIFACTS
+	-- (right). Left column is backed by real data (MAIN HAND reflects
+	-- the equipped weapon's rarity); the other three are decorative
+	-- placeholders per the current data model — RELIC renders empty
+	-- with zero stars, SKINS + ARTIFACTS render empty with a "+" badge.
+	-- Selection is tracked across all four so Step 7's detail card can
+	-- pull from whichever slot is active; equip wiring lands in Step 8.
+	local LEFT_COL_X    = 40
+	local RIGHT_COL_X   = REFERENCE_W - SLOT_W - LEFT_COL_X
+	local TILE_TOP_Y    = 130
+	local TILE_BOTTOM_Y = TILE_TOP_Y + SLOT_H + 20
 
-	-- ── Left equipment column: MAIN HAND + RELIC ────────────────────
-	-- Isolated in a pcall so any runtime glitch in the tile pipeline
-	-- can't knock out the top bar / BACK button that build above it.
-	-- The error surfaces via warn() in Studio Output instead.
-	local tilesOk, tilesErr = pcall(function()
-		local LEFT_COL_X = 40
-		local LEFT_TILE1_Y = 130
-		local LEFT_TILE2_Y = LEFT_TILE1_Y + SLOT_H + 20
-
-		-- Resolve the equipped weapon's rarity from ctx.equipItems when
-		-- provided; fall back to 1 star otherwise. MAIN HAND defaults
-		-- to selected on open.
-		local equippedWeaponId = "Sword"
-		local mercFolder = player:FindFirstChild("Mercenaries")
-		if mercFolder and ctx.mercName then
-			local entry = mercFolder:FindFirstChild(ctx.mercName)
-			if entry then
-				local eq = entry:GetAttribute("EquippedWeapon")
-				if eq and eq ~= "" then equippedWeaponId = eq end
-			end
+	-- Resolve the equipped weapon's rarity from ctx.equipItems when
+	-- provided; fall back to 1 star otherwise. MAIN HAND defaults
+	-- to selected on open.
+	local equippedWeaponId = "Sword"
+	local mercFolder = player:FindFirstChild("Mercenaries")
+	if mercFolder and ctx.mercName then
+		local entry = mercFolder:FindFirstChild(ctx.mercName)
+		if entry then
+			local eq = entry:GetAttribute("EquippedWeapon")
+			if eq and eq ~= "" then equippedWeaponId = eq end
 		end
-
-		local function rarityForWeapon(id)
-			local items = ctx.equipItems and ctx.equipItems.Weapons
-			if not items then return 1 end
-			for _, def in ipairs(items) do
-				if def.id == id then return def.stars or 1 end
-			end
-			return 1
-		end
-
-		local slotHandles = {}
-		local selectedSlot = "MainHand"
-
-		local function selectSlot(slotKey)
-			selectedSlot = slotKey
-			for key, handle in pairs(slotHandles) do
-				handle.setSelected(key == slotKey)
-			end
-		end
-
-		slotHandles.MainHand = buildSlotTile(scaleWrap, {
-			name         = "MAIN HAND",
-			iconBuilder  = makeWeaponIcon,
-			stars        = rarityForWeapon(equippedWeaponId),
-			selected     = true,
-			position     = UDim2.fromOffset(LEFT_COL_X, LEFT_TILE1_Y),
-			zIndex       = 55,
-			onClick      = function() selectSlot("MainHand") end,
-		})
-
-		slotHandles.Relic = buildSlotTile(scaleWrap, {
-			name         = "RELIC",
-			iconBuilder  = makeCrownIcon,
-			stars        = 0,
-			selected     = false,
-			position     = UDim2.fromOffset(LEFT_COL_X, LEFT_TILE2_Y),
-			zIndex       = 55,
-			onClick      = function() selectSlot("Relic") end,
-		})
-	end)
-	if not tilesOk then
-		warn("[HandlingPage] left-column tiles failed:", tilesErr)
 	end
+
+	local function rarityForWeapon(id)
+		local items = ctx.equipItems and ctx.equipItems.Weapons
+		if not items then return 1 end
+		for _, def in ipairs(items) do
+			if def.id == id then return def.stars or 1 end
+		end
+		return 1
+	end
+
+	local slotHandles = {}
+	local selectedSlot = "MainHand"
+
+	local function selectSlot(slotKey)
+		selectedSlot = slotKey
+		for key, handle in pairs(slotHandles) do
+			handle.setSelected(key == slotKey)
+		end
+	end
+
+	slotHandles.MainHand = buildSlotTile(scaleWrap, {
+		name         = "MAIN HAND",
+		iconBuilder  = makeWeaponIcon,
+		stars        = rarityForWeapon(equippedWeaponId),
+		selected     = true,
+		position     = UDim2.fromOffset(LEFT_COL_X, TILE_TOP_Y),
+		zIndex       = 55,
+		onClick      = function() selectSlot("MainHand") end,
+	})
+
+	slotHandles.Relic = buildSlotTile(scaleWrap, {
+		name         = "RELIC",
+		iconBuilder  = makeCrownIcon,
+		stars        = 0,
+		selected     = false,
+		position     = UDim2.fromOffset(LEFT_COL_X, TILE_BOTTOM_Y),
+		zIndex       = 55,
+		onClick      = function() selectSlot("Relic") end,
+	})
+
+	slotHandles.Skins = buildSlotTile(scaleWrap, {
+		name         = "SKINS",
+		iconBuilder  = makeGemIcon,
+		emptyGlyph   = true,
+		selected     = false,
+		position     = UDim2.fromOffset(RIGHT_COL_X, TILE_TOP_Y),
+		zIndex       = 55,
+		onClick      = function() selectSlot("Skins") end,
+	})
+
+	slotHandles.Artifacts = buildSlotTile(scaleWrap, {
+		name         = "ARTIFACTS",
+		iconBuilder  = makeDiamondIcon,
+		emptyGlyph   = true,
+		selected     = false,
+		position     = UDim2.fromOffset(RIGHT_COL_X, TILE_BOTTOM_Y),
+		zIndex       = 55,
+		onClick      = function() selectSlot("Artifacts") end,
+	})
 
 	-- Force the first scale computation now that the refs are all
 	-- set (the earlier updateResponsiveScale() call happened before
 	-- backBtnRef was assigned).
 	updateResponsiveScale()
-
-	-- Diagnostic: confirms the whole page-build path reached the end.
-	-- If this doesn't print but the backdrop is visible, execution
-	-- halted somewhere earlier (check warns above this line).
-	print("[HandlingPage] build complete", ctx.mercName)
 
 	-- Clean up listeners when the page leaves the hierarchy.
 	table.insert(activeConnections, page.AncestryChanged:Connect(function(_, newParent)
