@@ -39,6 +39,20 @@ local STUDY_FILL_PCT     = 10   -- % each completed study tick adds
 local TICK_INTERVAL      = 1    -- how often the server checks for expired slots
 local AUTO_SAVE_INTERVAL = 120  -- seconds, mirrors InventoryManager
 
+-- Per-tick stat reward (granted every study tick, regardless of whether
+-- the bar fills to 100 %). Rolled uniformly inside [min, max].
+local STAT_TICK_MIN      = 1
+local STAT_TICK_MAX      = 2
+
+-- Fragment-index → stat-name map. F01-F06 strength, F07-F10 luck,
+-- F11-F16 speed — six / four / six layout matches the DNA helix's
+-- upper / middle / lower sections from the user's spec.
+local SECTION_STAT = {
+	"strength", "strength", "strength", "strength", "strength", "strength",
+	"luck",     "luck",     "luck",     "luck",
+	"speed",    "speed",    "speed",    "speed",    "speed",    "speed",
+}
+
 _G.DNAResearch_FragmentCount = FRAGMENT_COUNT
 _G.DNAResearch_StudyDuration = STUDY_DURATION
 
@@ -66,6 +80,11 @@ local function freshMercState()
 		activeSlot     = { bloodType = nil, endsAt = 0 },
 		researchPoints = 0,
 		traitEffect    = { rareMarker = 0, mutation = 0, fullGenome = 0 },
+		-- Per-merc progression. These used to live only in the client's
+		-- hardcoded MERC_THEMES table; the DNA research loop is the
+		-- first server-side writer so it owns the canonical values
+		-- until something else needs to mutate them.
+		stats          = { strength = 0, speed = 0, luck = 0, level = 1, upgradePoints = 0 },
 	}
 end
 
@@ -104,6 +123,13 @@ local function snapshotMerc(mercState)
 			mutation   = mercState.traitEffect.mutation   or 0,
 			fullGenome = mercState.traitEffect.fullGenome or 0,
 		},
+		stats = {
+			strength      = mercState.stats.strength      or 0,
+			speed         = mercState.stats.speed         or 0,
+			luck          = mercState.stats.luck          or 0,
+			level         = mercState.stats.level         or 1,
+			upgradePoints = mercState.stats.upgradePoints or 0,
+		},
 	}
 end
 
@@ -135,6 +161,13 @@ local function loadState(player)
 						mercState.traitEffect.mutation   = tonumber(mercData.traitEffect.mutation)   or 0
 						mercState.traitEffect.fullGenome = tonumber(mercData.traitEffect.fullGenome) or 0
 					end
+					if type(mercData.stats) == "table" then
+						mercState.stats.strength      = tonumber(mercData.stats.strength)      or 0
+						mercState.stats.speed         = tonumber(mercData.stats.speed)         or 0
+						mercState.stats.luck          = tonumber(mercData.stats.luck)          or 0
+						mercState.stats.level         = tonumber(mercData.stats.level)         or 1
+						mercState.stats.upgradePoints = tonumber(mercData.stats.upgradePoints) or 0
+					end
 					loaded[mercName] = mercState
 				end
 			end
@@ -157,6 +190,7 @@ local function saveState(player)
 			},
 			researchPoints = mercState.researchPoints,
 			traitEffect    = mercState.traitEffect,
+			stats          = mercState.stats,
 		}
 	end
 	pcall(function()
@@ -283,13 +317,34 @@ local function applyStudyTick(player, mercName, mercState)
 	mercState.activeSlot.bloodType = nil
 	mercState.activeSlot.endsAt    = 0
 
-	local justCompleted = (before < 100 and after >= 100)
-	-- Step 4 TODO: if justCompleted, roll the corresponding stat and
-	-- grant level / upgrade point / research point here.
-	local _ = justCompleted
+	-- Every tick grants a small random increment to the stat this
+	-- fragment's section maps to (strength / luck / speed). User spec:
+	-- "these stats will improve based on the randomness that occurs
+	-- after the blood is studied".
+	local statName  = SECTION_STAT[idx] or "strength"
+	local statDelta = math.random(STAT_TICK_MIN, STAT_TICK_MAX)
+	mercState.stats[statName] = (mercState.stats[statName] or 0) + statDelta
+
+	-- If the fragment just filled (crossed 100 %), credit the merc:
+	-- +1 level, +1 upgrade point (per-merc — spent later from within
+	-- the DNA Study / Handling panel), +1 research point (spent on
+	-- mutation effect % in the right column).
+	local barCompleted = (before < 100 and after >= 100)
+	if barCompleted then
+		mercState.stats.level         = (mercState.stats.level or 1) + 1
+		mercState.stats.upgradePoints = (mercState.stats.upgradePoints or 0) + 1
+		mercState.researchPoints      = (mercState.researchPoints or 0) + 1
+	end
 
 	local snapshot = snapshotMerc(mercState)
-	dnaEvent:FireClient(player, "studyComplete", mercName, idx, snapshot)
+	-- Carry the stat delta + completion flag on the per-fragment event
+	-- so the client can float "+1 LUCK" text next to the bar and
+	-- trigger a level-up flourish when a whole strip finishes.
+	dnaEvent:FireClient(player, "studyComplete", mercName, idx, snapshot, {
+		statName     = statName,
+		statDelta    = statDelta,
+		barCompleted = barCompleted,
+	})
 	dnaEvent:FireClient(player, "state", mercName, snapshot)
 end
 
