@@ -5,7 +5,7 @@
 --
 -- Built so far:
 --   Step 1 — holo scaffold + responsive 960×600 artboard.
---   Step 2 — top bar (BACK + MERCENARY/NAME/LV cluster + gem chip).
+--   Step 2 — top bar (BACK + NAME/LV cluster).
 --   Step 3 — left column: MAIN HAND + RELIC slot tiles. MAIN HAND
 --            reflects the equipped weapon's rarity (via ctx.equipItems);
 --            RELIC is a decorative placeholder (no server state).
@@ -13,9 +13,8 @@
 --            as empty placeholders (no server state for either in the
 --            current data model) with a "+" badge in the icon zone.
 --            Selection is tracked across all four tiles.
---   Step 5 — centre character viewport. Visible 280×320 frame with
---            corner L brackets + concentric rings + ground glow wraps
---            the intended viewport area; an invisible 160×472 host
+--   Step 5 — centre character viewport. Visible 280×320 host frame
+--            wraps the intended viewport area; an invisible 160×472 host
 --            mirrors MercenariesMenu's centreCol.slot so the cached
 --            ViewportFrame reparents to identical global coords
 --            (no idle-animation restart, no character jump).
@@ -55,6 +54,18 @@ local FONT_BODY  = Enum.Font.Gotham
 
 local COLOR_TEXT_MUTE = Color3.fromRGB(100, 125, 155)
 local COLOR_GOLD      = Color3.fromRGB(230, 190, 100)
+
+local function setZIndexRecursive(root, z)
+	if not root then return end
+	if root:IsA("GuiObject") then
+		root.ZIndex = z
+	end
+	for _, d in ipairs(root:GetDescendants()) do
+		if d:IsA("GuiObject") then
+			d.ZIndex = z
+		end
+	end
+end
 
 -- ─── Hand-drawn top-bar icons ─────────────────────────────────────────
 -- Same geometric style the rest of the menus use — each takes
@@ -366,13 +377,15 @@ end
 -- Segmented holo progress bar (DNA-fragment indicator). Dark track,
 -- holo-gradient fill, optional segment dividers. Returns (track, fill)
 -- so callers can resize the fill. Mirrors MercenariesMenu.makeHoloBar.
-local function makeHoloBar(parent, size, segments)
+local function makeHoloBar(parent, size, segments, zBase)
+	zBase = zBase or 1
 	local track = Instance.new("Frame")
 	track.Name = "HoloBar"
 	track.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
 	track.BackgroundTransparency = 0.2
 	track.BorderSizePixel = 0
 	track.Size = size
+	track.ZIndex = zBase
 	track.Parent = parent
 
 	local s = Instance.new("UIStroke")
@@ -385,6 +398,7 @@ local function makeHoloBar(parent, size, segments)
 	fill.BackgroundColor3 = HOLO_EDGE
 	fill.BorderSizePixel = 0
 	fill.Size = UDim2.new(0, 0, 1, 0)
+	fill.ZIndex = zBase + 1
 	fill.Parent = track
 	local fGrad = Instance.new("UIGradient")
 	fGrad.Color = ColorSequence.new({
@@ -403,7 +417,7 @@ local function makeHoloBar(parent, size, segments)
 			d.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
 			d.BackgroundTransparency = 0.35
 			d.BorderSizePixel = 0
-			d.ZIndex = (track.ZIndex or 1) + 2
+			d.ZIndex = zBase + 2
 			d.Parent = track
 		end
 	end
@@ -570,7 +584,7 @@ local function buildSlotTile(parent, opts)
 		if iconGlyph then
 			iconGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
 			iconGlyph.Position = UDim2.fromScale(0.5, 0.5)
-			iconGlyph.ZIndex = zBase + 2
+			setZIndexRecursive(iconGlyph, zBase + 2)
 		end
 	end
 
@@ -599,7 +613,7 @@ local function buildSlotTile(parent, opts)
 		starRow.Name = "Stars"
 		starRow.AnchorPoint = Vector2.new(1, 1)
 		starRow.Position = UDim2.new(1, -8, 1, -6)
-		starRow.ZIndex = zBase + 2
+		setZIndexRecursive(starRow, zBase + 2)
 	end
 
 	-- Label band pinned to the bottom of the tile.
@@ -914,9 +928,8 @@ local function openHandlingPage(ctx)
 	responsiveScale.Scale = 1
 	responsiveScale.Parent = scaleWrap
 
-	local backBtnRef, chipRef
+	local backBtnRef
 	local BACK_BTN_Y = 39
-	local CHIP_Y     = 39
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
@@ -940,9 +953,6 @@ local function openHandlingPage(ctx)
 
 		if backBtnRef then
 			backBtnRef.Position = UDim2.fromOffset(-dynamicBleed, BACK_BTN_Y)
-		end
-		if chipRef then
-			chipRef.Position = UDim2.new(1, dynamicBleed, 0, CHIP_Y)
 		end
 	end
 
@@ -1017,18 +1027,17 @@ local function openHandlingPage(ctx)
 		if ctx.onBack then ctx.onBack() end
 	end)
 
-	-- ── Centred MERCENARY / <NAME> / LV N cluster ────────────────────
+	-- ── Centred <NAME> / LV N cluster ────────────────────────────────
 	-- Fixed widths + absolute positioning inside a centred container,
 	-- sized generously so long merc names still fit without cropping.
 	-- AutomaticSize + UIListLayout bit us on first pass (renders were
 	-- blank until the layout pass caught up), so we side-step that by
 	-- doing the math here.
-	local CLUSTER_W = 320
-	local TAG_W     = 96     -- "MERCENARY" at 11 pt
-	local NAME_W    = 160    -- big title at 18 pt — room for "QUARTERMASTER"
+	local CLUSTER_W = 240
+	local NAME_W    = 180    -- big title at 18 pt — room for "QUARTERMASTER"
 	local BADGE_W   = 48     -- LV N badge with padding
 	local GAP       = 8
-	local CLUSTER_Y = BACK_BTN_Y + 6
+	local CLUSTER_Y = BACK_BTN_Y - 14
 
 	local topCluster = Instance.new("Frame")
 	topCluster.Name = "TopCluster"
@@ -1040,25 +1049,11 @@ local function openHandlingPage(ctx)
 	topCluster.ZIndex = 52
 	topCluster.Parent = scaleWrap
 
-	local mercTag = Instance.new("TextLabel")
-	mercTag.Name = "MercTag"
-	mercTag.BackgroundTransparency = 1
-	mercTag.BorderSizePixel = 0
-	mercTag.Position = UDim2.fromOffset(0, 0)
-	mercTag.Size = UDim2.fromOffset(TAG_W, 24)
-	mercTag.Font = FONT_TITLE
-	mercTag.TextSize = 11
-	mercTag.TextColor3 = COLOR_TEXT_MUTE
-	mercTag.TextXAlignment = Enum.TextXAlignment.Right
-	mercTag.Text = "MERCENARY"
-	mercTag.ZIndex = 53
-	mercTag.Parent = topCluster
-
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.Name = "MercName"
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.BorderSizePixel = 0
-	nameLabel.Position = UDim2.fromOffset(TAG_W + GAP, 0)
+	nameLabel.Position = UDim2.fromOffset(0, 0)
 	nameLabel.Size = UDim2.fromOffset(NAME_W, 24)
 	nameLabel.Font = FONT_TITLE
 	nameLabel.TextSize = 18
@@ -1073,7 +1068,7 @@ local function openHandlingPage(ctx)
 	lvBadge.BackgroundTransparency = 1
 	lvBadge.BorderSizePixel = 0
 	lvBadge.AnchorPoint = Vector2.new(0, 0.5)
-	lvBadge.Position = UDim2.fromOffset(TAG_W + GAP + NAME_W + GAP, 12)
+	lvBadge.Position = UDim2.fromOffset(NAME_W + GAP, 12)
 	lvBadge.Size = UDim2.fromOffset(BADGE_W, 20)
 	lvBadge.ZIndex = 53
 	lvBadge.Parent = topCluster
@@ -1093,42 +1088,6 @@ local function openHandlingPage(ctx)
 	lvText.Text = string.format("LV %d", mercLevel)
 	lvText.ZIndex = 54
 	lvText.Parent = lvBadge
-
-	-- ── Gem currency chip, right-edge pinned via dynamicBleed ────────
-	local chip = Instance.new("Frame")
-	chip.Name = "CurrencyChip"
-	chip.AnchorPoint = Vector2.new(1, 0)
-	chip.Position = UDim2.new(1, 0, 0, CHIP_Y)
-	chip.Size = UDim2.fromOffset(84, 34)
-	chip.BackgroundColor3 = HOLO_PANEL_FILL
-	chip.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
-	chip.BorderSizePixel = 0
-	chip.ZIndex = 52
-	chip.Parent = scaleWrap
-	local chipStroke = Instance.new("UIStroke")
-	chipStroke.Color     = HOLO_PANEL_BORDER
-	chipStroke.Thickness = 1
-	chipStroke.Parent    = chip
-	chipRef = chip
-
-	local gemGlyph = makeGemIcon(chip, 13, COLOR_GOLD)
-	gemGlyph.AnchorPoint = Vector2.new(0, 0.5)
-	gemGlyph.Position = UDim2.new(0, 10, 0.5, 0)
-	gemGlyph.ZIndex = 53
-
-	local chipLabel = Instance.new("TextLabel")
-	chipLabel.Name = "CurrencyLabel"
-	chipLabel.BackgroundTransparency = 1
-	chipLabel.BorderSizePixel = 0
-	chipLabel.Position = UDim2.fromOffset(28, 0)
-	chipLabel.Size = UDim2.new(1, -36, 1, 0)
-	chipLabel.Font = FONT_TITLE
-	chipLabel.TextSize = 13
-	chipLabel.TextColor3 = COLOR_GOLD
-	chipLabel.TextXAlignment = Enum.TextXAlignment.Left
-	chipLabel.Text = "0"
-	chipLabel.ZIndex = 53
-	chipLabel.Parent = chip
 
 	-- ── Equipment columns: MAIN HAND + RELIC (left) / SKINS + ARTIFACTS
 	-- (right). Left column is backed by real data (MAIN HAND reflects
@@ -1217,10 +1176,7 @@ local function openHandlingPage(ctx)
 	-- ── Centre: character viewport ───────────────────────────────────
 	-- Two containers, same scaleWrap:
 	--
-	--   centreFrame  — visible 280×320 "viewport box" framed by
-	--                  corner L brackets + two concentric rings + a
-	--                  ground-glow ellipse. This is the Handling
-	--                  mockup's decorative frame.
+	--   centreFrame  — visible 280×320 "viewport box" host.
 	--   viewportHost — invisible 160×506 host whose position + size
 	--                  match MercenariesMenu's centreCol (400, 70,
 	--                  160×506) 1:1. buildMercViewport reparents the
@@ -1229,8 +1185,8 @@ local function openHandlingPage(ctx)
 	--                  exact same global artboard coords as on the
 	--                  roster page — no animation restart, no jump.
 	--
-	-- vp.ZIndex is bumped above the frame decorations so the rig
-	-- renders on top of the rings / L's / glow.
+	-- vp.ZIndex is bumped above the frame host so the rig always
+	-- renders in front of decorative backdrop layers.
 	local centreFrame = Instance.new("Frame")
 	centreFrame.Name = "CentreFrame"
 	centreFrame.BackgroundTransparency = 1
@@ -1240,52 +1196,8 @@ local function openHandlingPage(ctx)
 	centreFrame.ZIndex = 50
 	centreFrame.Parent = scaleWrap
 
-	local groundGlow = Instance.new("Frame")
-	groundGlow.Name = "GroundGlow"
-	groundGlow.AnchorPoint = Vector2.new(0.5, 1)
-	groundGlow.Position = UDim2.new(0.5, 0, 1, -14)
-	groundGlow.Size = UDim2.fromOffset(200, 36)
-	groundGlow.BackgroundColor3 = HORIZON
-	groundGlow.BackgroundTransparency = 0.25
-	groundGlow.BorderSizePixel = 0
-	groundGlow.ZIndex = 51
-	groundGlow.Parent = centreFrame
-	local groundCorner = Instance.new("UICorner")
-	groundCorner.CornerRadius = UDim.new(1, 0)
-	groundCorner.Parent = groundGlow
-	local groundGrad = Instance.new("UIGradient")
-	groundGrad.Transparency = NumberSequence.new({
-		NumberSequenceKeypoint.new(0,   1),
-		NumberSequenceKeypoint.new(0.5, 0),
-		NumberSequenceKeypoint.new(1,   1),
-	})
-	groundGrad.Rotation = 0
-	groundGrad.Parent = groundGlow
-
-	local function rimCircle(sizePx, strokeColor, strokeTransparency)
-		local r = Instance.new("Frame")
-		r.Name = "RimCircle"
-		r.AnchorPoint = Vector2.new(0.5, 0.5)
-		r.Position = UDim2.fromScale(0.5, 0.48)
-		r.Size = UDim2.fromOffset(sizePx, sizePx)
-		r.BackgroundTransparency = 1
-		r.BorderSizePixel = 0
-		r.ZIndex = 52
-		r.Parent = centreFrame
-		local rc = Instance.new("UICorner")
-		rc.CornerRadius = UDim.new(1, 0)
-		rc.Parent = r
-		local rs = Instance.new("UIStroke")
-		rs.Color        = strokeColor
-		rs.Thickness    = 1
-		rs.Transparency = strokeTransparency or 0
-		rs.Parent       = r
-		return r
-	end
-	rimCircle(240, HOLO_EDGE,          0.70)
-	rimCircle(200, HOLO_PANEL_BORDER,  0.55)
-
-	cornerLs(centreFrame, 16, HOLO_EDGE, 1.5)
+	-- Intentionally no decorative L-brackets / circles around the
+	-- character viewport (requested in feedback).
 
 	-- Clip frame around the viewport: stops the character at the
 	-- top edge of the bottom cards (Y=452) so the pirate's legs are
@@ -1429,7 +1341,7 @@ local function openHandlingPage(ctx)
 			if glyph then
 				glyph.AnchorPoint = Vector2.new(0.5, 0.5)
 				glyph.Position = UDim2.fromScale(0.5, 0.5)
-				glyph.ZIndex = 73
+				setZIndexRecursive(glyph, 73)
 			end
 
 			local textX = 50
@@ -1451,7 +1363,7 @@ local function openHandlingPage(ctx)
 			starRow.Name = "Stars"
 			starRow.AnchorPoint = Vector2.new(0, 0)
 			starRow.Position = UDim2.fromOffset(textX, 26)
-			starRow.ZIndex = 72
+			setZIndexRecursive(starRow, 72)
 
 			local tag = Instance.new("TextLabel")
 			tag.Name = "SlotTag"
@@ -1489,7 +1401,7 @@ local function openHandlingPage(ctx)
 			local spark = makeSparkIcon(statRow, 12, HOLO_EDGE)
 			spark.AnchorPoint = Vector2.new(0, 0.5)
 			spark.Position = UDim2.new(0, 0, 0.5, 0)
-			spark.ZIndex = 73
+			setZIndexRecursive(spark, 73)
 
 			local statLbl = Instance.new("TextLabel")
 			statLbl.BackgroundTransparency = 1
@@ -1596,7 +1508,7 @@ local function openHandlingPage(ctx)
 	local dnaHeaderGlyph = makeHelixIcon(dnaHeader, 10, HOLO_EDGE)
 	dnaHeaderGlyph.AnchorPoint = Vector2.new(0, 0.5)
 	dnaHeaderGlyph.Position = UDim2.new(0, 0, 0.5, 0)
-	dnaHeaderGlyph.ZIndex = 73
+	setZIndexRecursive(dnaHeaderGlyph, 73)
 
 	local dnaTitle = Instance.new("TextLabel")
 	dnaTitle.BackgroundTransparency = 1
@@ -1642,7 +1554,7 @@ local function openHandlingPage(ctx)
 	local bigHelix = makeHelixIcon(dnaBody, 28, HOLO_EDGE)
 	bigHelix.AnchorPoint = Vector2.new(0, 0.5)
 	bigHelix.Position = UDim2.new(0, 4, 0.5, 0)
-	bigHelix.ZIndex = 73
+	setZIndexRecursive(bigHelix, 73)
 
 	local fragmentsLbl = Instance.new("TextLabel")
 	fragmentsLbl.BackgroundTransparency = 1
@@ -1663,9 +1575,9 @@ local function openHandlingPage(ctx)
 	local barTrack, barFill = makeHoloBar(
 		dnaBody,
 		UDim2.new(1, -60, 0, 6),
-		FRAGMENTS_TOTAL)
+		FRAGMENTS_TOTAL,
+		73)
 	barTrack.Position = UDim2.fromOffset(56, 20)
-	barTrack.ZIndex = 73
 	barFill.Size = UDim2.new(FRAGMENTS_DECODED / FRAGMENTS_TOTAL, 0, 1, 0)
 
 	local dnaSubtext = Instance.new("TextLabel")
@@ -1722,7 +1634,7 @@ local function openHandlingPage(ctx)
 	local studyChev = makeChevronRight(studyBtn, 12, COLOR_TEXT)
 	studyChev.AnchorPoint = Vector2.new(1, 0.5)
 	studyChev.Position = UDim2.new(1, -14, 0.5, 0)
-	studyChev.ZIndex = 73
+	setZIndexRecursive(studyChev, 73)
 
 	-- STUDY DNA → close Handling (detaches the cached merc viewport so
 	-- the rig + idle animation survive), then open the dedicated DNA
