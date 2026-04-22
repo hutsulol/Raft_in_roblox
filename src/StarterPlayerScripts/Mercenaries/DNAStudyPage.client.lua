@@ -160,16 +160,21 @@ local function dottedLeader(parent, x, y, width, color, dotSize, gap)
 	end
 end
 
--- ─── Lens-shaped rail outline (one half of the DNA helix) ──────────
--- Draws a pointed-oval outline centred on (cx, topY + H/2), pointed
--- at the top (topY) and bottom (topY + H). Width at vertical fraction
--- t follows sin(pi * t) * maxW, giving a smooth lens. Left + right
--- rails are each approximated by `segments` rotated Frames connecting
--- sample points along the curve — jagginess is invisible at 32+
--- segments for lens heights under ~250 px.
-local function drawLensRails(parent, cx, topY, maxW, H, color, thickness, segments)
-	segments   = segments   or 32
-	thickness  = thickness  or 1
+-- ─── Continuous sine-wave double-helix rails ────────────────────────
+-- Draws two rails twisting around each other as two phase-shifted sine
+-- waves, forming a proper DNA silhouette. Over a total height `H` the
+-- rails cross each other H/(period/2) times; between crossings the
+-- gap between them bulges into a lens. Both rails meet at cx at y=topY
+-- and y=topY+H (the helix starts + ends at a pinch).
+--
+-- x_1(y) = cx + A * sin(2π (y-topY) / period)
+-- x_2(y) = cx - A * sin(2π (y-topY) / period)   ( = phase + π )
+--
+-- `thickness` is the on-screen line weight. Each rail is approximated
+-- by `segments` short rotated Frames; 48+ keeps the curve smooth.
+local function drawHelixRails(parent, cx, topY, amplitude, H, period, color, thickness, segments)
+	segments  = segments  or 60
+	thickness = thickness or 3
 
 	local function addSegment(ax, ay, bx, by)
 		local dx = bx - ax
@@ -181,8 +186,7 @@ local function drawLensRails(parent, cx, topY, maxW, H, color, thickness, segmen
 		seg.BorderSizePixel = 0
 		seg.AnchorPoint = Vector2.new(0.5, 0.5)
 		seg.Position = UDim2.fromOffset((ax + bx) * 0.5, (ay + by) * 0.5)
-		-- +thickness on length so consecutive segments overlap and
-		-- hide the seam rotation leaves behind.
+		-- +thickness so consecutive segments overlap and hide the seam.
 		seg.Size = UDim2.fromOffset(len + thickness, thickness)
 		seg.Rotation = math.deg(math.atan2(dy, dx))
 		seg.ZIndex = (parent.ZIndex or 1) + 1
@@ -191,17 +195,17 @@ local function drawLensRails(parent, cx, topY, maxW, H, color, thickness, segmen
 
 	local prevL, prevR
 	for i = 0, segments do
-		local t = i / segments
-		local halfW = math.sin(t * math.pi) * (maxW * 0.5)
-		local py = topY + t * H
-		local leftX  = cx - halfW
-		local rightX = cx + halfW
+		local y = topY + (i / segments) * H
+		local phase = 2 * math.pi * (y - topY) / period
+		local dx = amplitude * math.sin(phase)
+		local xL = cx - dx  -- phase + π variant
+		local xR = cx + dx
 		if prevL then
-			addSegment(prevL.x, prevL.y, leftX,  py)
-			addSegment(prevR.x, prevR.y, rightX, py)
+			addSegment(prevL.x, prevL.y, xL, y)
+			addSegment(prevR.x, prevR.y, xR, y)
 		end
-		prevL = { x = leftX,  y = py }
-		prevR = { x = rightX, y = py }
+		prevL = { x = xL, y = y }
+		prevR = { x = xR, y = y }
 	end
 end
 
@@ -908,89 +912,74 @@ local function openDNAStudyPage(ctx)
 
 	addRow(1, "SUBJECT",   "SUBJECT",      subject)
 	addRow(2, "CLASS",     "CLASS",        class)
-	addRow(3, "FRAGMENTS", "FRAGMENTS",    "0 / 16")
+	addRow(3, "FRAGMENTS", "FRAGMENTS",    "0 / 9")
 	addRow(4, "KILLS",     "KILLS LOGGED", "0")
 
 	-- Expose the refs so Step 12 can plug a DNAResearch snapshot
 	-- subscription in without needing to re-query the logCard tree.
 	local _ = logValueRefs
 
-	-- ── Centre column: DNA helix rails + GENOME DECODED % ────────────
-	-- Three stacked pointed-oval "lenses" connected by narrow X-
-	-- crossovers, matching real-DNA silhouettes (big / small / big).
-	-- The middle lens is short + narrow since it only needs to hold
-	-- the 4 luck fragments, while the outer lenses each host 6 bars.
+	-- ── Centre column: DNA double helix + GENOME DECODED % ───────────
+	-- Two continuous sine-wave rails twisting around each other. Over
+	-- the helix's 360 px height the rails cross 4 times (at y=0, 120,
+	-- 240, 360), producing three lenses back-to-back — the same 3-lens
+	-- silhouette the mockup shows, now drawn as ONE smooth curve each
+	-- rail instead of separate lens outlines with X crossovers.
 	--
-	-- Layout math lives inside centreColumn-local space:
+	-- Layout (centreColumn-local):
 	--   HELIX_CENTRE_X = CENTRE_COL_W / 2
-	--   TOP_LENS_Y     = 4    (top tip)
-	--   TOP_LENS_H     = 160
-	--   waist 1        = 30   (first X-crossover)
-	--   MID_LENS_Y     = 194
-	--   MID_LENS_H     = 60   (smaller than outer lenses)
-	--   waist 2        = 30   (second X-crossover)
-	--   BOT_LENS_Y     = 284
-	--   BOT_LENS_H     = 160
-	--   GENOME_Y       = 450
-	local HELIX_CENTRE_X  = CENTRE_COL_W / 2
-	local HELIX_WIDTH     = 140
-	local MID_LENS_WIDTH  = 90
+	--   HELIX_TOP_Y    = 30
+	--   HELIX_H        = 360              (3 lenses × 120 per lens)
+	--   HELIX_AMP      = 34               (half the widest rail gap)
+	--   HELIX_PERIOD   = 240              (lens = period / 2 = 120)
+	--   GENOME_Y       = HELIX_TOP_Y + HELIX_H + 16 = 406
+	local HELIX_CENTRE_X = CENTRE_COL_W / 2
+	local HELIX_TOP_Y    = 30
+	local HELIX_H        = 360
+	local HELIX_AMP      = 34
+	local HELIX_PERIOD   = 240
 
-	local TOP_LENS_Y      = 4
-	local TOP_LENS_H      = 160
-	local WAIST1_TOP_Y    = TOP_LENS_Y + TOP_LENS_H  -- 164
-	local WAIST1_BOT_Y    = WAIST1_TOP_Y + 30        -- 194
-	local MID_LENS_Y      = WAIST1_BOT_Y
-	local MID_LENS_H      = 60
-	local WAIST2_TOP_Y    = MID_LENS_Y + MID_LENS_H  -- 254
-	local WAIST2_BOT_Y    = WAIST2_TOP_Y + 30        -- 284
-	local BOT_LENS_Y      = WAIST2_BOT_Y
-	local BOT_LENS_H      = 160
+	-- Two rails with a slight "glow" underlay: wider low-opacity pass
+	-- first, thinner bright pass on top. Reads as a soft cyan beam at
+	-- screen size without needing shader tricks.
+	drawHelixRails(centreColumn, HELIX_CENTRE_X, HELIX_TOP_Y, HELIX_AMP,
+		HELIX_H, HELIX_PERIOD,
+		Color3.fromRGB(70, 140, 200), 6, 72)
+	drawHelixRails(centreColumn, HELIX_CENTRE_X, HELIX_TOP_Y, HELIX_AMP,
+		HELIX_H, HELIX_PERIOD, HOLO_EDGE, 3, 72)
 
-	drawLensRails(centreColumn, HELIX_CENTRE_X, TOP_LENS_Y,
-		HELIX_WIDTH, TOP_LENS_H, HOLO_EDGE, 1, 36)
-	drawLensRails(centreColumn, HELIX_CENTRE_X, MID_LENS_Y,
-		MID_LENS_WIDTH, MID_LENS_H, HOLO_EDGE, 1, 24)
-	drawLensRails(centreColumn, HELIX_CENTRE_X, BOT_LENS_Y,
-		HELIX_WIDTH, BOT_LENS_H, HOLO_EDGE, 1, 36)
-
-	-- Shared line-segment helper used by both crossovers.
-	local function crossSegment(ax, ay, bx, by)
-		local dx, dy = bx - ax, by - ay
-		local len = math.sqrt(dx * dx + dy * dy)
-		local seg = Instance.new("Frame")
-		seg.BackgroundColor3 = HOLO_EDGE
-		seg.BorderSizePixel = 0
-		seg.AnchorPoint = Vector2.new(0.5, 0.5)
-		seg.Position = UDim2.fromOffset((ax + bx) * 0.5, (ay + by) * 0.5)
-		seg.Size = UDim2.fromOffset(len, 1)
-		seg.Rotation = math.deg(math.atan2(dy, dx))
-		seg.ZIndex = (centreColumn.ZIndex or 1) + 1
-		seg.Parent = centreColumn
+	-- End caps — small rounded dots where the rails meet at the top
+	-- and bottom tips, matching the reference image's rail terminations.
+	local function makeTipCap(y)
+		local cap = Instance.new("Frame")
+		cap.BackgroundColor3 = HOLO_EDGE
+		cap.BorderSizePixel = 0
+		cap.AnchorPoint = Vector2.new(0.5, 0.5)
+		cap.Position = UDim2.fromOffset(HELIX_CENTRE_X, y)
+		cap.Size = UDim2.fromOffset(6, 6)
+		cap.ZIndex = (centreColumn.ZIndex or 1) + 2
+		cap.Parent = centreColumn
+		local cc = Instance.new("UICorner")
+		cc.CornerRadius = UDim.new(1, 0)
+		cc.Parent = cap
 	end
+	makeTipCap(HELIX_TOP_Y)
+	makeTipCap(HELIX_TOP_Y + HELIX_H)
 
-	-- Two diagonal rails between each pair of lens tips. Endpoints
-	-- are pulled ~14 px off-centre so the X reads clearly behind any
-	-- fragment bars drawn in the crossover zone.
-	local CROSS_OFFSET = 14
-	crossSegment(HELIX_CENTRE_X - CROSS_OFFSET, WAIST1_TOP_Y,
-		HELIX_CENTRE_X + CROSS_OFFSET, WAIST1_BOT_Y)
-	crossSegment(HELIX_CENTRE_X + CROSS_OFFSET, WAIST1_TOP_Y,
-		HELIX_CENTRE_X - CROSS_OFFSET, WAIST1_BOT_Y)
-	crossSegment(HELIX_CENTRE_X - CROSS_OFFSET, WAIST2_TOP_Y,
-		HELIX_CENTRE_X + CROSS_OFFSET, WAIST2_BOT_Y)
-	crossSegment(HELIX_CENTRE_X + CROSS_OFFSET, WAIST2_TOP_Y,
-		HELIX_CENTRE_X - CROSS_OFFSET, WAIST2_BOT_Y)
-
-	-- ── 16 fragment bars ──────────────────────────────────────────────
-	-- F01-F06 strength (inside top lens), F07-F10 luck (inside the
-	-- smaller middle lens), F11-F16 speed (inside bottom lens). Widths
-	-- inside each lens follow the same sin(pi*t) curve the rails do,
-	-- scaled to 85 % so the bars sit clear of the rail outline itself.
-	local FRAGMENT_COUNT = 16
+	-- ── 9 fragment bars ───────────────────────────────────────────────
+	-- F01-F03 strength (top lens), F04-F06 luck (middle lens),
+	-- F07-F09 speed (bottom lens) — matches the server's SECTION_STAT
+	-- map. Three rungs per lens, placed at the quarter / half / three-
+	-- quarter points of the lens's vertical span so the middle rung
+	-- sits at the widest part of the rail gap. Widths derive from the
+	-- actual rail gap at each rung's Y (|2 * amp * sin(phase)|) scaled
+	-- slightly so the bars stop just shy of the rails.
+	local FRAGMENT_COUNT = 9
+	local LENS_COUNT     = 3
+	local BARS_PER_LENS  = 3
 	local BAR_THICKNESS  = 2
 	local DOT_SIZE       = 4
-	local LENS_BAR_SCALE = 0.85
+	local LENS_BAR_SCALE = 0.82
 
 	local function buildFragmentBar(index, y, width)
 		local frag = Instance.new("Frame")
@@ -1066,30 +1055,23 @@ local function openDNAStudyPage(ctx)
 
 	local fragmentRefs = {}
 
-	-- Top lens: 6 bars at t = 1/7 .. 6/7 of TOP_LENS_H
-	for i = 1, 6 do
-		local t = i / 7
-		local halfW = math.sin(t * math.pi) * (HELIX_WIDTH * 0.5) * LENS_BAR_SCALE
-		local y = TOP_LENS_Y + t * TOP_LENS_H
-		fragmentRefs[i] = buildFragmentBar(i, y, halfW * 2)
-	end
-
-	-- Middle lens: 4 bars at t = 1/5 .. 4/5 of MID_LENS_H. Uses the
-	-- narrower MID_LENS_WIDTH so the bars stay inside the smaller
-	-- pinched lens instead of bleeding past its rails.
-	for i = 1, 4 do
-		local t = i / 5
-		local halfW = math.sin(t * math.pi) * (MID_LENS_WIDTH * 0.5) * LENS_BAR_SCALE
-		local y = MID_LENS_Y + t * MID_LENS_H
-		fragmentRefs[6 + i] = buildFragmentBar(6 + i, y, halfW * 2)
-	end
-
-	-- Bottom lens: mirrors the top lens.
-	for i = 1, 6 do
-		local t = i / 7
-		local halfW = math.sin(t * math.pi) * (HELIX_WIDTH * 0.5) * LENS_BAR_SCALE
-		local y = BOT_LENS_Y + t * BOT_LENS_H
-		fragmentRefs[10 + i] = buildFragmentBar(10 + i, y, halfW * 2)
+	-- Each lens spans HELIX_PERIOD / 2 = 120 px. Lens i (1-indexed)
+	-- sits at y = HELIX_TOP_Y + (i-1) * 120, height 120. Rungs inside
+	-- the lens sit at local t = 1/4, 2/4, 3/4 so the middle rung lines
+	-- up with the widest point (where sin goes through its extremum).
+	local LENS_H = HELIX_PERIOD / 2  -- 120
+	for lensIdx = 1, LENS_COUNT do
+		local lensTopY = HELIX_TOP_Y + (lensIdx - 1) * LENS_H
+		for rung = 1, BARS_PER_LENS do
+			local t = rung / (BARS_PER_LENS + 1)  -- 1/4, 2/4, 3/4
+			local y = lensTopY + t * LENS_H
+			-- Rail gap at this y, matching drawHelixRails' math.
+			local phase = 2 * math.pi * (y - HELIX_TOP_Y) / HELIX_PERIOD
+			local gap   = 2 * HELIX_AMP * math.abs(math.sin(phase))
+			local width = gap * LENS_BAR_SCALE
+			local idx = (lensIdx - 1) * BARS_PER_LENS + rung
+			fragmentRefs[idx] = buildFragmentBar(idx, y, width)
+		end
 	end
 
 	-- Step 12 will walk fragmentRefs[i] to resize .fill.Size.X.Scale
@@ -1098,7 +1080,7 @@ local function openDNAStudyPage(ctx)
 
 	-- GENOME DECODED label + percentage. Percentage value ref stashed
 	-- so Step 12 can tween it when fragments advance.
-	local GENOME_Y = BOT_LENS_Y + BOT_LENS_H + 6
+	local GENOME_Y = HELIX_TOP_Y + HELIX_H + 16
 	local genomeRow = Instance.new("Frame")
 	genomeRow.Name = "GenomeDecoded"
 	genomeRow.BackgroundTransparency = 1

@@ -25,7 +25,7 @@
 -- Globals exported for Steps 3 / 4 and the DNAStudyPage client script:
 --   _G.GetDNAResearchMercState(player, mercName)
 --   _G.FireDNAResearchState(player, mercName)
---   _G.DNAResearch_FragmentCount = 16
+--   _G.DNAResearch_FragmentCount = 9
 --   _G.DNAResearch_StudyDuration = 60
 
 local Players          = game:GetService("Players")
@@ -33,7 +33,7 @@ local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- ─── Constants ────────────────────────────────────────────────────────
-local FRAGMENT_COUNT     = 16
+local FRAGMENT_COUNT     = 9
 local STUDY_DURATION     = 60   -- seconds per study tick
 local STUDY_FILL_PCT     = 10   -- % each completed study tick adds
 local TICK_INTERVAL      = 1    -- how often the server checks for expired slots
@@ -44,13 +44,13 @@ local AUTO_SAVE_INTERVAL = 120  -- seconds, mirrors InventoryManager
 local STAT_TICK_MIN      = 1
 local STAT_TICK_MAX      = 2
 
--- Fragment-index → stat-name map. F01-F06 strength, F07-F10 luck,
--- F11-F16 speed — six / four / six layout matches the DNA helix's
--- upper / middle / lower sections from the user's spec.
+-- Fragment-index → stat-name map. F01-F03 strength (top lens),
+-- F04-F06 luck (middle lens), F07-F09 speed (bottom lens). The three
+-- equal-sized sections match the visual helix on the client.
 local SECTION_STAT = {
-	"strength", "strength", "strength", "strength", "strength", "strength",
-	"luck",     "luck",     "luck",     "luck",
-	"speed",    "speed",    "speed",    "speed",    "speed",    "speed",
+	"strength", "strength", "strength",
+	"luck",     "luck",     "luck",
+	"speed",    "speed",    "speed",
 }
 
 _G.DNAResearch_FragmentCount = FRAGMENT_COUNT
