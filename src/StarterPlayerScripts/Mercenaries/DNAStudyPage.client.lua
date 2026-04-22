@@ -1728,8 +1728,24 @@ local function openDNAStudyPage(ctx)
 		return ref
 	end
 
-	for i, def in ipairs(TRAITS) do
-		traitRefs[def.key] = buildTraitTile(i, def)
+	-- Diagnostic: confirms the trait-column build actually ran. If
+	-- this prints but the tiles still don't appear on screen, the
+	-- issue is render-side (ZIndex, position, or Studio loading a
+	-- stale cached copy of this script). Remove once verified.
+	local traitBuildOk, traitBuildErr = pcall(function()
+		for i, def in ipairs(TRAITS) do
+			traitRefs[def.key] = buildTraitTile(i, def)
+		end
+	end)
+	if not traitBuildOk then
+		warn("[DNAStudyPage] trait tile build failed:", traitBuildErr)
+	else
+		local count = 0
+		for _ in pairs(traitRefs) do count = count + 1 end
+		print(string.format(
+			"[DNAStudyPage] Decoded Traits: %d tiles built under %s (%s, size=%s)",
+			count, rightColumn:GetFullName(),
+			tostring(rightColumn.Position), tostring(rightColumn.Size)))
 	end
 
 	-- ── Snapshot subscription (assigns the forward-declared upvalue) ──
