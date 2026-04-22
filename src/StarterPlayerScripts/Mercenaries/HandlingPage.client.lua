@@ -56,7 +56,8 @@ local COLOR_TEXT_MUTE = Color3.fromRGB(100, 125, 155)
 local COLOR_GOLD      = Color3.fromRGB(230, 190, 100)
 local DNA_RESEARCH_ICON = "rbxassetid://78141836386820"
 local SKINS_TILE_IMAGE  = "rbxassetid://86890035031466"
-local MAIN_HAND_TILE_IMAGE = "rbxassetid://120267275882811"
+local MAIN_HAND_TILE_IMAGE = "rbxassetid://77239024300843"
+local MAIN_HAND_DETAIL_ICON = "rbxassetid://120267275882811"
 
 local function setZIndexRecursive(root, z)
 	if not root then return end
@@ -1365,11 +1366,25 @@ local function openHandlingPage(ctx)
 			iconStroke.Thickness = 1
 			iconStroke.Parent    = iconBox
 
-			local glyph = def.iconBuilder(iconBox, 26, HOLO_EDGE)
-			if glyph then
-				glyph.AnchorPoint = Vector2.new(0.5, 0.5)
-				glyph.Position = UDim2.fromScale(0.5, 0.5)
-				setZIndexRecursive(glyph, 73)
+			if slotKey == "MainHand" then
+				local handIcon = Instance.new("ImageLabel")
+				handIcon.Name = "MainHandDetailIcon"
+				handIcon.BackgroundTransparency = 1
+				handIcon.BorderSizePixel = 0
+				handIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+				handIcon.Position = UDim2.fromScale(0.5, 0.5)
+				handIcon.Size = UDim2.new(1, -8, 1, -8)
+				handIcon.Image = MAIN_HAND_DETAIL_ICON
+				handIcon.ScaleType = Enum.ScaleType.Fit
+				handIcon.Parent = iconBox
+				handIcon.ZIndex = 73
+			else
+				local glyph = def.iconBuilder(iconBox, 26, HOLO_EDGE)
+				if glyph then
+					glyph.AnchorPoint = Vector2.new(0.5, 0.5)
+					glyph.Position = UDim2.fromScale(0.5, 0.5)
+					setZIndexRecursive(glyph, 73)
+				end
 			end
 
 			local textX = 50
