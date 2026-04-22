@@ -168,6 +168,11 @@ recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 			handle.Transparency = 1
 			handle.Parent = fullCapsule
 		end
+		-- Tag the sample with the merc it came from. DNAStudyPage filters
+		-- capsules by this attribute so a Pirate's DNA cannot be studied
+		-- under a different mercenary (and the SAMPLES counter on the
+		-- top bar only counts matching-blood capsules).
+		fullCapsule:SetAttribute("BloodType", pirate.Name)
 		if backpack then
 			fullCapsule.Parent = backpack
 		end
