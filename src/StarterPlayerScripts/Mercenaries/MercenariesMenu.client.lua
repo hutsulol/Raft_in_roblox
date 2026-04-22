@@ -1243,6 +1243,7 @@ buildPage = function(mercNames)
 	local PANELS_TOP_Y  = 70
 	local PANELS_BOT_PAD = 24
 	local RIGHT_PANEL_Y_OFFSET = -50
+	local LEFT_PANEL_Y_OFFSET = 15
 
 	local MENU_VERTICAL_SHIFT = 30
 
@@ -1284,7 +1285,7 @@ buildPage = function(mercNames)
 		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
 
 		if leftColRef then
-			leftColRef.Position = UDim2.fromOffset(-dynamicBleed, PANELS_TOP_Y)
+			leftColRef.Position = UDim2.fromOffset(-dynamicBleed, PANELS_TOP_Y + LEFT_PANEL_Y_OFFSET)
 		end
 		if rightColRef then
 			rightColRef.Position = UDim2.new(1, dynamicBleed, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET)
@@ -1321,7 +1322,7 @@ buildPage = function(mercNames)
 	backBtn.Name = "BackButton"
 	backBtn.AnchorPoint = Vector2.new(0, 0)
 	-- Keep BACK as a separate top-left action (not inside the left panel band).
-	backBtn.Position = UDim2.fromOffset(-40, 18)
+	backBtn.Position = UDim2.fromOffset(-40, 23)
 	backBtn.Size = UDim2.fromOffset(84, 34)
 	backBtn.BackgroundColor3 = HOLO_PANEL_FILL
 	backBtn.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
@@ -1332,6 +1333,7 @@ buildPage = function(mercNames)
 	local backStroke = Instance.new("UIStroke")
 	backStroke.Color     = HOLO_PANEL_BORDER
 	backStroke.Thickness = 1
+	backStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	backStroke.Parent    = backBtn
 
 	local backGlyph = makeBackIcon(backBtn, 14, COLOR_TEXT)
@@ -1455,7 +1457,7 @@ buildPage = function(mercNames)
 	local visibleRows = math.max(1, #mercNames)
 	local rowsHeight = visibleRows * CARD_ROW_H + math.max(0, visibleRows - 1) * CARD_ROW_GAP
 	local desiredLeftH = math.clamp(58 + rowsHeight + 16, LEFT_MIN_H, LEFT_MAX_H)
-	leftCol.Position = UDim2.fromOffset(-EDGE_BLEED_X, PANELS_TOP_Y)
+	leftCol.Position = UDim2.fromOffset(-EDGE_BLEED_X, PANELS_TOP_Y + LEFT_PANEL_Y_OFFSET)
 	leftCol.Size = UDim2.fromOffset(COLUMN_W, desiredLeftH)
 	-- Keep the panel background behind its own content. When the parent frame
 	-- ZIndex is higher than descendants, Roblox can render the fill over labels
