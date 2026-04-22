@@ -1267,7 +1267,14 @@ buildPage = function(mercNames)
 		local size = screenGui.AbsoluteSize
 		if size.X <= 0 or size.Y <= 0 then return end
 		local sx = size.X / REFERENCE_W
-		local sy = size.Y / REFERENCE_H
+		-- scaleWrap is Y-centered with an extra MENU_VERTICAL_SHIFT
+		-- offset pushing it down. That shift applies symmetrically:
+		-- top gains `shift` px of padding, bottom loses `shift` px.
+		-- Account for both sides (2 * shift) so the scaled artboard
+		-- still fits when the shift kicks in, otherwise the bottom
+		-- panels overflow off-screen on fullscreen / short windows.
+		local verticalBudget = size.Y - 2 * math.abs(MENU_VERTICAL_SHIFT)
+		local sy = verticalBudget / REFERENCE_H
 		local s = math.min(sx, sy)
 		if s < 0.5 then s = 0.5 end
 		responsiveScale.Scale = s
