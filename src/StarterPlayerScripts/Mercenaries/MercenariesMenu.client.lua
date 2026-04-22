@@ -1966,7 +1966,10 @@ buildPage = function(mercNames)
 	local profCard = Instance.new("Frame")
 	profCard.Name = "ProfessionCard"
 	profCard.AnchorPoint = Vector2.new(0, 1)
-	profCard.Position = UDim2.fromOffset(leftCol.Position.X.Offset, leftCol.Position.Y.Offset - 10)
+	profCard.Position = UDim2.fromOffset(
+		leftCol.Position.X.Offset + leftCol.Size.X.Offset - 240,
+		leftCol.Position.Y.Offset - 10
+	)
 	profCard.Size = UDim2.fromOffset(240, 59)
 	profCard.BackgroundColor3 = HOLO_PANEL_FILL
 	profCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
