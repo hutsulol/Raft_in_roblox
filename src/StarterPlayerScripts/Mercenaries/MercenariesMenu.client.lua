@@ -60,6 +60,10 @@ local COLOR_GOLD              = Color3.fromRGB(230, 190, 100)
 local HORIZON                 = Color3.fromRGB(98, 168, 218)
 
 local IDLE_ANIMATION_ID = "rbxassetid://107139405334393"
+local ICON_STAT_STRENGTH = "rbxassetid://121469289292513"
+local ICON_STAT_LUCK     = "rbxassetid://81616209216042"
+local ICON_STAT_SPEED    = "rbxassetid://79004787166831"
+local ICON_PIRATE        = "rbxassetid://86890035031466"
 
 -- Per-mercenary data
 local MERC_THEMES = {
@@ -80,6 +84,7 @@ local MERC_THEMES = {
 		xp          = 0,
 		xpMax       = 500,
 		charStats   = { str = 72, spd = 48, luck = 35 },
+		portraitIcon = ICON_PIRATE,
 	},
 }
 local DEFAULT_THEME = {
@@ -547,6 +552,20 @@ local function makeCircleIcon(parent, size, color)
 	s.Parent    = ring
 
 	return c
+end
+
+-- ImageLabel icon from an uploaded Roblox asset id. We use this for the
+-- authored characteristic glyphs so they match the provided artwork.
+local function makeAssetIcon(parent, imageId, size)
+	local icon = Instance.new("ImageLabel")
+	icon.Name = "AssetIcon"
+	icon.BackgroundTransparency = 1
+	icon.BorderSizePixel = 0
+	icon.Size = UDim2.fromOffset(size, size)
+	icon.Image = imageId
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.Parent = parent
+	return icon
 end
 
 -- Chevron-right — two thin Frames meeting at the right forming a ">".
@@ -1674,9 +1693,17 @@ buildPage = function(mercNames)
 
 		cornerLs(portrait, 5, HOLO_PANEL_LBRACKET, 1.5)
 
-		local charGlyph = makeCharacterIcon(portrait, 28, HOLO_PANEL_LBRACKET)
-		charGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
-		charGlyph.Position = UDim2.fromScale(0.5, 0.5)
+		local portraitIconId = theme.portraitIcon
+		if portraitIconId then
+			local charIcon = makeAssetIcon(portrait, portraitIconId, 42)
+			charIcon.Name = "PortraitIcon"
+			charIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+			charIcon.Position = UDim2.fromScale(0.5, 0.5)
+		else
+			local charGlyph = makeCharacterIcon(portrait, 28, HOLO_PANEL_LBRACKET)
+			charGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+			charGlyph.Position = UDim2.fromScale(0.5, 0.5)
+		end
 
 		-- Right side of the card: name row (+ OWNED chip) / star row / role
 		-- line, all left-aligned starting 62 px in so they sit clear of
@@ -2137,9 +2164,9 @@ buildPage = function(mercNames)
 	-- Three stat rows. Each row is 28 tall: [icon 14] [label / value]
 	-- on top line, holo bar (5 tall) below.
 	local statDefs = {
-		{ key = "str",  label = "STRENGTH", iconFn = makeSparkIcon   },
-		{ key = "spd",  label = "SPEED",    iconFn = makeCircleIcon  },
-		{ key = "luck", label = "LUCK",     iconFn = makeDiamondIcon },
+		{ key = "str",  label = "STRENGTH", icon = ICON_STAT_STRENGTH },
+		{ key = "spd",  label = "SPEED",    icon = ICON_STAT_SPEED    },
+		{ key = "luck", label = "LUCK",     icon = ICON_STAT_LUCK     },
 	}
 	local statRefs = {}
 	for i, s in ipairs(statDefs) do
@@ -2157,7 +2184,7 @@ buildPage = function(mercNames)
 		topLine.Size = UDim2.new(1, 0, 0, 14)
 		topLine.Parent = row
 
-		local statIcon = s.iconFn(topLine, 14, HOLO_EDGE)
+		local statIcon = makeAssetIcon(topLine, s.icon, 14)
 		statIcon.AnchorPoint = Vector2.new(0, 0.5)
 		statIcon.Position = UDim2.new(0, 0, 0.5, 0)
 
