@@ -24,11 +24,16 @@
 --            variant for MAIN HAND via the Weapons EQUIP_ITEMS
 --            lookup, empty-placeholder variant for RELIC / SKINS /
 --            ARTIFACTS until those slots gain server state). DNA
---            card has a helix + fragment bar + STUDY DNA button
---            wired to a stub; the click-through to the dedicated
---            DNA Study sub-page lands in Step 7.
---
--- Still to land: STUDY DNA navigation + equip-remote wiring.
+--            card has a helix + fragment bar + STUDY DNA button.
+--   Step 7 — action wiring. Slot clicks already retint + refresh
+--            detail via Step 6's selectSlot. STUDY DNA now closes
+--            Handling (detaching the cached rig) and opens the
+--            dedicated DNAStudyPage sub-page with a BACK callback
+--            that reopens Handling using the original ctx, so the
+--            round-trip preserves mercName / theme / viewport cache.
+--            Equip/unequip via MercenaryEquipment remote is
+--            preserved — no item picker is rendered on this page
+--            yet, so the remote fires from the legacy flow.
 
 local Players        = game:GetService("Players")
 local RunService     = game:GetService("RunService")
@@ -1741,11 +1746,32 @@ local function openHandlingPage(ctx)
 	studyChev.Position = UDim2.new(1, -14, 0.5, 0)
 	studyChev.ZIndex = 73
 
+	-- STUDY DNA → close Handling (detaches the cached merc viewport so
+	-- the rig + idle animation survive), then open the dedicated DNA
+	-- Study sub-page with a BACK callback that reopens Handling using
+	-- the original ctx. Capturing `ctx` here preserves everything
+	-- MercenariesMenu handed in (screenGui, mercName, theme,
+	-- equipItems, hidePhonePanels, detachCachedViewports,
+	-- buildMercViewport, onBack) so the round-trip is lossless.
+	local handlingCtx = ctx
 	studyBtn.MouseButton1Click:Connect(function()
-		-- Stub — Step 7 (commit-numbering) will close the Handling page
-		-- and open the dedicated DNA Study sub-page per the Claude
-		-- Design `05 · DNA Study` mockup.
-		print("[HandlingPage] STUDY DNA clicked (stub)")
+		if typeof(_G.OpenDNAStudyPage) ~= "function" then
+			warn("[HandlingPage] DNAStudyPage not loaded")
+			return
+		end
+		closeHandlingPage()
+		_G.OpenDNAStudyPage({
+			screenGui = handlingCtx.screenGui,
+			mercName  = handlingCtx.mercName,
+			onBack    = function()
+				if typeof(_G.CloseDNAStudyPage) == "function" then
+					_G.CloseDNAStudyPage()
+				end
+				if typeof(_G.OpenHandlingPage) == "function" then
+					_G.OpenHandlingPage(handlingCtx)
+				end
+			end,
+		})
 	end)
 
 	-- Force the first scale computation now that the refs are all
