@@ -1304,6 +1304,24 @@ local function openHandlingPage(ctx)
 
 	cornerLs(centreFrame, 16, HOLO_EDGE, 1.5)
 
+	-- Clip frame around the viewport: stops the character at the
+	-- top edge of the bottom cards (Y=452) so the pirate's legs are
+	-- physically cropped, not covered by an opaque panel. Extends
+	-- above the artboard top (Y=-100) so the cached vp — whose top
+	-- edge lives at ~Y=-11 in scaleWrap-local — isn't trimmed at
+	-- the head.
+	local CLIP_TOP_OVERHANG = 100
+	local CLIP_BOTTOM_Y     = 452 -- must equal BOTTOM_CARD_Y below
+	local centreClip = Instance.new("Frame")
+	centreClip.Name = "CentreClip"
+	centreClip.BackgroundTransparency = 1
+	centreClip.BorderSizePixel = 0
+	centreClip.ClipsDescendants = true
+	centreClip.Position = UDim2.fromOffset(0, -CLIP_TOP_OVERHANG)
+	centreClip.Size = UDim2.fromOffset(REFERENCE_W, CLIP_BOTTOM_Y + CLIP_TOP_OVERHANG)
+	centreClip.ZIndex = 50
+	centreClip.Parent = scaleWrap
+
 	local viewportHost = Instance.new("Frame")
 	viewportHost.Name = "ViewportHost"
 	viewportHost.BackgroundTransparency = 1
@@ -1311,16 +1329,15 @@ local function openHandlingPage(ctx)
 	-- Mirrors MercenariesMenu's `slot` (which is the vp's direct parent
 	-- there): slot lives at centreCol (Y=70) + (META_HEIGHT - 10) = 104
 	-- with height = centreCol.H - 34 = 472. buildMercViewport positions
-	-- the cached vp at UDim2.fromScale(0.5, 0.34), so matching the slot
-	-- geometry here puts the vp center Y at 104 + 472*0.34 = 264.48 —
-	-- the exact same global coord as on the roster page. Matching X
-	-- doesn't need the centreCol width because vp is centred (0.5, 0.5)
-	-- and scaleWrap itself is screen-centred (so local x=480 = screen
-	-- center regardless of the 960 vs 1180 artboard width delta).
-	viewportHost.Position = UDim2.fromOffset(400, 104)
+	-- the cached vp at UDim2.fromScale(0.5, 0.34), so the vp center Y
+	-- resolves to (104 + 472*0.34) = 264.48 in scaleWrap-local —
+	-- pixel-matching the roster page. Because centreClip is offset
+	-- -CLIP_TOP_OVERHANG on Y, we add that back into viewportHost's
+	-- local Y so the final global Y is unchanged.
+	viewportHost.Position = UDim2.fromOffset(400, 104 + CLIP_TOP_OVERHANG)
 	viewportHost.Size = UDim2.fromOffset(160, 472)
 	viewportHost.ZIndex = 55
-	viewportHost.Parent = scaleWrap
+	viewportHost.Parent = centreClip
 
 	if ctx.buildMercViewport and ctx.mercName then
 		local vp = ctx.buildMercViewport(viewportHost, ctx.mercName, equippedWeaponId)
@@ -1368,15 +1385,14 @@ local function openHandlingPage(ctx)
 		return nil
 	end
 
-	-- Detail card shell. Fully opaque (not HOLO_PANEL_TRANSPARENCY)
-	-- so the card's fill acts as a mask for the character viewport
-	-- behind it — the pirate's legs get visually cropped at the
-	-- card's top edge instead of bleeding through the translucent
-	-- holo fill used by the slot tiles above.
+	-- Detail card shell. Keeps the same holo translucency as the slot
+	-- tiles — the pirate is cropped by a dedicated ClipsDescendants
+	-- frame around the viewport below, NOT by painting the card fully
+	-- opaque (which would lose the holo aesthetic).
 	local detailCard = Instance.new("Frame")
 	detailCard.Name = "DetailCard"
 	detailCard.BackgroundColor3 = HOLO_PANEL_FILL
-	detailCard.BackgroundTransparency = 0
+	detailCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	detailCard.BorderSizePixel = 0
 	detailCard.Position = UDim2.fromOffset(BOTTOM_LEFT_X, BOTTOM_CARD_Y)
 	detailCard.Size = UDim2.fromOffset(BOTTOM_CARD_W, BOTTOM_CARD_H)
@@ -1401,7 +1417,7 @@ local function openHandlingPage(ctx)
 	detailContent.BorderSizePixel = 0
 	detailContent.Position = UDim2.fromOffset(detailPad, detailPad)
 	detailContent.Size = UDim2.new(1, -detailPad * 2, 1, -detailPad * 2)
-	detailContent.ZIndex = 56
+	detailContent.ZIndex = 71
 	detailContent.Parent = detailCard
 
 	local function refreshDetailCard(slotKey)
@@ -1419,7 +1435,7 @@ local function openHandlingPage(ctx)
 			iconBox.BorderSizePixel = 0
 			iconBox.Position = UDim2.fromOffset(0, 0)
 			iconBox.Size = UDim2.fromOffset(40, 40)
-			iconBox.ZIndex = 57
+			iconBox.ZIndex = 72
 			iconBox.Parent = detailContent
 			local iconStroke = Instance.new("UIStroke")
 			iconStroke.Color     = HOLO_PANEL_BORDER
@@ -1430,7 +1446,7 @@ local function openHandlingPage(ctx)
 			if glyph then
 				glyph.AnchorPoint = Vector2.new(0.5, 0.5)
 				glyph.Position = UDim2.fromScale(0.5, 0.5)
-				glyph.ZIndex = 58
+				glyph.ZIndex = 73
 			end
 
 			local textX = 50
@@ -1445,14 +1461,14 @@ local function openHandlingPage(ctx)
 			nameLabel.TextColor3 = COLOR_TEXT
 			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 			nameLabel.Text = item.displayName or item.id or "—"
-			nameLabel.ZIndex = 57
+			nameLabel.ZIndex = 72
 			nameLabel.Parent = detailContent
 
 			local starRow = makeStarRow(detailContent, item.stars or 1, 5, 9, COLOR_GOLD)
 			starRow.Name = "Stars"
 			starRow.AnchorPoint = Vector2.new(0, 0)
 			starRow.Position = UDim2.fromOffset(textX, 26)
-			starRow.ZIndex = 57
+			starRow.ZIndex = 72
 
 			local tag = Instance.new("TextLabel")
 			tag.Name = "SlotTag"
@@ -1465,7 +1481,7 @@ local function openHandlingPage(ctx)
 			tag.TextColor3 = COLOR_TEXT_DIM
 			tag.TextXAlignment = Enum.TextXAlignment.Left
 			tag.Text = def.label
-			tag.ZIndex = 57
+			tag.ZIndex = 72
 			tag.Parent = detailContent
 
 			local divider = Instance.new("Frame")
@@ -1475,7 +1491,7 @@ local function openHandlingPage(ctx)
 			divider.BorderSizePixel = 0
 			divider.Position = UDim2.fromOffset(0, 58)
 			divider.Size = UDim2.new(1, 0, 0, 1)
-			divider.ZIndex = 57
+			divider.ZIndex = 72
 			divider.Parent = detailContent
 
 			local statRow = Instance.new("Frame")
@@ -1484,13 +1500,13 @@ local function openHandlingPage(ctx)
 			statRow.BorderSizePixel = 0
 			statRow.Position = UDim2.fromOffset(0, 72)
 			statRow.Size = UDim2.new(1, 0, 0, 20)
-			statRow.ZIndex = 57
+			statRow.ZIndex = 72
 			statRow.Parent = detailContent
 
 			local spark = makeSparkIcon(statRow, 12, HOLO_EDGE)
 			spark.AnchorPoint = Vector2.new(0, 0.5)
 			spark.Position = UDim2.new(0, 0, 0.5, 0)
-			spark.ZIndex = 58
+			spark.ZIndex = 73
 
 			local statLbl = Instance.new("TextLabel")
 			statLbl.BackgroundTransparency = 1
@@ -1502,7 +1518,7 @@ local function openHandlingPage(ctx)
 			statLbl.TextColor3 = COLOR_TEXT_DIM
 			statLbl.TextXAlignment = Enum.TextXAlignment.Left
 			statLbl.Text = "Damage"
-			statLbl.ZIndex = 58
+			statLbl.ZIndex = 73
 			statLbl.Parent = statRow
 
 			local statVal = Instance.new("TextLabel")
@@ -1516,7 +1532,7 @@ local function openHandlingPage(ctx)
 			statVal.TextColor3 = HOLO_EDGE
 			statVal.TextXAlignment = Enum.TextXAlignment.Right
 			statVal.Text = string.format("+%d", item.baseAttack or 0)
-			statVal.ZIndex = 58
+			statVal.ZIndex = 73
 			statVal.Parent = statRow
 		else
 			-- Empty variant: centred slot label + "not equipped" subtext
@@ -1531,7 +1547,7 @@ local function openHandlingPage(ctx)
 			emptyHeader.TextColor3 = COLOR_TEXT_DIM
 			emptyHeader.TextXAlignment = Enum.TextXAlignment.Center
 			emptyHeader.Text = def.label
-			emptyHeader.ZIndex = 57
+			emptyHeader.ZIndex = 72
 			emptyHeader.Parent = detailContent
 
 			local emptyBody = Instance.new("TextLabel")
@@ -1545,7 +1561,7 @@ local function openHandlingPage(ctx)
 			emptyBody.TextColor3 = COLOR_TEXT_MUTE
 			emptyBody.TextXAlignment = Enum.TextXAlignment.Center
 			emptyBody.Text = "No " .. def.label:lower() .. " equipped"
-			emptyBody.ZIndex = 57
+			emptyBody.ZIndex = 72
 			emptyBody.Parent = detailContent
 		end
 	end
@@ -1562,13 +1578,10 @@ local function openHandlingPage(ctx)
 	refreshDetailCard(selectedSlot)
 
 	-- DNA Research card (placeholder data for now)
-	-- Same opacity reasoning as DetailCard — the card must fully
-	-- mask the viewport behind it so the pirate doesn't bleed
-	-- through the DNA content.
 	local dnaCard = Instance.new("Frame")
 	dnaCard.Name = "DnaCard"
 	dnaCard.BackgroundColor3 = HOLO_PANEL_FILL
-	dnaCard.BackgroundTransparency = 0
+	dnaCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	dnaCard.BorderSizePixel = 0
 	dnaCard.Position = UDim2.fromOffset(BOTTOM_RIGHT_X, BOTTOM_CARD_Y)
 	dnaCard.Size = UDim2.fromOffset(BOTTOM_CARD_W, BOTTOM_CARD_H)
@@ -1586,7 +1599,7 @@ local function openHandlingPage(ctx)
 	dnaContent.BorderSizePixel = 0
 	dnaContent.Position = UDim2.fromOffset(dnaPad, dnaPad)
 	dnaContent.Size = UDim2.new(1, -dnaPad * 2, 1, -dnaPad * 2)
-	dnaContent.ZIndex = 56
+	dnaContent.ZIndex = 71
 	dnaContent.Parent = dnaCard
 
 	-- Header: helix glyph (small) + DNA RESEARCH title + NN% (right)
@@ -1594,13 +1607,13 @@ local function openHandlingPage(ctx)
 	dnaHeader.BackgroundTransparency = 1
 	dnaHeader.BorderSizePixel = 0
 	dnaHeader.Size = UDim2.new(1, 0, 0, 18)
-	dnaHeader.ZIndex = 57
+	dnaHeader.ZIndex = 72
 	dnaHeader.Parent = dnaContent
 
 	local dnaHeaderGlyph = makeHelixIcon(dnaHeader, 10, HOLO_EDGE)
 	dnaHeaderGlyph.AnchorPoint = Vector2.new(0, 0.5)
 	dnaHeaderGlyph.Position = UDim2.new(0, 0, 0.5, 0)
-	dnaHeaderGlyph.ZIndex = 58
+	dnaHeaderGlyph.ZIndex = 73
 
 	local dnaTitle = Instance.new("TextLabel")
 	dnaTitle.BackgroundTransparency = 1
@@ -1612,7 +1625,7 @@ local function openHandlingPage(ctx)
 	dnaTitle.TextColor3 = COLOR_TEXT
 	dnaTitle.TextXAlignment = Enum.TextXAlignment.Left
 	dnaTitle.Text = "DNA RESEARCH"
-	dnaTitle.ZIndex = 58
+	dnaTitle.ZIndex = 73
 	dnaTitle.Parent = dnaHeader
 
 	-- Placeholder progress numbers — real values get wired in a later step.
@@ -1631,7 +1644,7 @@ local function openHandlingPage(ctx)
 	dnaPct.TextColor3 = HOLO_EDGE
 	dnaPct.TextXAlignment = Enum.TextXAlignment.Right
 	dnaPct.Text = progressPct .. "%"
-	dnaPct.ZIndex = 58
+	dnaPct.ZIndex = 73
 	dnaPct.Parent = dnaHeader
 
 	-- Body: large helix on the left, fragments / bar / subtext stack on right
@@ -1640,13 +1653,13 @@ local function openHandlingPage(ctx)
 	dnaBody.BorderSizePixel = 0
 	dnaBody.Position = UDim2.fromOffset(0, 24)
 	dnaBody.Size = UDim2.new(1, 0, 0, 52)
-	dnaBody.ZIndex = 57
+	dnaBody.ZIndex = 72
 	dnaBody.Parent = dnaContent
 
 	local bigHelix = makeHelixIcon(dnaBody, 28, HOLO_EDGE)
 	bigHelix.AnchorPoint = Vector2.new(0, 0.5)
 	bigHelix.Position = UDim2.new(0, 4, 0.5, 0)
-	bigHelix.ZIndex = 58
+	bigHelix.ZIndex = 73
 
 	local fragmentsLbl = Instance.new("TextLabel")
 	fragmentsLbl.BackgroundTransparency = 1
@@ -1661,7 +1674,7 @@ local function openHandlingPage(ctx)
 	fragmentsLbl.Text = string.format(
 		"Fragments decoded: <b><font color=\"rgb(220,240,255)\">%d/%d</font></b>",
 		FRAGMENTS_DECODED, FRAGMENTS_TOTAL)
-	fragmentsLbl.ZIndex = 58
+	fragmentsLbl.ZIndex = 73
 	fragmentsLbl.Parent = dnaBody
 
 	local barTrack, barFill = makeHoloBar(
@@ -1669,7 +1682,7 @@ local function openHandlingPage(ctx)
 		UDim2.new(1, -60, 0, 6),
 		FRAGMENTS_TOTAL)
 	barTrack.Position = UDim2.fromOffset(56, 20)
-	barTrack.ZIndex = 58
+	barTrack.ZIndex = 73
 	barFill.Size = UDim2.new(FRAGMENTS_DECODED / FRAGMENTS_TOTAL, 0, 1, 0)
 
 	local dnaSubtext = Instance.new("TextLabel")
@@ -1682,7 +1695,7 @@ local function openHandlingPage(ctx)
 	dnaSubtext.TextColor3 = COLOR_TEXT_MUTE
 	dnaSubtext.TextXAlignment = Enum.TextXAlignment.Left
 	dnaSubtext.Text = "Hunt more pirates to decode additional DNA fragments."
-	dnaSubtext.ZIndex = 58
+	dnaSubtext.ZIndex = 73
 	dnaSubtext.Parent = dnaBody
 
 	-- STUDY DNA button
@@ -1696,7 +1709,7 @@ local function openHandlingPage(ctx)
 	studyBtn.Size = UDim2.new(1, 0, 0, 26)
 	studyBtn.AutoButtonColor = true
 	studyBtn.Text = ""
-	studyBtn.ZIndex = 57
+	studyBtn.ZIndex = 72
 	studyBtn.Parent = dnaContent
 	local sbStroke = Instance.new("UIStroke")
 	sbStroke.Color     = HOLO_EDGE
@@ -1720,13 +1733,13 @@ local function openHandlingPage(ctx)
 	studyLbl.TextSize = 14
 	studyLbl.TextColor3 = COLOR_TEXT
 	studyLbl.Text = "STUDY DNA"
-	studyLbl.ZIndex = 58
+	studyLbl.ZIndex = 73
 	studyLbl.Parent = studyBtn
 
 	local studyChev = makeChevronRight(studyBtn, 12, COLOR_TEXT)
 	studyChev.AnchorPoint = Vector2.new(1, 0.5)
 	studyChev.Position = UDim2.new(1, -14, 0.5, 0)
-	studyChev.ZIndex = 58
+	studyChev.ZIndex = 73
 
 	studyBtn.MouseButton1Click:Connect(function()
 		-- Stub — Step 7 (commit-numbering) will close the Handling page
