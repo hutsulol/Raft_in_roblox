@@ -1855,6 +1855,7 @@ buildPage = function(mercNames)
 	metaBar.BorderSizePixel = 0
 	metaBar.Position = UDim2.fromOffset(0, META_TOP_OFFSET)
 	metaBar.Size = UDim2.new(1, 0, 0, META_HEIGHT)
+	metaBar.Visible = false -- hidden per feedback: remove top "Pirate + stars" strip
 	metaBar.Parent = centreCol
 	local metaStroke = Instance.new("UIStroke")
 	metaStroke.Color     = HOLO_PANEL_LBRACKET
