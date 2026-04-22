@@ -1158,17 +1158,31 @@ local function openDNAStudyPage(ctx)
 	orbitContainer.ZIndex = 58
 	orbitContainer.Parent = analysisBox
 
-	local ORBIT_DOT_COUNT  = 3
-	local ORBIT_RADIUS_PCT = 0.56 -- fraction of analysisBox half-size
-	for i = 1, ORBIT_DOT_COUNT do
-		local angle = (i - 1) * (2 * math.pi / ORBIT_DOT_COUNT)
+	-- Three tilted elliptical orbits around the capsule for the atom-
+	-- style animation. Each orbit gets one dot; the dot's
+	-- screen-space position + size are recomputed every frame by the
+	-- Heartbeat loop below, driving:
+	--   * position: local (cos(θ)·rx, sin(θ)·ry) rotated by `tilt`,
+	--   * size pulse: bigger when the dot is on the "near" half of
+	--     its ellipse (sin(θ) < 0) so each orbit breathes in and out
+	--     as if we were seeing a 3D loop from an angle.
+	-- Phases are offset so the three dots don't all pulse / cross at
+	-- the same instant.
+	local ORBIT_RX   = 0.56 -- horizontal radius, fraction of analysisBox half
+	local ORBIT_RY   = 0.22 -- vertical radius, fraction of analysisBox half
+	local ORBIT_DOT_BASE = 6
+	local ORBIT_PATHS = {
+		{ tilt = 0,                   phase = 0                   },
+		{ tilt = math.rad( 60),       phase = math.pi * 2 / 3     },
+		{ tilt = math.rad(-60),       phase = math.pi * 4 / 3     },
+	}
+	local orbitDots = {}
+	for _, path in ipairs(ORBIT_PATHS) do
 		local dot = Instance.new("Frame")
 		dot.Name = "OrbitDot"
 		dot.AnchorPoint = Vector2.new(0.5, 0.5)
-		dot.Position = UDim2.fromScale(
-			0.5 + math.cos(angle) * ORBIT_RADIUS_PCT,
-			0.5 + math.sin(angle) * ORBIT_RADIUS_PCT)
-		dot.Size = UDim2.fromOffset(6, 6)
+		dot.Position = UDim2.fromScale(0.5, 0.5)
+		dot.Size = UDim2.fromOffset(ORBIT_DOT_BASE, ORBIT_DOT_BASE)
 		dot.BackgroundColor3 = HOLO_EDGE
 		dot.BorderSizePixel = 0
 		dot.ZIndex = 59
@@ -1176,6 +1190,7 @@ local function openDNAStudyPage(ctx)
 		local dc = Instance.new("UICorner")
 		dc.CornerRadius = UDim.new(1, 0)
 		dc.Parent = dot
+		orbitDots[#orbitDots + 1] = { dot = dot, path = path }
 	end
 
 	-- Green progress bar along the bottom of the drop zone. Fills from
@@ -1326,15 +1341,36 @@ local function openDNAStudyPage(ctx)
 		end
 	end
 
-	-- Heartbeat: drives the orbit rotation while studying, and smooths
-	-- out the progress-bar + countdown between server snapshots. The
-	-- server still owns authoritative completion via studyComplete;
-	-- when studyRemaining locally hits 0 we flip to the SUCCES flash
-	-- immediately so the UI doesn't sit on a stale near-empty bar.
+	-- Heartbeat: drives the atom-orbit animation while studying, and
+	-- smooths out the progress-bar + countdown between server
+	-- snapshots. The server still owns authoritative completion via
+	-- studyComplete; when studyRemaining locally hits 0 we flip to
+	-- the SUCCES flash immediately so the UI doesn't sit on a stale
+	-- near-empty bar.
+	local orbitElapsed = 0
+	local ORBIT_SPEED      = 2.4  -- radians/second
+	local ORBIT_SIZE_MIN   = 0.45 -- scale applied at the 'back' of the orbit
+	local ORBIT_SIZE_MAX   = 1.55 -- scale applied at the 'front'
 	table.insert(activeConnections, RunService.Heartbeat:Connect(function(dt)
 		if studyActive then
 			studyRemaining = math.max(0, studyRemaining - dt)
-			orbitContainer.Rotation = (orbitContainer.Rotation + dt * 160) % 360
+			orbitElapsed = orbitElapsed + dt
+			for _, entry in ipairs(orbitDots) do
+				local theta = orbitElapsed * ORBIT_SPEED + entry.path.phase
+				-- Point on the un-tilted ellipse (fraction of analysisBox).
+				local lx = math.cos(theta) * ORBIT_RX
+				local ly = math.sin(theta) * ORBIT_RY
+				-- Apply the path's tilt so the three orbits cross each other.
+				local c, s = math.cos(entry.path.tilt), math.sin(entry.path.tilt)
+				local px, py = lx * c - ly * s, lx * s + ly * c
+				entry.dot.Position = UDim2.fromScale(0.5 + px, 0.5 + py)
+				-- Size pulse — interpolate between MIN and MAX based on
+				-- sin(theta): +1 = rear (small), -1 = front (big).
+				local pulse = (1 - math.sin(theta)) * 0.5           -- 0..1
+				local scale = ORBIT_SIZE_MIN + (ORBIT_SIZE_MAX - ORBIT_SIZE_MIN) * pulse
+				local px_size = ORBIT_DOT_BASE * scale
+				entry.dot.Size = UDim2.fromOffset(px_size, px_size)
+			end
 			paintProgress(studyRemaining, studyDuration)
 			if studyRemaining <= 0 then
 				studyActive = false
