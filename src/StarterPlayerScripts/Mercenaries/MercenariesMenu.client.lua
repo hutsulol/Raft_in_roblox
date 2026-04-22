@@ -1261,7 +1261,11 @@ buildPage = function(mercNames)
 	responsiveScale.Name = "ResponsiveScale"
 	responsiveScale.Scale = 1
 	responsiveScale.Parent = scaleWrap
-	local leftColRef, rightColRef, chipRef
+	local leftColRef, rightColRef, chipRef, backBtnRef
+	-- BACK button's static y inside scaleWrap — matches the old
+	-- topBar-local (16 + 23) layout so the visual offset from the top
+	-- of the artboard is unchanged.
+	local BACK_BTN_Y = 39
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
@@ -1310,6 +1314,12 @@ buildPage = function(mercNames)
 		end
 		if chipRef then
 			chipRef.Position = UDim2.new(1, dynamicBleed, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET - 6)
+		end
+		if backBtnRef then
+			-- Same -dynamicBleed as the left column so BACK tracks the
+			-- screen's left edge exactly as the MERCENARIES panel below
+			-- it does, regardless of window size or scale.
+			backBtnRef.Position = UDim2.fromOffset(-dynamicBleed, BACK_BTN_Y)
 		end
 	end
 	updateResponsiveScale()
@@ -1365,19 +1375,24 @@ buildPage = function(mercNames)
 	topBar.Parent = scaleWrap
 
 	-- Back button: holo stroke + hand-drawn back-arrow glyph + uppercase
-	-- letter-spaced label.
+	-- letter-spaced label. Parented directly to scaleWrap (not topBar) so
+	-- the responsive-scale loop can pin its x with the same dynamicBleed
+	-- the left column uses — otherwise BACK's absolute x slides around
+	-- with scaleWrap's centering while the left column stays glued to
+	-- the screen edge, making the two drift apart at different scales.
 	local backBtn = Instance.new("TextButton")
 	backBtn.Name = "BackButton"
 	backBtn.AnchorPoint = Vector2.new(0, 0)
-	-- Keep BACK as a separate top-left action (not inside the left panel band).
-	backBtn.Position = UDim2.fromOffset(-40, 23)
+	backBtn.Position = UDim2.fromOffset(-EDGE_BLEED_X, 39) -- overridden by updateResponsiveScale
 	backBtn.Size = UDim2.fromOffset(84, 34)
 	backBtn.BackgroundColor3 = HOLO_PANEL_FILL
 	backBtn.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	backBtn.BorderSizePixel = 0
 	backBtn.AutoButtonColor = true
 	backBtn.Text = "" -- label drawn as a child for precise positioning
-	backBtn.Parent = topBar
+	backBtn.ZIndex = 6
+	backBtn.Parent = scaleWrap
+	backBtnRef = backBtn
 	local backStroke = Instance.new("UIStroke")
 	backStroke.Color     = HOLO_PANEL_BORDER
 	backStroke.Thickness = 1
