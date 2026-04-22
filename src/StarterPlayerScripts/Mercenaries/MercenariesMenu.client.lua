@@ -1582,7 +1582,7 @@ buildPage = function(mercNames)
 	leftCol.BorderSizePixel = 0
 	local LEFT_MAX_H = REFERENCE_H - (PANELS_TOP_Y + PANELS_BOT_PAD)
 	local LEFT_MIN_H = 170
-	local CARD_ROW_H = 72
+	local CARD_ROW_H = 112
 	local CARD_ROW_GAP = 8
 	local visibleRows = math.max(1, #mercNames)
 	local rowsHeight = visibleRows * CARD_ROW_H + math.max(0, visibleRows - 1) * CARD_ROW_GAP
@@ -1646,18 +1646,14 @@ buildPage = function(mercNames)
 	leftDivider.Position = UDim2.fromOffset(0, 28)
 	leftDivider.Parent = leftCol
 
-	-- Scrolling card list.
-	local cardList = Instance.new("ScrollingFrame")
+	-- Card list (no scrollbar — panel height is computed to show cards
+	-- directly in the window without a scroll thumb for this section).
+	local cardList = Instance.new("Frame")
 	cardList.Name = "CardList"
 	cardList.BackgroundTransparency = 1
 	cardList.BorderSizePixel = 0
 	cardList.Position = UDim2.fromOffset(0, 40)
 	cardList.Size = UDim2.new(1, 0, 1, -48)
-	cardList.CanvasSize = UDim2.new(0, 0, 0, 0)
-	cardList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	cardList.ScrollBarThickness = 4
-	cardList.ScrollBarImageColor3 = HOLO_PANEL_BORDER
-	cardList.ScrollBarImageTransparency = 0.3
 	cardList.Parent = leftCol
 
 	local cardLayout = Instance.new("UIListLayout")
