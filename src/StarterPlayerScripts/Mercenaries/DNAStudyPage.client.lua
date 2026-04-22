@@ -162,18 +162,21 @@ end
 
 -- ─── Continuous sine-wave double-helix rails ────────────────────────
 -- Draws two rails twisting around each other as two phase-shifted sine
--- waves, forming a proper DNA silhouette. Over a total height `H` the
--- rails cross each other H/(period/2) times; between crossings the
--- gap between them bulges into a lens. Both rails meet at cx at y=topY
--- and y=topY+H (the helix starts + ends at a pinch).
+-- waves, forming a proper DNA silhouette. The phase is offset by +π/2
+-- so the rails START at their maximum left/right separation at y=topY
+-- (and again at y=topY+H, since H is tuned to a full multiple of the
+-- period). This gives the bracket-capped look from the reference image
+-- instead of a helix that pinches at its endpoints.
 --
--- x_1(y) = cx + A * sin(2π (y-topY) / period)
--- x_2(y) = cx - A * sin(2π (y-topY) / period)   ( = phase + π )
+-- x_L(y) = cx - A * sin(2π (y-topY) / period + π/2)
+-- x_R(y) = cx + A * sin(2π (y-topY) / period + π/2)
+-- (at y=topY both are ±A, sin(π/2)=1)
 --
 -- `thickness` is the on-screen line weight. Each rail is approximated
--- by `segments` short rotated Frames; 48+ keeps the curve smooth.
+-- by `segments` short rotated Frames; 72+ keeps the curve smooth at
+-- ~360 px helix heights.
 local function drawHelixRails(parent, cx, topY, amplitude, H, period, color, thickness, segments)
-	segments  = segments  or 60
+	segments  = segments  or 72
 	thickness = thickness or 3
 
 	local function addSegment(ax, ay, bx, by)
@@ -196,9 +199,9 @@ local function drawHelixRails(parent, cx, topY, amplitude, H, period, color, thi
 	local prevL, prevR
 	for i = 0, segments do
 		local y = topY + (i / segments) * H
-		local phase = 2 * math.pi * (y - topY) / period
+		local phase = 2 * math.pi * (y - topY) / period + math.pi * 0.5
 		local dx = amplitude * math.sin(phase)
-		local xL = cx - dx  -- phase + π variant
+		local xL = cx - dx
 		local xR = cx + dx
 		if prevL then
 			addSegment(prevL.x, prevL.y, xL, y)
@@ -920,51 +923,70 @@ local function openDNAStudyPage(ctx)
 	local _ = logValueRefs
 
 	-- ── Centre column: DNA double helix + GENOME DECODED % ───────────
-	-- Two continuous sine-wave rails twisting around each other. Over
-	-- the helix's 360 px height the rails cross 4 times (at y=0, 120,
-	-- 240, 360), producing three lenses back-to-back — the same 3-lens
-	-- silhouette the mockup shows, now drawn as ONE smooth curve each
-	-- rail instead of separate lens outlines with X crossovers.
+	-- Two continuous sine-wave rails twisting around each other with
+	-- a +π/2 phase shift so the rails START at their widest (top
+	-- bracket cap) and end there too (bottom bracket cap). Over a
+	-- HELIX_H of 360 px the rails cross each other 4 times (y = 45,
+	-- 135, 225, 315), which cuts the span into three full lenses
+	-- plus two half-lens caps — the exact silhouette from the new
+	-- reference image.
 	--
 	-- Layout (centreColumn-local):
 	--   HELIX_CENTRE_X = CENTRE_COL_W / 2
 	--   HELIX_TOP_Y    = 30
-	--   HELIX_H        = 360              (3 lenses × 120 per lens)
-	--   HELIX_AMP      = 34               (half the widest rail gap)
-	--   HELIX_PERIOD   = 240              (lens = period / 2 = 120)
-	--   GENOME_Y       = HELIX_TOP_Y + HELIX_H + 16 = 406
+	--   HELIX_H        = 360                         (2 * period)
+	--   HELIX_AMP      = 44                          (bracket half-width)
+	--   HELIX_PERIOD   = 180                         (lens = period/2 = 90)
+	--   GENOME_Y       = HELIX_TOP_Y + HELIX_H + 16  = 406
 	local HELIX_CENTRE_X = CENTRE_COL_W / 2
 	local HELIX_TOP_Y    = 30
 	local HELIX_H        = 360
-	local HELIX_AMP      = 34
-	local HELIX_PERIOD   = 240
+	local HELIX_AMP      = 44
+	local HELIX_PERIOD   = 180
 
 	-- Two rails with a slight "glow" underlay: wider low-opacity pass
 	-- first, thinner bright pass on top. Reads as a soft cyan beam at
 	-- screen size without needing shader tricks.
 	drawHelixRails(centreColumn, HELIX_CENTRE_X, HELIX_TOP_Y, HELIX_AMP,
 		HELIX_H, HELIX_PERIOD,
-		Color3.fromRGB(70, 140, 200), 6, 72)
+		Color3.fromRGB(70, 140, 200), 6, 96)
 	drawHelixRails(centreColumn, HELIX_CENTRE_X, HELIX_TOP_Y, HELIX_AMP,
-		HELIX_H, HELIX_PERIOD, HOLO_EDGE, 3, 72)
+		HELIX_H, HELIX_PERIOD, HOLO_EDGE, 3, 96)
 
-	-- End caps — small rounded dots where the rails meet at the top
-	-- and bottom tips, matching the reference image's rail terminations.
-	local function makeTipCap(y)
+	-- Bracket caps — horizontal lines connecting the two rails at their
+	-- widest separation at the very top and bottom of the helix, so the
+	-- rails terminate cleanly instead of just dangling at ±A.
+	local function makeBracketCap(y)
 		local cap = Instance.new("Frame")
 		cap.BackgroundColor3 = HOLO_EDGE
 		cap.BorderSizePixel = 0
 		cap.AnchorPoint = Vector2.new(0.5, 0.5)
 		cap.Position = UDim2.fromOffset(HELIX_CENTRE_X, y)
-		cap.Size = UDim2.fromOffset(6, 6)
+		cap.Size = UDim2.fromOffset(HELIX_AMP * 2, 3)
 		cap.ZIndex = (centreColumn.ZIndex or 1) + 2
 		cap.Parent = centreColumn
 		local cc = Instance.new("UICorner")
 		cc.CornerRadius = UDim.new(1, 0)
 		cc.Parent = cap
+
+		-- Small endpoint dots sitting on top of the cap so the join
+		-- reads as a rounded bracket instead of a flat rectangle.
+		for _, sign in ipairs({ -1, 1 }) do
+			local dot = Instance.new("Frame")
+			dot.BackgroundColor3 = HOLO_EDGE
+			dot.BorderSizePixel = 0
+			dot.AnchorPoint = Vector2.new(0.5, 0.5)
+			dot.Position = UDim2.fromOffset(HELIX_CENTRE_X + sign * HELIX_AMP, y)
+			dot.Size = UDim2.fromOffset(6, 6)
+			dot.ZIndex = (centreColumn.ZIndex or 1) + 3
+			dot.Parent = centreColumn
+			local dc = Instance.new("UICorner")
+			dc.CornerRadius = UDim.new(1, 0)
+			dc.Parent = dot
+		end
 	end
-	makeTipCap(HELIX_TOP_Y)
-	makeTipCap(HELIX_TOP_Y + HELIX_H)
+	makeBracketCap(HELIX_TOP_Y)
+	makeBracketCap(HELIX_TOP_Y + HELIX_H)
 
 	-- ── 9 fragment bars ───────────────────────────────────────────────
 	-- F01-F03 strength (top lens), F04-F06 luck (middle lens),
@@ -1055,18 +1077,25 @@ local function openDNAStudyPage(ctx)
 
 	local fragmentRefs = {}
 
-	-- Each lens spans HELIX_PERIOD / 2 = 120 px. Lens i (1-indexed)
-	-- sits at y = HELIX_TOP_Y + (i-1) * 120, height 120. Rungs inside
-	-- the lens sit at local t = 1/4, 2/4, 3/4 so the middle rung lines
-	-- up with the widest point (where sin goes through its extremum).
-	local LENS_H = HELIX_PERIOD / 2  -- 120
+	-- Each lens spans HELIX_PERIOD / 2 = 90 px and lives between two
+	-- consecutive rail crossovers. With the +π/2 phase shift the
+	-- crossovers fall at y = HELIX_TOP_Y + (k + 0.25) * HELIX_PERIOD
+	-- for k = 0, 1, 2, 3 — so the three usable lenses start at
+	--   lens 1: HELIX_TOP_Y + 0.25 * P   (y = 75)
+	--   lens 2: HELIX_TOP_Y + 0.75 * P   (y = 165)
+	--   lens 3: HELIX_TOP_Y + 1.25 * P   (y = 255)
+	-- Half-lens regions above and below host no fragments — they're
+	-- the bracket caps from the reference image.
+	local LENS_H     = HELIX_PERIOD / 2       -- 90
+	local LENS_1_TOP = HELIX_TOP_Y + HELIX_PERIOD * 0.25
 	for lensIdx = 1, LENS_COUNT do
-		local lensTopY = HELIX_TOP_Y + (lensIdx - 1) * LENS_H
+		local lensTopY = LENS_1_TOP + (lensIdx - 1) * LENS_H
 		for rung = 1, BARS_PER_LENS do
 			local t = rung / (BARS_PER_LENS + 1)  -- 1/4, 2/4, 3/4
 			local y = lensTopY + t * LENS_H
-			-- Rail gap at this y, matching drawHelixRails' math.
-			local phase = 2 * math.pi * (y - HELIX_TOP_Y) / HELIX_PERIOD
+			-- Rail gap at this y, matching drawHelixRails' math
+			-- (same +π/2 phase shift).
+			local phase = 2 * math.pi * (y - HELIX_TOP_Y) / HELIX_PERIOD + math.pi * 0.5
 			local gap   = 2 * HELIX_AMP * math.abs(math.sin(phase))
 			local width = gap * LENS_BAR_SCALE
 			local idx = (lensIdx - 1) * BARS_PER_LENS + rung
