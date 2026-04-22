@@ -966,6 +966,29 @@ local function buildMenu()
 		end
 	end
 	updateResponsiveScale()
+	-- ScreenGui.AbsoluteSize's PropertyChangedSignal does not fire
+	-- reliably when the window resizes in Roblox — it's a derived
+	-- value from Camera.ViewportSize. Listen to the camera's
+	-- ViewportSize directly instead (and rehook whenever
+	-- CurrentCamera swaps, e.g. on character respawn). The
+	-- AbsoluteSize listener is kept as a belt-and-suspenders for
+	-- edge cases where it does fire (initial parent, ResetOnSpawn).
+	local viewportConn
+	local function hookCamera(cam)
+		if viewportConn then
+			viewportConn:Disconnect()
+			viewportConn = nil
+		end
+		if cam then
+			viewportConn = cam:GetPropertyChangedSignal("ViewportSize")
+				:Connect(updateResponsiveScale)
+		end
+		updateResponsiveScale()
+	end
+	hookCamera(workspace.CurrentCamera)
+	workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		hookCamera(workspace.CurrentCamera)
+	end)
 	screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateResponsiveScale)
 
 	-- Root fills the scale wrap. Panels live here and position themselves
