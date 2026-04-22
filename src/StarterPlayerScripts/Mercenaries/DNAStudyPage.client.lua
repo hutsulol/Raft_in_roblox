@@ -1374,6 +1374,11 @@ local function openDNAStudyPage(ctx)
 						refreshFromSnapshot(args[2], args[1], args[3])
 					end
 				elseif action == "insertFailed" then
+					-- Roll back the optimistic studyActive flag set by
+					-- the click handler, otherwise the slot stays
+					-- locked after a rejected insert until the next
+					-- snapshot arrives.
+					studyActive = false
 					local reason = args[1]
 					if reason == "busy" then
 						showToast("SLOT BUSY")
@@ -1386,12 +1391,20 @@ local function openDNAStudyPage(ctx)
 			end))
 	end
 
+	-- Short per-click debounce. Without it a rapid double-click can
+	-- fire insertBlood twice in the ~50 ms before the server echoes
+	-- the busy state back, and both requests pass the endsAt guard —
+	-- consuming two capsules for one study.
+	local clickCooldownUntil = 0
+
 	dropZone.MouseButton1Click:Connect(function()
 		if studyActive then
 			showToast("SLOT BUSY")
 			return
 		end
+		if os.clock() < clickCooldownUntil then return end
 		if not dnaResearchEvent or not ctx.mercName then return end
+		clickCooldownUntil = os.clock() + 0.5
 		dnaResearchEvent:FireServer("insertBlood", ctx.mercName)
 	end)
 

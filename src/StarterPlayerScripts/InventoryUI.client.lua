@@ -773,9 +773,22 @@ function renderAllSlots()
 					renderSlot(slot, slotData[i])
 					local data = slotData[i]
 					if data and data.type == "tool" and char then
+						-- Match by Tool INSTANCE, not by Tool.Name —
+						-- otherwise equipping a single tool highlights
+						-- every hotbar slot that holds an item of the
+						-- same name (two EmptyCapsules both lighting
+						-- up, etc.). Fall back to name match only when
+						-- the slot's toolInst ref has gone stale
+						-- (e.g. right after a save/restore round-trip
+						-- that only stored the name).
 						local isEquipped = false
-						for _, t in char:GetChildren() do
-							if t:IsA("Tool") and t.Name == data.toolName then isEquipped = true break end
+						local inst = data.toolInst
+						if inst and inst:IsA("Tool") and inst.Parent == char then
+							isEquipped = true
+						elseif not inst then
+							for _, t in char:GetChildren() do
+								if t:IsA("Tool") and t.Name == data.toolName then isEquipped = true break end
+							end
 						end
 						slot.BackgroundColor3 = isEquipped and COLORS.equipped or COLORS.slotBg
 					else
