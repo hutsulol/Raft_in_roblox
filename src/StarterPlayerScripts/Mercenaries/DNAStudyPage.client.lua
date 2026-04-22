@@ -16,9 +16,16 @@
 --                   this page and reopens HandlingPage with the
 --                   original Handling ctx.
 
-local Players      = game:GetService("Players")
-local RunService   = game:GetService("RunService")
-local TweenService = game:GetService("TweenService")
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local TweenService      = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- Server-owned remote (ServerScriptService/Mercenaries/DNAResearch.server.lua
+-- creates it on script load). Use a 10-second wait so the DNA Study page can
+-- surface a clear warning instead of silently failing if the server script
+-- hasn't registered the remote yet.
+local dnaResearchEvent = ReplicatedStorage:WaitForChild("DNAResearch", 10)
 
 -- ─── Palette (matches HandlingPage/MercenariesMenu's amethyst-dark) ──
 local COLOR_TEXT              = Color3.fromRGB(220, 240, 255)
@@ -1035,11 +1042,198 @@ local function openDNAStudyPage(ctx)
 	helper.ZIndex = 53
 	helper.Parent = sampleCard
 
+	-- ── Countdown overlay inside the drop zone ───────────────────────
+	-- Sits above the flask/drop-label; invisible while the slot is
+	-- idle. When a study is running it:
+	--   * hides the drop-zone prompt,
+	--   * shows a large MM:SS timer and a progress bar,
+	--   * blocks the click until the study completes.
+	local countdownOverlay = Instance.new("Frame")
+	countdownOverlay.Name = "CountdownOverlay"
+	countdownOverlay.BackgroundColor3 = Color3.fromRGB(6, 18, 34)
+	countdownOverlay.BackgroundTransparency = 0.15
+	countdownOverlay.BorderSizePixel = 0
+	countdownOverlay.Size = UDim2.fromScale(1, 1)
+	countdownOverlay.Visible = false
+	countdownOverlay.ZIndex = 55
+	countdownOverlay.Parent = dropZone
+
+	local countdownLabel = Instance.new("TextLabel")
+	countdownLabel.BackgroundTransparency = 1
+	countdownLabel.BorderSizePixel = 0
+	countdownLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	countdownLabel.Position = UDim2.fromScale(0.5, 0.38)
+	countdownLabel.Size = UDim2.new(1, -16, 0, 32)
+	countdownLabel.Font = FONT_TITLE
+	countdownLabel.TextSize = 24
+	countdownLabel.TextColor3 = HOLO_EDGE
+	countdownLabel.TextXAlignment = Enum.TextXAlignment.Center
+	countdownLabel.Text = "00:00"
+	countdownLabel.ZIndex = 56
+	countdownLabel.Parent = countdownOverlay
+
+	local studyingLabel = Instance.new("TextLabel")
+	studyingLabel.BackgroundTransparency = 1
+	studyingLabel.BorderSizePixel = 0
+	studyingLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	studyingLabel.Position = UDim2.fromScale(0.5, 0.62)
+	studyingLabel.Size = UDim2.new(1, -16, 0, 16)
+	studyingLabel.Font = FONT_BODY
+	studyingLabel.TextSize = 11
+	studyingLabel.TextColor3 = COLOR_TEXT_DIM
+	studyingLabel.TextXAlignment = Enum.TextXAlignment.Center
+	studyingLabel.Text = "STUDYING DNA SAMPLE"
+	studyingLabel.ZIndex = 56
+	studyingLabel.Parent = countdownOverlay
+
+	local progressTrack = Instance.new("Frame")
+	progressTrack.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
+	progressTrack.BackgroundTransparency = 0.2
+	progressTrack.BorderSizePixel = 0
+	progressTrack.AnchorPoint = Vector2.new(0.5, 1)
+	progressTrack.Position = UDim2.new(0.5, 0, 1, -12)
+	progressTrack.Size = UDim2.new(1, -24, 0, 4)
+	progressTrack.ZIndex = 56
+	progressTrack.Parent = countdownOverlay
+	local ptStroke = Instance.new("UIStroke")
+	ptStroke.Color     = HOLO_PANEL_BORDER
+	ptStroke.Thickness = 1
+	ptStroke.Parent    = progressTrack
+
+	local progressFill = Instance.new("Frame")
+	progressFill.BackgroundColor3 = HOLO_EDGE
+	progressFill.BorderSizePixel = 0
+	progressFill.Size = UDim2.new(0, 0, 1, 0)
+	progressFill.ZIndex = 57
+	progressFill.Parent = progressTrack
+
+	-- Transient "NO SAMPLE" / "SLOT BUSY" message, shown under the
+	-- drop-label when an insert is rejected by the server.
+	local toast = Instance.new("TextLabel")
+	toast.Name = "Toast"
+	toast.BackgroundTransparency = 1
+	toast.BorderSizePixel = 0
+	toast.AnchorPoint = Vector2.new(0.5, 0.5)
+	toast.Position = UDim2.fromScale(0.5, 0.92)
+	toast.Size = UDim2.new(1, -16, 0, 14)
+	toast.Font = FONT_TITLE
+	toast.TextSize = 11
+	toast.TextColor3 = Color3.fromRGB(255, 160, 140)
+	toast.TextXAlignment = Enum.TextXAlignment.Center
+	toast.TextTransparency = 1
+	toast.Text = ""
+	toast.ZIndex = 56
+	toast.Parent = dropZone
+
+	local toastToken = 0
+	local function showToast(message)
+		toastToken = toastToken + 1
+		local myToken = toastToken
+		toast.Text = message
+		toast.TextTransparency = 0
+		task.delay(2.4, function()
+			if myToken == toastToken then
+				toast.TextTransparency = 1
+			end
+		end)
+	end
+
+	-- ── State machine for the sample slot ────────────────────────────
+	-- Driven by snapshots from DNAResearch.getState / insertBlood /
+	-- the server's study tick. The client's countdown is a simple
+	-- local decrement of `secondsRemaining`; the server fires a fresh
+	-- snapshot when the tick actually completes so we just re-sync
+	-- from that instead of trying to reach zero on our own clock.
+	local studyRemaining = 0
+	local studyDuration  = 60
+	local studyActive    = false
+
+	local function renderSlotFromSnapshot(snapshot)
+		local slot = snapshot and snapshot.activeSlot or nil
+		studyDuration  = (slot and slot.totalDuration) or 60
+		studyRemaining = math.max(0, (slot and slot.secondsRemaining) or 0)
+		studyActive    = (slot ~= nil and slot.bloodType ~= nil and studyRemaining > 0)
+
+		countdownOverlay.Visible = studyActive
+		bigFlask.Visible  = not studyActive
+		dropLabel.Visible = not studyActive
+
+		if studyActive then
+			local mins = math.floor(studyRemaining / 60)
+			local secs = studyRemaining - mins * 60
+			countdownLabel.Text = string.format("%02d:%02d", mins, secs)
+			local pct = 1 - (studyRemaining / math.max(1, studyDuration))
+			progressFill.Size = UDim2.new(math.clamp(pct, 0, 1), 0, 1, 0)
+		end
+	end
+
+	-- Local 1 Hz ticker — only runs while studyActive. Decrements the
+	-- locally-cached remaining seconds and re-renders the MM:SS +
+	-- progress bar. Server still owns the authoritative completion
+	-- event; this is just for smooth UI.
+	table.insert(activeConnections, RunService.Heartbeat:Connect(function(dt)
+		if not studyActive then return end
+		studyRemaining = math.max(0, studyRemaining - dt)
+		local mins = math.floor(studyRemaining / 60)
+		local secs = math.floor(studyRemaining - mins * 60)
+		countdownLabel.Text = string.format("%02d:%02d", mins, secs)
+		local pct = 1 - (studyRemaining / math.max(1, studyDuration))
+		progressFill.Size = UDim2.new(math.clamp(pct, 0, 1), 0, 1, 0)
+		if studyRemaining <= 0 then
+			-- Server will fire 'studyComplete' within ~1 s; hide the
+			-- overlay now so the UI doesn't look stuck on 00:00.
+			studyActive = false
+			countdownOverlay.Visible = false
+			bigFlask.Visible  = true
+			dropLabel.Visible = true
+		end
+	end))
+
+	-- Initial fetch — populates the overlay immediately on page open
+	-- so a study already in progress from a previous session (or a
+	-- Handling→DNA Study round-trip) is reflected right away.
+	if dnaResearchEvent and ctx.mercName then
+		dnaResearchEvent:FireServer("getState", ctx.mercName)
+	end
+
+	-- Server → client frames. Step 12 will extend this switch to also
+	-- repaint the helix fragments / research log / trait tiles; this
+	-- step only handles the slot-state bits.
+	--
+	-- Server call shapes (from DNAResearch.server.lua):
+	--   "state"          mercName, snapshot
+	--   "studyComplete"  mercName, fragmentIndex, snapshot, meta
+	--   "insertFailed"   mercName, reason
+	if dnaResearchEvent then
+		table.insert(activeConnections,
+			dnaResearchEvent.OnClientEvent:Connect(function(action, mercName, ...)
+				if mercName ~= ctx.mercName then return end
+				local args = table.pack(...)
+				if action == "state" then
+					renderSlotFromSnapshot(args[1])
+				elseif action == "studyComplete" then
+					-- args[1] = fragmentIndex, args[2] = snapshot, args[3] = meta
+					renderSlotFromSnapshot(args[2])
+				elseif action == "insertFailed" then
+					local reason = args[1]
+					if reason == "busy" then
+						showToast("SLOT BUSY")
+					elseif reason == "noSample" then
+						showToast("NO MATCHING SAMPLE")
+					else
+						showToast("INSERT FAILED")
+					end
+				end
+			end))
+	end
+
 	dropZone.MouseButton1Click:Connect(function()
-		-- Step 11 replaces this stub with a DNAResearch.insertBlood
-		-- fire + countdown UI. Leaving a print so the click path is
-		-- observable during review.
-		print("[DNAStudyPage] Sample slot clicked for", ctx.mercName)
+		if studyActive then
+			showToast("SLOT BUSY")
+			return
+		end
+		if not dnaResearchEvent or not ctx.mercName then return end
+		dnaResearchEvent:FireServer("insertBlood", ctx.mercName)
 	end)
 
 	-- ── Research Log card (bottom of left column) ─────────────────────
