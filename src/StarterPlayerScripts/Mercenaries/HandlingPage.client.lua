@@ -15,13 +15,20 @@
 --            Selection is tracked across all four tiles.
 --   Step 5 — centre character viewport. Visible 280×320 frame with
 --            corner L brackets + concentric rings + ground glow wraps
---            the intended viewport area; an invisible 160×506 host
---            pixel-matches MercenariesMenu's centreCol so the cached
+--            the intended viewport area; an invisible 160×472 host
+--            mirrors MercenariesMenu's centreCol.slot so the cached
 --            ViewportFrame reparents to identical global coords
 --            (no idle-animation restart, no character jump).
+--   Step 6 — bottom row: detail card + DNA Research card. Detail
+--            card reflects the currently-selected slot (populated
+--            variant for MAIN HAND via the Weapons EQUIP_ITEMS
+--            lookup, empty-placeholder variant for RELIC / SKINS /
+--            ARTIFACTS until those slots gain server state). DNA
+--            card has a helix + fragment bar + STUDY DNA button
+--            wired to a stub; the click-through to the dedicated
+--            DNA Study sub-page lands in Step 7.
 --
--- Still to land: bottom detail + DNA research cards, and finally
--- equip-remote wiring.
+-- Still to land: STUDY DNA navigation + equip-remote wiring.
 
 local Players        = game:GetService("Players")
 local RunService     = game:GetService("RunService")
@@ -39,6 +46,7 @@ local HOLO_EDGE               = Color3.fromRGB(190, 220, 245)
 local HORIZON                 = Color3.fromRGB(80, 140, 190)
 
 local FONT_TITLE = Enum.Font.GothamBold
+local FONT_BODY  = Enum.Font.Gotham
 
 local COLOR_TEXT_MUTE = Color3.fromRGB(100, 125, 155)
 local COLOR_GOLD      = Color3.fromRGB(230, 190, 100)
@@ -242,6 +250,160 @@ local function makeCrownIcon(parent, size, color)
 	peak(0.78, 0.46)
 
 	return c
+end
+
+-- Four-point spark glyph (stat-row prefix on the detail card).
+-- Two crossed thin Frames — same recipe as MercenariesMenu.
+local function makeSparkIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "SparkIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.2))
+	local vert = Instance.new("Frame")
+	vert.AnchorPoint = Vector2.new(0.5, 0.5)
+	vert.Position = UDim2.fromScale(0.5, 0.5)
+	vert.Size = UDim2.fromOffset(thick, size)
+	vert.BackgroundColor3 = color
+	vert.BorderSizePixel = 0
+	vert.Parent = c
+
+	local horiz = Instance.new("Frame")
+	horiz.AnchorPoint = Vector2.new(0.5, 0.5)
+	horiz.Position = UDim2.fromScale(0.5, 0.5)
+	horiz.Size = UDim2.fromOffset(size, thick)
+	horiz.BackgroundColor3 = color
+	horiz.BorderSizePixel = 0
+	horiz.Parent = c
+
+	return c
+end
+
+-- Right-pointing chevron (STUDY DNA button suffix).
+local function makeChevronRight(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "ChevronRight"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.14))
+	local legLen = size * 0.68
+	local top = Instance.new("Frame")
+	top.AnchorPoint = Vector2.new(1, 0.5)
+	top.Position = UDim2.fromScale(0.92, 0.35)
+	top.Size = UDim2.fromOffset(legLen, thick)
+	top.BackgroundColor3 = color
+	top.BorderSizePixel = 0
+	top.Rotation = 45
+	top.Parent = c
+
+	local bot = Instance.new("Frame")
+	bot.AnchorPoint = Vector2.new(1, 0.5)
+	bot.Position = UDim2.fromScale(0.92, 0.65)
+	bot.Size = UDim2.fromOffset(legLen, thick)
+	bot.BackgroundColor3 = color
+	bot.BorderSizePixel = 0
+	bot.Rotation = -45
+	bot.Parent = c
+
+	return c
+end
+
+-- Abstract DNA-helix glyph — two vertical side bars + four short
+-- horizontal rungs at alternating offsets. Not an anatomically correct
+-- double-helix (Roblox Frames can't draw sine curves), but reads as
+-- "genetic thing" at the small size the DNA card uses it.
+local function makeHelixIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "HelixIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size * 1.25)
+	c.Parent = parent
+
+	local railThick = math.max(1, math.floor(size * 0.08))
+	local function rail(xScale, rot)
+		local r = Instance.new("Frame")
+		r.AnchorPoint = Vector2.new(0.5, 0.5)
+		r.Position = UDim2.fromScale(xScale, 0.5)
+		r.Size = UDim2.fromOffset(railThick, size * 1.2)
+		r.BackgroundColor3 = color
+		r.BorderSizePixel = 0
+		r.Rotation = rot
+		r.Parent = c
+	end
+	rail(0.26, -6)
+	rail(0.74,  6)
+
+	local rungThick = math.max(1, math.floor(size * 0.07))
+	local rungs = 4
+	for i = 1, rungs do
+		local t = (i - 0.5) / rungs
+		local inset = math.sin(t * math.pi) * size * 0.12
+		local rung = Instance.new("Frame")
+		rung.AnchorPoint = Vector2.new(0.5, 0.5)
+		rung.Position = UDim2.fromScale(0.5, t)
+		rung.Size = UDim2.fromOffset(size * 0.5 - inset, rungThick)
+		rung.BackgroundColor3 = color
+		rung.BorderSizePixel = 0
+		rung.BackgroundTransparency = 0.35
+		rung.Parent = c
+	end
+
+	return c
+end
+
+-- Segmented holo progress bar (DNA-fragment indicator). Dark track,
+-- holo-gradient fill, optional segment dividers. Returns (track, fill)
+-- so callers can resize the fill. Mirrors MercenariesMenu.makeHoloBar.
+local function makeHoloBar(parent, size, segments)
+	local track = Instance.new("Frame")
+	track.Name = "HoloBar"
+	track.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
+	track.BackgroundTransparency = 0.2
+	track.BorderSizePixel = 0
+	track.Size = size
+	track.Parent = parent
+
+	local s = Instance.new("UIStroke")
+	s.Color     = HOLO_PANEL_BORDER
+	s.Thickness = 1
+	s.Parent    = track
+
+	local fill = Instance.new("Frame")
+	fill.Name = "Fill"
+	fill.BackgroundColor3 = HOLO_EDGE
+	fill.BorderSizePixel = 0
+	fill.Size = UDim2.new(0, 0, 1, 0)
+	fill.Parent = track
+	local fGrad = Instance.new("UIGradient")
+	fGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(140, 200, 235)),
+		ColorSequenceKeypoint.new(1, HOLO_EDGE),
+	})
+	fGrad.Parent = fill
+
+	if segments and segments > 0 then
+		for i = 1, segments - 1 do
+			local d = Instance.new("Frame")
+			d.Name = "Seg" .. i
+			d.AnchorPoint = Vector2.new(0.5, 0)
+			d.Position = UDim2.fromScale(i / segments, 0)
+			d.Size = UDim2.new(0, 1, 1, 0)
+			d.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
+			d.BackgroundTransparency = 0.35
+			d.BorderSizePixel = 0
+			d.ZIndex = (track.ZIndex or 1) + 2
+			d.Parent = track
+		end
+	end
+
+	return track, fill
 end
 
 -- Four L-shaped corner brackets pinned to the inside corners of
@@ -1166,6 +1328,399 @@ local function openHandlingPage(ctx)
 			vp.ZIndex = 60 -- above rings / glow / L brackets
 		end
 	end
+
+	-- ── Bottom row: detail card + DNA Research card ──────────────────
+	-- Two 360×130 holo panels side-by-side at the foot of the artboard.
+	-- Detail card reflects the currently-selected slot (rebuilt in full
+	-- on selectSlot so populated / empty variants share no stale UI
+	-- state). DNA card is static placeholder data for now — the STUDY
+	-- DNA click-through to the dedicated DNA Study sub-page lands in
+	-- Step 7 (commit-numbering) alongside the equip-remote wiring.
+
+	local BOTTOM_CARD_W = 360
+	local BOTTOM_CARD_H = 130
+	local BOTTOM_CARD_Y = 452
+	local BOTTOM_CARD_GAP = 20
+	local BOTTOM_LEFT_X  = (REFERENCE_W - (BOTTOM_CARD_W * 2 + BOTTOM_CARD_GAP)) / 2
+	local BOTTOM_RIGHT_X = BOTTOM_LEFT_X + BOTTOM_CARD_W + BOTTOM_CARD_GAP
+
+	-- Slot-card metadata — drives the detail card's icon / label /
+	-- data-category lookup when selectSlot fires. `category` is the
+	-- EQUIP_ITEMS key to search for the equipped item; nil = no server
+	-- data, render the empty-placeholder variant.
+	local SLOT_DEFS = {
+		MainHand  = { label = "MAIN HAND", iconBuilder = makeWeaponIcon,  category = "Weapons" },
+		Relic     = { label = "RELIC",     iconBuilder = makeCrownIcon,   category = nil       },
+		Skins     = { label = "SKINS",     iconBuilder = makeGemIcon,     category = nil       },
+		Artifacts = { label = "ARTIFACTS", iconBuilder = makeDiamondIcon, category = nil       },
+	}
+
+	local function resolveSlotItem(slotKey)
+		local def = SLOT_DEFS[slotKey]
+		if not def or not def.category then return nil end
+		local items = ctx.equipItems and ctx.equipItems[def.category]
+		if not items then return nil end
+		if slotKey == "MainHand" then
+			for _, w in ipairs(items) do
+				if w.id == equippedWeaponId then return w end
+			end
+		end
+		return nil
+	end
+
+	-- Detail card shell
+	local detailCard = Instance.new("Frame")
+	detailCard.Name = "DetailCard"
+	detailCard.BackgroundColor3 = HOLO_PANEL_FILL
+	detailCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	detailCard.BorderSizePixel = 0
+	detailCard.Position = UDim2.fromOffset(BOTTOM_LEFT_X, BOTTOM_CARD_Y)
+	detailCard.Size = UDim2.fromOffset(BOTTOM_CARD_W, BOTTOM_CARD_H)
+	detailCard.ZIndex = 55
+	detailCard.Parent = scaleWrap
+	local dcStroke = Instance.new("UIStroke")
+	dcStroke.Color     = HOLO_PANEL_BORDER
+	dcStroke.Thickness = 1
+	dcStroke.Parent    = detailCard
+	table.insert(motesOccludeList, detailCard)
+
+	local detailPad = 14
+	local detailContent = Instance.new("Frame")
+	detailContent.Name = "Content"
+	detailContent.BackgroundTransparency = 1
+	detailContent.BorderSizePixel = 0
+	detailContent.Position = UDim2.fromOffset(detailPad, detailPad)
+	detailContent.Size = UDim2.new(1, -detailPad * 2, 1, -detailPad * 2)
+	detailContent.ZIndex = 56
+	detailContent.Parent = detailCard
+
+	local function refreshDetailCard(slotKey)
+		for _, child in detailContent:GetChildren() do child:Destroy() end
+
+		local def = SLOT_DEFS[slotKey] or SLOT_DEFS.MainHand
+		local item = resolveSlotItem(slotKey)
+
+		if item then
+			-- Populated variant: icon + name + stars/tag + divider + stat
+			local iconBox = Instance.new("Frame")
+			iconBox.Name = "IconBox"
+			iconBox.BackgroundColor3 = Color3.fromRGB(16, 34, 58)
+			iconBox.BackgroundTransparency = 0.3
+			iconBox.BorderSizePixel = 0
+			iconBox.Position = UDim2.fromOffset(0, 0)
+			iconBox.Size = UDim2.fromOffset(40, 40)
+			iconBox.ZIndex = 57
+			iconBox.Parent = detailContent
+			local iconStroke = Instance.new("UIStroke")
+			iconStroke.Color     = HOLO_PANEL_BORDER
+			iconStroke.Thickness = 1
+			iconStroke.Parent    = iconBox
+
+			local glyph = def.iconBuilder(iconBox, 26, HOLO_EDGE)
+			if glyph then
+				glyph.AnchorPoint = Vector2.new(0.5, 0.5)
+				glyph.Position = UDim2.fromScale(0.5, 0.5)
+				glyph.ZIndex = 58
+			end
+
+			local textX = 50
+			local nameLabel = Instance.new("TextLabel")
+			nameLabel.Name = "Name"
+			nameLabel.BackgroundTransparency = 1
+			nameLabel.BorderSizePixel = 0
+			nameLabel.Position = UDim2.fromOffset(textX, 0)
+			nameLabel.Size = UDim2.new(1, -textX, 0, 22)
+			nameLabel.Font = FONT_TITLE
+			nameLabel.TextSize = 17
+			nameLabel.TextColor3 = COLOR_TEXT
+			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+			nameLabel.Text = item.displayName or item.id or "—"
+			nameLabel.ZIndex = 57
+			nameLabel.Parent = detailContent
+
+			local starRow = makeStarRow(detailContent, item.stars or 1, 5, 9, COLOR_GOLD)
+			starRow.Name = "Stars"
+			starRow.AnchorPoint = Vector2.new(0, 0)
+			starRow.Position = UDim2.fromOffset(textX, 26)
+			starRow.ZIndex = 57
+
+			local tag = Instance.new("TextLabel")
+			tag.Name = "SlotTag"
+			tag.BackgroundTransparency = 1
+			tag.BorderSizePixel = 0
+			tag.Position = UDim2.fromOffset(textX + 5 * 9 + 4 * 2 + 10, 24)
+			tag.Size = UDim2.fromOffset(140, 14)
+			tag.Font = FONT_TITLE
+			tag.TextSize = 11
+			tag.TextColor3 = COLOR_TEXT_DIM
+			tag.TextXAlignment = Enum.TextXAlignment.Left
+			tag.Text = def.label
+			tag.ZIndex = 57
+			tag.Parent = detailContent
+
+			local divider = Instance.new("Frame")
+			divider.Name = "Divider"
+			divider.BackgroundColor3 = HOLO_PANEL_BORDER
+			divider.BackgroundTransparency = 0.4
+			divider.BorderSizePixel = 0
+			divider.Position = UDim2.fromOffset(0, 58)
+			divider.Size = UDim2.new(1, 0, 0, 1)
+			divider.ZIndex = 57
+			divider.Parent = detailContent
+
+			local statRow = Instance.new("Frame")
+			statRow.Name = "StatRow"
+			statRow.BackgroundTransparency = 1
+			statRow.BorderSizePixel = 0
+			statRow.Position = UDim2.fromOffset(0, 72)
+			statRow.Size = UDim2.new(1, 0, 0, 20)
+			statRow.ZIndex = 57
+			statRow.Parent = detailContent
+
+			local spark = makeSparkIcon(statRow, 12, HOLO_EDGE)
+			spark.AnchorPoint = Vector2.new(0, 0.5)
+			spark.Position = UDim2.new(0, 0, 0.5, 0)
+			spark.ZIndex = 58
+
+			local statLbl = Instance.new("TextLabel")
+			statLbl.BackgroundTransparency = 1
+			statLbl.BorderSizePixel = 0
+			statLbl.Position = UDim2.fromOffset(18, 0)
+			statLbl.Size = UDim2.new(1, -18, 1, 0)
+			statLbl.Font = FONT_BODY
+			statLbl.TextSize = 13
+			statLbl.TextColor3 = COLOR_TEXT_DIM
+			statLbl.TextXAlignment = Enum.TextXAlignment.Left
+			statLbl.Text = "Damage"
+			statLbl.ZIndex = 58
+			statLbl.Parent = statRow
+
+			local statVal = Instance.new("TextLabel")
+			statVal.BackgroundTransparency = 1
+			statVal.BorderSizePixel = 0
+			statVal.AnchorPoint = Vector2.new(1, 0)
+			statVal.Position = UDim2.fromScale(1, 0)
+			statVal.Size = UDim2.fromOffset(60, 20)
+			statVal.Font = FONT_TITLE
+			statVal.TextSize = 15
+			statVal.TextColor3 = HOLO_EDGE
+			statVal.TextXAlignment = Enum.TextXAlignment.Right
+			statVal.Text = string.format("+%d", item.baseAttack or 0)
+			statVal.ZIndex = 58
+			statVal.Parent = statRow
+		else
+			-- Empty variant: centred slot label + "not equipped" subtext
+			local emptyHeader = Instance.new("TextLabel")
+			emptyHeader.Name = "EmptyHeader"
+			emptyHeader.BackgroundTransparency = 1
+			emptyHeader.BorderSizePixel = 0
+			emptyHeader.Position = UDim2.fromScale(0, 0.25)
+			emptyHeader.Size = UDim2.new(1, 0, 0, 22)
+			emptyHeader.Font = FONT_TITLE
+			emptyHeader.TextSize = 17
+			emptyHeader.TextColor3 = COLOR_TEXT_DIM
+			emptyHeader.TextXAlignment = Enum.TextXAlignment.Center
+			emptyHeader.Text = def.label
+			emptyHeader.ZIndex = 57
+			emptyHeader.Parent = detailContent
+
+			local emptyBody = Instance.new("TextLabel")
+			emptyBody.Name = "EmptyBody"
+			emptyBody.BackgroundTransparency = 1
+			emptyBody.BorderSizePixel = 0
+			emptyBody.Position = UDim2.fromScale(0, 0.55)
+			emptyBody.Size = UDim2.new(1, 0, 0, 18)
+			emptyBody.Font = FONT_BODY
+			emptyBody.TextSize = 13
+			emptyBody.TextColor3 = COLOR_TEXT_MUTE
+			emptyBody.TextXAlignment = Enum.TextXAlignment.Center
+			emptyBody.Text = "No " .. def.label:lower() .. " equipped"
+			emptyBody.ZIndex = 57
+			emptyBody.Parent = detailContent
+		end
+	end
+
+	-- Extend selectSlot to also refresh the detail card. The tile
+	-- onClick closures captured `selectSlot` as a mutable upvalue, so
+	-- reassigning it here is enough — their next click picks up the
+	-- extended version automatically (no reconnection needed).
+	local baseSelectSlot = selectSlot
+	selectSlot = function(slotKey)
+		baseSelectSlot(slotKey)
+		refreshDetailCard(slotKey)
+	end
+	refreshDetailCard(selectedSlot)
+
+	-- DNA Research card (placeholder data for now)
+	local dnaCard = Instance.new("Frame")
+	dnaCard.Name = "DnaCard"
+	dnaCard.BackgroundColor3 = HOLO_PANEL_FILL
+	dnaCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	dnaCard.BorderSizePixel = 0
+	dnaCard.Position = UDim2.fromOffset(BOTTOM_RIGHT_X, BOTTOM_CARD_Y)
+	dnaCard.Size = UDim2.fromOffset(BOTTOM_CARD_W, BOTTOM_CARD_H)
+	dnaCard.ZIndex = 55
+	dnaCard.Parent = scaleWrap
+	local dnStroke = Instance.new("UIStroke")
+	dnStroke.Color     = HOLO_PANEL_BORDER
+	dnStroke.Thickness = 1
+	dnStroke.Parent    = dnaCard
+	table.insert(motesOccludeList, dnaCard)
+
+	local dnaPad = 14
+	local dnaContent = Instance.new("Frame")
+	dnaContent.BackgroundTransparency = 1
+	dnaContent.BorderSizePixel = 0
+	dnaContent.Position = UDim2.fromOffset(dnaPad, dnaPad)
+	dnaContent.Size = UDim2.new(1, -dnaPad * 2, 1, -dnaPad * 2)
+	dnaContent.ZIndex = 56
+	dnaContent.Parent = dnaCard
+
+	-- Header: helix glyph (small) + DNA RESEARCH title + NN% (right)
+	local dnaHeader = Instance.new("Frame")
+	dnaHeader.BackgroundTransparency = 1
+	dnaHeader.BorderSizePixel = 0
+	dnaHeader.Size = UDim2.new(1, 0, 0, 18)
+	dnaHeader.ZIndex = 57
+	dnaHeader.Parent = dnaContent
+
+	local dnaHeaderGlyph = makeHelixIcon(dnaHeader, 10, HOLO_EDGE)
+	dnaHeaderGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	dnaHeaderGlyph.Position = UDim2.new(0, 0, 0.5, 0)
+	dnaHeaderGlyph.ZIndex = 58
+
+	local dnaTitle = Instance.new("TextLabel")
+	dnaTitle.BackgroundTransparency = 1
+	dnaTitle.BorderSizePixel = 0
+	dnaTitle.Position = UDim2.fromOffset(18, 0)
+	dnaTitle.Size = UDim2.new(1, -58, 1, 0)
+	dnaTitle.Font = FONT_TITLE
+	dnaTitle.TextSize = 13
+	dnaTitle.TextColor3 = COLOR_TEXT
+	dnaTitle.TextXAlignment = Enum.TextXAlignment.Left
+	dnaTitle.Text = "DNA RESEARCH"
+	dnaTitle.ZIndex = 58
+	dnaTitle.Parent = dnaHeader
+
+	-- Placeholder progress numbers — real values get wired in a later step.
+	local FRAGMENTS_DECODED = 10
+	local FRAGMENTS_TOTAL   = 16
+	local progressPct       = math.floor((FRAGMENTS_DECODED / FRAGMENTS_TOTAL) * 100 + 0.5)
+
+	local dnaPct = Instance.new("TextLabel")
+	dnaPct.BackgroundTransparency = 1
+	dnaPct.BorderSizePixel = 0
+	dnaPct.AnchorPoint = Vector2.new(1, 0)
+	dnaPct.Position = UDim2.fromScale(1, 0)
+	dnaPct.Size = UDim2.fromOffset(50, 18)
+	dnaPct.Font = FONT_TITLE
+	dnaPct.TextSize = 13
+	dnaPct.TextColor3 = HOLO_EDGE
+	dnaPct.TextXAlignment = Enum.TextXAlignment.Right
+	dnaPct.Text = progressPct .. "%"
+	dnaPct.ZIndex = 58
+	dnaPct.Parent = dnaHeader
+
+	-- Body: large helix on the left, fragments / bar / subtext stack on right
+	local dnaBody = Instance.new("Frame")
+	dnaBody.BackgroundTransparency = 1
+	dnaBody.BorderSizePixel = 0
+	dnaBody.Position = UDim2.fromOffset(0, 24)
+	dnaBody.Size = UDim2.new(1, 0, 0, 52)
+	dnaBody.ZIndex = 57
+	dnaBody.Parent = dnaContent
+
+	local bigHelix = makeHelixIcon(dnaBody, 28, HOLO_EDGE)
+	bigHelix.AnchorPoint = Vector2.new(0, 0.5)
+	bigHelix.Position = UDim2.new(0, 4, 0.5, 0)
+	bigHelix.ZIndex = 58
+
+	local fragmentsLbl = Instance.new("TextLabel")
+	fragmentsLbl.BackgroundTransparency = 1
+	fragmentsLbl.BorderSizePixel = 0
+	fragmentsLbl.Position = UDim2.fromOffset(56, 0)
+	fragmentsLbl.Size = UDim2.new(1, -56, 0, 16)
+	fragmentsLbl.Font = FONT_BODY
+	fragmentsLbl.TextSize = 13
+	fragmentsLbl.TextColor3 = COLOR_TEXT_DIM
+	fragmentsLbl.TextXAlignment = Enum.TextXAlignment.Left
+	fragmentsLbl.RichText = true
+	fragmentsLbl.Text = string.format(
+		"Fragments decoded: <b><font color=\"rgb(220,240,255)\">%d/%d</font></b>",
+		FRAGMENTS_DECODED, FRAGMENTS_TOTAL)
+	fragmentsLbl.ZIndex = 58
+	fragmentsLbl.Parent = dnaBody
+
+	local barTrack, barFill = makeHoloBar(
+		dnaBody,
+		UDim2.new(1, -60, 0, 6),
+		FRAGMENTS_TOTAL)
+	barTrack.Position = UDim2.fromOffset(56, 20)
+	barTrack.ZIndex = 58
+	barFill.Size = UDim2.new(FRAGMENTS_DECODED / FRAGMENTS_TOTAL, 0, 1, 0)
+
+	local dnaSubtext = Instance.new("TextLabel")
+	dnaSubtext.BackgroundTransparency = 1
+	dnaSubtext.BorderSizePixel = 0
+	dnaSubtext.Position = UDim2.fromOffset(56, 30)
+	dnaSubtext.Size = UDim2.new(1, -56, 0, 16)
+	dnaSubtext.Font = FONT_BODY
+	dnaSubtext.TextSize = 11
+	dnaSubtext.TextColor3 = COLOR_TEXT_MUTE
+	dnaSubtext.TextXAlignment = Enum.TextXAlignment.Left
+	dnaSubtext.Text = "Hunt more pirates to decode additional DNA fragments."
+	dnaSubtext.ZIndex = 58
+	dnaSubtext.Parent = dnaBody
+
+	-- STUDY DNA button
+	local studyBtn = Instance.new("TextButton")
+	studyBtn.Name = "StudyDna"
+	studyBtn.BackgroundColor3 = Color3.fromRGB(18, 44, 78)
+	studyBtn.BackgroundTransparency = 0.1
+	studyBtn.BorderSizePixel = 0
+	studyBtn.AnchorPoint = Vector2.new(0, 1)
+	studyBtn.Position = UDim2.new(0, 0, 1, 0)
+	studyBtn.Size = UDim2.new(1, 0, 0, 26)
+	studyBtn.AutoButtonColor = true
+	studyBtn.Text = ""
+	studyBtn.ZIndex = 57
+	studyBtn.Parent = dnaContent
+	local sbStroke = Instance.new("UIStroke")
+	sbStroke.Color     = HOLO_EDGE
+	sbStroke.Thickness = 1
+	sbStroke.Parent    = studyBtn
+	local sbGrad = Instance.new("UIGradient")
+	sbGrad.Rotation = 90
+	sbGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 90, 150)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 50, 90)),
+	})
+	sbGrad.Parent = studyBtn
+
+	local studyLbl = Instance.new("TextLabel")
+	studyLbl.BackgroundTransparency = 1
+	studyLbl.BorderSizePixel = 0
+	studyLbl.AnchorPoint = Vector2.new(0.5, 0.5)
+	studyLbl.Position = UDim2.fromScale(0.5, 0.5)
+	studyLbl.Size = UDim2.fromScale(1, 1)
+	studyLbl.Font = FONT_TITLE
+	studyLbl.TextSize = 14
+	studyLbl.TextColor3 = COLOR_TEXT
+	studyLbl.Text = "STUDY DNA"
+	studyLbl.ZIndex = 58
+	studyLbl.Parent = studyBtn
+
+	local studyChev = makeChevronRight(studyBtn, 12, COLOR_TEXT)
+	studyChev.AnchorPoint = Vector2.new(1, 0.5)
+	studyChev.Position = UDim2.new(1, -14, 0.5, 0)
+	studyChev.ZIndex = 58
+
+	studyBtn.MouseButton1Click:Connect(function()
+		-- Stub — Step 7 (commit-numbering) will close the Handling page
+		-- and open the dedicated DNA Study sub-page per the Claude
+		-- Design `05 · DNA Study` mockup.
+		print("[HandlingPage] STUDY DNA clicked (stub)")
+	end)
 
 	-- Force the first scale computation now that the refs are all
 	-- set (the earlier updateResponsiveScale() call happened before
