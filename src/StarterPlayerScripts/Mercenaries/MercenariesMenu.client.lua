@@ -1965,14 +1965,14 @@ buildPage = function(mercNames)
 	-- from the currently-equipped main-hand weapon on the selected merc.
 	local profCard = Instance.new("Frame")
 	profCard.Name = "ProfessionCard"
-	profCard.AnchorPoint = Vector2.new(0.5, 0)
-	profCard.Position = UDim2.new(0.5, 0, 0, -124)
+	profCard.AnchorPoint = Vector2.new(0, 1)
+	profCard.Position = UDim2.fromOffset(leftCol.Position.X.Offset, leftCol.Position.Y.Offset - 10)
 	profCard.Size = UDim2.fromOffset(240, 59)
 	profCard.BackgroundColor3 = HOLO_PANEL_FILL
 	profCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	profCard.BorderSizePixel = 0
 	profCard.ZIndex = 6
-	profCard.Parent = slot
+	profCard.Parent = scaleWrap
 	local profStroke = Instance.new("UIStroke")
 	profStroke.Color = HOLO_EDGE
 	profStroke.Thickness = 1
