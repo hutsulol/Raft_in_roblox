@@ -35,6 +35,8 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 -- ─── Constants ────────────────────────────────────────────────────────
 local FRAGMENT_COUNT     = 16
 local STUDY_DURATION     = 60   -- seconds per study tick
+local STUDY_FILL_PCT     = 10   -- % each completed study tick adds
+local TICK_INTERVAL      = 1    -- how often the server checks for expired slots
 local AUTO_SAVE_INTERVAL = 120  -- seconds, mirrors InventoryManager
 
 _G.DNAResearch_FragmentCount = FRAGMENT_COUNT
@@ -256,6 +258,63 @@ task.spawn(function()
 		task.wait(AUTO_SAVE_INTERVAL)
 		for _, player in Players:GetPlayers() do
 			task.spawn(saveState, player)
+		end
+	end
+end)
+
+-- ─── Study tick ───────────────────────────────────────────────────────
+-- Scans every TICK_INTERVAL seconds for merc slots whose endsAt has
+-- elapsed. Each finished study picks a uniform-random fragment and
+-- adds STUDY_FILL_PCT (clamped at 100). The active slot is cleared so
+-- the client UI knows it's safe to insert another sample, and a
+-- 'studyComplete' event is fired so the client can animate the
+-- specific fragment that advanced (plus 'state' carries the full
+-- snapshot for anything that diffs).
+--
+-- Bar-completion rewards (stats / level / upgrade point / research
+-- point) land in Step 4 — see the TODO at `wasFull` below.
+
+local function applyStudyTick(player, mercName, mercState)
+	local idx = math.random(1, FRAGMENT_COUNT)
+	local before = mercState.fragments[idx] or 0
+	local after  = math.clamp(before + STUDY_FILL_PCT, 0, 100)
+	mercState.fragments[idx] = after
+
+	mercState.activeSlot.bloodType = nil
+	mercState.activeSlot.endsAt    = 0
+
+	local justCompleted = (before < 100 and after >= 100)
+	-- Step 4 TODO: if justCompleted, roll the corresponding stat and
+	-- grant level / upgrade point / research point here.
+	local _ = justCompleted
+
+	local snapshot = snapshotMerc(mercState)
+	dnaEvent:FireClient(player, "studyComplete", mercName, idx, snapshot)
+	dnaEvent:FireClient(player, "state", mercName, snapshot)
+end
+
+task.spawn(function()
+	while true do
+		task.wait(TICK_INTERVAL)
+		local now = os.time()
+		for player, playerState in pairs(states) do
+			if player.Parent then
+				for mercName, mercState in pairs(playerState) do
+					local slot = mercState.activeSlot
+					if slot and slot.endsAt and slot.endsAt > 0 and slot.endsAt <= now then
+						-- pcall so a single merc's tick error doesn't kill
+						-- the whole loop for every other player.
+						local ok, err = pcall(applyStudyTick, player, mercName, mercState)
+						if not ok then
+							warn("[DNAResearch] tick error for", player.Name, mercName, err)
+							-- Still clear the slot so we don't re-enter the
+							-- error every second.
+							mercState.activeSlot.bloodType = nil
+							mercState.activeSlot.endsAt    = 0
+						end
+					end
+				end
+			end
 		end
 	end
 end)
