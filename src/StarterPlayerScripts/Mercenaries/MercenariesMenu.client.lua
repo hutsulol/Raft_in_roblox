@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
 local SoundService      = game:GetService("SoundService")
 local RunService        = game:GetService("RunService")
+local TextService       = game:GetService("TextService")
 
 local player = Players.LocalPlayer
 
@@ -67,6 +68,7 @@ local ICON_PIRATE        = "rbxassetid://86890035031466"
 local STAR_EMPTY         = "rbxassetid://96860361998800"
 local STAR_FULL          = "rbxassetid://128398990741410"
 local STAR_HALF          = "rbxassetid://97995242534538"
+local ICON_PROF_FISHER   = "rbxassetid://109092403607736"
 
 -- Per-mercenary data
 local MERC_THEMES = {
@@ -1855,6 +1857,7 @@ buildPage = function(mercNames)
 	metaBar.BorderSizePixel = 0
 	metaBar.Position = UDim2.fromOffset(0, META_TOP_OFFSET)
 	metaBar.Size = UDim2.new(1, 0, 0, META_HEIGHT)
+	metaBar.Visible = false -- hidden per feedback: remove top "Pirate + stars" strip
 	metaBar.Parent = centreCol
 	local metaStroke = Instance.new("UIStroke")
 	metaStroke.Color     = HOLO_PANEL_LBRACKET
@@ -1926,7 +1929,7 @@ buildPage = function(mercNames)
 		end
 	end
 
-	-- ── Character slot (rings + ground glow + ViewportFrame) ──────────
+	-- ── Character slot (ground glow + ViewportFrame) ───────────────────
 	local slot = Instance.new("Frame")
 	slot.Name = "CharacterSlot"
 	slot.BackgroundTransparency = 1
@@ -1959,30 +1962,86 @@ buildPage = function(mercNames)
 	groundGrad.Rotation = 0
 	groundGrad.Parent = ground
 
-	-- Concentric rim rings behind the character, slightly above centre
-	-- so the ViewportFrame sits inside them.
-	local function rimCircle(sizePx, strokeColor, strokeTransparency)
-		local r = Instance.new("Frame")
-		r.Name = "RimCircle"
-		r.AnchorPoint = Vector2.new(0.5, 0.5)
-		r.Position = UDim2.fromScale(0.5, 0.48)
-		r.Size = UDim2.fromOffset(sizePx, sizePx)
-		r.BackgroundTransparency = 1
-		r.BorderSizePixel = 0
-		r.ZIndex = 2
-		r.Parent = slot
-		local rc = Instance.new("UICorner")
-		rc.CornerRadius = UDim.new(1, 0)
-		rc.Parent = r
-		local rs = Instance.new("UIStroke")
-		rs.Color        = strokeColor
-		rs.Thickness    = 1
-		rs.Transparency = strokeTransparency or 0
-		rs.Parent       = r
-		return r
+	-- Profession block above the mercenary model. Profession is derived
+	-- from the currently-equipped main-hand weapon on the selected merc.
+	local profCard = Instance.new("Frame")
+	profCard.Name = "ProfessionCard"
+	profCard.AnchorPoint = Vector2.new(0, 1)
+	profCard.Position = UDim2.fromOffset(leftCol.Position.X.Offset, leftCol.Position.Y.Offset - 10)
+	profCard.Size = UDim2.fromOffset(240, 59)
+	profCard.BackgroundColor3 = HOLO_PANEL_FILL
+	profCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	profCard.BorderSizePixel = 0
+	profCard.ZIndex = 6
+	profCard.Parent = scaleWrap
+	local profStroke = Instance.new("UIStroke")
+	profStroke.Color = HOLO_EDGE
+	profStroke.Thickness = 1
+	profStroke.Parent = profCard
+
+	local profIconRing = Instance.new("Frame")
+	profIconRing.Name = "IconRing"
+	profIconRing.AnchorPoint = Vector2.new(0, 0.5)
+	profIconRing.Position = UDim2.new(0, 11, 0.5, 0)
+	profIconRing.Size = UDim2.fromOffset(42, 42)
+	profIconRing.BackgroundTransparency = 1
+	profIconRing.BorderSizePixel = 0
+	profIconRing.ZIndex = 7
+	profIconRing.Parent = profCard
+	local profIconCorner = Instance.new("UICorner")
+	profIconCorner.CornerRadius = UDim.new(1, 0)
+	profIconCorner.Parent = profIconRing
+	local profIconStroke = Instance.new("UIStroke")
+	profIconStroke.Color = HOLO_EDGE
+	profIconStroke.Thickness = 1
+	profIconStroke.Transparency = 0.25
+	profIconStroke.Parent = profIconRing
+
+	local profIconImage = Instance.new("ImageLabel")
+	profIconImage.Name = "IconImage"
+	profIconImage.BackgroundTransparency = 1
+	profIconImage.BorderSizePixel = 0
+	profIconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+	profIconImage.Position = UDim2.fromScale(0.5, 0.5)
+	profIconImage.Size = UDim2.fromOffset(24, 24)
+	profIconImage.Image = ICON_PROF_FISHER
+	profIconImage.ImageColor3 = COLOR_TEXT
+	profIconImage.ScaleType = Enum.ScaleType.Fit
+	profIconImage.ZIndex = 8
+	profIconImage.Parent = profIconRing
+
+	local profIconLetter = makeLabel(profIconRing, "A", FONT_TITLE, 20, COLOR_TEXT, Enum.TextXAlignment.Center)
+	profIconLetter.Size = UDim2.fromScale(1, 1)
+	profIconLetter.ZIndex = 8
+	profIconLetter.Visible = false
+
+	local profTag = makeLabel(profCard, "PROFESSION:", FONT_TITLE, 14, COLOR_TEXT_DIM)
+	profTag.Position = UDim2.fromOffset(62, 10)
+	profTag.Size = UDim2.fromOffset(160, 16)
+	profTag.ZIndex = 7
+
+	local profValue = makeLabel(profCard, "ASSISTANT", FONT_TITLE, 24, COLOR_TEXT)
+	profValue.Position = UDim2.fromOffset(62, 24)
+	profValue.Size = UDim2.fromOffset(168, 26)
+	profValue.ZIndex = 7
+
+	local function layoutProfessionCard(roleText)
+		local rightEdge = leftCol.Position.X.Offset + leftCol.Size.X.Offset
+		local textX = 62
+		local rightPad = 10
+
+		local tagW = TextService:GetTextSize("PROFESSION:", 14, FONT_TITLE, Vector2.new(1000, 1000)).X
+		local roleW = TextService:GetTextSize(roleText, 24, FONT_TITLE, Vector2.new(1000, 1000)).X
+		local textW = math.max(tagW, roleW)
+
+		local cardW = math.max(170, textX + textW + rightPad)
+		profCard.Size = UDim2.fromOffset(cardW, 59)
+		profCard.Position = UDim2.fromOffset(rightEdge - cardW, leftCol.Position.Y.Offset - 10)
+
+		profTag.Size = UDim2.fromOffset(textW, 16)
+		profValue.Size = UDim2.fromOffset(textW, 26)
 	end
-	rimCircle(340, HOLO_EDGE,          0.70) -- outer faint
-	rimCircle(280, HOLO_PANEL_BORDER,  0.55) -- inner denser
+	layoutProfessionCard("ASSISTANT")
 
 	-- ── Handling button ──────────────────────────────────────────────
 	-- Gradient pill floating at the foot of the character slot, matching
@@ -2073,6 +2132,26 @@ buildPage = function(mercNames)
 		local mercFolder = player:FindFirstChild("Mercenaries")
 		local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
 		local weaponId = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+
+		local profession = "ASSISTANT"
+		if weaponId == "FishingRod" then
+			profession = "FISHERMAN"
+		elseif weaponId == "Sword" then
+			profession = "WARRIOR"
+		end
+		profValue.Text = profession
+		layoutProfessionCard(profession)
+		if profession == "FISHERMAN" then
+			profIconImage.Image = ICON_PROF_FISHER
+			profIconImage.ImageTransparency = 0
+			profIconLetter.Visible = false
+		else
+			profIconImage.Image = ICON_PROF_FISHER
+			profIconImage.ImageTransparency = 1
+			profIconLetter.Text = (profession == "WARRIOR") and "W" or "A"
+			profIconLetter.Visible = true
+		end
+
 		local vp = buildMercViewport(slot, mercName, weaponId)
 		if vp then
 			vp.ZIndex = 5 -- render on top of rings + glow
