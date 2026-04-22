@@ -56,7 +56,7 @@ local COLOR_TEXT_MUTE = Color3.fromRGB(100, 125, 155)
 local COLOR_GOLD      = Color3.fromRGB(230, 190, 100)
 local DNA_RESEARCH_ICON = "rbxassetid://78141836386820"
 local SKINS_TILE_IMAGE  = "rbxassetid://86890035031466"
-local MAIN_HAND_TILE_IMAGE = "rbxassetid://77239024300843"
+local MAIN_HAND_TILE_IMAGE = "rbxassetid://120267275882811"
 
 local function setZIndexRecursive(root, z)
 	if not root then return end
