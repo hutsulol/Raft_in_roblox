@@ -26,6 +26,78 @@ local HORIZON                 = Color3.fromRGB(80, 140, 190)
 
 local FONT_TITLE = Enum.Font.GothamBold
 
+local COLOR_TEXT_MUTE = Color3.fromRGB(100, 125, 155)
+local COLOR_GOLD      = Color3.fromRGB(230, 190, 100)
+
+-- ─── Hand-drawn top-bar icons ─────────────────────────────────────────
+-- Same geometric style the rest of the menus use — each takes
+-- (parent, size, color), builds inside a square container and returns
+-- that container so the caller can reposition it.
+
+local function makeBackIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "BackIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.14))
+	local legLen = size * 0.68
+
+	local top = Instance.new("Frame")
+	top.AnchorPoint = Vector2.new(0, 0.5)
+	top.Position = UDim2.fromScale(0.1, 0.35)
+	top.Size = UDim2.fromOffset(legLen, thick)
+	top.BackgroundColor3 = color
+	top.BorderSizePixel = 0
+	top.Rotation = -45
+	top.Parent = c
+
+	local bot = Instance.new("Frame")
+	bot.AnchorPoint = Vector2.new(0, 0.5)
+	bot.Position = UDim2.fromScale(0.1, 0.65)
+	bot.Size = UDim2.fromOffset(legLen, thick)
+	bot.BackgroundColor3 = color
+	bot.BorderSizePixel = 0
+	bot.Rotation = 45
+	bot.Parent = c
+
+	return c
+end
+
+local function makeGemIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "GemIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0.5)
+	body.Position = UDim2.fromScale(0.5, 0.5)
+	body.Size = UDim2.fromOffset(size * 0.7, size * 0.7)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.Rotation = 45
+	body.Parent = c
+	local s = Instance.new("UIStroke")
+	s.Color     = color
+	s.Thickness = 1.4
+	s.Parent    = body
+
+	local facet = Instance.new("Frame")
+	facet.AnchorPoint = Vector2.new(0.5, 0.5)
+	facet.Position = UDim2.fromScale(0.5, 0.33)
+	facet.Size = UDim2.fromOffset(size * 0.5, math.max(1, math.floor(size * 0.08)))
+	facet.BackgroundColor3 = color
+	facet.BorderSizePixel = 0
+	facet.Parent = c
+
+	return c
+end
+
 -- ─── Artboard reference (matches the Claude Design MercHandlingPage
 -- 960x600 canvas — used as the reference size for the responsive
 -- UIScale below) ─────────────────────────────────────────────────────
@@ -264,8 +336,9 @@ local function openHandlingPage(ctx)
 	responsiveScale.Scale = 1
 	responsiveScale.Parent = scaleWrap
 
-	local backBtnRef
+	local backBtnRef, chipRef
 	local BACK_BTN_Y = 39
+	local CHIP_Y     = 39
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
@@ -289,6 +362,9 @@ local function openHandlingPage(ctx)
 
 		if backBtnRef then
 			backBtnRef.Position = UDim2.fromOffset(-dynamicBleed, BACK_BTN_Y)
+		end
+		if chipRef then
+			chipRef.Position = UDim2.new(1, dynamicBleed, 0, CHIP_Y)
 		end
 	end
 
@@ -316,11 +392,12 @@ local function openHandlingPage(ctx)
 	table.insert(activeConnections,
 		screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateResponsiveScale))
 
-	-- Placeholder BACK button, positioned with the same dynamicBleed
-	-- trick the MercenariesMenu's BACK uses so it sits flush with the
-	-- screen's left edge at any window size. Step 2 will wrap it in a
-	-- full top bar with a centred "MERCENARY / name / LV N" cluster
-	-- and a gem currency chip on the right.
+	local theme = ctx.theme or {}
+	local mercDisplay = tostring(theme.displayName or ctx.mercName or "—"):upper()
+	local mercLevel   = theme.level or 1
+
+	-- ── BACK button (glyph + uppercase label), pinned by dynamicBleed
+	-- so it always sits at SCREEN_MARGIN from the screen's left edge.
 	local backBtn = Instance.new("TextButton")
 	backBtn.Name = "BackButton"
 	backBtn.AnchorPoint = Vector2.new(0, 0)
@@ -330,10 +407,7 @@ local function openHandlingPage(ctx)
 	backBtn.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	backBtn.BorderSizePixel = 0
 	backBtn.AutoButtonColor = true
-	backBtn.Font = FONT_TITLE
-	backBtn.TextSize = 13
-	backBtn.TextColor3 = COLOR_TEXT
-	backBtn.Text = "← BACK"
+	backBtn.Text = "" -- glyph + label drawn as children
 	backBtn.ZIndex = 6
 	backBtn.Parent = scaleWrap
 	local bStroke = Instance.new("UIStroke")
@@ -342,30 +416,141 @@ local function openHandlingPage(ctx)
 	bStroke.Parent    = backBtn
 	backBtnRef = backBtn
 
+	local backGlyph = makeBackIcon(backBtn, 14, COLOR_TEXT)
+	backGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	backGlyph.Position = UDim2.new(0, 12, 0.5, 0)
+
+	local backLabel = Instance.new("TextLabel")
+	backLabel.BackgroundTransparency = 1
+	backLabel.BorderSizePixel = 0
+	backLabel.Position = UDim2.fromOffset(30, 0)
+	backLabel.Size = UDim2.new(1, -34, 1, 0)
+	backLabel.Font = FONT_TITLE
+	backLabel.TextSize = 13
+	backLabel.TextColor3 = COLOR_TEXT
+	backLabel.TextXAlignment = Enum.TextXAlignment.Left
+	backLabel.Text = "BACK"
+	backLabel.Parent = backBtn
+
 	backBtn.MouseButton1Click:Connect(function()
 		closeHandlingPage()
 		if ctx.onBack then ctx.onBack() end
 	end)
 
-	-- Visible placeholder title so the scaffold renders with something
-	-- besides the backdrop. Replaced in Step 2 by the real top-bar
-	-- cluster.
-	local title = Instance.new("TextLabel")
-	title.Name = "Placeholder"
-	title.BackgroundTransparency = 1
-	title.BorderSizePixel = 0
-	title.AnchorPoint = Vector2.new(0.5, 0.5)
-	title.Position = UDim2.fromScale(0.5, 0.5)
-	title.Size = UDim2.fromOffset(600, 60)
-	title.Font = FONT_TITLE
-	title.TextSize = 24
-	title.TextColor3 = HOLO_EDGE
-	title.Text = string.format(
-		"HANDLING · %s",
-		tostring(ctx.mercName or "—"):upper()
-	)
-	title.ZIndex = 51
-	title.Parent = scaleWrap
+	-- ── Centred "MERCENARY / <NAME> / LV N" cluster ──────────────────
+	-- Horizontal UIListLayout with three AutomaticSize.X children so
+	-- the cluster fits any merc name without needing a hand-tuned
+	-- container width. scaleWrap centres it by default (AnchorPoint
+	-- 0.5, scale x=0.5).
+	local topCluster = Instance.new("Frame")
+	topCluster.Name = "TopCluster"
+	topCluster.BackgroundTransparency = 1
+	topCluster.BorderSizePixel = 0
+	topCluster.AnchorPoint = Vector2.new(0.5, 0.5)
+	topCluster.Position = UDim2.new(0.5, 0, 0, BACK_BTN_Y + 17)
+	topCluster.AutomaticSize = Enum.AutomaticSize.X
+	topCluster.Size = UDim2.fromOffset(0, 28)
+	topCluster.ZIndex = 6
+	topCluster.Parent = scaleWrap
+
+	local clusterList = Instance.new("UIListLayout")
+	clusterList.FillDirection = Enum.FillDirection.Horizontal
+	clusterList.VerticalAlignment = Enum.VerticalAlignment.Center
+	clusterList.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	clusterList.Padding = UDim.new(0, 10)
+	clusterList.SortOrder = Enum.SortOrder.LayoutOrder
+	clusterList.Parent = topCluster
+
+	local mercTag = Instance.new("TextLabel")
+	mercTag.Name = "MercTag"
+	mercTag.BackgroundTransparency = 1
+	mercTag.BorderSizePixel = 0
+	mercTag.AutomaticSize = Enum.AutomaticSize.X
+	mercTag.Size = UDim2.fromOffset(0, 20)
+	mercTag.Font = FONT_TITLE
+	mercTag.TextSize = 11
+	mercTag.TextColor3 = COLOR_TEXT_MUTE
+	mercTag.Text = "MERCENARY"
+	mercTag.LayoutOrder = 1
+	mercTag.Parent = topCluster
+
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Name = "MercName"
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.BorderSizePixel = 0
+	nameLabel.AutomaticSize = Enum.AutomaticSize.X
+	nameLabel.Size = UDim2.fromOffset(0, 22)
+	nameLabel.Font = FONT_TITLE
+	nameLabel.TextSize = 18
+	nameLabel.TextColor3 = HOLO_EDGE
+	nameLabel.Text = mercDisplay
+	nameLabel.LayoutOrder = 2
+	nameLabel.Parent = topCluster
+
+	-- LV N badge — small stroked Frame with a padded text label.
+	local lvBadge = Instance.new("Frame")
+	lvBadge.Name = "LvBadge"
+	lvBadge.BackgroundTransparency = 1
+	lvBadge.BorderSizePixel = 0
+	lvBadge.AutomaticSize = Enum.AutomaticSize.X
+	lvBadge.Size = UDim2.fromOffset(0, 20)
+	lvBadge.LayoutOrder = 3
+	lvBadge.Parent = topCluster
+	local lvStroke = Instance.new("UIStroke")
+	lvStroke.Color     = HOLO_PANEL_BORDER
+	lvStroke.Thickness = 1
+	lvStroke.Parent    = lvBadge
+	local lvPad = Instance.new("UIPadding")
+	lvPad.PaddingLeft  = UDim.new(0, 7)
+	lvPad.PaddingRight = UDim.new(0, 7)
+	lvPad.PaddingTop    = UDim.new(0, 2)
+	lvPad.PaddingBottom = UDim.new(0, 2)
+	lvPad.Parent = lvBadge
+
+	local lvText = Instance.new("TextLabel")
+	lvText.BackgroundTransparency = 1
+	lvText.BorderSizePixel = 0
+	lvText.AutomaticSize = Enum.AutomaticSize.X
+	lvText.Size = UDim2.fromOffset(0, 14)
+	lvText.Font = FONT_TITLE
+	lvText.TextSize = 11
+	lvText.TextColor3 = COLOR_TEXT_DIM
+	lvText.Text = string.format("LV %d", mercLevel)
+	lvText.Parent = lvBadge
+
+	-- ── Gem currency chip, right-edge pinned via dynamicBleed ────────
+	local chip = Instance.new("Frame")
+	chip.Name = "CurrencyChip"
+	chip.AnchorPoint = Vector2.new(1, 0)
+	chip.Position = UDim2.new(1, 0, 0, CHIP_Y)
+	chip.Size = UDim2.fromOffset(84, 34)
+	chip.BackgroundColor3 = HOLO_PANEL_FILL
+	chip.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	chip.BorderSizePixel = 0
+	chip.ZIndex = 6
+	chip.Parent = scaleWrap
+	local chipStroke = Instance.new("UIStroke")
+	chipStroke.Color     = HOLO_PANEL_BORDER
+	chipStroke.Thickness = 1
+	chipStroke.Parent    = chip
+	chipRef = chip
+
+	local gemGlyph = makeGemIcon(chip, 13, COLOR_GOLD)
+	gemGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	gemGlyph.Position = UDim2.new(0, 10, 0.5, 0)
+
+	local chipLabel = Instance.new("TextLabel")
+	chipLabel.Name = "CurrencyLabel"
+	chipLabel.BackgroundTransparency = 1
+	chipLabel.BorderSizePixel = 0
+	chipLabel.Position = UDim2.fromOffset(28, 0)
+	chipLabel.Size = UDim2.new(1, -36, 1, 0)
+	chipLabel.Font = FONT_TITLE
+	chipLabel.TextSize = 13
+	chipLabel.TextColor3 = COLOR_GOLD
+	chipLabel.TextXAlignment = Enum.TextXAlignment.Left
+	chipLabel.Text = "0"
+	chipLabel.Parent = chip
 
 	-- Force the first scale computation now that the refs are all
 	-- set (the earlier updateResponsiveScale() call happened before
