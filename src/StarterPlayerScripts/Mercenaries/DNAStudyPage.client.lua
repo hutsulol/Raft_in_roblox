@@ -109,6 +109,53 @@ local function makeFlaskIcon(parent, size, color)
 	return c
 end
 
+-- ─── Dashed rectangular border ──────────────────────────────────────
+-- Roblox UIStroke can't render a dashed pattern, so we draw the four
+-- edges as evenly-distributed short Frames. `parent` is the frame we
+-- want the border INSIDE (position 0,0 → w,h). Dash counts are rounded
+-- to keep spacing even on each edge, so the corners line up regardless
+-- of the rectangle's aspect ratio.
+local function dashedStrokeRect(parent, w, h, color, dashLen, gap, thickness)
+	dashLen   = dashLen   or 6
+	gap       = gap       or 4
+	thickness = thickness or 1
+
+	local step = dashLen + gap
+
+	local function seg(x, y, sw, sh)
+		local s = Instance.new("Frame")
+		s.BackgroundColor3 = color
+		s.BackgroundTransparency = 0
+		s.BorderSizePixel = 0
+		s.Position = UDim2.fromOffset(x, y)
+		s.Size = UDim2.fromOffset(sw, sh)
+		s.ZIndex = (parent.ZIndex or 1) + 1
+		s.Parent = parent
+	end
+
+	local hCount = math.max(1, math.floor((w + gap) / step))
+	local hStride = w / hCount
+	for i = 0, hCount - 1 do
+		local x = math.floor(i * hStride + 0.5)
+		local segLen = math.min(dashLen, w - x)
+		if segLen > 0 then
+			seg(x, 0,              segLen, thickness)
+			seg(x, h - thickness,  segLen, thickness)
+		end
+	end
+
+	local vCount = math.max(1, math.floor((h + gap) / step))
+	local vStride = h / vCount
+	for i = 0, vCount - 1 do
+		local y = math.floor(i * vStride + 0.5)
+		local segLen = math.min(dashLen, h - y)
+		if segLen > 0 then
+			seg(0,             y, thickness, segLen)
+			seg(w - thickness, y, thickness, segLen)
+		end
+	end
+end
+
 -- ─── Artboard reference (matches HandlingPage) ──────────────────────
 local REFERENCE_W        = 960
 local REFERENCE_H        = 600
@@ -537,8 +584,124 @@ local function openDNAStudyPage(ctx)
 	local leftColumn   = makeColumn("LeftColumn",   LEFT_COL_X,   LEFT_COL_W)
 	local centreColumn = makeColumn("CentreColumn", CENTRE_COL_X, CENTRE_COL_W)
 	local rightColumn  = makeColumn("RightColumn",  RIGHT_COL_X,  RIGHT_COL_W)
-	-- Silence "unused" lint until Steps 6-10 fill them.
-	local _ = { leftColumn, centreColumn, rightColumn }
+	local _ = { centreColumn, rightColumn } -- Steps 8-10 fill these
+
+	-- ── Sample Slot card (top of left column) ─────────────────────────
+	-- Holo panel with a flask-glyph header, a dashed inner drop zone
+	-- sized so the corner dashes line up, and a helper-text block at
+	-- the bottom. The drop zone is clickable (TextButton) — Step 11
+	-- wires it to fire DNAResearch.insertBlood. For now, click is a
+	-- print stub so the shape of the interaction shows during review.
+	local SAMPLE_CARD_H = 220
+
+	local sampleCard = Instance.new("Frame")
+	sampleCard.Name = "SampleSlotCard"
+	sampleCard.BackgroundColor3 = HOLO_PANEL_FILL
+	sampleCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	sampleCard.BorderSizePixel = 0
+	sampleCard.Position = UDim2.fromOffset(0, 0)
+	sampleCard.Size = UDim2.fromOffset(LEFT_COL_W, SAMPLE_CARD_H)
+	sampleCard.ZIndex = 52
+	sampleCard.Parent = leftColumn
+	local scStroke = Instance.new("UIStroke")
+	scStroke.Color     = HOLO_PANEL_BORDER
+	scStroke.Thickness = 1
+	scStroke.Parent    = sampleCard
+
+	-- Header: flask glyph + "SAMPLE SLOT" label
+	local header = Instance.new("Frame")
+	header.Name = "Header"
+	header.BackgroundTransparency = 1
+	header.BorderSizePixel = 0
+	header.Position = UDim2.fromOffset(14, 12)
+	header.Size = UDim2.new(1, -28, 0, 16)
+	header.ZIndex = 53
+	header.Parent = sampleCard
+
+	local headerFlask = makeFlaskIcon(header, 12, HOLO_EDGE)
+	headerFlask.AnchorPoint = Vector2.new(0, 0.5)
+	headerFlask.Position = UDim2.new(0, 0, 0.5, 0)
+	headerFlask.ZIndex = 54
+
+	local headerLabel = Instance.new("TextLabel")
+	headerLabel.BackgroundTransparency = 1
+	headerLabel.BorderSizePixel = 0
+	headerLabel.Position = UDim2.fromOffset(18, 0)
+	headerLabel.Size = UDim2.new(1, -18, 1, 0)
+	headerLabel.Font = FONT_TITLE
+	headerLabel.TextSize = 12
+	headerLabel.TextColor3 = COLOR_TEXT
+	headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+	headerLabel.Text = "SAMPLE SLOT"
+	headerLabel.ZIndex = 54
+	headerLabel.Parent = header
+
+	-- Drop zone — the dashed-outline rectangle itself is a TextButton so
+	-- the whole area is clickable without extra event routing.
+	local DROP_ZONE_TOP    = 38
+	local DROP_ZONE_SIDE   = 14
+	local DROP_ZONE_W      = LEFT_COL_W - DROP_ZONE_SIDE * 2
+	local DROP_ZONE_H      = 120
+
+	local dropZone = Instance.new("TextButton")
+	dropZone.Name = "DropZone"
+	dropZone.AutoButtonColor = false
+	dropZone.Text = ""
+	dropZone.BackgroundColor3 = Color3.fromRGB(8, 22, 40)
+	dropZone.BackgroundTransparency = 0.25
+	dropZone.BorderSizePixel = 0
+	dropZone.Position = UDim2.fromOffset(DROP_ZONE_SIDE, DROP_ZONE_TOP)
+	dropZone.Size = UDim2.fromOffset(DROP_ZONE_W, DROP_ZONE_H)
+	dropZone.ZIndex = 53
+	dropZone.Parent = sampleCard
+
+	dashedStrokeRect(dropZone, DROP_ZONE_W, DROP_ZONE_H, HOLO_PANEL_BORDER, 6, 4, 1)
+
+	-- Big flask glyph inside the drop zone, biased slightly upward so
+	-- the "DROP DNA SAMPLE" label sits below it comfortably.
+	local bigFlask = makeFlaskIcon(dropZone, 34, COLOR_TEXT_DIM)
+	bigFlask.AnchorPoint = Vector2.new(0.5, 0.5)
+	bigFlask.Position = UDim2.fromScale(0.5, 0.38)
+	bigFlask.ZIndex = 54
+
+	local dropLabel = Instance.new("TextLabel")
+	dropLabel.Name = "DropLabel"
+	dropLabel.BackgroundTransparency = 1
+	dropLabel.BorderSizePixel = 0
+	dropLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	dropLabel.Position = UDim2.fromScale(0.5, 0.76)
+	dropLabel.Size = UDim2.new(1, -20, 0, 16)
+	dropLabel.Font = FONT_TITLE
+	dropLabel.TextSize = 12
+	dropLabel.TextColor3 = COLOR_TEXT_DIM
+	dropLabel.TextXAlignment = Enum.TextXAlignment.Center
+	dropLabel.Text = "DROP DNA SAMPLE"
+	dropLabel.ZIndex = 54
+	dropLabel.Parent = dropZone
+
+	-- Helper text under the drop zone.
+	local helper = Instance.new("TextLabel")
+	helper.Name = "Helper"
+	helper.BackgroundTransparency = 1
+	helper.BorderSizePixel = 0
+	helper.Position = UDim2.fromOffset(14, DROP_ZONE_TOP + DROP_ZONE_H + 8)
+	helper.Size = UDim2.new(1, -28, 0, 32)
+	helper.Font = FONT_BODY
+	helper.TextSize = 11
+	helper.TextColor3 = COLOR_TEXT_MUTE
+	helper.TextWrapped = true
+	helper.TextXAlignment = Enum.TextXAlignment.Center
+	helper.TextYAlignment = Enum.TextYAlignment.Top
+	helper.Text = "Click the slot to insert a DNA sample. Each decode unlocks one fragment."
+	helper.ZIndex = 53
+	helper.Parent = sampleCard
+
+	dropZone.MouseButton1Click:Connect(function()
+		-- Step 11 replaces this stub with a DNAResearch.insertBlood
+		-- fire + countdown UI. Leaving a print so the click path is
+		-- observable during review.
+		print("[DNAStudyPage] Sample slot clicked for", ctx.mercName)
+	end)
 
 	updateResponsiveScale()
 
