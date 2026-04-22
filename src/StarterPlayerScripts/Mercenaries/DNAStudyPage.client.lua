@@ -76,44 +76,26 @@ local function makeBackIcon(parent, size, color)
 	return c
 end
 
--- ─── Flask / capsule glyph (SAMPLES chip icon) ──────────────────────
--- A tall outlined rectangle with a rounded bottom, pinched neck and a
--- cap line near the top — reads as "blood vial" at small sizes
--- without needing an image asset.
+-- Asset id for the DNA-sample (blood-capsule) icon used throughout
+-- this page. User-supplied — swap here to rebrand every call site.
+local SAMPLE_ICON_ID = "rbxassetid://115522744020445"
+
+-- ─── Flask / capsule glyph (SAMPLES chip + sample-slot icons) ───────
+-- Returns an ImageLabel wrapping the SAMPLE_ICON_ID asset. Keeps the
+-- same (parent, size, color) signature as the older primitive-Frame
+-- helpers so the surrounding layout code doesn't care which kind of
+-- icon it receives. `color` maps to ImageColor3.
 local function makeFlaskIcon(parent, size, color)
-	local c = Instance.new("Frame")
-	c.Name = "FlaskIcon"
-	c.BackgroundTransparency = 1
-	c.BorderSizePixel = 0
-	c.Size = UDim2.fromOffset(size, size)
-	c.Parent = parent
-
-	local body = Instance.new("Frame")
-	body.AnchorPoint = Vector2.new(0.5, 0.5)
-	body.Position = UDim2.fromScale(0.5, 0.58)
-	body.Size = UDim2.fromOffset(size * 0.55, size * 0.72)
-	body.BackgroundTransparency = 1
-	body.BorderSizePixel = 0
-	body.Parent = c
-	local bc = Instance.new("UICorner")
-	bc.CornerRadius = UDim.new(0, math.max(1, math.floor(size * 0.14)))
-	bc.Parent = body
-	local bs = Instance.new("UIStroke")
-	bs.Color     = color
-	bs.Thickness = 1.4
-	bs.Parent    = body
-
-	-- Cap line — two small horizontal ticks sitting at the top of the body
-	-- read as a vial stopper.
-	local cap = Instance.new("Frame")
-	cap.AnchorPoint = Vector2.new(0.5, 0)
-	cap.Position = UDim2.fromScale(0.5, 0.12)
-	cap.Size = UDim2.fromOffset(size * 0.4, math.max(1, math.floor(size * 0.08)))
-	cap.BackgroundColor3 = color
-	cap.BorderSizePixel = 0
-	cap.Parent = c
-
-	return c
+	local img = Instance.new("ImageLabel")
+	img.Name = "CapsuleIcon"
+	img.BackgroundTransparency = 1
+	img.BorderSizePixel = 0
+	img.Size = UDim2.fromOffset(size, size)
+	img.Image = SAMPLE_ICON_ID
+	img.ImageColor3 = color or Color3.new(1, 1, 1)
+	img.ScaleType = Enum.ScaleType.Fit
+	img.Parent = parent
+	return img
 end
 
 -- ─── Simple trait glyphs (all drawn from primitive Frames) ──────────
@@ -871,17 +853,33 @@ local function openDNAStudyPage(ctx)
 		for _, container in ipairs(containers) do
 			if container then
 				for _, tool in container:GetChildren() do
-					if tool:IsA("Tool") and tool.Name == "FullCapsule"
-						and tool:GetAttribute("BloodType") == mercName then
-						n = n + 1
+					if tool:IsA("Tool") and tool.Name == "FullCapsule" then
+						-- Lenient: untagged capsules (from collections
+						-- that pre-date Step 1's BloodType stamp)
+						-- count as legacy-valid so the player's
+						-- existing inventory is usable.
+						local bt = tool:GetAttribute("BloodType")
+						if bt == nil or bt == "" or bt == mercName then
+							n = n + 1
+						end
 					end
 				end
 			end
 		end
 		return n
 	end
+	-- Sample-count chip inside the SAMPLE SLOT card header (built a
+	-- bit further down in Step 6's block). Forward-declared so the
+	-- refresher below can populate it without caring about build
+	-- order.
+	local sampleCardCountLabel
+
 	local function refreshSamplesChip()
-		chipLabel.Text = string.format("SAMPLES · %d", countMatchingSamples())
+		local n = countMatchingSamples()
+		chipLabel.Text = string.format("SAMPLES · %d", n)
+		if sampleCardCountLabel then
+			sampleCardCountLabel.Text = tostring(n)
+		end
 	end
 	refreshSamplesChip()
 
@@ -981,6 +979,34 @@ local function openDNAStudyPage(ctx)
 	headerLabel.Text = "SAMPLE SLOT"
 	headerLabel.ZIndex = 54
 	headerLabel.Parent = header
+
+	-- Matching-capsule counter on the right of the card header.
+	-- Shares state with the top-right SAMPLES chip — refreshSamplesChip
+	-- writes to both. Assigned to the forward-declared upvalue above
+	-- so the first refreshSamplesChip() call that already ran picks
+	-- it up on the next refresh (after inventory changes).
+	local countIcon = makeFlaskIcon(header, 14, HOLO_EDGE)
+	countIcon.AnchorPoint = Vector2.new(1, 0.5)
+	countIcon.Position = UDim2.new(1, 0, 0.5, 0)
+	countIcon.ZIndex = 54
+
+	local cardCountLabel = Instance.new("TextLabel")
+	cardCountLabel.Name = "SampleCount"
+	cardCountLabel.BackgroundTransparency = 1
+	cardCountLabel.BorderSizePixel = 0
+	cardCountLabel.AnchorPoint = Vector2.new(1, 0.5)
+	cardCountLabel.Position = UDim2.new(1, -18, 0.5, 0)
+	cardCountLabel.Size = UDim2.fromOffset(40, 16)
+	cardCountLabel.Font = FONT_TITLE
+	cardCountLabel.TextSize = 14
+	cardCountLabel.TextColor3 = HOLO_EDGE
+	cardCountLabel.TextXAlignment = Enum.TextXAlignment.Right
+	cardCountLabel.Text = "0"
+	cardCountLabel.ZIndex = 54
+	cardCountLabel.Parent = header
+
+	sampleCardCountLabel = cardCountLabel
+	refreshSamplesChip()
 
 	-- Drop zone — the dashed-outline rectangle itself is a TextButton so
 	-- the whole area is clickable without extra event routing.
@@ -1728,24 +1754,8 @@ local function openDNAStudyPage(ctx)
 		return ref
 	end
 
-	-- Diagnostic: confirms the trait-column build actually ran. If
-	-- this prints but the tiles still don't appear on screen, the
-	-- issue is render-side (ZIndex, position, or Studio loading a
-	-- stale cached copy of this script). Remove once verified.
-	local traitBuildOk, traitBuildErr = pcall(function()
-		for i, def in ipairs(TRAITS) do
-			traitRefs[def.key] = buildTraitTile(i, def)
-		end
-	end)
-	if not traitBuildOk then
-		warn("[DNAStudyPage] trait tile build failed:", traitBuildErr)
-	else
-		local count = 0
-		for _ in pairs(traitRefs) do count = count + 1 end
-		print(string.format(
-			"[DNAStudyPage] Decoded Traits: %d tiles built under %s (%s, size=%s)",
-			count, rightColumn:GetFullName(),
-			tostring(rightColumn.Position), tostring(rightColumn.Size)))
+	for i, def in ipairs(TRAITS) do
+		traitRefs[def.key] = buildTraitTile(i, def)
 	end
 
 	-- ── Snapshot subscription (assigns the forward-declared upvalue) ──

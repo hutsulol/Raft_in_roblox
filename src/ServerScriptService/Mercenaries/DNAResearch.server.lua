@@ -204,9 +204,16 @@ local function findMatchingCapsule(player, bloodType)
 	for _, container in ipairs(containers) do
 		if container then
 			for _, tool in container:GetChildren() do
-				if tool:IsA("Tool") and tool.Name == "FullCapsule"
-					and tool:GetAttribute("BloodType") == bloodType then
-					return tool
+				if tool:IsA("Tool") and tool.Name == "FullCapsule" then
+					-- Lenient match: untagged capsules (created before
+					-- RecruitmentSystem started stamping BloodType)
+					-- count as legacy-valid for any merc the player
+					-- has recruited. Keeps pre-Step-1 inventories
+					-- usable without a data migration.
+					local bt = tool:GetAttribute("BloodType")
+					if bt == nil or bt == "" or bt == bloodType then
+						return tool
+					end
 				end
 			end
 		end
