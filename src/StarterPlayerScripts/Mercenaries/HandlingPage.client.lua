@@ -1074,6 +1074,7 @@ local function openHandlingPage(ctx)
 	topCluster.Position = UDim2.new(0.5, 0, 0, CLUSTER_Y)
 	topCluster.Size = UDim2.fromOffset(CLUSTER_W, 24)
 	topCluster.ZIndex = 52
+	topCluster.Visible = false -- hide Pirate/LV1 header per feedback
 	topCluster.Parent = scaleWrap
 
 	local nameLabel = Instance.new("TextLabel")
