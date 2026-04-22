@@ -60,6 +60,13 @@ local COLOR_GOLD              = Color3.fromRGB(230, 190, 100)
 local HORIZON                 = Color3.fromRGB(98, 168, 218)
 
 local IDLE_ANIMATION_ID = "rbxassetid://107139405334393"
+local ICON_STAT_STRENGTH = "rbxassetid://121469289292513"
+local ICON_STAT_LUCK     = "rbxassetid://81616209216042"
+local ICON_STAT_SPEED    = "rbxassetid://79004787166831"
+local ICON_PIRATE        = "rbxassetid://86890035031466"
+local STAR_EMPTY         = "rbxassetid://96860361998800"
+local STAR_FULL          = "rbxassetid://128398990741410"
+local STAR_HALF          = "rbxassetid://97995242534538"
 
 -- Per-mercenary data
 local MERC_THEMES = {
@@ -80,6 +87,7 @@ local MERC_THEMES = {
 		xp          = 0,
 		xpMax       = 500,
 		charStats   = { str = 72, spd = 48, luck = 35 },
+		portraitIcon = ICON_PIRATE,
 	},
 }
 local DEFAULT_THEME = {
@@ -549,6 +557,20 @@ local function makeCircleIcon(parent, size, color)
 	return c
 end
 
+-- ImageLabel icon from an uploaded Roblox asset id. We use this for the
+-- authored characteristic glyphs so they match the provided artwork.
+local function makeAssetIcon(parent, imageId, size)
+	local icon = Instance.new("ImageLabel")
+	icon.Name = "AssetIcon"
+	icon.BackgroundTransparency = 1
+	icon.BorderSizePixel = 0
+	icon.Size = UDim2.fromOffset(size, size)
+	icon.Image = imageId
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.Parent = parent
+	return icon
+end
+
 -- Chevron-right — two thin Frames meeting at the right forming a ">".
 local function makeChevronRight(parent, size, color)
 	local c = Instance.new("Frame")
@@ -671,6 +693,50 @@ local function makeStarRow(parent, filled, total, size, color)
 	return c
 end
 
+-- Image-based rarity stars (full / half / empty). Matches the meta-bar
+-- visuals and is used in the left mercenary list cards as requested.
+local function makeImageStarRow(parent, filled, total, size)
+	total = total or 5
+	size = size or 12
+	local gap = 3
+
+	local c = Instance.new("Frame")
+	c.Name = "ImageStarRow"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(total * size + (total - 1) * gap, size)
+	c.Parent = parent
+
+	local raw = tonumber(filled) or 0
+	local full = math.floor(raw)
+	local half = (raw - full) >= 0.5
+
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.Padding = UDim.new(0, gap)
+	layout.Parent = c
+
+	for i = 1, total do
+		local star = Instance.new("ImageLabel")
+		star.Name = "Star_" .. i
+		star.BackgroundTransparency = 1
+		star.BorderSizePixel = 0
+		star.Size = UDim2.fromOffset(size, size)
+		if i <= full then
+			star.Image = STAR_FULL
+		elseif i == full + 1 and half then
+			star.Image = STAR_HALF
+		else
+			star.Image = STAR_EMPTY
+		end
+		star.Parent = c
+	end
+
+	return c
+end
+
 local function makeGemIcon(parent, size, color)
 	local c = Instance.new("Frame")
 	c.Name = "GemIcon"
@@ -711,6 +777,8 @@ local page = nil
 local hiddenPanels = {}    -- panels hidden while mercenaries page is open
 local currentMercNames = {}  -- remembered across page switches
 local currentSelectedMerc = nil
+local mercStatUpgrades = {}   -- [mercName] = { str = n, spd = n, luck = n }
+local mercSpentUpgradePoints = {} -- [mercName] = total spent points
 
 -- Persistent viewport cache so switching between the character page and the
 -- equipment page (and swapping weapons within the equipment page) doesn't
@@ -1516,7 +1584,7 @@ buildPage = function(mercNames)
 	leftCol.BorderSizePixel = 0
 	local LEFT_MAX_H = REFERENCE_H - (PANELS_TOP_Y + PANELS_BOT_PAD)
 	local LEFT_MIN_H = 170
-	local CARD_ROW_H = 72
+	local CARD_ROW_H = 112
 	local CARD_ROW_GAP = 8
 	local visibleRows = math.max(1, #mercNames)
 	local rowsHeight = visibleRows * CARD_ROW_H + math.max(0, visibleRows - 1) * CARD_ROW_GAP
@@ -1580,18 +1648,14 @@ buildPage = function(mercNames)
 	leftDivider.Position = UDim2.fromOffset(0, 28)
 	leftDivider.Parent = leftCol
 
-	-- Scrolling card list.
-	local cardList = Instance.new("ScrollingFrame")
+	-- Card list (no scrollbar — panel height is computed to show cards
+	-- directly in the window without a scroll thumb for this section).
+	local cardList = Instance.new("Frame")
 	cardList.Name = "CardList"
 	cardList.BackgroundTransparency = 1
 	cardList.BorderSizePixel = 0
 	cardList.Position = UDim2.fromOffset(0, 40)
 	cardList.Size = UDim2.new(1, 0, 1, -48)
-	cardList.CanvasSize = UDim2.new(0, 0, 0, 0)
-	cardList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	cardList.ScrollBarThickness = 4
-	cardList.ScrollBarImageColor3 = HOLO_PANEL_BORDER
-	cardList.ScrollBarImageTransparency = 0.3
 	cardList.Parent = leftCol
 
 	local cardLayout = Instance.new("UIListLayout")
@@ -1617,6 +1681,8 @@ buildPage = function(mercNames)
 		for name, rec in pairs(mercCards) do
 			local isSel = (name == mercName)
 			local color = isSel and HOLO_EDGE or HOLO_PANEL_BORDER
+			rec.frame.BackgroundColor3 = isSel and Color3.fromRGB(28, 72, 116) or HOLO_PANEL_FILL
+			rec.frame.BackgroundTransparency = isSel and 0.08 or HOLO_PANEL_TRANSPARENCY
 			rec.stroke.Color = color
 			rec.portraitStroke.Color = color
 			for _, bracket in rec.brackets do
@@ -1639,7 +1705,7 @@ buildPage = function(mercNames)
 		card.BorderSizePixel = 0
 		card.AutoButtonColor = false
 		card.Text = ""
-		card.Size = UDim2.new(1, -6, 0, 72)
+		card.Size = UDim2.new(1, -6, 0, 112)
 		card.LayoutOrder = i
 		card.Parent = cardList
 
@@ -1649,19 +1715,20 @@ buildPage = function(mercNames)
 		cardStroke.Parent    = card
 
 		local cardPad = Instance.new("UIPadding")
-		cardPad.PaddingTop    = UDim.new(0, 10)
-		cardPad.PaddingBottom = UDim.new(0, 10)
+		cardPad.PaddingTop    = UDim.new(0, 12)
+		cardPad.PaddingBottom = UDim.new(0, 12)
 		cardPad.PaddingLeft   = UDim.new(0, 10)
 		cardPad.PaddingRight  = UDim.new(0, 10)
 		cardPad.Parent = card
 
-		-- Portrait slot — 52x52, translucent fill, hairline border, mini
+		-- Portrait slot — enlarged for readability, translucent fill,
+		-- hairline border, mini corner L's.
 		-- corner L's. Character icon sits centred inside.
 		local portrait = Instance.new("Frame")
 		portrait.Name = "Portrait"
 		portrait.AnchorPoint = Vector2.new(0, 0.5)
 		portrait.Position = UDim2.new(0, 0, 0.5, 0)
-		portrait.Size = UDim2.fromOffset(52, 52)
+		portrait.Size = UDim2.fromOffset(88, 88)
 		portrait.BackgroundColor3 = Color3.fromRGB(15, 35, 65)
 		portrait.BackgroundTransparency = 0.65
 		portrait.BorderSizePixel = 0
@@ -1674,24 +1741,32 @@ buildPage = function(mercNames)
 
 		cornerLs(portrait, 5, HOLO_PANEL_LBRACKET, 1.5)
 
-		local charGlyph = makeCharacterIcon(portrait, 28, HOLO_PANEL_LBRACKET)
-		charGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
-		charGlyph.Position = UDim2.fromScale(0.5, 0.5)
+		local portraitIconId = theme.portraitIcon
+		if portraitIconId then
+			local charIcon = makeAssetIcon(portrait, portraitIconId, 84)
+			charIcon.Name = "PortraitIcon"
+			charIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+			charIcon.Position = UDim2.fromScale(0.5, 0.5)
+		else
+			local charGlyph = makeCharacterIcon(portrait, 56, HOLO_PANEL_LBRACKET)
+			charGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+			charGlyph.Position = UDim2.fromScale(0.5, 0.5)
+		end
 
 		-- Right side of the card: name row (+ OWNED chip) / star row / role
-		-- line, all left-aligned starting 62 px in so they sit clear of
-		-- the 52-wide portrait plus its 10 px gap.
-		local name = makeLabel(card, displayName, FONT_TITLE, 15, COLOR_TEXT)
-		name.Position = UDim2.fromOffset(62, 0)
-		name.Size = UDim2.fromOffset(130, 18)
+		-- line, all left-aligned starting 100 px in so they sit clear of
+		-- the 88-wide portrait plus its 12 px gap.
+		local name = makeLabel(card, displayName, FONT_TITLE, 22, COLOR_TEXT)
+		name.Position = UDim2.fromOffset(100, 4)
+		name.Size = UDim2.new(1, -210, 0, 26)
 
 		-- OWNED chip in green stroke — every merc we render here comes
 		-- from player.Mercenaries, so they're by definition recruited.
 		local ownedChip = Instance.new("Frame")
 		ownedChip.Name = "OwnedChip"
-		ownedChip.AnchorPoint = Vector2.new(0, 0.5)
-		ownedChip.Position = UDim2.new(0, 62 + 80, 0, 9)
-		ownedChip.Size = UDim2.fromOffset(44, 14)
+		ownedChip.AnchorPoint = Vector2.new(1, 0.5)
+		ownedChip.Position = UDim2.new(1, -10, 0, 16)
+		ownedChip.Size = UDim2.fromOffset(56, 18)
 		ownedChip.BackgroundTransparency = 1
 		ownedChip.BorderSizePixel = 0
 		ownedChip.Parent = card
@@ -1699,16 +1774,17 @@ buildPage = function(mercNames)
 		ownedStroke.Color     = Color3.fromRGB(110, 200, 140)
 		ownedStroke.Thickness = 1
 		ownedStroke.Parent    = ownedChip
-		local ownedLbl = makeLabel(ownedChip, "OWNED", FONT_TITLE, 8,
+		local ownedLbl = makeLabel(ownedChip, "OWNED", FONT_TITLE, 9,
 			Color3.fromRGB(110, 200, 140), Enum.TextXAlignment.Center)
 		ownedLbl.Size = UDim2.fromScale(1, 1)
 
-		local starRow = makeStarRow(card, theme.stars or 1, 5, 9, COLOR_GOLD)
-		starRow.Position = UDim2.fromOffset(62, 24)
+		local starRow = makeImageStarRow(card, theme.stars or 1, 5, 12)
+		starRow.AnchorPoint = Vector2.new(1, 0)
+		starRow.Position = UDim2.new(1, -10, 0, 44)
 
-		local role = makeLabel(card, theme.role or "Crew", FONT_BODY, 10, COLOR_TEXT_DIM)
-		role.Position = UDim2.fromOffset(62, 38)
-		role.Size = UDim2.fromOffset(150, 14)
+		local role = makeLabel(card, theme.role or "Crew", FONT_BODY, 16, COLOR_TEXT_DIM)
+		role.Position = UDim2.fromOffset(100, 64)
+		role.Size = UDim2.new(1, -210, 0, 22)
 
 		-- Collect bracket refs so selection recolouring can tint them
 		-- without re-creating the Frames.
@@ -1799,9 +1875,6 @@ buildPage = function(mercNames)
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 	-- Rarity stars: image-based icons on the right side of the meta strip.
-	local STAR_EMPTY = "rbxassetid://96860361998800"
-	local STAR_FULL  = "rbxassetid://128398990741410"
-	local STAR_HALF  = "rbxassetid://97995242534538"
 	local rarityIconsRow = Instance.new("Frame")
 	rarityIconsRow.Name = "RarityIconsRow"
 	rarityIconsRow.AnchorPoint = Vector2.new(1, 0.5)
@@ -2108,38 +2181,66 @@ buildPage = function(mercNames)
 	lvlDivider.Position = UDim2.fromOffset(0, LVL_H + 12)
 	lvlDivider.Parent = rightCol
 
-	-- ── Characteristics section ────────────────────────────────────────
-	local CHARS_Y = LVL_H + 24
+	-- Upgrade points row sits directly under the level/XP block.
+	local pointsLabel = makeLabel(rightCol, "UPGRADE POINTS: 0", FONT_TITLE, 12, HOLO_EDGE)
+	pointsLabel.Position = UDim2.fromOffset(0, LVL_H + 18)
+	pointsLabel.Size = UDim2.new(1, 0, 0, 16)
 
+	-- Scroll window for characteristic+ability content only. Right panel
+	-- size stays fixed; this inner area gets a scrollbar when content grows.
+	local CHARS_Y = LVL_H + 40
+	local statsScroll = Instance.new("ScrollingFrame")
+	statsScroll.Name = "StatsAbilitiesScroll"
+	statsScroll.BackgroundTransparency = 1
+	statsScroll.BorderSizePixel = 0
+	statsScroll.Position = UDim2.fromOffset(0, CHARS_Y)
+	statsScroll.Size = UDim2.new(1, 0, 1, -(CHARS_Y + 52))
+	statsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	statsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	statsScroll.ScrollBarThickness = 4
+	statsScroll.ScrollBarImageColor3 = HOLO_PANEL_BORDER
+	statsScroll.ScrollBarImageTransparency = 0.3
+	statsScroll.Parent = rightCol
+
+	local contentRoot = Instance.new("Frame")
+	contentRoot.Name = "Content"
+	contentRoot.BackgroundTransparency = 1
+	contentRoot.BorderSizePixel = 0
+	contentRoot.Size = UDim2.new(1, -6, 0, 0)
+	contentRoot.AutomaticSize = Enum.AutomaticSize.Y
+	contentRoot.Parent = statsScroll
+
+	-- ── Characteristics section ────────────────────────────────────────
 	local charsHeader = Instance.new("Frame")
 	charsHeader.Name = "CharsHeader"
 	charsHeader.BackgroundTransparency = 1
 	charsHeader.BorderSizePixel = 0
-	charsHeader.Position = UDim2.fromOffset(0, CHARS_Y)
-	charsHeader.Size = UDim2.new(1, 0, 0, 18)
-	charsHeader.Parent = rightCol
+	charsHeader.Position = UDim2.fromOffset(0, 0)
+	charsHeader.Size = UDim2.new(1, 0, 0, 24)
+	charsHeader.Parent = contentRoot
 
-	local charsGlyph = makeDiamondIcon(charsHeader, 13, HOLO_EDGE)
+	local charsGlyph = makeDiamondIcon(charsHeader, 16, HOLO_EDGE)
 	charsGlyph.AnchorPoint = Vector2.new(0, 0.5)
 	charsGlyph.Position = UDim2.fromScale(0, 0.5)
 
-	makeLabel(charsHeader, "CHARACTERISTICS", FONT_TITLE, 14, COLOR_TEXT).Position = UDim2.fromOffset(22, 0)
-	charsHeader:FindFirstChildOfClass("TextLabel").Size = UDim2.fromOffset(240, 18)
+	local charsTitle = makeLabel(charsHeader, "CHARACTERISTICS", FONT_TITLE, 16, COLOR_TEXT)
+	charsTitle.Position = UDim2.fromOffset(24, 0)
+	charsTitle.Size = UDim2.fromOffset(240, 24)
 
 	local charsDivider = Instance.new("Frame")
 	charsDivider.BackgroundColor3 = HOLO_PANEL_BORDER
 	charsDivider.BackgroundTransparency = 0.3
 	charsDivider.BorderSizePixel = 0
 	charsDivider.Size = UDim2.new(1, 0, 0, 1)
-	charsDivider.Position = UDim2.fromOffset(0, CHARS_Y + 28)
-	charsDivider.Parent = rightCol
+	charsDivider.Position = UDim2.fromOffset(0, 30)
+	charsDivider.Parent = contentRoot
 
-	-- Three stat rows. Each row is 28 tall: [icon 14] [label / value]
-	-- on top line, holo bar (5 tall) below.
+	-- Enlarged stat rows with plus buttons (PhoneMenu-style upgrade
+	-- interaction using spent XP points per mercenary).
 	local statDefs = {
-		{ key = "str",  label = "STRENGTH", iconFn = makeSparkIcon   },
-		{ key = "spd",  label = "SPEED",    iconFn = makeCircleIcon  },
-		{ key = "luck", label = "LUCK",     iconFn = makeDiamondIcon },
+		{ key = "str",  label = "STRENGTH", icon = ICON_STAT_STRENGTH },
+		{ key = "spd",  label = "SPEED",    icon = ICON_STAT_SPEED    },
+		{ key = "luck", label = "LUCK",     icon = ICON_STAT_LUCK     },
 	}
 	local statRefs = {}
 	for i, s in ipairs(statDefs) do
@@ -2147,80 +2248,137 @@ buildPage = function(mercNames)
 		row.Name = "Stat_" .. s.key
 		row.BackgroundTransparency = 1
 		row.BorderSizePixel = 0
-		row.Position = UDim2.fromOffset(0, CHARS_Y + 40 + (i - 1) * 28)
-		row.Size = UDim2.new(1, 0, 0, 22)
-		row.Parent = rightCol
+		row.Position = UDim2.fromOffset(0, 40 + (i - 1) * 52)
+		row.Size = UDim2.new(1, 0, 0, 46)
+		row.Parent = contentRoot
 
 		local topLine = Instance.new("Frame")
 		topLine.BackgroundTransparency = 1
 		topLine.BorderSizePixel = 0
-		topLine.Size = UDim2.new(1, 0, 0, 14)
+		topLine.Size = UDim2.new(1, 0, 0, 24)
 		topLine.Parent = row
 
-		local statIcon = s.iconFn(topLine, 14, HOLO_EDGE)
+		local statIcon = makeAssetIcon(topLine, s.icon, 24)
 		statIcon.AnchorPoint = Vector2.new(0, 0.5)
 		statIcon.Position = UDim2.new(0, 0, 0.5, 0)
 
-		local statLbl = makeLabel(topLine, s.label, FONT_BODY, 10, COLOR_TEXT_DIM)
-		statLbl.Position = UDim2.fromOffset(20, 0)
-		statLbl.Size = UDim2.new(1, -80, 1, 0)
+		local statLbl = makeLabel(topLine, s.label, FONT_TITLE, 14, COLOR_TEXT_DIM)
+		statLbl.Position = UDim2.fromOffset(30, 0)
+		statLbl.Size = UDim2.new(1, -150, 1, 0)
 
-		local statVal = makeLabel(topLine, "0", FONT_TITLE, 14, COLOR_TEXT, Enum.TextXAlignment.Right)
+		local statVal = makeLabel(topLine, "0", FONT_TITLE, 20, COLOR_TEXT, Enum.TextXAlignment.Right)
 		statVal.AnchorPoint = Vector2.new(1, 0.5)
-		statVal.Position = UDim2.new(1, 0, 0.5, 0)
-		statVal.Size = UDim2.fromOffset(50, 14)
+		statVal.Position = UDim2.new(1, -34, 0.5, 0)
+		statVal.Size = UDim2.fromOffset(64, 24)
 
-		local sTrack, sFill = makeHoloBar(row, UDim2.new(1, 0, 0, 5), 0)
-		sTrack.Position = UDim2.fromOffset(0, 16)
+		local plusBtn = Instance.new("TextButton")
+		plusBtn.Name = "PlusButton"
+		plusBtn.Text = ""
+		plusBtn.AutoButtonColor = false
+		plusBtn.AnchorPoint = Vector2.new(1, 0.5)
+		plusBtn.Position = UDim2.new(1, 0, 0.5, 0)
+		plusBtn.Size = UDim2.fromOffset(24, 24)
+		plusBtn.BackgroundColor3 = Color3.fromRGB(44, 56, 78)
+		plusBtn.BorderSizePixel = 0
+		plusBtn.Parent = topLine
+		local pStroke = Instance.new("UIStroke")
+		pStroke.Color = HOLO_PANEL_BORDER
+		pStroke.Thickness = 1
+		pStroke.Parent = plusBtn
+		local plusIcon = Instance.new("Frame")
+		plusIcon.Name = "PlusIcon"
+		plusIcon.Size = UDim2.fromScale(1, 1)
+		plusIcon.BackgroundTransparency = 1
+		plusIcon.Parent = plusBtn
+		local plusH = Instance.new("Frame")
+		plusH.AnchorPoint = Vector2.new(0.5, 0.5)
+		plusH.Position = UDim2.fromScale(0.5, 0.5)
+		plusH.Size = UDim2.fromOffset(12, 2)
+		plusH.BackgroundColor3 = COLOR_GOLD
+		plusH.BorderSizePixel = 0
+		plusH.Parent = plusIcon
+		local plusV = Instance.new("Frame")
+		plusV.AnchorPoint = Vector2.new(0.5, 0.5)
+		plusV.Position = UDim2.fromScale(0.5, 0.5)
+		plusV.Size = UDim2.fromOffset(2, 12)
+		plusV.BackgroundColor3 = COLOR_GOLD
+		plusV.BorderSizePixel = 0
+		plusV.Parent = plusIcon
 
-		statRefs[s.key] = { value = statVal, fill = sFill }
+		local sTrack, sFill = makeHoloBar(row, UDim2.new(1, -6, 0, 8), 0)
+		sTrack.Position = UDim2.fromOffset(0, 30)
+
+		statRefs[s.key] = {
+			value = statVal,
+			fill = sFill,
+			button = plusBtn,
+			stroke = pStroke,
+			plusIcon = plusIcon,
+			key = s.key,
+		}
+
+		plusBtn.MouseButton1Click:Connect(function()
+			if not currentSelectedMerc then return end
+			local mercName = currentSelectedMerc
+			local theme = MERC_THEMES[mercName] or DEFAULT_THEME
+			local xp = theme.xp or 0
+			local totalFromXp = math.floor(xp / 100)
+
+			mercSpentUpgradePoints[mercName] = mercSpentUpgradePoints[mercName] or 0
+			local available = math.max(0, totalFromXp - mercSpentUpgradePoints[mercName])
+			if available <= 0 then return end
+
+			mercStatUpgrades[mercName] = mercStatUpgrades[mercName] or { str = 0, spd = 0, luck = 0 }
+			mercStatUpgrades[mercName][s.key] = (mercStatUpgrades[mercName][s.key] or 0) + 1
+			mercSpentUpgradePoints[mercName] += 1
+			refreshRight(mercName)
+		end)
 	end
 
 	-- ── Abilities section ──────────────────────────────────────────────
-	local ABIL_Y = CHARS_Y + 40 + 3 * 28 + 8
+	local ABIL_Y = 40 + 3 * 52 + 10
 
 	local abilHeader = Instance.new("Frame")
 	abilHeader.Name = "AbilHeader"
 	abilHeader.BackgroundTransparency = 1
 	abilHeader.BorderSizePixel = 0
 	abilHeader.Position = UDim2.fromOffset(0, ABIL_Y)
-	abilHeader.Size = UDim2.new(1, 0, 0, 18)
-	abilHeader.Parent = rightCol
+	abilHeader.Size = UDim2.new(1, 0, 0, 24)
+	abilHeader.Parent = contentRoot
 
-	local abilGlyph = makeSparkIcon(abilHeader, 13, HOLO_EDGE)
+	local abilGlyph = makeSparkIcon(abilHeader, 16, HOLO_EDGE)
 	abilGlyph.AnchorPoint = Vector2.new(0, 0.5)
 	abilGlyph.Position = UDim2.fromScale(0, 0.5)
 
-	local abilTitle = makeLabel(abilHeader, "ABILITIES", FONT_TITLE, 14, COLOR_TEXT)
-	abilTitle.Position = UDim2.fromOffset(22, 0)
-	abilTitle.Size = UDim2.fromOffset(200, 18)
+	local abilTitle = makeLabel(abilHeader, "ABILITIES", FONT_TITLE, 16, COLOR_TEXT)
+	abilTitle.Position = UDim2.fromOffset(24, 0)
+	abilTitle.Size = UDim2.fromOffset(200, 24)
 
 	local abilDivider = Instance.new("Frame")
 	abilDivider.BackgroundColor3 = HOLO_PANEL_BORDER
 	abilDivider.BackgroundTransparency = 0.3
 	abilDivider.BorderSizePixel = 0
 	abilDivider.Size = UDim2.new(1, 0, 0, 1)
-	abilDivider.Position = UDim2.fromOffset(0, ABIL_Y + 26)
-	abilDivider.Parent = rightCol
+	abilDivider.Position = UDim2.fromOffset(0, ABIL_Y + 30)
+	abilDivider.Parent = contentRoot
 
-	-- Three ability rows. Each row: 30×30 icon box (spark when
-	-- unlocked, lock when not) + name + description line.
+	-- Three enlarged ability rows.
 	local abilDefs = {
-		{ name = "Iron Grip",   desc = "+15% melee damage while boarding.",           raritySpan = 1 },
-		{ name = "Plunder",     desc = "Chance to double loot drops.",                raritySpan = 3 },
-		{ name = "Sea Veteran", desc = "Reduces stamina cost on long voyages.",       raritySpan = 4 },
+		{ name = "Iron Grip",   desc = "+30% melee damage while boarding.",            raritySpan = 1 },
+		{ name = "Plunder",     desc = "Chance to quadruple loot drops.",              raritySpan = 3 },
+		{ name = "Sea Veteran", desc = "Greatly reduces stamina cost on long voyages.", raritySpan = 4 },
 	}
 	local abilRefs = {}
-	local ABIL_ROW_H = 44
+	local ABIL_ROW_H = 76
 	for i, a in ipairs(abilDefs) do
 		local row = Instance.new("Frame")
 		row.Name = "Ability_" .. i
 		row.BackgroundColor3 = HOLO_PANEL_FILL
 		row.BackgroundTransparency = 0.55
 		row.BorderSizePixel = 0
-		row.Position = UDim2.fromOffset(0, ABIL_Y + 36 + (i - 1) * (ABIL_ROW_H + 6))
+		row.Position = UDim2.fromOffset(0, ABIL_Y + 40 + (i - 1) * (ABIL_ROW_H + 8))
 		row.Size = UDim2.new(1, 0, 0, ABIL_ROW_H)
-		row.Parent = rightCol
+		row.Parent = contentRoot
 		local rStroke = Instance.new("UIStroke")
 		rStroke.Color     = HOLO_PANEL_BORDER
 		rStroke.Thickness = 1
@@ -2236,8 +2394,8 @@ buildPage = function(mercNames)
 		local iconBox = Instance.new("Frame")
 		iconBox.Name = "IconBox"
 		iconBox.AnchorPoint = Vector2.new(0, 0.5)
-		iconBox.Position = UDim2.new(0, 8, 0.5, 0)
-		iconBox.Size = UDim2.fromOffset(30, 30)
+		iconBox.Position = UDim2.new(0, 10, 0.5, 0)
+		iconBox.Size = UDim2.fromOffset(40, 40)
 		iconBox.BackgroundColor3 = HOLO_PANEL_FILL
 		iconBox.BackgroundTransparency = 0.3
 		iconBox.BorderSizePixel = 0
@@ -2247,13 +2405,13 @@ buildPage = function(mercNames)
 		iStroke.Thickness = 1
 		iStroke.Parent    = iconBox
 
-		local nameLbl = makeLabel(row, a.name, FONT_TITLE, 13, COLOR_TEXT)
-		nameLbl.Position = UDim2.fromOffset(46, 6)
-		nameLbl.Size = UDim2.new(1, -52, 0, 15)
+		local nameLbl = makeLabel(row, a.name, FONT_TITLE, 20, COLOR_TEXT)
+		nameLbl.Position = UDim2.fromOffset(60, 8)
+		nameLbl.Size = UDim2.new(1, -66, 0, 24)
 
-		local descLbl = makeLabel(row, a.desc, FONT_BODY, 10, COLOR_TEXT_DIM)
-		descLbl.Position = UDim2.fromOffset(46, 22)
-		descLbl.Size = UDim2.new(1, -52, 0, 14)
+		local descLbl = makeLabel(row, a.desc, FONT_BODY, 16, COLOR_TEXT_DIM)
+		descLbl.Position = UDim2.fromOffset(60, 36)
+		descLbl.Size = UDim2.new(1, -66, 0, 30)
 		descLbl.TextWrapped = true
 
 		abilRefs[i] = {
@@ -2351,11 +2509,30 @@ buildPage = function(mercNames)
 		xpFill.Size = UDim2.new(pct, 0, 1, 0)
 		xpHint.Text = string.format("%d XP to next level", math.max(0, xpMax - xp))
 
+		mercSpentUpgradePoints[mercName] = mercSpentUpgradePoints[mercName] or 0
+		mercStatUpgrades[mercName] = mercStatUpgrades[mercName] or { str = 0, spd = 0, luck = 0 }
+		local totalFromXp = math.floor(xp / 100)
+		local availablePoints = math.max(0, totalFromXp - mercSpentUpgradePoints[mercName])
+		pointsLabel.Text = string.format("UPGRADE POINTS: %d", availablePoints)
+
 		local s = theme.charStats or DEFAULT_THEME.charStats
 		for key, rec in pairs(statRefs) do
-			local v = s[key] or 0
-			rec.value.Text = tostring(v)
-			rec.fill.Size = UDim2.new(math.clamp(v / 100, 0, 1), 0, 1, 0)
+			local base = s[key] or 0
+			local upgraded = base + (mercStatUpgrades[mercName][key] or 0)
+			local shown = upgraded * 2
+			rec.value.Text = tostring(shown)
+			rec.fill.Size = UDim2.new(math.clamp(shown / 200, 0, 1), 0, 1, 0)
+
+			rec.button.AutoButtonColor = availablePoints > 0
+			rec.button.BackgroundColor3 = (availablePoints > 0)
+				and Color3.fromRGB(44, 56, 78) or Color3.fromRGB(32, 40, 58)
+			rec.stroke.Color = (availablePoints > 0) and COLOR_GOLD or HOLO_PANEL_BORDER
+			for _, child in rec.plusIcon:GetChildren() do
+				if child:IsA("Frame") then
+					child.BackgroundColor3 = (availablePoints > 0) and COLOR_GOLD or COLOR_TEXT_DIM
+					child.BackgroundTransparency = (availablePoints > 0) and 0 or 0.4
+				end
+			end
 		end
 
 		-- Ability unlock depends on rarity (stars). Iron Grip always
@@ -2376,9 +2553,9 @@ buildPage = function(mercNames)
 			-- padlock when not.
 			if rec.glyph then rec.glyph:Destroy() end
 			if unlocked then
-				rec.glyph = makeSparkIcon(rec.iconBox, 15, HOLO_EDGE)
+				rec.glyph = makeSparkIcon(rec.iconBox, 22, HOLO_EDGE)
 			else
-				rec.glyph = makeLockIcon(rec.iconBox, 13, COLOR_TEXT_MUTE)
+				rec.glyph = makeLockIcon(rec.iconBox, 18, COLOR_TEXT_MUTE)
 			end
 			rec.glyph.AnchorPoint = Vector2.new(0.5, 0.5)
 			rec.glyph.Position = UDim2.fromScale(0.5, 0.5)
