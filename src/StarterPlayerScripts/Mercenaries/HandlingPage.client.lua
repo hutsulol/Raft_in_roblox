@@ -726,10 +726,10 @@ local function applySkinsTilePreview(handle)
 	preview.Name = "SkinPreview"
 	preview.BackgroundTransparency = 1
 	preview.BorderSizePixel = 0
-	preview.Position = UDim2.fromOffset(4, 4)
-	preview.Size = UDim2.new(1, -8, 1, -8)
+	preview.Position = UDim2.fromOffset(0, 0)
+	preview.Size = UDim2.fromScale(1, 1)
 	preview.Image = SKINS_TILE_IMAGE
-	preview.ScaleType = Enum.ScaleType.Fit
+	preview.ScaleType = Enum.ScaleType.Crop
 	preview.Parent = iconZone
 	setZIndexRecursive(preview, (tile.ZIndex or 55) + 2)
 end
@@ -1584,10 +1584,18 @@ local function openHandlingPage(ctx)
 	dnaBody.ZIndex = 72
 	dnaBody.Parent = dnaContent
 
-	local bigHelix = makeHelixIcon(dnaBody, 28, HOLO_EDGE)
+	local bigHelix = Instance.new("ImageLabel")
+	bigHelix.Name = "DnaBodyIcon"
+	bigHelix.BackgroundTransparency = 1
+	bigHelix.BorderSizePixel = 0
 	bigHelix.AnchorPoint = Vector2.new(0, 0.5)
 	bigHelix.Position = UDim2.new(0, 4, 0.5, 0)
-	setZIndexRecursive(bigHelix, 73)
+	bigHelix.Size = UDim2.fromOffset(24, 28)
+	bigHelix.Image = DNA_RESEARCH_ICON
+	bigHelix.ImageColor3 = HOLO_EDGE
+	bigHelix.ScaleType = Enum.ScaleType.Fit
+	bigHelix.Parent = dnaBody
+	bigHelix.ZIndex = 73
 
 	local fragmentsLbl = Instance.new("TextLabel")
 	fragmentsLbl.BackgroundTransparency = 1
