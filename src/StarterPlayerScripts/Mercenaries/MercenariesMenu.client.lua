@@ -1266,7 +1266,16 @@ buildPage = function(mercNames)
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
 		if size.X <= 0 or size.Y <= 0 then return end
-		local sx = size.X / REFERENCE_W
+		-- Some elements are deliberately parked outside the artboard's
+		-- natural bounds (the BACK button sits at scaleWrap x=-24, for
+		-- instance, so it hangs slightly to the left of the top bar).
+		-- At large UIScales those negative offsets get multiplied and
+		-- push the element off the screen — visible in fullscreen
+		-- 1920x1080 where BACK's left edge lands ~39 px past screen x=0.
+		-- Reserve HORIZONTAL_PADDING px on the screen horizontally so
+		-- the scaled artboard always leaves enough room for them.
+		local HORIZONTAL_PADDING = 80
+		local sx = (size.X - HORIZONTAL_PADDING) / REFERENCE_W
 		-- scaleWrap is Y-centered with an extra MENU_VERTICAL_SHIFT
 		-- offset pushing it down. That shift applies symmetrically:
 		-- top gains `shift` px of padding, bottom loses `shift` px.
