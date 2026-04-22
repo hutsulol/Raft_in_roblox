@@ -1966,8 +1966,8 @@ buildPage = function(mercNames)
 	local profCard = Instance.new("Frame")
 	profCard.Name = "ProfessionCard"
 	profCard.AnchorPoint = Vector2.new(0.5, 0)
-	profCard.Position = UDim2.new(0.5, 0, 0, -78)
-	profCard.Size = UDim2.fromOffset(300, 74)
+	profCard.Position = UDim2.new(0.5, 0, 0, -124)
+	profCard.Size = UDim2.fromOffset(240, 59)
 	profCard.BackgroundColor3 = HOLO_PANEL_FILL
 	profCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	profCard.BorderSizePixel = 0
@@ -1981,8 +1981,8 @@ buildPage = function(mercNames)
 	local profIconRing = Instance.new("Frame")
 	profIconRing.Name = "IconRing"
 	profIconRing.AnchorPoint = Vector2.new(0, 0.5)
-	profIconRing.Position = UDim2.new(0, 14, 0.5, 0)
-	profIconRing.Size = UDim2.fromOffset(52, 52)
+	profIconRing.Position = UDim2.new(0, 11, 0.5, 0)
+	profIconRing.Size = UDim2.fromOffset(42, 42)
 	profIconRing.BackgroundTransparency = 1
 	profIconRing.BorderSizePixel = 0
 	profIconRing.ZIndex = 7
@@ -2002,26 +2002,26 @@ buildPage = function(mercNames)
 	profIconImage.BorderSizePixel = 0
 	profIconImage.AnchorPoint = Vector2.new(0.5, 0.5)
 	profIconImage.Position = UDim2.fromScale(0.5, 0.5)
-	profIconImage.Size = UDim2.fromOffset(30, 30)
+	profIconImage.Size = UDim2.fromOffset(24, 24)
 	profIconImage.Image = ICON_PROF_FISHER
 	profIconImage.ImageColor3 = COLOR_TEXT
 	profIconImage.ScaleType = Enum.ScaleType.Fit
 	profIconImage.ZIndex = 8
 	profIconImage.Parent = profIconRing
 
-	local profIconLetter = makeLabel(profIconRing, "A", FONT_TITLE, 24, COLOR_TEXT, Enum.TextXAlignment.Center)
+	local profIconLetter = makeLabel(profIconRing, "A", FONT_TITLE, 20, COLOR_TEXT, Enum.TextXAlignment.Center)
 	profIconLetter.Size = UDim2.fromScale(1, 1)
 	profIconLetter.ZIndex = 8
 	profIconLetter.Visible = false
 
-	local profTag = makeLabel(profCard, "PROFESSION:", FONT_TITLE, 18, COLOR_TEXT_DIM)
-	profTag.Position = UDim2.fromOffset(78, 12)
-	profTag.Size = UDim2.fromOffset(200, 20)
+	local profTag = makeLabel(profCard, "PROFESSION:", FONT_TITLE, 14, COLOR_TEXT_DIM)
+	profTag.Position = UDim2.fromOffset(62, 10)
+	profTag.Size = UDim2.fromOffset(160, 16)
 	profTag.ZIndex = 7
 
-	local profValue = makeLabel(profCard, "ASSISTANT", FONT_TITLE, 30, COLOR_TEXT)
-	profValue.Position = UDim2.fromOffset(78, 30)
-	profValue.Size = UDim2.fromOffset(208, 32)
+	local profValue = makeLabel(profCard, "ASSISTANT", FONT_TITLE, 24, COLOR_TEXT)
+	profValue.Position = UDim2.fromOffset(62, 24)
+	profValue.Size = UDim2.fromOffset(168, 26)
 	profValue.ZIndex = 7
 
 	-- ── Handling button ──────────────────────────────────────────────
