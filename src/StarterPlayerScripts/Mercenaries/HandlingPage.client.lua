@@ -1368,11 +1368,15 @@ local function openHandlingPage(ctx)
 		return nil
 	end
 
-	-- Detail card shell
+	-- Detail card shell. Fully opaque (not HOLO_PANEL_TRANSPARENCY)
+	-- so the card's fill acts as a mask for the character viewport
+	-- behind it — the pirate's legs get visually cropped at the
+	-- card's top edge instead of bleeding through the translucent
+	-- holo fill used by the slot tiles above.
 	local detailCard = Instance.new("Frame")
 	detailCard.Name = "DetailCard"
 	detailCard.BackgroundColor3 = HOLO_PANEL_FILL
-	detailCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	detailCard.BackgroundTransparency = 0
 	detailCard.BorderSizePixel = 0
 	detailCard.Position = UDim2.fromOffset(BOTTOM_LEFT_X, BOTTOM_CARD_Y)
 	detailCard.Size = UDim2.fromOffset(BOTTOM_CARD_W, BOTTOM_CARD_H)
@@ -1558,10 +1562,13 @@ local function openHandlingPage(ctx)
 	refreshDetailCard(selectedSlot)
 
 	-- DNA Research card (placeholder data for now)
+	-- Same opacity reasoning as DetailCard — the card must fully
+	-- mask the viewport behind it so the pirate doesn't bleed
+	-- through the DNA content.
 	local dnaCard = Instance.new("Frame")
 	dnaCard.Name = "DnaCard"
 	dnaCard.BackgroundColor3 = HOLO_PANEL_FILL
-	dnaCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	dnaCard.BackgroundTransparency = 0
 	dnaCard.BorderSizePixel = 0
 	dnaCard.Position = UDim2.fromOffset(BOTTOM_RIGHT_X, BOTTOM_CARD_Y)
 	dnaCard.Size = UDim2.fromOffset(BOTTOM_CARD_W, BOTTOM_CARD_H)
