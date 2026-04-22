@@ -109,6 +109,242 @@ local function makeFlaskIcon(parent, size, color)
 	return c
 end
 
+-- ─── Simple trait glyphs (all drawn from primitive Frames) ──────────
+-- Minimal silhouettes, not image assets — each takes a square `size`
+-- container and renders inside it.
+
+local function makePersonIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "PersonIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local head = Instance.new("Frame")
+	head.AnchorPoint = Vector2.new(0.5, 0.5)
+	head.Position = UDim2.fromScale(0.5, 0.3)
+	head.Size = UDim2.fromOffset(size * 0.38, size * 0.38)
+	head.BackgroundTransparency = 1
+	head.BorderSizePixel = 0
+	head.Parent = c
+	local hc = Instance.new("UICorner")
+	hc.CornerRadius = UDim.new(1, 0)
+	hc.Parent = head
+	local hs = Instance.new("UIStroke")
+	hs.Color     = color
+	hs.Thickness = 1.4
+	hs.Parent    = head
+
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0)
+	body.Position = UDim2.fromScale(0.5, 0.58)
+	body.Size = UDim2.fromOffset(size * 0.62, size * 0.34)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.Parent = c
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0.5, 0)
+	bc.Parent = body
+	local bs = Instance.new("UIStroke")
+	bs.Color     = color
+	bs.Thickness = 1.4
+	bs.Parent    = body
+
+	return c
+end
+
+-- 5-point star drawn with two crossed 4-point stars (rotated).
+local function makeStarIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "StarIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.18))
+	for _, rot in ipairs({ 0, 45, 90 }) do
+		local bar = Instance.new("Frame")
+		bar.AnchorPoint = Vector2.new(0.5, 0.5)
+		bar.Position = UDim2.fromScale(0.5, 0.5)
+		bar.Size = UDim2.fromOffset(size * 0.85, thick)
+		bar.BackgroundColor3 = color
+		bar.BorderSizePixel = 0
+		bar.Rotation = rot
+		bar.Parent = c
+	end
+
+	return c
+end
+
+-- "Run" glyph — slanted arrow approximating a motion line.
+local function makeRunIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "RunIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.14))
+	for i = 0, 2 do
+		local bar = Instance.new("Frame")
+		bar.AnchorPoint = Vector2.new(0.5, 0.5)
+		bar.Position = UDim2.fromScale(0.38 + i * 0.16, 0.5)
+		bar.Size = UDim2.fromOffset(size * 0.54, thick)
+		bar.BackgroundColor3 = color
+		bar.BackgroundTransparency = i * 0.3
+		bar.BorderSizePixel = 0
+		bar.Rotation = -20
+		bar.Parent = c
+	end
+
+	return c
+end
+
+-- Shield-like "behaviour" glyph (rounded square with a diagonal stripe).
+local function makeShieldIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "ShieldIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0.5)
+	body.Position = UDim2.fromScale(0.5, 0.5)
+	body.Size = UDim2.fromOffset(size * 0.75, size * 0.75)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.Parent = c
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, math.max(1, math.floor(size * 0.18)))
+	bc.Parent = body
+	local bs = Instance.new("UIStroke")
+	bs.Color     = color
+	bs.Thickness = 1.4
+	bs.Parent    = body
+
+	local stripe = Instance.new("Frame")
+	stripe.AnchorPoint = Vector2.new(0.5, 0.5)
+	stripe.Position = UDim2.fromScale(0.5, 0.5)
+	stripe.Size = UDim2.fromOffset(size * 0.55, math.max(1, math.floor(size * 0.1)))
+	stripe.BackgroundColor3 = color
+	stripe.BorderSizePixel = 0
+	stripe.Rotation = -32
+	stripe.Parent = c
+
+	return c
+end
+
+-- "+" plus-sign glyph (ABILITY SEED).
+local function makePlusIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "PlusIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local thick = math.max(1, math.floor(size * 0.18))
+	local vert = Instance.new("Frame")
+	vert.AnchorPoint = Vector2.new(0.5, 0.5)
+	vert.Position = UDim2.fromScale(0.5, 0.5)
+	vert.Size = UDim2.fromOffset(thick, size * 0.75)
+	vert.BackgroundColor3 = color
+	vert.BorderSizePixel = 0
+	vert.Parent = c
+
+	local horiz = Instance.new("Frame")
+	horiz.AnchorPoint = Vector2.new(0.5, 0.5)
+	horiz.Position = UDim2.fromScale(0.5, 0.5)
+	horiz.Size = UDim2.fromOffset(size * 0.75, thick)
+	horiz.BackgroundColor3 = color
+	horiz.BorderSizePixel = 0
+	horiz.Parent = c
+
+	return c
+end
+
+-- Padlock glyph (rendered for locked trait tiles).
+local function makeLockIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "LockIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	-- Shackle arc, approximated by a top-half outlined rectangle.
+	local arc = Instance.new("Frame")
+	arc.AnchorPoint = Vector2.new(0.5, 1)
+	arc.Position = UDim2.fromScale(0.5, 0.48)
+	arc.Size = UDim2.fromOffset(size * 0.5, size * 0.4)
+	arc.BackgroundTransparency = 1
+	arc.BorderSizePixel = 0
+	arc.Parent = c
+	local ac = Instance.new("UICorner")
+	ac.CornerRadius = UDim.new(0.5, 0)
+	ac.Parent = arc
+	local as = Instance.new("UIStroke")
+	as.Color     = color
+	as.Thickness = 1.4
+	as.Parent    = arc
+
+	-- Body — solid rounded rectangle sitting below the arc.
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0)
+	body.Position = UDim2.fromScale(0.5, 0.48)
+	body.Size = UDim2.fromOffset(size * 0.72, size * 0.42)
+	body.BackgroundColor3 = color
+	body.BorderSizePixel = 0
+	body.Parent = c
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, math.max(1, math.floor(size * 0.14)))
+	bc.Parent = body
+
+	return c
+end
+
+-- Mini DNA helix glyph for the MUTATION trait — two rails with short
+-- horizontal rungs. Not drawn as a true sine wave (too small), just
+-- slight diagonals that read as "helix" at 16-20 px.
+local function makeMiniHelixIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "MiniHelixIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local railThick = math.max(1, math.floor(size * 0.08))
+	for _, spec in ipairs({ { 0.3, -12 }, { 0.7, 12 } }) do
+		local rail = Instance.new("Frame")
+		rail.AnchorPoint = Vector2.new(0.5, 0.5)
+		rail.Position = UDim2.fromScale(spec[1], 0.5)
+		rail.Size = UDim2.fromOffset(railThick, size * 0.92)
+		rail.BackgroundColor3 = color
+		rail.BorderSizePixel = 0
+		rail.Rotation = spec[2]
+		rail.Parent = c
+	end
+
+	for i = 1, 3 do
+		local rung = Instance.new("Frame")
+		rung.AnchorPoint = Vector2.new(0.5, 0.5)
+		rung.Position = UDim2.fromScale(0.5, 0.25 + (i - 1) * 0.25)
+		rung.Size = UDim2.fromOffset(size * 0.46, railThick)
+		rung.BackgroundColor3 = color
+		rung.BorderSizePixel = 0
+		rung.BackgroundTransparency = 0.35
+		rung.Parent = c
+	end
+
+	return c
+end
+
 -- ─── Small outlined diamond glyph (RESEARCH LOG header prefix) ──────
 local function makeDiamondIcon(parent, size, color)
 	local c = Instance.new("Frame")
@@ -1115,6 +1351,174 @@ local function openDNAStudyPage(ctx)
 
 	-- Step 12 will refresh `genomeValue.Text` from snapshot.fragments.
 	local _ = genomeValue
+
+	-- ── Right column: Decoded Traits ──────────────────────────────────
+	-- Holo card at top ("DECODED TRAITS" header) stacked over 8 trait
+	-- tiles. Tiles 1-5 are always-unlocked descriptive entries;
+	-- tiles 6-8 auto-unlock at 70 / 85 / 100 % genome and become
+	-- click-to-spend — a click consumes one research point and bumps
+	-- the trait's effect %. Spend wiring lands in Step 12 when the
+	-- snapshot subscription plugs in.
+	local TRAIT_HEADER_H = 22
+	local TRAIT_TILE_H   = 46
+	local TRAIT_GAP      = 6
+	local TRAIT_PAD_X    = 12
+
+	local traitHeader = Instance.new("Frame")
+	traitHeader.BackgroundTransparency = 1
+	traitHeader.BorderSizePixel = 0
+	traitHeader.Position = UDim2.fromOffset(0, 0)
+	traitHeader.Size = UDim2.fromOffset(RIGHT_COL_W, TRAIT_HEADER_H)
+	traitHeader.ZIndex = 52
+	traitHeader.Parent = rightColumn
+
+	local traitDiamond = makeDiamondIcon(traitHeader, 12, HOLO_EDGE)
+	traitDiamond.AnchorPoint = Vector2.new(0, 0.5)
+	traitDiamond.Position = UDim2.new(0, TRAIT_PAD_X, 0.5, 0)
+	traitDiamond.ZIndex = 53
+
+	local traitTitle = Instance.new("TextLabel")
+	traitTitle.BackgroundTransparency = 1
+	traitTitle.BorderSizePixel = 0
+	traitTitle.Position = UDim2.fromOffset(TRAIT_PAD_X + 18, 0)
+	traitTitle.Size = UDim2.new(1, -(TRAIT_PAD_X + 18), 1, 0)
+	traitTitle.Font = FONT_TITLE
+	traitTitle.TextSize = 12
+	traitTitle.TextColor3 = COLOR_TEXT
+	traitTitle.TextXAlignment = Enum.TextXAlignment.Left
+	traitTitle.TextYAlignment = Enum.TextYAlignment.Center
+	traitTitle.Text = "DECODED TRAITS"
+	traitTitle.ZIndex = 53
+	traitTitle.Parent = traitHeader
+
+	-- Trait metadata. `unlockPct` = nil means the trait is always
+	-- unlocked (descriptive); otherwise it unlocks when the merc's
+	-- genome-decoded percentage crosses that threshold. `key`
+	-- matches the server's `traitEffect` sub-table keys for the 3
+	-- mutation slots.
+	local TRAITS = {
+		{ key = "species",      name = "SPECIES",       body = "Humanoid · Pirate lineage", icon = makePersonIcon,    unlockPct = nil },
+		{ key = "baseStrength", name = "BASE STRENGTH", body = "Above average",             icon = makeStarIcon,      unlockPct = nil },
+		{ key = "mobility",     name = "MOBILITY",      body = "Agile, coastal",            icon = makeRunIcon,       unlockPct = nil },
+		{ key = "behaviour",    name = "BEHAVIOUR",     body = "Aggressive, grouping",      icon = makeShieldIcon,    unlockPct = nil },
+		{ key = "abilitySeed",  name = "ABILITY SEED",  body = "Iron Grip unlocked",        icon = makePlusIcon,      unlockPct = nil },
+		{ key = "rareMarker",   name = "RARE MARKER",   body = "Decodes at 70%",            icon = makeLockIcon,      unlockPct = 70  },
+		{ key = "mutation",     name = "MUTATION",      body = "Decodes at 85%",            icon = makeMiniHelixIcon, unlockPct = 85  },
+		{ key = "fullGenome",   name = "FULL GENOME",   body = "Decodes at 100%",           icon = makeDiamondIcon,   unlockPct = 100 },
+	}
+
+	local traitRefs = {}
+
+	local function buildTraitTile(index, def)
+		local y = TRAIT_HEADER_H + (index - 1) * (TRAIT_TILE_H + TRAIT_GAP) + TRAIT_GAP
+
+		local tile = Instance.new("TextButton")
+		tile.Name = "Trait_" .. def.key
+		tile.AutoButtonColor = false
+		tile.Text = ""
+		tile.BackgroundColor3 = HOLO_PANEL_FILL
+		tile.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+		tile.BorderSizePixel = 0
+		tile.Position = UDim2.fromOffset(0, y)
+		tile.Size = UDim2.fromOffset(RIGHT_COL_W, TRAIT_TILE_H)
+		tile.ZIndex = 52
+		tile.Parent = rightColumn
+
+		local stroke = Instance.new("UIStroke")
+		stroke.Color     = HOLO_PANEL_BORDER
+		stroke.Thickness = 1
+		stroke.Parent    = tile
+
+		local iconBox = Instance.new("Frame")
+		iconBox.BackgroundColor3 = Color3.fromRGB(16, 34, 58)
+		iconBox.BackgroundTransparency = 0.3
+		iconBox.BorderSizePixel = 0
+		iconBox.Position = UDim2.fromOffset(TRAIT_PAD_X, (TRAIT_TILE_H - 26) / 2)
+		iconBox.Size = UDim2.fromOffset(26, 26)
+		iconBox.ZIndex = 53
+		iconBox.Parent = tile
+		local ibStroke = Instance.new("UIStroke")
+		ibStroke.Color     = HOLO_PANEL_BORDER
+		ibStroke.Thickness = 1
+		ibStroke.Parent    = iconBox
+
+		local glyph = def.icon(iconBox, 18, HOLO_EDGE)
+		if glyph then
+			glyph.AnchorPoint = Vector2.new(0.5, 0.5)
+			glyph.Position = UDim2.fromScale(0.5, 0.5)
+			glyph.ZIndex = 54
+		end
+
+		local textX = TRAIT_PAD_X + 26 + 10
+		local nameLbl = Instance.new("TextLabel")
+		nameLbl.BackgroundTransparency = 1
+		nameLbl.BorderSizePixel = 0
+		nameLbl.Position = UDim2.fromOffset(textX, 6)
+		nameLbl.Size = UDim2.new(1, -(textX + TRAIT_PAD_X), 0, 14)
+		nameLbl.Font = FONT_TITLE
+		nameLbl.TextSize = 11
+		nameLbl.TextColor3 = COLOR_TEXT
+		nameLbl.TextXAlignment = Enum.TextXAlignment.Left
+		nameLbl.Text = def.name
+		nameLbl.ZIndex = 53
+		nameLbl.Parent = tile
+
+		local bodyLbl = Instance.new("TextLabel")
+		bodyLbl.BackgroundTransparency = 1
+		bodyLbl.BorderSizePixel = 0
+		bodyLbl.Position = UDim2.fromOffset(textX, 22)
+		bodyLbl.Size = UDim2.new(1, -(textX + TRAIT_PAD_X), 0, 16)
+		bodyLbl.Font = FONT_BODY
+		bodyLbl.TextSize = 11
+		bodyLbl.TextColor3 = COLOR_TEXT_DIM
+		bodyLbl.TextXAlignment = Enum.TextXAlignment.Left
+		bodyLbl.Text = def.body
+		bodyLbl.ZIndex = 53
+		bodyLbl.Parent = tile
+
+		local ref = {
+			tile = tile, stroke = stroke, iconBox = iconBox,
+			nameLbl = nameLbl, bodyLbl = bodyLbl,
+			def = def, unlocked = (def.unlockPct == nil),
+		}
+
+		-- Default visual state: unlocked for descriptive traits,
+		-- locked (dimmed, "Decodes at N%") for mutation traits.
+		local function applyVisualState()
+			if ref.unlocked then
+				tile.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+				stroke.Color      = HOLO_PANEL_BORDER
+				nameLbl.TextColor3 = COLOR_TEXT
+				bodyLbl.TextColor3 = COLOR_TEXT_DIM
+			else
+				tile.BackgroundTransparency = 0.6
+				stroke.Color      = Color3.fromRGB(55, 75, 100)
+				nameLbl.TextColor3 = COLOR_TEXT_DIM
+				bodyLbl.TextColor3 = COLOR_TEXT_MUTE
+			end
+		end
+		ref.applyVisualState = applyVisualState
+		applyVisualState()
+
+		tile.MouseButton1Click:Connect(function()
+			-- Step 12 replaces this stub with a DNAResearch
+			-- `spendResearchPoint` action. For now the print shows
+			-- whether the click is reaching an unlocked trait or a
+			-- still-locked placeholder.
+			print("[DNAStudyPage] trait clicked", def.key,
+				ref.unlocked and "(unlocked)" or "(locked)")
+		end)
+
+		return ref
+	end
+
+	for i, def in ipairs(TRAITS) do
+		traitRefs[def.key] = buildTraitTile(i, def)
+	end
+
+	-- Expose for Step 12 to plug in snapshot → unlock state + effect %
+	-- refreshes without re-walking the tree.
+	local _ = traitRefs
 
 	updateResponsiveScale()
 
