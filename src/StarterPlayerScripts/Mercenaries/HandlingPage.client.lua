@@ -1376,7 +1376,13 @@ local function openHandlingPage(ctx)
 	detailCard.BorderSizePixel = 0
 	detailCard.Position = UDim2.fromOffset(BOTTOM_LEFT_X, BOTTOM_CARD_Y)
 	detailCard.Size = UDim2.fromOffset(BOTTOM_CARD_W, BOTTOM_CARD_H)
-	detailCard.ZIndex = 55
+	-- ZIndex 70 sits above the viewport subtree (Z 55) so the cards
+	-- clip the character — the pirate's legs disappear behind the
+	-- card edges instead of spilling over them. ViewportFrame's
+	-- internal 3D render seems to beat equal-Z Sibling ordering, so
+	-- we need a decisively higher Z here rather than relying on
+	-- creation-order tie-breaks.
+	detailCard.ZIndex = 70
 	detailCard.Parent = scaleWrap
 	local dcStroke = Instance.new("UIStroke")
 	dcStroke.Color     = HOLO_PANEL_BORDER
@@ -1559,7 +1565,7 @@ local function openHandlingPage(ctx)
 	dnaCard.BorderSizePixel = 0
 	dnaCard.Position = UDim2.fromOffset(BOTTOM_RIGHT_X, BOTTOM_CARD_Y)
 	dnaCard.Size = UDim2.fromOffset(BOTTOM_CARD_W, BOTTOM_CARD_H)
-	dnaCard.ZIndex = 55
+	dnaCard.ZIndex = 70 -- see DetailCard ZIndex note above
 	dnaCard.Parent = scaleWrap
 	local dnStroke = Instance.new("UIStroke")
 	dnStroke.Color     = HOLO_PANEL_BORDER
