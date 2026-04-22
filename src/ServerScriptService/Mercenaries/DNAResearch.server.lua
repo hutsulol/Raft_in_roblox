@@ -237,7 +237,12 @@ local function giveEmptyCapsule(player)
 end
 
 -- ─── RemoteEvent handler ──────────────────────────────────────────────
-dnaEvent.OnServerEvent:Connect(function(player, action, mercName)
+-- spendResearchPoint mutation deltas. One click = +EFFECT_PER_POINT
+-- on the trait's effect %, capped at 100. Costs 1 research point.
+local EFFECT_PER_POINT = 5
+local TRAIT_UNLOCK_PCT = { rareMarker = 70, mutation = 85, fullGenome = 100 }
+
+dnaEvent.OnServerEvent:Connect(function(player, action, mercName, ...)
 	if typeof(action) ~= "string" then return end
 	if typeof(mercName) ~= "string" or mercName == "" then return end
 
@@ -267,6 +272,29 @@ dnaEvent.OnServerEvent:Connect(function(player, action, mercName)
 		giveEmptyCapsule(player)
 		mercState.activeSlot.bloodType = mercName
 		mercState.activeSlot.endsAt    = os.time() + STUDY_DURATION
+		dnaEvent:FireClient(player, "state", mercName, snapshotMerc(mercState))
+
+	elseif action == "spendResearchPoint" then
+		-- Args: (mercName, traitKey). Bumps the named trait's effect %
+		-- by EFFECT_PER_POINT (capped at 100), at a cost of 1 research
+		-- point. Refuses if the trait isn't unlocked yet (genome %
+		-- below its threshold) or the player has no points to spend.
+		local traitKey = (select(1, ...))
+		local unlockPct = traitKey and TRAIT_UNLOCK_PCT[traitKey]
+		if not unlockPct then return end
+		if (mercState.researchPoints or 0) <= 0 then return end
+
+		-- Compute genome % so we can confirm the trait is unlocked.
+		local total = 0
+		for i = 1, FRAGMENT_COUNT do
+			total = total + (mercState.fragments[i] or 0)
+		end
+		local genomePct = total / FRAGMENT_COUNT
+		if genomePct < unlockPct then return end
+
+		mercState.researchPoints = mercState.researchPoints - 1
+		local current = mercState.traitEffect[traitKey] or 0
+		mercState.traitEffect[traitKey] = math.min(100, current + EFFECT_PER_POINT)
 		dnaEvent:FireClient(player, "state", mercName, snapshotMerc(mercState))
 	end
 end)

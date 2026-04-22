@@ -1138,6 +1138,13 @@ local function openDNAStudyPage(ctx)
 		end)
 	end
 
+	-- Forward declaration. The real implementation is assigned after
+	-- the trait tiles + fragment refs + log refs + genome label all
+	-- exist (further down in this function). Callers reach it through
+	-- this upvalue so the OnClientEvent handler below can dispatch
+	-- snapshots to it without caring about declaration order.
+	local refreshFromSnapshot
+
 	-- ── State machine for the sample slot ────────────────────────────
 	-- Driven by snapshots from DNAResearch.getState / insertBlood /
 	-- the server's study tick. The client's countdown is a simple
@@ -1211,9 +1218,13 @@ local function openDNAStudyPage(ctx)
 				local args = table.pack(...)
 				if action == "state" then
 					renderSlotFromSnapshot(args[1])
+					if refreshFromSnapshot then refreshFromSnapshot(args[1]) end
 				elseif action == "studyComplete" then
 					-- args[1] = fragmentIndex, args[2] = snapshot, args[3] = meta
 					renderSlotFromSnapshot(args[2])
+					if refreshFromSnapshot then
+						refreshFromSnapshot(args[2], args[1], args[3])
+					end
 				elseif action == "insertFailed" then
 					local reason = args[1]
 					if reason == "busy" then
@@ -1348,9 +1359,7 @@ local function openDNAStudyPage(ctx)
 	addRow(3, "FRAGMENTS", "FRAGMENTS",    "0 / 9")
 	addRow(4, "KILLS",     "KILLS LOGGED", "0")
 
-	-- Expose the refs so Step 12 can plug a DNAResearch snapshot
-	-- subscription in without needing to re-query the logCard tree.
-	local _ = logValueRefs
+	-- logValueRefs is consumed by refreshFromSnapshot below.
 
 	-- ── Centre column: DNA double helix + GENOME DECODED % ───────────
 	-- Two continuous sine-wave rails twisting around each other with
@@ -1498,9 +1507,7 @@ local function openDNAStudyPage(ctx)
 		end
 	end
 
-	-- Step 12 will walk fragmentRefs[i] to resize .fill.Size.X.Scale
-	-- from snapshot.fragments[i] / 100.
-	local _ = fragmentRefs
+	-- fragmentRefs is consumed by refreshFromSnapshot below.
 
 	-- GENOME DECODED label + percentage. Percentage value ref stashed
 	-- so Step 12 can tween it when fragments advance.
@@ -1543,8 +1550,7 @@ local function openDNAStudyPage(ctx)
 	genomeValue.ZIndex = 53
 	genomeValue.Parent = genomeRow
 
-	-- Step 12 will refresh `genomeValue.Text` from snapshot.fragments.
-	local _ = genomeValue
+	-- genomeValue is consumed by refreshFromSnapshot below.
 
 	-- ── Right column: Decoded Traits ──────────────────────────────────
 	-- Holo card at top ("DECODED TRAITS" header) stacked over 8 trait
@@ -1575,7 +1581,7 @@ local function openDNAStudyPage(ctx)
 	traitTitle.BackgroundTransparency = 1
 	traitTitle.BorderSizePixel = 0
 	traitTitle.Position = UDim2.fromOffset(TRAIT_PAD_X + 18, 0)
-	traitTitle.Size = UDim2.new(1, -(TRAIT_PAD_X + 18), 1, 0)
+	traitTitle.Size = UDim2.new(1, -(TRAIT_PAD_X + 18 + 70 + TRAIT_PAD_X), 1, 0)
 	traitTitle.Font = FONT_TITLE
 	traitTitle.TextSize = 12
 	traitTitle.TextColor3 = COLOR_TEXT
@@ -1584,6 +1590,24 @@ local function openDNAStudyPage(ctx)
 	traitTitle.Text = "DECODED TRAITS"
 	traitTitle.ZIndex = 53
 	traitTitle.Parent = traitHeader
+
+	-- Research-points counter, right-aligned. Live-updated in the
+	-- snapshot subscription below. Click an unlocked trait tile to
+	-- spend a point and bump that trait's effect %.
+	local rpLabel = Instance.new("TextLabel")
+	rpLabel.Name = "RPCounter"
+	rpLabel.BackgroundTransparency = 1
+	rpLabel.BorderSizePixel = 0
+	rpLabel.AnchorPoint = Vector2.new(1, 0.5)
+	rpLabel.Position = UDim2.new(1, -TRAIT_PAD_X, 0.5, 0)
+	rpLabel.Size = UDim2.fromOffset(70, 14)
+	rpLabel.Font = FONT_TITLE
+	rpLabel.TextSize = 11
+	rpLabel.TextColor3 = HOLO_EDGE
+	rpLabel.TextXAlignment = Enum.TextXAlignment.Right
+	rpLabel.Text = "0 RP"
+	rpLabel.ZIndex = 53
+	rpLabel.Parent = traitHeader
 
 	-- Trait metadata. `unlockPct` = nil means the trait is always
 	-- unlocked (descriptive); otherwise it unlocks when the merc's
@@ -1695,12 +1719,10 @@ local function openDNAStudyPage(ctx)
 		applyVisualState()
 
 		tile.MouseButton1Click:Connect(function()
-			-- Step 12 replaces this stub with a DNAResearch
-			-- `spendResearchPoint` action. For now the print shows
-			-- whether the click is reaching an unlocked trait or a
-			-- still-locked placeholder.
-			print("[DNAStudyPage] trait clicked", def.key,
-				ref.unlocked and "(unlocked)" or "(locked)")
+			if not ref.unlocked then return end
+			if def.unlockPct == nil then return end -- descriptive trait
+			if not dnaResearchEvent or not ctx.mercName then return end
+			dnaResearchEvent:FireServer("spendResearchPoint", ctx.mercName, def.key)
 		end)
 
 		return ref
@@ -1710,9 +1732,90 @@ local function openDNAStudyPage(ctx)
 		traitRefs[def.key] = buildTraitTile(i, def)
 	end
 
-	-- Expose for Step 12 to plug in snapshot → unlock state + effect %
-	-- refreshes without re-walking the tree.
-	local _ = traitRefs
+	-- ── Snapshot subscription (assigns the forward-declared upvalue) ──
+	-- Called from the OnClientEvent handler above. One pass updates:
+	--   * fragment fill bars (tweened) + optional pulse on the bar
+	--     that just advanced (passed in as `studiedIdx`)
+	--   * genome decoded %                 (centre column footer)
+	--   * research log: FRAGMENTS row      (count of fragments at 100)
+	--   * RP counter in the trait header
+	--   * trait tile unlock states + body text (effect % when unlocked)
+	local FILL_TWEEN = TweenInfo.new(0.4, Enum.EasingStyle.Sine,
+		Enum.EasingDirection.Out)
+	local PULSE_TWEEN = TweenInfo.new(0.65, Enum.EasingStyle.Quad,
+		Enum.EasingDirection.Out)
+
+	refreshFromSnapshot = function(snapshot, studiedIdx, _meta)
+		if type(snapshot) ~= "table" then return end
+
+		-- Fragment fills + genome %.
+		local frags = snapshot.fragments or {}
+		local sum, completed = 0, 0
+		for i = 1, FRAGMENT_COUNT do
+			local pct = math.clamp(frags[i] or 0, 0, 100)
+			sum = sum + pct
+			if pct >= 100 then completed = completed + 1 end
+			local ref = fragmentRefs[i]
+			if ref then
+				TweenService:Create(ref.fill, FILL_TWEEN, {
+					Size = UDim2.new(pct / 100, 0, 1, 0),
+				}):Play()
+			end
+		end
+		local genomePct = sum / FRAGMENT_COUNT
+		genomeValue.Text = string.format("%d%%", math.floor(genomePct + 0.5))
+
+		-- Pulse the fragment that just advanced — flash the track to
+		-- white then tween it back to its dim default. Fill colour is
+		-- unchanged, so the bright newly-grown segment also gets a
+		-- short halo.
+		if studiedIdx then
+			local ref = fragmentRefs[studiedIdx]
+			if ref and ref.track then
+				ref.track.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+				ref.track.BackgroundTransparency = 0
+				TweenService:Create(ref.track, PULSE_TWEEN, {
+					BackgroundColor3 = HOLO_PANEL_BORDER,
+					BackgroundTransparency = 0.35,
+				}):Play()
+			end
+		end
+
+		-- Research log.
+		if logValueRefs.FRAGMENTS then
+			logValueRefs.FRAGMENTS.Text = string.format("%d / %d",
+				completed, FRAGMENT_COUNT)
+		end
+
+		-- RP counter.
+		rpLabel.Text = string.format("%d RP", snapshot.researchPoints or 0)
+
+		-- Trait tile unlocks + effect %.
+		local effects = snapshot.traitEffect or {}
+		for _, def in ipairs(TRAITS) do
+			local ref = traitRefs[def.key]
+			if ref then
+				local nowUnlocked
+				if def.unlockPct == nil then
+					nowUnlocked = true
+				else
+					nowUnlocked = genomePct >= def.unlockPct
+				end
+				ref.unlocked = nowUnlocked
+				ref.applyVisualState()
+
+				if def.unlockPct ~= nil then
+					if nowUnlocked then
+						local eff = effects[def.key] or 0
+						ref.bodyLbl.Text = string.format(
+							"Effect: %d%%  ·  click to enhance", eff)
+					else
+						ref.bodyLbl.Text = def.body
+					end
+				end
+			end
+		end
+	end
 
 	updateResponsiveScale()
 
