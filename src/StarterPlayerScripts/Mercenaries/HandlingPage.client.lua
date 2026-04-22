@@ -402,13 +402,13 @@ local function openHandlingPage(ctx)
 	backBtn.Name = "BackButton"
 	backBtn.AnchorPoint = Vector2.new(0, 0)
 	backBtn.Position = UDim2.fromOffset(0, BACK_BTN_Y)
-	backBtn.Size = UDim2.fromOffset(88, 34)
+	backBtn.Size = UDim2.fromOffset(92, 34)
 	backBtn.BackgroundColor3 = HOLO_PANEL_FILL
 	backBtn.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	backBtn.BorderSizePixel = 0
 	backBtn.AutoButtonColor = true
 	backBtn.Text = "" -- glyph + label drawn as children
-	backBtn.ZIndex = 6
+	backBtn.ZIndex = 52
 	backBtn.Parent = scaleWrap
 	local bStroke = Instance.new("UIStroke")
 	bStroke.Color     = HOLO_PANEL_BORDER
@@ -419,6 +419,7 @@ local function openHandlingPage(ctx)
 	local backGlyph = makeBackIcon(backBtn, 14, COLOR_TEXT)
 	backGlyph.AnchorPoint = Vector2.new(0, 0.5)
 	backGlyph.Position = UDim2.new(0, 12, 0.5, 0)
+	backGlyph.ZIndex = 53
 
 	local backLabel = Instance.new("TextLabel")
 	backLabel.BackgroundTransparency = 1
@@ -430,6 +431,7 @@ local function openHandlingPage(ctx)
 	backLabel.TextColor3 = COLOR_TEXT
 	backLabel.TextXAlignment = Enum.TextXAlignment.Left
 	backLabel.Text = "BACK"
+	backLabel.ZIndex = 53
 	backLabel.Parent = backBtn
 
 	backBtn.MouseButton1Click:Connect(function()
@@ -437,85 +439,81 @@ local function openHandlingPage(ctx)
 		if ctx.onBack then ctx.onBack() end
 	end)
 
-	-- ── Centred "MERCENARY / <NAME> / LV N" cluster ──────────────────
-	-- Horizontal UIListLayout with three AutomaticSize.X children so
-	-- the cluster fits any merc name without needing a hand-tuned
-	-- container width. scaleWrap centres it by default (AnchorPoint
-	-- 0.5, scale x=0.5).
+	-- ── Centred MERCENARY / <NAME> / LV N cluster ────────────────────
+	-- Fixed widths + absolute positioning inside a centred container,
+	-- sized generously so long merc names still fit without cropping.
+	-- AutomaticSize + UIListLayout bit us on first pass (renders were
+	-- blank until the layout pass caught up), so we side-step that by
+	-- doing the math here.
+	local CLUSTER_W = 320
+	local TAG_W     = 96     -- "MERCENARY" at 11 pt
+	local NAME_W    = 160    -- big title at 18 pt — room for "QUARTERMASTER"
+	local BADGE_W   = 48     -- LV N badge with padding
+	local GAP       = 8
+	local CLUSTER_Y = BACK_BTN_Y + 6
+
 	local topCluster = Instance.new("Frame")
 	topCluster.Name = "TopCluster"
 	topCluster.BackgroundTransparency = 1
 	topCluster.BorderSizePixel = 0
-	topCluster.AnchorPoint = Vector2.new(0.5, 0.5)
-	topCluster.Position = UDim2.new(0.5, 0, 0, BACK_BTN_Y + 17)
-	topCluster.AutomaticSize = Enum.AutomaticSize.X
-	topCluster.Size = UDim2.fromOffset(0, 28)
-	topCluster.ZIndex = 6
+	topCluster.AnchorPoint = Vector2.new(0.5, 0)
+	topCluster.Position = UDim2.new(0.5, 0, 0, CLUSTER_Y)
+	topCluster.Size = UDim2.fromOffset(CLUSTER_W, 24)
+	topCluster.ZIndex = 52
 	topCluster.Parent = scaleWrap
-
-	local clusterList = Instance.new("UIListLayout")
-	clusterList.FillDirection = Enum.FillDirection.Horizontal
-	clusterList.VerticalAlignment = Enum.VerticalAlignment.Center
-	clusterList.HorizontalAlignment = Enum.HorizontalAlignment.Center
-	clusterList.Padding = UDim.new(0, 10)
-	clusterList.SortOrder = Enum.SortOrder.LayoutOrder
-	clusterList.Parent = topCluster
 
 	local mercTag = Instance.new("TextLabel")
 	mercTag.Name = "MercTag"
 	mercTag.BackgroundTransparency = 1
 	mercTag.BorderSizePixel = 0
-	mercTag.AutomaticSize = Enum.AutomaticSize.X
-	mercTag.Size = UDim2.fromOffset(0, 20)
+	mercTag.Position = UDim2.fromOffset(0, 0)
+	mercTag.Size = UDim2.fromOffset(TAG_W, 24)
 	mercTag.Font = FONT_TITLE
 	mercTag.TextSize = 11
 	mercTag.TextColor3 = COLOR_TEXT_MUTE
+	mercTag.TextXAlignment = Enum.TextXAlignment.Right
 	mercTag.Text = "MERCENARY"
-	mercTag.LayoutOrder = 1
+	mercTag.ZIndex = 53
 	mercTag.Parent = topCluster
 
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.Name = "MercName"
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.BorderSizePixel = 0
-	nameLabel.AutomaticSize = Enum.AutomaticSize.X
-	nameLabel.Size = UDim2.fromOffset(0, 22)
+	nameLabel.Position = UDim2.fromOffset(TAG_W + GAP, 0)
+	nameLabel.Size = UDim2.fromOffset(NAME_W, 24)
 	nameLabel.Font = FONT_TITLE
 	nameLabel.TextSize = 18
 	nameLabel.TextColor3 = HOLO_EDGE
+	nameLabel.TextXAlignment = Enum.TextXAlignment.Center
 	nameLabel.Text = mercDisplay
-	nameLabel.LayoutOrder = 2
+	nameLabel.ZIndex = 53
 	nameLabel.Parent = topCluster
 
-	-- LV N badge — small stroked Frame with a padded text label.
 	local lvBadge = Instance.new("Frame")
 	lvBadge.Name = "LvBadge"
 	lvBadge.BackgroundTransparency = 1
 	lvBadge.BorderSizePixel = 0
-	lvBadge.AutomaticSize = Enum.AutomaticSize.X
-	lvBadge.Size = UDim2.fromOffset(0, 20)
-	lvBadge.LayoutOrder = 3
+	lvBadge.AnchorPoint = Vector2.new(0, 0.5)
+	lvBadge.Position = UDim2.fromOffset(TAG_W + GAP + NAME_W + GAP, 12)
+	lvBadge.Size = UDim2.fromOffset(BADGE_W, 20)
+	lvBadge.ZIndex = 53
 	lvBadge.Parent = topCluster
 	local lvStroke = Instance.new("UIStroke")
 	lvStroke.Color     = HOLO_PANEL_BORDER
 	lvStroke.Thickness = 1
 	lvStroke.Parent    = lvBadge
-	local lvPad = Instance.new("UIPadding")
-	lvPad.PaddingLeft  = UDim.new(0, 7)
-	lvPad.PaddingRight = UDim.new(0, 7)
-	lvPad.PaddingTop    = UDim.new(0, 2)
-	lvPad.PaddingBottom = UDim.new(0, 2)
-	lvPad.Parent = lvBadge
 
 	local lvText = Instance.new("TextLabel")
 	lvText.BackgroundTransparency = 1
 	lvText.BorderSizePixel = 0
-	lvText.AutomaticSize = Enum.AutomaticSize.X
-	lvText.Size = UDim2.fromOffset(0, 14)
+	lvText.Size = UDim2.fromScale(1, 1)
 	lvText.Font = FONT_TITLE
 	lvText.TextSize = 11
 	lvText.TextColor3 = COLOR_TEXT_DIM
+	lvText.TextXAlignment = Enum.TextXAlignment.Center
 	lvText.Text = string.format("LV %d", mercLevel)
+	lvText.ZIndex = 54
 	lvText.Parent = lvBadge
 
 	-- ── Gem currency chip, right-edge pinned via dynamicBleed ────────
@@ -527,7 +525,7 @@ local function openHandlingPage(ctx)
 	chip.BackgroundColor3 = HOLO_PANEL_FILL
 	chip.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	chip.BorderSizePixel = 0
-	chip.ZIndex = 6
+	chip.ZIndex = 52
 	chip.Parent = scaleWrap
 	local chipStroke = Instance.new("UIStroke")
 	chipStroke.Color     = HOLO_PANEL_BORDER
@@ -538,6 +536,7 @@ local function openHandlingPage(ctx)
 	local gemGlyph = makeGemIcon(chip, 13, COLOR_GOLD)
 	gemGlyph.AnchorPoint = Vector2.new(0, 0.5)
 	gemGlyph.Position = UDim2.new(0, 10, 0.5, 0)
+	gemGlyph.ZIndex = 53
 
 	local chipLabel = Instance.new("TextLabel")
 	chipLabel.Name = "CurrencyLabel"
@@ -550,6 +549,7 @@ local function openHandlingPage(ctx)
 	chipLabel.TextColor3 = COLOR_GOLD
 	chipLabel.TextXAlignment = Enum.TextXAlignment.Left
 	chipLabel.Text = "0"
+	chipLabel.ZIndex = 53
 	chipLabel.Parent = chip
 
 	-- Force the first scale computation now that the refs are all
