@@ -9,7 +9,6 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
 local SoundService      = game:GetService("SoundService")
 local RunService        = game:GetService("RunService")
-local GuiService        = game:GetService("GuiService")
 
 local player = Players.LocalPlayer
 
@@ -1228,7 +1227,6 @@ buildPage = function(mercNames)
 	-- size and centre it on screen so right-anchored panels land on
 	-- the artboard's own width mark instead of the viewport edge (which
 	-- UIScale would push off-screen on large monitors).
-	local topInset = GuiService:GetGuiInset().Y
 	-- Wider artboard so the mercenary layout occupies more horizontal space
 	-- (closer to the target mock where side cards sit near screen edges).
 	local REFERENCE_W, REFERENCE_H = 1180, 600
@@ -1246,7 +1244,7 @@ buildPage = function(mercNames)
 	scaleWrap.BackgroundTransparency = 1
 	scaleWrap.BorderSizePixel = 0
 	scaleWrap.AnchorPoint = Vector2.new(0.5, 0.5)
-	scaleWrap.Position = UDim2.new(0.5, 0, 0.5, topInset / 2)
+	scaleWrap.Position = UDim2.fromScale(0.5, 0.5)
 	scaleWrap.Size = UDim2.fromOffset(REFERENCE_W, REFERENCE_H)
 	scaleWrap.ZIndex = 50
 	scaleWrap.Parent = page
@@ -1261,7 +1259,7 @@ buildPage = function(mercNames)
 		local size = screenGui.AbsoluteSize
 		if size.X <= 0 or size.Y <= 0 then return end
 		local sx = size.X / REFERENCE_W
-		local sy = (size.Y - topInset) / REFERENCE_H
+		local sy = size.Y / REFERENCE_H
 		local s = math.min(sx, sy)
 		if s < 0.5 then s = 0.5 end
 		responsiveScale.Scale = s
