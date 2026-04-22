@@ -54,6 +54,8 @@ local FONT_BODY  = Enum.Font.Gotham
 
 local COLOR_TEXT_MUTE = Color3.fromRGB(100, 125, 155)
 local COLOR_GOLD      = Color3.fromRGB(230, 190, 100)
+local DNA_RESEARCH_ICON = "rbxassetid://78141836386820"
+local SKINS_TILE_IMAGE  = "rbxassetid://86890035031466"
 
 local function setZIndexRecursive(root, z)
 	if not root then return end
@@ -709,6 +711,29 @@ local function buildSlotTile(parent, opts)
 	return handle
 end
 
+local function applySkinsTilePreview(handle)
+	local tile = handle and handle.tile
+	if not tile then return end
+
+	local iconZone = tile:FindFirstChild("IconZone")
+	if not iconZone or not iconZone:IsA("GuiObject") then return end
+
+	for _, child in ipairs(iconZone:GetChildren()) do
+		child:Destroy()
+	end
+
+	local preview = Instance.new("ImageLabel")
+	preview.Name = "SkinPreview"
+	preview.BackgroundTransparency = 1
+	preview.BorderSizePixel = 0
+	preview.Position = UDim2.fromOffset(4, 4)
+	preview.Size = UDim2.new(1, -8, 1, -8)
+	preview.Image = SKINS_TILE_IMAGE
+	preview.ScaleType = Enum.ScaleType.Fit
+	preview.Parent = iconZone
+	setZIndexRecursive(preview, (tile.ZIndex or 55) + 2)
+end
+
 -- ─── Module state ────────────────────────────────────────────────────
 local activePage = nil
 local activeConnections = {}
@@ -1162,6 +1187,7 @@ local function openHandlingPage(ctx)
 		zIndex       = 55,
 		onClick      = function() selectSlot("Skins") end,
 	})
+	applySkinsTilePreview(slotHandles.Skins)
 
 	slotHandles.Artifacts = buildSlotTile(scaleWrap, {
 		name         = "ARTIFACTS",
@@ -1505,15 +1531,22 @@ local function openHandlingPage(ctx)
 	dnaHeader.ZIndex = 72
 	dnaHeader.Parent = dnaContent
 
-	local dnaHeaderGlyph = makeHelixIcon(dnaHeader, 10, HOLO_EDGE)
+	local dnaHeaderGlyph = Instance.new("ImageLabel")
+	dnaHeaderGlyph.Name = "DnaHeaderIcon"
+	dnaHeaderGlyph.BackgroundTransparency = 1
+	dnaHeaderGlyph.BorderSizePixel = 0
 	dnaHeaderGlyph.AnchorPoint = Vector2.new(0, 0.5)
 	dnaHeaderGlyph.Position = UDim2.new(0, 0, 0.5, 0)
-	setZIndexRecursive(dnaHeaderGlyph, 73)
+	dnaHeaderGlyph.Size = UDim2.fromOffset(12, 12)
+	dnaHeaderGlyph.Image = DNA_RESEARCH_ICON
+	dnaHeaderGlyph.ImageColor3 = HOLO_EDGE
+	dnaHeaderGlyph.Parent = dnaHeader
+	dnaHeaderGlyph.ZIndex = 73
 
 	local dnaTitle = Instance.new("TextLabel")
 	dnaTitle.BackgroundTransparency = 1
 	dnaTitle.BorderSizePixel = 0
-	dnaTitle.Position = UDim2.fromOffset(18, 0)
+	dnaTitle.Position = UDim2.fromOffset(22, 0)
 	dnaTitle.Size = UDim2.new(1, -58, 1, 0)
 	dnaTitle.Font = FONT_TITLE
 	dnaTitle.TextSize = 13
