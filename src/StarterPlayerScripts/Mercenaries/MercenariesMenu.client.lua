@@ -60,6 +60,11 @@ local COLOR_GOLD              = Color3.fromRGB(230, 190, 100)
 local HORIZON                 = Color3.fromRGB(98, 168, 218)
 
 local IDLE_ANIMATION_ID = "rbxassetid://107139405334393"
+local STAT_ICON_ASSETS = {
+	str = "rbxassetid://121469289292513",
+	luck = "rbxassetid://81616209216042",
+	spd = "rbxassetid://79004787166831",
+}
 
 -- Per-mercenary data
 local MERC_THEMES = {
@@ -579,6 +584,18 @@ local function makeChevronRight(parent, size, color)
 	bot.Parent = c
 
 	return c
+end
+
+local function makeStatImageIcon(parent, size, imageId)
+	local icon = Instance.new("ImageLabel")
+	icon.Name = "StatIcon"
+	icon.BackgroundTransparency = 1
+	icon.BorderSizePixel = 0
+	icon.Size = UDim2.fromOffset(size, size)
+	icon.Image = imageId
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.Parent = parent
+	return icon
 end
 
 -- Segmented holo bar — dark track, hairline HOLO_PANEL_BORDER stroke,
@@ -2137,9 +2154,9 @@ buildPage = function(mercNames)
 	-- Three stat rows. Each row is 28 tall: [icon 14] [label / value]
 	-- on top line, holo bar (5 tall) below.
 	local statDefs = {
-		{ key = "str",  label = "STRENGTH", iconFn = makeSparkIcon   },
-		{ key = "spd",  label = "SPEED",    iconFn = makeCircleIcon  },
-		{ key = "luck", label = "LUCK",     iconFn = makeDiamondIcon },
+		{ key = "str",  label = "STRENGTH" },
+		{ key = "spd",  label = "SPEED"    },
+		{ key = "luck", label = "LUCK"     },
 	}
 	local statRefs = {}
 	for i, s in ipairs(statDefs) do
@@ -2157,7 +2174,7 @@ buildPage = function(mercNames)
 		topLine.Size = UDim2.new(1, 0, 0, 14)
 		topLine.Parent = row
 
-		local statIcon = s.iconFn(topLine, 14, HOLO_EDGE)
+		local statIcon = makeStatImageIcon(topLine, 14, STAT_ICON_ASSETS[s.key] or "")
 		statIcon.AnchorPoint = Vector2.new(0, 0.5)
 		statIcon.Position = UDim2.new(0, 0, 0.5, 0)
 
