@@ -3,11 +3,17 @@
 -- Exposes _G.OpenHandlingPage(ctx) + _G.CloseHandlingPage() so
 -- MercenariesMenu can route the HANDLING pill here.
 --
--- Step 1 of the redesign: the holo scaffold — sea-mist gradient +
--- horizon + vignette + drifting motes backdrop, a 960x600 responsive
--- scaleWrap centred on the screen, and a placeholder BACK button wired
--- to ctx.onBack. Slot tiles, detail card and DNA research card land in
--- subsequent steps.
+-- Built so far:
+--   Step 1 — holo scaffold + responsive 960×600 artboard.
+--   Step 2 — top bar (BACK + MERCENARY/NAME/LV cluster + gem chip).
+--   Step 3 — left column: MAIN HAND + RELIC slot tiles. MAIN HAND
+--            reflects the equipped weapon's rarity (via ctx.equipItems);
+--            RELIC is a decorative placeholder (no server state).
+--            Selection is tracked locally for future card refreshes.
+--
+-- Still to land: right column (SKINS + ARTIFACTS) empty tiles, centre
+-- character viewport, bottom detail + DNA research cards, and finally
+-- equip-remote wiring.
 
 local Players        = game:GetService("Players")
 local RunService     = game:GetService("RunService")
@@ -98,6 +104,138 @@ local function makeGemIcon(parent, size, color)
 	return c
 end
 
+-- Rotated-square "stars" row. `filled` entries render as solid fills,
+-- the remainder as hollow outlines at reduced opacity. Mirrors the
+-- MercenariesMenu rarity-row recipe so both pages stay visually in sync.
+local function makeStarRow(parent, filled, total, size, color)
+	size   = size   or 9
+	total  = total  or 5
+	color  = color  or COLOR_GOLD
+	filled = math.clamp(filled or 0, 0, total)
+
+	local gap = 2
+	local c = Instance.new("Frame")
+	c.Name = "StarRow"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(total * size + (total - 1) * gap, size)
+	c.Parent = parent
+
+	for i = 1, total do
+		local star = Instance.new("Frame")
+		star.AnchorPoint = Vector2.new(0.5, 0.5)
+		star.Position = UDim2.new(0, (i - 1) * (size + gap) + size * 0.5, 0.5, 0)
+		star.Size = UDim2.fromOffset(size * 0.72, size * 0.72)
+		star.Rotation = 45
+		star.BorderSizePixel = 0
+		if i <= filled then
+			star.BackgroundColor3 = color
+			star.BackgroundTransparency = 0
+			star.Parent = c
+		else
+			star.BackgroundTransparency = 1
+			star.Parent = c
+			local ss = Instance.new("UIStroke")
+			ss.Color       = color
+			ss.Thickness   = 1
+			ss.Transparency = 0.6
+			ss.Parent      = star
+		end
+	end
+
+	return c
+end
+
+-- Slanted-blade weapon glyph (matches the MAIN HAND tile in the mockup:
+-- a thin parallelogram blade with a small crossguard + pommel dot).
+local function makeWeaponIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "WeaponIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local blade = Instance.new("Frame")
+	blade.AnchorPoint = Vector2.new(0.5, 0.5)
+	blade.Position = UDim2.fromScale(0.5, 0.45)
+	blade.Size = UDim2.fromOffset(size * 0.22, size * 0.78)
+	blade.BackgroundTransparency = 1
+	blade.BorderSizePixel = 0
+	blade.Rotation = -28
+	blade.Parent = c
+	local bCorner = Instance.new("UICorner")
+	bCorner.CornerRadius = UDim.new(0, math.max(1, math.floor(size * 0.06)))
+	bCorner.Parent = blade
+	local bStroke = Instance.new("UIStroke")
+	bStroke.Color     = color
+	bStroke.Thickness = 1.4
+	bStroke.Parent    = blade
+
+	local guard = Instance.new("Frame")
+	guard.AnchorPoint = Vector2.new(0.5, 0.5)
+	guard.Position = UDim2.fromScale(0.62, 0.72)
+	guard.Size = UDim2.fromOffset(size * 0.42, math.max(1, math.floor(size * 0.10)))
+	guard.BackgroundColor3 = color
+	guard.BorderSizePixel = 0
+	guard.Rotation = -28
+	guard.Parent = c
+
+	local pommel = Instance.new("Frame")
+	pommel.AnchorPoint = Vector2.new(0.5, 0.5)
+	pommel.Position = UDim2.fromScale(0.78, 0.86)
+	pommel.Size = UDim2.fromOffset(size * 0.18, size * 0.18)
+	pommel.BackgroundColor3 = color
+	pommel.BorderSizePixel = 0
+	pommel.Parent = c
+	local pCorner = Instance.new("UICorner")
+	pCorner.CornerRadius = UDim.new(1, 0)
+	pCorner.Parent = pommel
+
+	return c
+end
+
+-- Three-point crown glyph (RELIC slot placeholder in the mockup).
+-- Drawn as a flat base bar + three triangular peaks via rotated
+-- squares so it reads at small sizes without needing an image asset.
+local function makeCrownIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "CrownIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local baseThick = math.max(1, math.floor(size * 0.12))
+	local base = Instance.new("Frame")
+	base.AnchorPoint = Vector2.new(0.5, 1)
+	base.Position = UDim2.fromScale(0.5, 0.78)
+	base.Size = UDim2.fromOffset(size * 0.78, baseThick)
+	base.BackgroundColor3 = color
+	base.BorderSizePixel = 0
+	base.Parent = c
+
+	local function peak(xScale, heightScale)
+		local p = Instance.new("Frame")
+		p.AnchorPoint = Vector2.new(0.5, 1)
+		p.Position = UDim2.fromScale(xScale, 0.78)
+		p.Size = UDim2.fromOffset(size * 0.22, size * heightScale)
+		p.BackgroundTransparency = 1
+		p.BorderSizePixel = 0
+		p.Parent = c
+		local s = Instance.new("UIStroke")
+		s.Color     = color
+		s.Thickness = 1.4
+		s.Parent    = p
+		return p
+	end
+	peak(0.22, 0.46)
+	peak(0.50, 0.60)
+	peak(0.78, 0.46)
+
+	return c
+end
+
 -- ─── Artboard reference (matches the Claude Design MercHandlingPage
 -- 960x600 canvas — used as the reference size for the responsive
 -- UIScale below) ─────────────────────────────────────────────────────
@@ -106,9 +244,216 @@ local REFERENCE_H        = 600
 local HORIZONTAL_PADDING = 80 -- per-total px reserved for overflow
 
 -- ─── Panels registered here fade the drifting motes when they drift
--- behind them. Populated by future steps as slot tiles / cards come
--- online; step 1 doesn't register any. ───────────────────────────────
+-- behind them. Populated as slot tiles / cards come online. ──────────
 local motesOccludeList = {}
+
+-- ─── Slot-tile appearance constants (shared selected/unselected look
+-- used by both the left and right equipment columns). ────────────────
+local SLOT_W                   = 120
+local SLOT_H                   = 140
+local SLOT_LABEL_H             = 32
+local SLOT_ICON_SIZE           = 48
+
+local SLOT_FILL_UNSELECTED     = HOLO_PANEL_FILL
+local SLOT_FILL_UNSEL_ALPHA    = 0.40
+local SLOT_FILL_SELECTED       = Color3.fromRGB(16, 42, 72)
+local SLOT_FILL_SEL_ALPHA      = 0.15
+local SLOT_STROKE_UNSELECTED   = Color3.fromRGB(60, 85, 110)
+local SLOT_STROKE_UNSEL_THICK  = 1
+local SLOT_STROKE_SELECTED     = Color3.fromRGB(120, 220, 255)
+local SLOT_STROKE_SEL_THICK    = 1.6
+local SLOT_LABEL_FILL          = Color3.fromRGB(6, 16, 30)
+local SLOT_LABEL_FILL_ALPHA    = 0.55
+local SLOT_LABEL_COLOR_SEL     = Color3.fromRGB(230, 245, 255)
+local SLOT_LABEL_COLOR_UNSEL   = Color3.fromRGB(140, 170, 200)
+local SLOT_ICON_COLOR_SEL      = Color3.fromRGB(130, 220, 255)
+local SLOT_ICON_COLOR_UNSEL    = Color3.fromRGB(110, 160, 200)
+
+-- buildSlotTile — 120×140 holo tile used for MAIN HAND / RELIC / SKINS
+-- / ARTIFACTS. Returns a small handle with `setSelected(bool)` so the
+-- caller can flip the visual without rebuilding the tile. `opts`:
+--   name      — uppercase label text ("MAIN HAND", "RELIC", …)
+--   iconBuilder(parent, size, color) — draws the slot glyph; pass nil
+--                  for empty slots (see `emptyGlyph`).
+--   emptyGlyph — when true, renders a top-right "+" marker and dims
+--                the icon area further (right-column empty look).
+--   stars     — integer 0..5 (hidden when emptyGlyph is true).
+--   selected  — initial selection state.
+--   position  — UDim2 passed straight through to tile.Position.
+--   zIndex    — base z for the tile; children use zIndex+1/+2.
+--   onClick() — fired on MouseButton1Click; receives the handle so
+--               callers can re-paint multiple tiles cooperatively.
+local function buildSlotTile(parent, opts)
+	opts = opts or {}
+	local zBase = opts.zIndex or 55
+
+	local tile = Instance.new("TextButton")
+	tile.Name = opts.name or "SlotTile"
+	tile.AutoButtonColor = false
+	tile.Text = ""
+	tile.AnchorPoint = opts.anchorPoint or Vector2.new(0, 0)
+	tile.Position = opts.position or UDim2.fromOffset(0, 0)
+	tile.Size = UDim2.fromOffset(SLOT_W, SLOT_H)
+	tile.BorderSizePixel = 0
+	tile.ZIndex = zBase
+	tile.Parent = parent
+
+	local stroke = Instance.new("UIStroke")
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = tile
+
+	-- Inner icon zone: everything except the bottom label band. The
+	-- icon itself is centred inside it, with the star row pinned to
+	-- the bottom-right corner (matches the mockup).
+	local iconZone = Instance.new("Frame")
+	iconZone.Name = "IconZone"
+	iconZone.BackgroundTransparency = 1
+	iconZone.BorderSizePixel = 0
+	iconZone.Position = UDim2.fromOffset(0, 0)
+	iconZone.Size = UDim2.new(1, 0, 0, SLOT_H - SLOT_LABEL_H)
+	iconZone.ZIndex = zBase + 1
+	iconZone.Parent = tile
+
+	local iconContainer = Instance.new("Frame")
+	iconContainer.Name = "Icon"
+	iconContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+	iconContainer.Position = UDim2.fromScale(0.5, 0.45)
+	iconContainer.Size = UDim2.fromOffset(SLOT_ICON_SIZE, SLOT_ICON_SIZE)
+	iconContainer.BackgroundTransparency = 1
+	iconContainer.BorderSizePixel = 0
+	iconContainer.ZIndex = zBase + 2
+	iconContainer.Parent = iconZone
+
+	local iconGlyph
+	if opts.iconBuilder then
+		iconGlyph = opts.iconBuilder(iconContainer, SLOT_ICON_SIZE, SLOT_ICON_COLOR_UNSEL)
+		if iconGlyph then
+			iconGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+			iconGlyph.Position = UDim2.fromScale(0.5, 0.5)
+			iconGlyph.ZIndex = zBase + 2
+		end
+	end
+
+	-- "+" badge for empty right-column slots.
+	local plusBadge
+	if opts.emptyGlyph then
+		plusBadge = Instance.new("TextLabel")
+		plusBadge.Name = "PlusBadge"
+		plusBadge.AnchorPoint = Vector2.new(1, 0)
+		plusBadge.Position = UDim2.new(1, -8, 0, 8)
+		plusBadge.Size = UDim2.fromOffset(14, 14)
+		plusBadge.BackgroundTransparency = 1
+		plusBadge.Font = FONT_TITLE
+		plusBadge.TextSize = 16
+		plusBadge.TextColor3 = COLOR_TEXT_DIM
+		plusBadge.Text = "+"
+		plusBadge.ZIndex = zBase + 2
+		plusBadge.Parent = iconZone
+	end
+
+	-- Rarity row, hidden for empty slots.
+	local starRow
+	if not opts.emptyGlyph then
+		local starsCount = math.clamp(opts.stars or 0, 0, 5)
+		starRow = makeStarRow(iconZone, starsCount, 5, 9, COLOR_GOLD)
+		starRow.Name = "Stars"
+		starRow.AnchorPoint = Vector2.new(1, 1)
+		starRow.Position = UDim2.new(1, -8, 1, -6)
+		starRow.ZIndex = zBase + 2
+	end
+
+	-- Label band pinned to the bottom of the tile.
+	local labelBand = Instance.new("Frame")
+	labelBand.Name = "LabelBand"
+	labelBand.AnchorPoint = Vector2.new(0, 1)
+	labelBand.Position = UDim2.new(0, 0, 1, 0)
+	labelBand.Size = UDim2.new(1, 0, 0, SLOT_LABEL_H)
+	labelBand.BackgroundColor3 = SLOT_LABEL_FILL
+	labelBand.BackgroundTransparency = SLOT_LABEL_FILL_ALPHA
+	labelBand.BorderSizePixel = 0
+	labelBand.ZIndex = zBase + 1
+	labelBand.Parent = tile
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.Size = UDim2.fromScale(1, 1)
+	label.BackgroundTransparency = 1
+	label.Font = FONT_TITLE
+	label.TextSize = 12
+	label.TextColor3 = SLOT_LABEL_COLOR_UNSEL
+	label.Text = tostring(opts.name or ""):upper()
+	label.ZIndex = zBase + 2
+	label.Parent = labelBand
+
+	-- Selection glow (enabled only when selected — a soft blurred square
+	-- behind the tile, same color as the selected stroke).
+	local glow = Instance.new("Frame")
+	glow.Name = "Glow"
+	glow.AnchorPoint = Vector2.new(0.5, 0.5)
+	glow.Position = UDim2.fromScale(0.5, 0.5)
+	glow.Size = UDim2.new(1, 14, 1, 14)
+	glow.BackgroundColor3 = SLOT_STROKE_SELECTED
+	glow.BackgroundTransparency = 1
+	glow.BorderSizePixel = 0
+	glow.ZIndex = zBase - 1
+	glow.Parent = tile
+	local glowCorner = Instance.new("UICorner")
+	glowCorner.CornerRadius = UDim.new(0, 8)
+	glowCorner.Parent = glow
+
+	table.insert(motesOccludeList, tile)
+
+	local handle = { tile = tile }
+
+	function handle.setSelected(selected)
+		handle.selected = selected and true or false
+		if selected then
+			tile.BackgroundColor3 = SLOT_FILL_SELECTED
+			tile.BackgroundTransparency = SLOT_FILL_SEL_ALPHA
+			stroke.Color     = SLOT_STROKE_SELECTED
+			stroke.Thickness = SLOT_STROKE_SEL_THICK
+			label.TextColor3 = SLOT_LABEL_COLOR_SEL
+			if iconGlyph then
+				local iconStroke = iconGlyph:FindFirstChildWhichIsA("UIStroke")
+				if iconStroke then iconStroke.Color = SLOT_ICON_COLOR_SEL end
+				for _, d in iconGlyph:GetDescendants() do
+					if d:IsA("Frame") and d.BackgroundTransparency == 0 then
+						d.BackgroundColor3 = SLOT_ICON_COLOR_SEL
+					elseif d:IsA("UIStroke") then
+						d.Color = SLOT_ICON_COLOR_SEL
+					end
+				end
+			end
+			glow.BackgroundTransparency = 0.80
+		else
+			tile.BackgroundColor3 = SLOT_FILL_UNSELECTED
+			tile.BackgroundTransparency = SLOT_FILL_UNSEL_ALPHA
+			stroke.Color     = SLOT_STROKE_UNSELECTED
+			stroke.Thickness = SLOT_STROKE_UNSEL_THICK
+			label.TextColor3 = SLOT_LABEL_COLOR_UNSEL
+			if iconGlyph then
+				for _, d in iconGlyph:GetDescendants() do
+					if d:IsA("Frame") and d.BackgroundTransparency == 0 then
+						d.BackgroundColor3 = SLOT_ICON_COLOR_UNSEL
+					elseif d:IsA("UIStroke") then
+						d.Color = SLOT_ICON_COLOR_UNSEL
+					end
+				end
+			end
+			glow.BackgroundTransparency = 1
+		end
+	end
+
+	handle.setSelected(opts.selected and true or false)
+
+	if opts.onClick then
+		tile.MouseButton1Click:Connect(function()
+			opts.onClick(handle)
+		end)
+	end
+
+	return handle
+end
 
 -- ─── Module state ────────────────────────────────────────────────────
 local activePage = nil
@@ -551,6 +896,69 @@ local function openHandlingPage(ctx)
 	chipLabel.Text = "0"
 	chipLabel.ZIndex = 53
 	chipLabel.Parent = chip
+
+	-- ── Left equipment column: MAIN HAND + RELIC ────────────────────
+	-- Two stacked 120×140 holo tiles at the left edge of the artboard.
+	-- MAIN HAND is backed by the real Weapons data (stars reflect the
+	-- equipped weapon's rarity); RELIC is a decorative placeholder
+	-- with no server state — it renders empty (no stars). Selection
+	-- is tracked locally so Step 7's detail card can pull from it;
+	-- equip-side wiring lands in Step 8.
+	local LEFT_COL_X = 40
+	local LEFT_TILE1_Y = 130
+	local LEFT_TILE2_Y = LEFT_TILE1_Y + SLOT_H + 20
+
+	-- Resolve the equipped weapon's rarity from ctx.equipItems when
+	-- provided; fall back to the stars attribute on the Pirate Sword
+	-- default otherwise. MAIN HAND defaults to selected on open.
+	local equippedWeaponId = "Sword"
+	local mercFolder = player:FindFirstChild("Mercenaries")
+	if mercFolder and ctx.mercName then
+		local entry = mercFolder:FindFirstChild(ctx.mercName)
+		if entry then
+			local eq = entry:GetAttribute("EquippedWeapon")
+			if eq and eq ~= "" then equippedWeaponId = eq end
+		end
+	end
+
+	local function rarityForWeapon(id)
+		local items = ctx.equipItems and ctx.equipItems.Weapons
+		if not items then return 1 end
+		for _, def in ipairs(items) do
+			if def.id == id then return def.stars or 1 end
+		end
+		return 1
+	end
+
+	local slotHandles = {}
+	local selectedSlot = "MainHand"
+
+	local function selectSlot(slotKey)
+		selectedSlot = slotKey
+		for key, handle in pairs(slotHandles) do
+			handle.setSelected(key == slotKey)
+		end
+	end
+
+	slotHandles.MainHand = buildSlotTile(scaleWrap, {
+		name         = "MAIN HAND",
+		iconBuilder  = makeWeaponIcon,
+		stars        = rarityForWeapon(equippedWeaponId),
+		selected     = true,
+		position     = UDim2.fromOffset(LEFT_COL_X, LEFT_TILE1_Y),
+		zIndex       = 55,
+		onClick      = function() selectSlot("MainHand") end,
+	})
+
+	slotHandles.Relic = buildSlotTile(scaleWrap, {
+		name         = "RELIC",
+		iconBuilder  = makeCrownIcon,
+		stars        = 0,
+		selected     = false,
+		position     = UDim2.fromOffset(LEFT_COL_X, LEFT_TILE2_Y),
+		zIndex       = 55,
+		onClick      = function() selectSlot("Relic") end,
+	})
 
 	-- Force the first scale computation now that the refs are all
 	-- set (the earlier updateResponsiveScale() call happened before

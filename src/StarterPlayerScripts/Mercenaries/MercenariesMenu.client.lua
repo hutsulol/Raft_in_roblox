@@ -723,6 +723,12 @@ local viewportCache = {}
 -- Forward declarations so character page and equipment page can call each other
 local buildPage
 local buildEquipmentPage
+-- Equipment catalog lives further down so it can cross-reference helpers;
+-- forward-declare here so the MANAGE→HandlingPage ctx hand-off (which
+-- runs inside a closure created in buildPage) can see it as an upvalue
+-- instead of an always-nil global.
+local EQUIP_CATEGORIES
+local EQUIP_ITEMS
 
 -- Detach every cached viewport from its current parent. Call BEFORE
 -- destroying a page so the viewport survives the teardown and can be
@@ -2319,6 +2325,7 @@ buildPage = function(mercNames)
 				mercName              = mercName,
 				mercNames             = mercNames,
 				theme                 = MERC_THEMES[mercName] or DEFAULT_THEME,
+				equipItems            = EQUIP_ITEMS,
 				hidePhonePanels       = hidePhonePanels,
 				detachCachedViewports = detachCachedViewports,
 				buildMercViewport     = buildMercViewport,
@@ -2391,9 +2398,9 @@ end
 
 -- ─── Equipment data ─────────────────────────────────────────────────────
 
-local EQUIP_CATEGORIES = { "Weapons", "Artifacts" }
+EQUIP_CATEGORIES = { "Weapons", "Artifacts" }
 
-local EQUIP_ITEMS = {
+EQUIP_ITEMS = {
 	Weapons = {
 		{
 			id            = "Unarmed",
