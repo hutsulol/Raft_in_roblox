@@ -160,6 +160,51 @@ local function dottedLeader(parent, x, y, width, color, dotSize, gap)
 	end
 end
 
+-- ─── Lens-shaped rail outline (one half of the DNA helix) ──────────
+-- Draws a pointed-oval outline centred on (cx, topY + H/2), pointed
+-- at the top (topY) and bottom (topY + H). Width at vertical fraction
+-- t follows sin(pi * t) * maxW, giving a smooth lens. Left + right
+-- rails are each approximated by `segments` rotated Frames connecting
+-- sample points along the curve — jagginess is invisible at 32+
+-- segments for lens heights under ~250 px.
+local function drawLensRails(parent, cx, topY, maxW, H, color, thickness, segments)
+	segments   = segments   or 32
+	thickness  = thickness  or 1
+
+	local function addSegment(ax, ay, bx, by)
+		local dx = bx - ax
+		local dy = by - ay
+		local len = math.sqrt(dx * dx + dy * dy)
+		if len <= 0 then return end
+		local seg = Instance.new("Frame")
+		seg.BackgroundColor3 = color
+		seg.BorderSizePixel = 0
+		seg.AnchorPoint = Vector2.new(0.5, 0.5)
+		seg.Position = UDim2.fromOffset((ax + bx) * 0.5, (ay + by) * 0.5)
+		-- +thickness on length so consecutive segments overlap and
+		-- hide the seam rotation leaves behind.
+		seg.Size = UDim2.fromOffset(len + thickness, thickness)
+		seg.Rotation = math.deg(math.atan2(dy, dx))
+		seg.ZIndex = (parent.ZIndex or 1) + 1
+		seg.Parent = parent
+	end
+
+	local prevL, prevR
+	for i = 0, segments do
+		local t = i / segments
+		local halfW = math.sin(t * math.pi) * (maxW * 0.5)
+		local py = topY + t * H
+		local leftX  = cx - halfW
+		local rightX = cx + halfW
+		if prevL then
+			addSegment(prevL.x, prevL.y, leftX,  py)
+			addSegment(prevR.x, prevR.y, rightX, py)
+		end
+		prevL = { x = leftX,  y = py }
+		prevR = { x = rightX, y = py }
+	end
+end
+
 -- ─── Dashed rectangular border ──────────────────────────────────────
 -- Roblox UIStroke can't render a dashed pattern, so we draw the four
 -- edges as evenly-distributed short Frames. `parent` is the frame we
@@ -869,6 +914,76 @@ local function openDNAStudyPage(ctx)
 	-- Expose the refs so Step 12 can plug a DNAResearch snapshot
 	-- subscription in without needing to re-query the logCard tree.
 	local _ = logValueRefs
+
+	-- ── Centre column: DNA helix rails + GENOME DECODED % ────────────
+	-- Two stacked pointed-oval "lenses" connected by a narrow waist
+	-- region. Fragment bars (6 strength inside the top lens, 4 luck
+	-- straddling the waist, 6 speed inside the bottom lens) land in
+	-- Step 9 — this commit only draws the curved rails.
+	--
+	-- Layout math lives inside centreColumn-local space:
+	--   HELIX_CENTRE_X = CENTRE_COL_W / 2
+	--   TOP_LENS_Y     = 10           (top tip)
+	--   TOP_LENS_H     = 180
+	--   waist gap      = 40           (luck fragment zone)
+	--   BOT_LENS_Y     = 230          (top tip)
+	--   BOT_LENS_H     = 180
+	--   GENOME_Y       = 430
+	local HELIX_CENTRE_X = CENTRE_COL_W / 2
+	local HELIX_WIDTH    = 140
+	local TOP_LENS_Y     = 10
+	local TOP_LENS_H     = 180
+	local BOT_LENS_Y     = TOP_LENS_Y + TOP_LENS_H + 40
+	local BOT_LENS_H     = 180
+
+	drawLensRails(centreColumn, HELIX_CENTRE_X, TOP_LENS_Y,
+		HELIX_WIDTH, TOP_LENS_H, HOLO_EDGE, 1, 36)
+	drawLensRails(centreColumn, HELIX_CENTRE_X, BOT_LENS_Y,
+		HELIX_WIDTH, BOT_LENS_H, HOLO_EDGE, 1, 36)
+
+	-- GENOME DECODED label + percentage. Percentage value ref stashed
+	-- so Step 12 can tween it when fragments advance.
+	local GENOME_Y = BOT_LENS_Y + BOT_LENS_H + 16
+	local genomeRow = Instance.new("Frame")
+	genomeRow.Name = "GenomeDecoded"
+	genomeRow.BackgroundTransparency = 1
+	genomeRow.BorderSizePixel = 0
+	genomeRow.AnchorPoint = Vector2.new(0.5, 0)
+	genomeRow.Position = UDim2.new(0.5, 0, 0, GENOME_Y)
+	genomeRow.Size = UDim2.fromOffset(260, 22)
+	genomeRow.ZIndex = 52
+	genomeRow.Parent = centreColumn
+
+	local genomeLabel = Instance.new("TextLabel")
+	genomeLabel.BackgroundTransparency = 1
+	genomeLabel.BorderSizePixel = 0
+	genomeLabel.Position = UDim2.fromOffset(0, 0)
+	genomeLabel.Size = UDim2.new(1, -56, 1, 0)
+	genomeLabel.Font = FONT_TITLE
+	genomeLabel.TextSize = 12
+	genomeLabel.TextColor3 = COLOR_TEXT_DIM
+	genomeLabel.TextXAlignment = Enum.TextXAlignment.Right
+	genomeLabel.Text = "GENOME DECODED"
+	genomeLabel.ZIndex = 53
+	genomeLabel.Parent = genomeRow
+
+	local genomeValue = Instance.new("TextLabel")
+	genomeValue.Name = "Percent"
+	genomeValue.BackgroundTransparency = 1
+	genomeValue.BorderSizePixel = 0
+	genomeValue.AnchorPoint = Vector2.new(1, 0)
+	genomeValue.Position = UDim2.fromScale(1, 0)
+	genomeValue.Size = UDim2.fromOffset(56, 22)
+	genomeValue.Font = FONT_TITLE
+	genomeValue.TextSize = 16
+	genomeValue.TextColor3 = HOLO_EDGE
+	genomeValue.TextXAlignment = Enum.TextXAlignment.Right
+	genomeValue.Text = "0%"
+	genomeValue.ZIndex = 53
+	genomeValue.Parent = genomeRow
+
+	-- Step 12 will refresh `genomeValue.Text` from snapshot.fragments.
+	local _ = genomeValue
 
 	updateResponsiveScale()
 
