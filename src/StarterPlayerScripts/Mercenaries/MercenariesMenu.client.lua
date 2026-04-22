@@ -797,6 +797,11 @@ local buildEquipmentPage
 -- instead of an always-nil global.
 local EQUIP_CATEGORIES
 local EQUIP_ITEMS
+-- Roster-refresh connection bag + its disposer — declared at the
+-- bottom of the file but called from the MANAGE-click closure (which
+-- lexically precedes them), so they need the same upvalue hand-off.
+local rosterConns
+local clearRosterConns
 
 -- Detach every cached viewport from its current parent. Call BEFORE
 -- destroying a page so the viewport survives the teardown and can be
@@ -3224,8 +3229,8 @@ end
 -- the folder gains / loses a child while the page is open, rebuild
 -- the page from the fresh list so newly-hired mercs appear and lost
 -- ones disappear without the player having to close + reopen.
-local rosterConns = {}
-local function clearRosterConns()
+rosterConns = {}
+function clearRosterConns()
 	for _, c in ipairs(rosterConns) do c:Disconnect() end
 	table.clear(rosterConns)
 end
