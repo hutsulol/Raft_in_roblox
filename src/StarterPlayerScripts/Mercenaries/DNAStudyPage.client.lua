@@ -109,6 +109,57 @@ local function makeFlaskIcon(parent, size, color)
 	return c
 end
 
+-- ─── Small outlined diamond glyph (RESEARCH LOG header prefix) ──────
+local function makeDiamondIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "DiamondIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0.5)
+	body.Position = UDim2.fromScale(0.5, 0.5)
+	body.Size = UDim2.fromOffset(size * 0.7, size * 0.7)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.Rotation = 45
+	body.Parent = c
+	local s = Instance.new("UIStroke")
+	s.Color     = color
+	s.Thickness = 1.4
+	s.Parent    = body
+
+	return c
+end
+
+-- ─── Horizontal dotted leader (label ... value) ─────────────────────
+-- A row of small square dots sitting on the baseline between the
+-- label and value columns of a research-log row. Count is rounded so
+-- the dots space evenly inside `width`. Individual dots are created
+-- under `parent` at absolute offsets, so the caller owns the positioning.
+local function dottedLeader(parent, x, y, width, color, dotSize, gap)
+	dotSize = dotSize or 2
+	gap     = gap     or 3
+	color   = color   or HOLO_PANEL_BORDER
+
+	local step = dotSize + gap
+	local count = math.max(1, math.floor((width + gap) / step))
+	local stride = width / count
+
+	for i = 0, count - 1 do
+		local dot = Instance.new("Frame")
+		dot.BackgroundColor3 = color
+		dot.BackgroundTransparency = 0.2
+		dot.BorderSizePixel = 0
+		dot.Position = UDim2.fromOffset(math.floor(x + i * stride + 0.5), y)
+		dot.Size = UDim2.fromOffset(dotSize, dotSize)
+		dot.ZIndex = (parent.ZIndex or 1) + 1
+		dot.Parent = parent
+	end
+end
+
 -- ─── Dashed rectangular border ──────────────────────────────────────
 -- Roblox UIStroke can't render a dashed pattern, so we draw the four
 -- edges as evenly-distributed short Frames. `parent` is the frame we
@@ -702,6 +753,122 @@ local function openDNAStudyPage(ctx)
 		-- observable during review.
 		print("[DNAStudyPage] Sample slot clicked for", ctx.mercName)
 	end)
+
+	-- ── Research Log card (bottom of left column) ─────────────────────
+	-- Four-row data table with dotted leaders between label and value.
+	-- Values exposed via logValueRefs so Step 12 can refresh them when
+	-- a DNAResearch snapshot arrives without re-rendering the card.
+	local LOG_CARD_TOP  = SAMPLE_CARD_H + 14
+	local LOG_CARD_H    = COLS_H - LOG_CARD_TOP
+
+	local logCard = Instance.new("Frame")
+	logCard.Name = "ResearchLogCard"
+	logCard.BackgroundColor3 = HOLO_PANEL_FILL
+	logCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	logCard.BorderSizePixel = 0
+	logCard.Position = UDim2.fromOffset(0, LOG_CARD_TOP)
+	logCard.Size = UDim2.fromOffset(LEFT_COL_W, LOG_CARD_H)
+	logCard.ZIndex = 52
+	logCard.Parent = leftColumn
+	local logStroke = Instance.new("UIStroke")
+	logStroke.Color     = HOLO_PANEL_BORDER
+	logStroke.Thickness = 1
+	logStroke.Parent    = logCard
+
+	-- Header: diamond glyph + 'RESEARCH LOG'
+	local logHeader = Instance.new("Frame")
+	logHeader.BackgroundTransparency = 1
+	logHeader.BorderSizePixel = 0
+	logHeader.Position = UDim2.fromOffset(14, 12)
+	logHeader.Size = UDim2.new(1, -28, 0, 16)
+	logHeader.ZIndex = 53
+	logHeader.Parent = logCard
+
+	local logDiamond = makeDiamondIcon(logHeader, 12, HOLO_EDGE)
+	logDiamond.AnchorPoint = Vector2.new(0, 0.5)
+	logDiamond.Position = UDim2.new(0, 0, 0.5, 0)
+	logDiamond.ZIndex = 54
+
+	local logTitle = Instance.new("TextLabel")
+	logTitle.BackgroundTransparency = 1
+	logTitle.BorderSizePixel = 0
+	logTitle.Position = UDim2.fromOffset(18, 0)
+	logTitle.Size = UDim2.new(1, -18, 1, 0)
+	logTitle.Font = FONT_TITLE
+	logTitle.TextSize = 12
+	logTitle.TextColor3 = COLOR_TEXT
+	logTitle.TextXAlignment = Enum.TextXAlignment.Left
+	logTitle.Text = "RESEARCH LOG"
+	logTitle.ZIndex = 54
+	logTitle.Parent = logHeader
+
+	-- Four rows. Layout per row:
+	--   [label left] [··· dotted leader ···] [value right]
+	local ROW_PAD_X    = 14
+	local ROW_FIRST_Y  = 42
+	local ROW_HEIGHT   = 24
+	local ROW_INNER_W  = LEFT_COL_W - ROW_PAD_X * 2
+	local LABEL_W      = 96
+	local VALUE_W      = 70
+	local LEADER_PAD   = 4
+	local LEADER_X     = ROW_PAD_X + LABEL_W + LEADER_PAD
+	local LEADER_W     = ROW_INNER_W - LABEL_W - VALUE_W - LEADER_PAD * 2
+
+	local logValueRefs = {}
+	local function addRow(index, key, labelText, valueText)
+		local y = ROW_FIRST_Y + (index - 1) * ROW_HEIGHT
+
+		local lbl = Instance.new("TextLabel")
+		lbl.BackgroundTransparency = 1
+		lbl.BorderSizePixel = 0
+		lbl.Position = UDim2.fromOffset(ROW_PAD_X, y)
+		lbl.Size = UDim2.fromOffset(LABEL_W, ROW_HEIGHT)
+		lbl.Font = FONT_TITLE
+		lbl.TextSize = 11
+		lbl.TextColor3 = COLOR_TEXT_DIM
+		lbl.TextXAlignment = Enum.TextXAlignment.Left
+		lbl.TextYAlignment = Enum.TextYAlignment.Center
+		lbl.Text = labelText
+		lbl.ZIndex = 53
+		lbl.Parent = logCard
+
+		dottedLeader(logCard, LEADER_X, y + math.floor(ROW_HEIGHT / 2),
+			LEADER_W, HOLO_PANEL_BORDER, 2, 3)
+
+		local val = Instance.new("TextLabel")
+		val.Name = "Value_" .. key
+		val.BackgroundTransparency = 1
+		val.BorderSizePixel = 0
+		val.AnchorPoint = Vector2.new(1, 0)
+		val.Position = UDim2.fromOffset(ROW_PAD_X + ROW_INNER_W, y)
+		val.Size = UDim2.fromOffset(VALUE_W, ROW_HEIGHT)
+		val.Font = FONT_TITLE
+		val.TextSize = 12
+		val.TextColor3 = HOLO_EDGE
+		val.TextXAlignment = Enum.TextXAlignment.Right
+		val.TextYAlignment = Enum.TextYAlignment.Center
+		val.Text = valueText
+		val.ZIndex = 53
+		val.Parent = logCard
+
+		logValueRefs[key] = val
+	end
+
+	-- Resolve SUBJECT / CLASS from ctx.theme when available; fall back to
+	-- sensible defaults so the card still reads cleanly for mercs the
+	-- theme table doesn't know about yet.
+	local theme = ctx.theme or {}
+	local subject = theme.displayName or tostring(ctx.mercName or "—")
+	local class   = theme.role or "Unclassified"
+
+	addRow(1, "SUBJECT",   "SUBJECT",      subject)
+	addRow(2, "CLASS",     "CLASS",        class)
+	addRow(3, "FRAGMENTS", "FRAGMENTS",    "0 / 16")
+	addRow(4, "KILLS",     "KILLS LOGGED", "0")
+
+	-- Expose the refs so Step 12 can plug a DNAResearch snapshot
+	-- subscription in without needing to re-query the logCard tree.
+	local _ = logValueRefs
 
 	updateResponsiveScale()
 

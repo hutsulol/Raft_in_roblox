@@ -1763,6 +1763,7 @@ local function openHandlingPage(ctx)
 		_G.OpenDNAStudyPage({
 			screenGui = handlingCtx.screenGui,
 			mercName  = handlingCtx.mercName,
+			theme     = handlingCtx.theme,
 			onBack    = function()
 				if typeof(_G.CloseDNAStudyPage) == "function" then
 					_G.CloseDNAStudyPage()
