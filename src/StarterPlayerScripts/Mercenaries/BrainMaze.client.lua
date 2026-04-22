@@ -6,6 +6,8 @@ local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
 local RunService = game:GetService("RunService")
 local UserInputService = game:GetService("UserInputService")
+local ContextActionService = game:GetService("ContextActionService")
+local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -34,8 +36,8 @@ local DEFEAT_ICON        = "rbxassetid://90285585534580"
 -- lobe, occipital area, cerebellum, brain stem, plus a subtractive notch
 -- between cerebrum and cerebellum.
 
-local GRID_COLS = 40
-local GRID_ROWS = 32
+local GRID_COLS = 28
+local GRID_ROWS = 22
 
 local function isInsideBrain(col, row)
 	local nx = (col - 0.5) / GRID_COLS
@@ -160,6 +162,36 @@ local function generateMaze()
 			table.insert(stack, nxt)
 		else
 			table.remove(stack)
+		end
+	end
+
+	local dirs = {
+		{ dr = -1, dc = 0, wall = "top", opposite = "bottom" },
+		{ dr = 1, dc = 0, wall = "bottom", opposite = "top" },
+		{ dr = 0, dc = -1, wall = "left", opposite = "right" },
+		{ dr = 0, dc = 1, wall = "right", opposite = "left" },
+	}
+
+	for _, v in valid do
+		local cell = grid[v.r][v.c]
+		local openings = 0
+		if not cell.top then openings = openings + 1 end
+		if not cell.bottom then openings = openings + 1 end
+		if not cell.left then openings = openings + 1 end
+		if not cell.right then openings = openings + 1 end
+
+		if openings <= 1 then
+			local choices = {}
+			for _, d in dirs do
+				if cell[d.wall] and cellExists(v.r + d.dr, v.c + d.dc) then
+					table.insert(choices, d)
+				end
+			end
+			if #choices > 0 then
+				local pick = choices[math.random(#choices)]
+				cell[pick.wall] = false
+				grid[v.r + pick.dr][v.c + pick.dc][pick.opposite] = false
+			end
 		end
 	end
 
@@ -406,11 +438,12 @@ local function openBrainMaze(pirate, onComplete)
 	end
 
 	-- ── Player dot (white + cyan glow) ───────────────────────────
+	local pDot, pGlow
 	if spawnR and spawnC then
 		local px = (spawnC - 1) * cellW + cellW / 2
 		local py = (spawnR - 1) * cellH + cellH / 2
 
-		local pGlow = Instance.new("Frame")
+		pGlow = Instance.new("Frame")
 		pGlow.Size = UDim2.fromOffset(20, 20)
 		pGlow.Position = UDim2.fromOffset(px - 10, py - 10)
 		pGlow.BackgroundColor3 = COLOR_GLOW
@@ -420,7 +453,7 @@ local function openBrainMaze(pirate, onComplete)
 		pGlow.Parent = mazeFrame
 		Instance.new("UICorner", pGlow).CornerRadius = UDim.new(0.5, 0)
 
-		local pDot = Instance.new("Frame")
+		pDot = Instance.new("Frame")
 		pDot.Name = "PlayerDot"
 		pDot.Size = UDim2.fromOffset(10, 10)
 		pDot.Position = UDim2.fromOffset(px - 5, py - 5)
@@ -511,13 +544,52 @@ local function openBrainMaze(pirate, onComplete)
 	speechLabel.Size = UDim2.new(1, -16, 1, -10)
 	speechLabel.Position = UDim2.fromOffset(8, 5)
 	speechLabel.BackgroundTransparency = 1
-	speechLabel.Text = "What are you doing in my head?!"
+	speechLabel.Text = ""
 	speechLabel.TextColor3 = COLOR_TEXT
 	speechLabel.Font = Enum.Font.GothamBold
 	speechLabel.TextSize = 13
 	speechLabel.TextWrapped = true
 	speechLabel.TextXAlignment = Enum.TextXAlignment.Left
 	speechLabel.Parent = speechBubble
+
+	-- ── Pirate voiceover + phrase-timed typewriter ────────────────
+	local DIALOGUE_PHRASES = {
+		{ text = "If you want",                t0 = 0.01, t1 = 0.80 },
+		{ text = " me to serve you…",          t0 = 0.90, t1 = 2.30 },
+		{ text = " break",                     t0 = 3.12, t1 = 3.50 },
+		{ text = " my mind.",                  t0 = 3.61, t1 = 4.71 },
+		{ text = " Reach the end of the maze", t0 = 5.80, t1 = 7.50 },
+	}
+
+	local mazeSound
+	do
+		local storyFolder = SoundService:FindFirstChild("Story")
+		local pirateFolder = storyFolder and storyFolder:FindFirstChild("Pirate")
+		mazeSound = pirateFolder and pirateFolder:FindFirstChild("pirate_in_maze")
+	end
+
+	local dialogueCancel = false
+
+	task.delay(2, function()
+		if dialogueCancel then return end
+		if mazeSound then mazeSound:Play() end
+
+		local startClock = os.clock()
+		local displayed = ""
+		for _, phrase in DIALOGUE_PHRASES do
+			if dialogueCancel then break end
+			local waitFor = phrase.t0 - (os.clock() - startClock)
+			if waitFor > 0 then task.wait(waitFor) end
+			if dialogueCancel then break end
+			local charDelay = (phrase.t1 - phrase.t0) / math.max(#phrase.text, 1)
+			for c = 1, #phrase.text do
+				if dialogueCancel then break end
+				displayed = displayed .. string.sub(phrase.text, c, c)
+				speechLabel.Text = displayed
+				if c < #phrase.text then task.wait(charDelay) end
+			end
+		end
+	end)
 
 	-- ── Skill buttons (bottom-left) ──────────────────────────────
 	local function makeSkillBtn(text, posY)
@@ -629,6 +701,10 @@ local function openBrainMaze(pirate, onComplete)
 		if closed then return end
 		closed = true
 
+		ContextActionService:UnbindAction("BrainMazeMove")
+		dialogueCancel = true
+		if mazeSound then mazeSound:Stop() end
+
 		TweenService:Create(bg, TweenInfo.new(0.3), { BackgroundTransparency = 1 }):Play()
 
 		for _, desc in gui:GetDescendants() do
@@ -654,6 +730,222 @@ local function openBrainMaze(pirate, onComplete)
 			end
 		end)
 	end
+
+	-- ── Recruit-success popup ────────────────────────────────────
+	local popupShown = false
+	local heldDirs = {}
+
+	local function showRecruitPopup()
+		if popupShown or closed then return end
+		popupShown = true
+
+		ContextActionService:UnbindAction("BrainMazeMove")
+		table.clear(heldDirs)
+
+		local menuFolder = SoundService:FindFirstChild("Sound_Menu")
+		local completeSound = menuFolder and menuFolder:FindFirstChild("Completed_Quest")
+		if completeSound then
+			completeSound:Play()
+		end
+
+		local overlay = Instance.new("Frame")
+		overlay.Name = "RecruitPopup"
+		overlay.Size = UDim2.new(1, 0, 1, 0)
+		overlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		overlay.BackgroundTransparency = 1
+		overlay.BorderSizePixel = 0
+		overlay.ZIndex = 40
+		overlay.Parent = bg
+
+		local panel = Instance.new("Frame")
+		panel.Size = UDim2.fromOffset(400, 300)
+		panel.AnchorPoint = Vector2.new(0.5, 0.5)
+		panel.Position = UDim2.new(0.5, 0, -0.5, 0)
+		panel.BackgroundColor3 = COLOR_DIALOG_BG
+		panel.BorderSizePixel = 0
+		panel.ZIndex = 41
+		panel.Parent = overlay
+		Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 14)
+
+		local panelStroke = Instance.new("UIStroke")
+		panelStroke.Thickness = 2
+		panelStroke.Color = COLOR_EXIT
+		panelStroke.Transparency = 0.25
+		panelStroke.Parent = panel
+
+		local title = Instance.new("TextLabel")
+		title.Size = UDim2.new(1, -40, 0, 32)
+		title.Position = UDim2.fromOffset(20, 22)
+		title.BackgroundTransparency = 1
+		title.Font = Enum.Font.GothamBold
+		title.TextSize = 22
+		title.TextColor3 = COLOR_EXIT
+		title.Text = "Mercenary Recruited!"
+		title.TextXAlignment = Enum.TextXAlignment.Center
+		title.ZIndex = 42
+		title.Parent = panel
+
+		local iconFrame = Instance.new("Frame")
+		iconFrame.Size = UDim2.fromOffset(90, 90)
+		iconFrame.AnchorPoint = Vector2.new(0.5, 0)
+		iconFrame.Position = UDim2.new(0.5, 0, 0, 66)
+		iconFrame.BackgroundColor3 = Color3.fromRGB(12, 22, 42)
+		iconFrame.BorderSizePixel = 0
+		iconFrame.ZIndex = 42
+		iconFrame.Parent = panel
+		Instance.new("UICorner", iconFrame).CornerRadius = UDim.new(0, 8)
+
+		local iconStroke2 = Instance.new("UIStroke")
+		iconStroke2.Thickness = 1.5
+		iconStroke2.Color = COLOR_DIALOG_EDGE
+		iconStroke2.Parent = iconFrame
+
+		local iconImg = Instance.new("ImageLabel")
+		iconImg.Size = UDim2.new(1, 0, 1, 0)
+		iconImg.BackgroundTransparency = 1
+		iconImg.Image = DEFEAT_ICON
+		iconImg.ScaleType = Enum.ScaleType.Stretch
+		iconImg.ZIndex = 43
+		iconImg.Parent = iconFrame
+		Instance.new("UICorner", iconImg).CornerRadius = UDim.new(0, 8)
+
+		local subtitle = Instance.new("TextLabel")
+		subtitle.Size = UDim2.new(1, -40, 0, 40)
+		subtitle.Position = UDim2.fromOffset(20, 168)
+		subtitle.BackgroundTransparency = 1
+		subtitle.Font = Enum.Font.Gotham
+		subtitle.TextSize = 14
+		subtitle.TextColor3 = COLOR_TEXT
+		subtitle.Text = "The pirate has joined your crew."
+		subtitle.TextWrapped = true
+		subtitle.TextXAlignment = Enum.TextXAlignment.Center
+		subtitle.ZIndex = 42
+		subtitle.Parent = panel
+
+		local continueBtn = Instance.new("TextButton")
+		continueBtn.Size = UDim2.new(1, -60, 0, 42)
+		continueBtn.Position = UDim2.new(0, 30, 1, -60)
+		continueBtn.BackgroundColor3 = COLOR_SKILL
+		continueBtn.Text = "Continue"
+		continueBtn.TextColor3 = Color3.fromRGB(230, 240, 255)
+		continueBtn.Font = Enum.Font.GothamBold
+		continueBtn.TextSize = 16
+		continueBtn.BorderSizePixel = 0
+		continueBtn.AutoButtonColor = true
+		continueBtn.ZIndex = 42
+		continueBtn.Parent = panel
+		Instance.new("UICorner", continueBtn).CornerRadius = UDim.new(0, 8)
+
+		local btnStroke = Instance.new("UIStroke")
+		btnStroke.Thickness = 1.5
+		btnStroke.Color = Color3.fromRGB(60, 35, 150)
+		btnStroke.Parent = continueBtn
+
+		TweenService:Create(overlay, TweenInfo.new(0.3), {
+			BackgroundTransparency = 0.4,
+		}):Play()
+		TweenService:Create(panel, TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out), {
+			Position = UDim2.new(0.5, 0, 0.5, 0),
+		}):Play()
+
+		continueBtn.MouseButton1Click:Connect(function()
+			closeMaze("completed")
+		end)
+	end
+
+	-- ── WASD / arrow navigation ──────────────────────────────────
+	local playerR, playerC = spawnR, spawnC
+	local STEP_INTERVAL = 0.09
+	local activeTween
+
+	local function setDotPosition(r, c)
+		if not pDot or not r or not c then return end
+		local px = (c - 1) * cellW + cellW / 2
+		local py = (r - 1) * cellH + cellH / 2
+		if activeTween then activeTween:Cancel() end
+		activeTween = TweenService:Create(pDot,
+			TweenInfo.new(STEP_INTERVAL, Enum.EasingStyle.Linear), {
+				Position = UDim2.fromOffset(px - 5, py - 5),
+			})
+		activeTween:Play()
+		TweenService:Create(pGlow,
+			TweenInfo.new(STEP_INTERVAL, Enum.EasingStyle.Linear), {
+				Position = UDim2.fromOffset(px - 10, py - 10),
+			}):Play()
+	end
+
+	local function canStep(dr, dc)
+		if not playerR or not playerC then return false end
+		local cur = grid[playerR] and grid[playerR][playerC]
+		if not cur then return false end
+		local nr, nc = playerR + dr, playerC + dc
+		if not (grid[nr] and grid[nr][nc]) then return false end
+		if dr == -1 and cur.top then return false end
+		if dr == 1 and cur.bottom then return false end
+		if dc == -1 and cur.left then return false end
+		if dc == 1 and cur.right then return false end
+		return true
+	end
+
+	local function step(dr, dc)
+		if not canStep(dr, dc) then return false end
+		playerR, playerC = playerR + dr, playerC + dc
+		setDotPosition(playerR, playerC)
+		if playerR == exitR and playerC == exitC then
+			task.delay(0.18, showRecruitPopup)
+		end
+		return true
+	end
+
+	local function handleMove(_, inputState, inputObject)
+		local kc = inputObject.KeyCode
+		local dir
+		if kc == Enum.KeyCode.W or kc == Enum.KeyCode.Up then dir = "up"
+		elseif kc == Enum.KeyCode.S or kc == Enum.KeyCode.Down then dir = "down"
+		elseif kc == Enum.KeyCode.A or kc == Enum.KeyCode.Left then dir = "left"
+		elseif kc == Enum.KeyCode.D or kc == Enum.KeyCode.Right then dir = "right"
+		end
+		if not dir then return Enum.ContextActionResult.Pass end
+		if inputState == Enum.UserInputState.Begin then
+			heldDirs[dir] = tick()
+		elseif inputState == Enum.UserInputState.End or inputState == Enum.UserInputState.Cancel then
+			heldDirs[dir] = nil
+		end
+		return Enum.ContextActionResult.Sink
+	end
+
+	ContextActionService:BindActionAtPriority(
+		"BrainMazeMove", handleMove, false,
+		Enum.ContextActionPriority.High.Value,
+		Enum.KeyCode.W, Enum.KeyCode.A, Enum.KeyCode.S, Enum.KeyCode.D,
+		Enum.KeyCode.Up, Enum.KeyCode.Down, Enum.KeyCode.Left, Enum.KeyCode.Right
+	)
+
+	task.spawn(function()
+		while not closed and not popupShown do
+			local dr, dc = 0, 0
+			if heldDirs.up then dr = -1
+			elseif heldDirs.down then dr = 1 end
+			if heldDirs.left then dc = -1
+			elseif heldDirs.right then dc = 1 end
+
+			if dr ~= 0 and dc ~= 0 then
+				local upT = heldDirs.up or heldDirs.down or 0
+				local lrT = heldDirs.left or heldDirs.right or 0
+				if upT >= lrT then
+					if not step(dr, 0) then step(0, dc) end
+				else
+					if not step(0, dc) then step(dr, 0) end
+				end
+			elseif dr ~= 0 then
+				step(dr, 0)
+			elseif dc ~= 0 then
+				step(0, dc)
+			end
+
+			task.wait(STEP_INTERVAL)
+		end
+	end)
 
 	closeBtn.MouseButton1Click:Connect(function()
 		closeMaze("closed")

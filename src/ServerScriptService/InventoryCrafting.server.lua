@@ -29,7 +29,7 @@ local recipes = {
 	{
 		name = "Machete",
 		displayName = "Machete",
-		icon = "rbxassetid://114406082138691",
+		icon = "rbxassetid://92926554091794",
 		costs = {Log = 1},
 		craftType = "tool",
 		category = "Tools",
@@ -44,6 +44,15 @@ local recipes = {
 		initAttributes = {CupState = "empty"},
 		category = "Misc",
 		description = "A cup for scooping ocean water. Fill it, purify it, and drink to quench your thirst.",
+	},
+	{
+		name = "bag_empty_2",
+		displayName = "Empty Bag",
+		icon = "rbxassetid://89398456198664",
+		costs = {Leaves = 5},
+		craftType = "tool",
+		category = "Misc",
+		description = "An empty woven bag. Fill it with sand or clay on an island.",
 	},
 	{
 		name = "Destitalor",
@@ -93,7 +102,7 @@ local recipes = {
 	{
 		name = "Wet_Brick",
 		displayName = "Wet Brick",
-		icon = "rbxassetid://77999856849195",
+		icon = "rbxassetid://122295013823946",
 		costs = {Sand = 2, Clay = 2},
 		craftType = "placeable",
 		category = "Resources",
@@ -125,6 +134,24 @@ local recipes = {
 		craftType = "tool",
 		category = "Tools",
 		description = "A phone for communication.",
+	},
+	{
+		name = "Injector",
+		displayName = "Injector",
+		icon = "rbxassetid://81132472504693",
+		costs = {Log = 1},
+		craftType = "tool",
+		category = "Tools",
+		description = "A syringe used to hack a downed pirate's mind and recruit them as a mercenary.",
+	},
+	{
+		name = "EmptyCapsule",
+		displayName = "Empty Capsule",
+		icon = "rbxassetid://116714708119585",
+		costs = {Log = 1},
+		craftType = "tool",
+		category = "Tools",
+		description = "An empty capsule for collecting pirate blood with an Injector.",
 	},
 }
 
@@ -158,7 +185,11 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	end
 
 	for item, amount in recipe.costs do
-		inv[item] = inv[item] - amount
+		if _G.RemoveResourceFromInventory then
+			_G.RemoveResourceFromInventory(player, item, amount)
+		else
+			inv[item] = inv[item] - amount
+		end
 	end
 
 	-- Templates normally live directly under ReplicatedStorage, but a few
@@ -170,9 +201,10 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	end
 
 	if recipe.craftType == "tool" then
+		local tool
+
 		if template then
 			local cloned = template:Clone()
-			local tool
 
 			if cloned:IsA("Tool") then
 				tool = cloned
@@ -210,20 +242,33 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 
 				cloned:Destroy()
 			end
+		else
+			-- No template in ReplicatedStorage — build a minimal placeholder
+			-- Tool so the item still appears in the backpack with its icon.
+			tool = Instance.new("Tool")
+			tool.Name = recipe.name
+			tool.CanBeDropped = false
+			local handle = Instance.new("Part")
+			handle.Name = "Handle"
+			handle.Size = Vector3.new(1, 1, 1)
+			handle.Transparency = 1
+			handle.Parent = tool
+		end
 
-			-- Set initial attributes if defined
+		if tool then
 			if recipe.initAttributes then
 				for attr, val in recipe.initAttributes do
 					tool:SetAttribute(attr, val)
 				end
 			end
-			-- Set tool icon
 			if recipe.icon and tool.TextureId == "" then
 				tool.TextureId = recipe.icon
 			end
-			local backpack = player:FindFirstChild("Backpack")
-			if backpack then
-				tool.Parent = backpack
+			if _G.GiveToolOrDrop then
+				_G.GiveToolOrDrop(player, tool)
+			else
+				local backpack = player:FindFirstChild("Backpack")
+				if backpack then tool.Parent = backpack end
 			end
 		end
 	elseif recipe.craftType == "placeable" then
@@ -241,9 +286,11 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 		handle.Transparency = 1
 		handle.Parent = tool
 
-		local backpack = player:FindFirstChild("Backpack")
-		if backpack then
-			tool.Parent = backpack
+		if _G.GiveToolOrDrop then
+			_G.GiveToolOrDrop(player, tool)
+		else
+			local backpack = player:FindFirstChild("Backpack")
+			if backpack then tool.Parent = backpack end
 		end
 
 	elseif recipe.craftType == "resource" then

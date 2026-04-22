@@ -123,7 +123,7 @@ end
 
 local RESOURCE_ICONS = {
 	Log = "rbxassetid://110032041583533",
-	Plastic = "rbxassetid://88529166446482",
+	Plastic = "rbxassetid://132919988751848",
 	Leaves = "rbxassetid://96691360298069",
 }
 

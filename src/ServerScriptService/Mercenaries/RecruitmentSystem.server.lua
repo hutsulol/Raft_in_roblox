@@ -141,6 +141,38 @@ recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 	elseif action == "fail" then
 		recruitEvent:FireClient(player, "failed")
 		task.spawn(fadePirate, pirate, 1.5, 1.5)
+
+	elseif action == "collectBlood" then
+		local backpack = player:FindFirstChild("Backpack")
+		local emptyCapsule = (backpack and backpack:FindFirstChild("EmptyCapsule"))
+			or (player.Character and player.Character:FindFirstChild("EmptyCapsule"))
+		if not emptyCapsule then
+			claimedPirates[pirate] = nil
+			pirate:SetAttribute("Claimed", nil)
+			return
+		end
+		emptyCapsule:Destroy()
+
+		local template = rs:FindFirstChild("FullCapsule", true)
+		local fullCapsule
+		if template and template:IsA("Tool") then
+			fullCapsule = template:Clone()
+		else
+			fullCapsule = Instance.new("Tool")
+			fullCapsule.Name = "FullCapsule"
+			fullCapsule.CanBeDropped = false
+			fullCapsule.TextureId = "rbxassetid://132749498016835"
+			local handle = Instance.new("Part")
+			handle.Name = "Handle"
+			handle.Size = Vector3.new(1, 1, 1)
+			handle.Transparency = 1
+			handle.Parent = fullCapsule
+		end
+		if backpack then
+			fullCapsule.Parent = backpack
+		end
+
+		task.spawn(fadePirate, pirate, 0, 2)
 	end
 end)
 

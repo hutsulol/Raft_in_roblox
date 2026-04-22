@@ -24,8 +24,13 @@ local PLANK_ICON = "rbxassetid://118108820731466"
 local ROPE_ICON = "rbxassetid://78492721752628"
 local SAND_ICON = "rbxassetid://96142393982330"
 local CLAY_ICON = "rbxassetid://70464196671282"
-local WET_BRICK_ICON = "rbxassetid://77999856849195"
-local DRY_BRICK_ICON = "rbxassetid://129896663405682"
+local WET_BRICK_ICON = "rbxassetid://122295013823946"
+local DRY_BRICK_ICON = "rbxassetid://97609326528615"
+local BAG_EMPTY_ICON = "rbxassetid://89398456198664"
+local BAG_WITH_CLAY_ICON = "rbxassetid://126238050436106"
+local BAG_WITH_SAND_ICON = "rbxassetid://77748685223141"
+local GLASS_ICON = "rbxassetid://85347221722445"
+local GLASS_PANEL_ICON = "rbxassetid://79199838395462"
 
 local BLUE_FISH_ICON = "rbxassetid://95052485461834"
 local CARP_FISH_ICON = "rbxassetid://122853256629696"
@@ -49,6 +54,10 @@ local RESOURCE_ICONS = {
 	Clay = CLAY_ICON,
 	Wet_Brick = WET_BRICK_ICON,
 	Dry_Brick = DRY_BRICK_ICON,
+	bag_with_clay_2 = BAG_WITH_CLAY_ICON,
+	bag_with_sand_2 = BAG_WITH_SAND_ICON,
+	glass = GLASS_ICON,
+	glass_panel = GLASS_PANEL_ICON,
 	Blue_Fish = BLUE_FISH_ICON,
 	Carp_Fish = CARP_FISH_ICON,
 	Fish_Bones = FISH_BONES_ICON,
@@ -67,7 +76,7 @@ local TOOL_ICONS = {
 	["Furnace"] = "rbxassetid://117760352651529",
 	["bush"] = "rbxassetid://100755665041729",
 
-	["Machete"] = "rbxassetid://114406082138691",
+	["Machete"] = "rbxassetid://92926554091794",
 	["Wood_Knife"] = "rbxassetid://110032041583533",
 	["WorkBench"] = "rbxassetid://104306543647624",
 	["Bed"] = "rbxassetid://85069521486600",
@@ -80,42 +89,19 @@ local TOOL_ICONS = {
 	["[GRAPES]"] = "rbxassetid://137478230275649",
 	["Grapes"] = "rbxassetid://137478230275649",
 	["FishingRod"] = "rbxassetid://105180666555503",
+	["Injector"] = "rbxassetid://81132472504693",
+	["EmptyCapsule"] = "rbxassetid://116714708119585",
+	["FullCapsule"] = "rbxassetid://132749498016835",
+	["Phone"] = "rbxassetid://122333372049252",
+	["Anchor_part"] = "rbxassetid://120414328052740",
+	["bag_empty_2"] = BAG_EMPTY_ICON,
 }
 
--- ── Item rarity ────────────────────────────────────────────────────────
--- Each rarity has its own inventory-slot background frame. Only tools
--- (machete, pickaxe, shovel, grapes, fishing rod, phone) get a rarity
--- background — regular resources render without any frame so the slot
--- stays clean. Items not in ITEM_RARITY therefore return nil and
--- renderSlot skips the frame entirely.
-local RARITY_FRAMES = {
-	common = "rbxassetid://134988922333958",
-	rare = "rbxassetid://79767754854530",
-	super_rare = "rbxassetid://97396474395148",
-}
-
-local ITEM_RARITY = {
-	-- Common tools
-	["Machete"]  = "common",
-	["Pick-Axe"] = "common",
-	["Shovel"]   = "common",
-	["Grapes"]   = "common",
-	["[GRAPES]"] = "common",
-	-- Rare
-	["FishingRod"] = "rare",
-	-- Super rare
-	["Phone"] = "super_rare",
-}
-
-local function getItemRarity(itemName)
-	-- Returns nil for items that should render without a rarity frame.
-	return itemName and ITEM_RARITY[itemName] or nil
-end
-
-_G.GetItemRarity = getItemRarity
-_G.GetRarityFrameAsset = function(rarity)
-	return RARITY_FRAMES[rarity] or ""
-end
+-- Forward-declared so functions above line 1585 (quickTransfer,
+-- drag-drop handlers, etc.) can reference it via the same upvalue
+-- that gets assigned later. Without this, those call sites resolve
+-- against a nil global and throw 'attempt to call a nil value'.
+local syncSlotLayoutToServer
 
 -- Exposed so the mercenary backpack UI can reuse the same icons.
 _G.GetItemIcon = function(itemName)
@@ -337,6 +323,15 @@ local function getDisplayName(data)
 	if not key then return nil end
 	if DISPLAY_NAMES[key] then return DISPLAY_NAMES[key] end
 	return (key:gsub("_", " "))
+end
+
+-- Shared with the chest / mercenary backpack UIs so their hover
+-- tooltips use the same underscore-stripping + override table as the
+-- main inventory.
+_G.GetItemDisplayName = function(name)
+	if typeof(name) ~= "string" or name == "" then return nil end
+	if DISPLAY_NAMES[name] then return DISPLAY_NAMES[name] end
+	return (name:gsub("_", " "))
 end
 
 local function ensureTooltipGui()
@@ -623,24 +618,26 @@ local function rebuildSlotData()
 			end
 		end
 
-		local toolCounts = {}
-		for _, tool in tools do
-			toolCounts[tool.Name] = (toolCounts[tool.Name] or 0) + 1
-		end
-
+		-- Tools never stack: each Tool Instance gets its own slot so
+		-- duplicates (e.g. two Machetes) occupy separate cells. The
+		-- Tool reference is stored so rebuildSlotData can match a
+		-- slot back to the same instance on subsequent refreshes.
 		local slot = 2
-		local addedTools = {}
 		for _, tool in tools do
-			if not addedTools[tool.Name] then
-				addedTools[tool.Name] = true
-				while slot <= HOTBAR_SLOTS and slotData[slot] do
-					slot = slot + 1
-				end
-				if slot > HOTBAR_SLOTS then break end
-				local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
-				slotData[slot] = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon, count = toolCounts[tool.Name]}
+			while slot <= HOTBAR_SLOTS and slotData[slot] do
 				slot = slot + 1
 			end
+			if slot > HOTBAR_SLOTS then break end
+			local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+			slotData[slot] = {
+				type = "tool",
+				name = tool.Name,
+				toolName = tool.Name,
+				toolInst = tool,
+				icon = toolIcon,
+				count = 1,
+			}
+			slot = slot + 1
 		end
 
 		slotsInitialized = true
@@ -652,33 +649,70 @@ local function rebuildSlotData()
 		updateResourceSlots(resName, inventory[resName] or 0, resIcon)
 	end
 
-	-- Remove tools that no longer exist
-	local currentTools = {}
-	for _, tool in tools do currentTools[tool.Name] = tool end
+	-- Tools don't stack; each Tool Instance claims its own slot. Match
+	-- surviving instances to their existing slot; re-bind slots whose
+	-- instance ref went stale (e.g. after a layout restore from the
+	-- server saved state, which only carries the tool name) to any
+	-- unclaimed same-name tool; drop orphan slots.
+	local currentSet = {}
+	for _, tool in tools do currentSet[tool] = true end
 
+	local claimed = {}
 	for i = 1, TOTAL_SLOTS do
-		if slotData[i] and slotData[i].type == "tool" then
-			if not currentTools[slotData[i].toolName] then
-				slotData[i] = nil
+		local entry = slotData[i]
+		if entry and entry.type == "tool" then
+			local inst = entry.toolInst
+			if inst and currentSet[inst] and not claimed[inst] then
+				claimed[inst] = true
+				entry.count = 1
+			else
+				local name = entry.toolName or entry.name
+				local bound
+				for _, t in tools do
+					if not claimed[t] and t.Name == name then
+						bound = t
+						break
+					end
+				end
+				if bound then
+					entry.toolInst = bound
+					entry.count = 1
+					claimed[bound] = true
+				else
+					slotData[i] = nil
+				end
 			end
 		end
 	end
 
-	-- Add new tools (count duplicates for stacking)
-	local toolCounts = {}
+	-- Any Tool instances not yet bound to a slot get a fresh one —
+	-- honouring _G.PendingTargetSlot so a chest → inventory drag lands
+	-- where the user released the drag.
 	for _, tool in tools do
-		toolCounts[tool.Name] = (toolCounts[tool.Name] or 0) + 1
-	end
-
-	for _, tool in tools do
-		local existing = findItemSlot("tool", tool.Name)
-		if existing then
-			slotData[existing].count = toolCounts[tool.Name]
-		else
-			local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
-			local entry = {type = "tool", name = tool.Name, toolName = tool.Name, icon = toolIcon, count = toolCounts[tool.Name]}
-			local empty = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, maxWritableSlot())
-			if empty then slotData[empty] = entry end
+		if not claimed[tool] then
+			local target
+			local pending = _G.PendingTargetSlot
+			if pending and pending.name == tool.Name then
+				local tgt = pending.slot
+				if tgt and tgt >= 1 and tgt <= TOTAL_SLOTS
+					and not isSlotLocked(tgt) and not slotData[tgt] then
+					target = tgt
+					_G.PendingTargetSlot = nil
+				end
+			end
+			target = target or findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, maxWritableSlot())
+			if target then
+				local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+				slotData[target] = {
+					type = "tool",
+					name = tool.Name,
+					toolName = tool.Name,
+					toolInst = tool,
+					icon = toolIcon,
+					count = 1,
+				}
+				claimed[tool] = true
+			end
 		end
 	end
 end
@@ -696,23 +730,6 @@ end
 local function renderSlot(slot, data)
 	clearSlotUI(slot)
 	if not data then return end
-
-	-- Rarity background fills the slot; item icon sits on top of it.
-	-- Regular resources (items not listed in ITEM_RARITY) get no frame,
-	-- so the slot renders with just its default slot background.
-	local rarityAsset = RARITY_FRAMES[getItemRarity(data.name)]
-	if rarityAsset then
-		local rarityFrame = Instance.new("ImageLabel")
-		rarityFrame.Name = "RarityFrame"
-		rarityFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-		rarityFrame.Size = UDim2.new(1, 0, 1, 0)
-		rarityFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-		rarityFrame.BackgroundTransparency = 1
-		rarityFrame.Image = rarityAsset
-		rarityFrame.ScaleType = Enum.ScaleType.Stretch
-		rarityFrame.ZIndex = 1
-		rarityFrame.Parent = slot
-	end
 
 	local img = Instance.new("ImageLabel")
 	img.Name = "ItemIcon"
@@ -873,7 +890,6 @@ local function findSlotUnderMouse(mousePos)
 	local inset = GuiService:GetGuiInset()
 	local mx = mousePos.X
 	local my = mousePos.Y - inset.Y
-
 	-- Check hotbar slots (1-8)
 	if hotbarGui then
 		local bar = hotbarGui:FindFirstChild("Hotbar")
@@ -920,6 +936,11 @@ local function cancelDrag()
 	dragState.ghostGui = nil
 	dragState.startPos = nil
 end
+
+-- Exposed so other client scripts (e.g. the chest UI) can ask which
+-- inventory slot the mouse is currently over - same hit-test the
+-- inventory's own drag-drop uses, including the GUI inset correction.
+_G.FindInventorySlotUnderMouse = findSlotUnderMouse
 
 local function endDrag(mousePos)
 	if not dragState.active then
@@ -986,7 +1007,40 @@ local function endDrag(mousePos)
 			slotData[srcSlot] = dstData
 		end
 	elseif not targetSlot and srcSlot then
-		-- Dropped outside any slot: drop item into the world
+		-- Dropped outside any slot. If a chest/container is open and the
+		-- release was inside one of its slots, push the stack in there
+		-- instead of dumping to the world. Tools go via "tool" kind so
+		-- the server moves Tool Instances; resources still go as counts.
+		if _G.ActiveContainer and typeof(_G.ContainerTryDrop) == "function" then
+			local data = slotData[srcSlot]
+			if data and data.type == "resource"
+				and _G.ContainerTryDrop(mousePos, data.name, data.count, "resource")
+			then
+				local dropCount = isSplit and 1 or data.count
+				if dropCount >= data.count then
+					slotData[srcSlot] = nil
+				else
+					data.count = data.count - dropCount
+				end
+				cancelDrag()
+				dragState.didDrag = true
+				renderAllSlots()
+				syncSlotLayoutToServer()
+				return
+			end
+			if data and data.type == "tool"
+				and _G.ContainerTryDrop(mousePos, data.toolName, data.count or 1, "tool")
+			then
+				-- Backpack.ChildRemoved will trigger updateUI and clear
+				-- the slot; we just stop the world-drop fallback here.
+				cancelDrag()
+				dragState.didDrag = true
+				renderAllSlots()
+				syncSlotLayoutToServer()
+				return
+			end
+		end
+
 		local srcData = slotData[srcSlot]
 		if srcData then
 			local dropEvt = ReplicatedStorage:FindFirstChild("DropItem")
@@ -1025,9 +1079,33 @@ local function endDrag(mousePos)
 end
 
 -- ─── Quick-transfer: Shift+click moves item between hotbar and grid ───
+-- If a chest/container UI is open, shift-clicking an inventory slot
+-- pushes the stack into the container instead. We drain the clicked
+-- slot locally before the server call so the specific slot the user
+-- aimed at is the one that empties — otherwise distributeResource
+-- picks the last slot with that item and the wrong one clears.
 local function quickTransfer(slotIndex)
 	local data = slotData[slotIndex]
 	if not data then return end
+
+	if _G.ActiveContainer and data.type == "resource"
+		and typeof(_G.ContainerTransferFromPlayer) == "function" then
+		local name = data.name
+		local amount = data.count
+		slotData[slotIndex] = nil
+		renderAllSlots()
+		_G.ContainerTransferFromPlayer(name, amount, "resource")
+		return
+	end
+
+	if _G.ActiveContainer and data.type == "tool"
+		and typeof(_G.ContainerTransferFromPlayer) == "function" then
+		-- Tools live in Backpack, not slotData. The server moves the
+		-- Tool Instances out; Backpack.ChildRemoved then clears the
+		-- local slot via updateUI. Don't pre-drain here.
+		_G.ContainerTransferFromPlayer(data.toolName, data.count or 1, "tool")
+		return
+	end
 
 	local isHotbar = slotIndex >= 1 and slotIndex <= HOTBAR_SLOTS
 	local targetStart, targetEnd
@@ -1397,6 +1475,7 @@ local function openDetailOverlay(recipe)
 
 		local have = inventory[item] or 0
 		local matLabel = Instance.new("TextLabel")
+		matLabel.Name = "MatLabel_" .. item
 		matLabel.Size = UDim2.new(1, -60, 1, 0)
 		matLabel.Position = UDim2.new(0, 52, 0, 0)
 		matLabel.BackgroundTransparency = 1
@@ -1407,6 +1486,8 @@ local function openDetailOverlay(recipe)
 		matLabel.TextXAlignment = Enum.TextXAlignment.Left
 		matLabel.ZIndex = 22
 		matLabel.Parent = matRow
+		matRow:SetAttribute("ItemName", item)
+		matRow:SetAttribute("ItemAmount", amount)
 	end
 
 	-- Craft button at bottom
@@ -1573,13 +1654,31 @@ local function updateCraftPanel()
 		if craftBtn then
 			craftBtn.BackgroundColor3 = canAfford(selectedRecipe) and COLORS.affordable or Color3.fromRGB(120, 120, 120)
 		end
+
+		-- Refresh the "Log: have / need" material rows so a just-
+		-- completed craft immediately reflects the drained inventory.
+		local matScroll = detailOverlay:FindFirstChild("MaterialsScroll")
+		if matScroll then
+			for _, row in matScroll:GetChildren() do
+				local item = row:GetAttribute("ItemName")
+				local amount = row:GetAttribute("ItemAmount")
+				if item and amount then
+					local label = row:FindFirstChild("MatLabel_" .. item)
+					if label then
+						local have = inventory[item] or 0
+						label.Text = item .. ": " .. have .. " / " .. amount
+						label.TextColor3 = have >= amount and COLORS.affordable or COLORS.notAffordable
+					end
+				end
+			end
+		end
 	end
 end
 
 -- ─── Slot layout sync to server ───
 local slotLayoutEvent = ReplicatedStorage:FindFirstChild("SlotLayoutSync")
 
-local function syncSlotLayoutToServer()
+function syncSlotLayoutToServer()
 	if not slotLayoutEvent then
 		slotLayoutEvent = ReplicatedStorage:FindFirstChild("SlotLayoutSync")
 	end
@@ -1628,10 +1727,12 @@ local function closeUI(isRebuild)
 	selectedRecipe = nil
 	selectedCategory = nil
 	if hotbarGui then hotbarGui.DisplayOrder = 5 end
-	-- Also close the mercenary backpack panel if it was open,
-	-- but NOT during a rebuild (recipe refresh) — only on a real close.
-	if not isRebuild and _G.CloseMercInventory then
-		_G.CloseMercInventory()
+	-- Also close the mercenary backpack / container panels if they
+	-- were open, but NOT during a rebuild (recipe refresh) — only on
+	-- a real close.
+	if not isRebuild then
+		if _G.CloseMercInventory then _G.CloseMercInventory() end
+		if _G.CloseContainer then _G.CloseContainer() end
 	end
 end
 

@@ -249,12 +249,18 @@ local function walkToPosition(model, raftPart, localOffset)
 	end)
 end
 
+-- ── Harvest floating resources ─────────────────────────────────────────
+-- The actual scan + 15s harvest happens in HarvestResources.script
+-- inside the Pirate_2 template. This file only delivers the merc to the
+-- chosen raft spot via walkToPosition; the in-pirate script then
+-- auto-harvests anything floating within 10 studs of the merc.
+
 -- ── Remote handler ──────────────────────────────────────────────────────
 
 commandEvent.OnServerEvent:Connect(function(player, action, mercName, raftPart, localOffset)
 	if typeof(action) ~= "string" then return end
 
-	if action == "setFishingLocation" then
+	if action == "setFishingLocation" or action == "setHarvestLocation" then
 		if typeof(mercName) ~= "string" then return end
 		if typeof(raftPart) ~= "Instance" or not raftPart:IsA("BasePart") then return end
 		if typeof(localOffset) ~= "Vector3" then return end
@@ -266,6 +272,13 @@ commandEvent.OnServerEvent:Connect(function(player, action, mercName, raftPart, 
 		if not model then return end
 
 		walkToPosition(model, raftPart, localOffset)
+
+	elseif action == "toggleCooldownDisplay" then
+		if typeof(mercName) ~= "string" then return end
+		local model = findMercenary(player, mercName)
+		if not model then return end
+		local hidden = model:GetAttribute("CooldownHidden") == true
+		model:SetAttribute("CooldownHidden", not hidden)
 	end
 end)
 

@@ -1,6 +1,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -33,6 +34,24 @@ local recipes = {
 		name = "Sawmill",
 		displayName = "Sawmill",
 		icon = "rbxassetid://75858978626954",
+		costs = {Log = 1},
+	},
+	{
+		name = "SmallContainer",
+		displayName = "Small Container",
+		icon = "rbxassetid://86632287242518",
+		costs = {Log = 1},
+	},
+	{
+		name = "PlasticContainer",
+		displayName = "Plastic Container",
+		icon = "rbxassetid://98308527317479",
+		costs = {Plastic = 5},
+	},
+	{
+		name = "Anchor_part",
+		displayName = "Anchor",
+		icon = "rbxassetid://120414328052740",
 		costs = {Log = 1},
 	},
 }
@@ -437,6 +456,23 @@ local function openUI()
 end
 
 openWorkbenchEvent.OnClientEvent:Connect(openUI)
+
+-- E / Escape closes the workbench UI. Suppress InventoryUI's deferred
+-- E toggle during the close so it can't reopen the main inventory
+-- after we tear down. Clear the flag after the defer / prompt window
+-- so a later E press behaves normally.
+UserInputService.InputBegan:Connect(function(input)
+	if not isOpen then return end
+	if input.KeyCode ~= Enum.KeyCode.E
+		and input.KeyCode ~= Enum.KeyCode.Escape then
+		return
+	end
+	_G.SuppressInventoryToggle = true
+	closeUI()
+	task.delay(0.25, function()
+		_G.SuppressInventoryToggle = false
+	end)
+end)
 
 inventoryEvent.OnClientEvent:Connect(function(inv)
 	inventory = inv

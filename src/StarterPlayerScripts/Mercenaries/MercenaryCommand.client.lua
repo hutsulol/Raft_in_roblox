@@ -92,26 +92,38 @@ local function createPrompt(model)
 	local bb = Instance.new("BillboardGui")
 	bb.Name = "MercInteractPrompt"
 	bb.Adornee = adornee
-	bb.Size = UDim2.new(0, 120, 0, 36)
-	bb.StudsOffset = Vector3.new(0, 3, 0)
+	bb.Size = UDim2.new(0, 200, 0, 70)
+	bb.StudsOffset = Vector3.new(0, 3.2, 0)
 	bb.AlwaysOnTop = true
 	bb.ResetOnSpawn = false
 	bb.Parent = playerGui
 
-	local label = Instance.new("TextLabel")
-	label.Size = UDim2.new(1, 0, 1, 0)
-	label.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-	label.BackgroundTransparency = 0.3
-	label.TextColor3 = Color3.fromRGB(255, 255, 0)
-	label.Text = "[E] Command"
-	label.Font = Enum.Font.GothamBold
-	label.TextScaled = true
-	label.BorderSizePixel = 0
-	label.Parent = bb
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Vertical
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	layout.Padding = UDim.new(0, 4)
+	layout.Parent = bb
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 8)
-	corner.Parent = label
+	local function makeLine(order, text)
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(1, 0, 0, 30)
+		label.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
+		label.BackgroundTransparency = 0.3
+		label.TextColor3 = Color3.fromRGB(255, 255, 0)
+		label.Text = text
+		label.Font = Enum.Font.GothamBold
+		label.TextScaled = true
+		label.BorderSizePixel = 0
+		label.LayoutOrder = order
+		label.Parent = bb
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 8)
+		corner.Parent = label
+	end
+
+	makeLine(1, "[E] Command")
+	makeLine(2, "[Q] Turn off time counter")
 
 	promptBillboard = bb
 end
@@ -405,19 +417,6 @@ local function openMercInventory(mercModel)
 		btnStroke.Thickness = 1.5
 		btnStroke.Parent = btn
 
-		-- Rarity frame background (filled in on refresh)
-		local rarityFrame = Instance.new("ImageLabel")
-		rarityFrame.Name = "RarityFrame"
-		rarityFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-		rarityFrame.Size = UDim2.new(1, 0, 1, 0)
-		rarityFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-		rarityFrame.BackgroundTransparency = 1
-		rarityFrame.ScaleType = Enum.ScaleType.Stretch
-		rarityFrame.ZIndex = 1
-		rarityFrame.Visible = false
-		rarityFrame.Parent = btn
-
-		-- Item icon on top of the rarity frame
 		local iconLbl = Instance.new("ImageLabel")
 		iconLbl.Name = "ItemIcon"
 		iconLbl.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -444,7 +443,7 @@ local function openMercInventory(mercModel)
 		countLbl.ZIndex = 3
 		countLbl.Parent = btn
 
-		slotButtons[i] = { button = btn, iconLbl = iconLbl, rarityFrame = rarityFrame, countLbl = countLbl, slotIndex = i }
+		slotButtons[i] = { button = btn, iconLbl = iconLbl, countLbl = countLbl, slotIndex = i }
 	end
 
 	-- ── Drag-and-drop state ────────────────────────────────────────────
@@ -493,21 +492,7 @@ local function openMercInventory(mercModel)
 		ghost.BorderSizePixel = 0
 		ghost.Parent = ghostGui
 
-		local rarity = _G.GetItemRarity and _G.GetItemRarity(itemName) or nil
-		local frameAsset = (_G.GetRarityFrameAsset and _G.GetRarityFrameAsset(rarity)) or ""
 		local iconAsset = (_G.GetItemIcon and _G.GetItemIcon(itemName)) or ""
-
-		if frameAsset ~= "" then
-			local gFrame = Instance.new("ImageLabel")
-			gFrame.AnchorPoint = Vector2.new(0.5, 0.5)
-			gFrame.Size = UDim2.new(1, 0, 1, 0)
-			gFrame.Position = UDim2.new(0.5, 0, 0.5, 0)
-			gFrame.BackgroundTransparency = 1
-			gFrame.Image = frameAsset
-			gFrame.ScaleType = Enum.ScaleType.Stretch
-			gFrame.ZIndex = 1
-			gFrame.Parent = ghost
-		end
 
 		local gIcon = Instance.new("ImageLabel")
 		gIcon.AnchorPoint = Vector2.new(0.5, 0.5)
@@ -636,18 +621,12 @@ local function openMercInventory(mercModel)
 				local count = mercEntry:GetAttribute("Slot" .. i .. "_Count")
 				if typeof(itemName) == "string" and itemName ~= ""
 					and typeof(count) == "number" and count > 0 then
-					local rarity = _G.GetItemRarity and _G.GetItemRarity(itemName) or nil
-					local frameAsset = (_G.GetRarityFrameAsset and _G.GetRarityFrameAsset(rarity)) or ""
 					local iconAsset = (_G.GetItemIcon and _G.GetItemIcon(itemName)) or ""
-					slot.rarityFrame.Image = frameAsset
-					slot.rarityFrame.Visible = frameAsset ~= ""
 					slot.iconLbl.Image = iconAsset
 					slot.countLbl.Text = count > 1 and tostring(count) or ""
 					slot.button.BackgroundColor3 = INV_COLORS.slotBg
 					slot.button.BackgroundTransparency = 0
 				else
-					slot.rarityFrame.Visible = false
-					slot.rarityFrame.Image = ""
 					slot.iconLbl.Image = ""
 					slot.countLbl.Text = ""
 					slot.button.BackgroundColor3 = INV_COLORS.slotBg
@@ -740,7 +719,9 @@ local function openCommandMenu(model)
 	title.TextScaled = true
 	title.Parent = panel
 
-	-- "Set Fishing Location" button (only shown if mercenary has a fishing rod)
+	-- "Set Fishing Location" (fishing-rod mercs) / "Set Harvest Location"
+	-- (all other weapons — merc will stand at the point and pull floating
+	-- resources out of the water on a 15s timer).
 	if hasFishingRod(model) then
 		local btn = Instance.new("TextButton")
 		btn.Name = "SetFishingBtn"
@@ -761,7 +742,30 @@ local function openCommandMenu(model)
 		btn.MouseButton1Click:Connect(function()
 			closeCommandMenu()
 			if mercName then
-				startPlacementMode(mercName)
+				startPlacementMode(mercName, "setFishingLocation")
+			end
+		end)
+	else
+		local btn = Instance.new("TextButton")
+		btn.Name = "SetHarvestBtn"
+		btn.Size = UDim2.new(0.85, 0, 0, 42)
+		btn.Position = UDim2.new(0.075, 0, 0, 52)
+		btn.BackgroundColor3 = Color3.fromRGB(50, 140, 80)
+		btn.TextColor3 = Color3.fromRGB(255, 255, 255)
+		btn.Text = "Set Harvest Location"
+		btn.Font = Enum.Font.GothamBold
+		btn.TextScaled = true
+		btn.BorderSizePixel = 0
+		btn.Parent = panel
+
+		local btnCorner = Instance.new("UICorner")
+		btnCorner.CornerRadius = UDim.new(0, 8)
+		btnCorner.Parent = btn
+
+		btn.MouseButton1Click:Connect(function()
+			closeCommandMenu()
+			if mercName then
+				startPlacementMode(mercName, "setHarvestLocation")
 			end
 		end)
 	end
@@ -996,8 +1000,10 @@ end
 
 -- ── Pick raft spot and send command ────────────────────────────────────
 
-function startPlacementMode(mercName)
+function startPlacementMode(mercName, actionName)
 	if isPlacingLocation or isPlacingCast then stopAllPlacement() end
+
+	actionName = actionName or "setFishingLocation"
 
 	isPlacingLocation = true
 	placingMercName = mercName
@@ -1005,7 +1011,10 @@ function startPlacementMode(mercName)
 	_G.SuppressInventoryToggle = true
 
 	createPreviewCircle()
-	showHint("Click on the raft to set fishing location  |  Esc to cancel")
+	local hintText = actionName == "setHarvestLocation"
+		and "Click on the raft to set harvest location  |  Esc to cancel"
+		or "Click on the raft to set fishing location  |  Esc to cancel"
+	showHint(hintText)
 
 	renderConn = RunService.RenderStepped:Connect(function()
 		if not isPlacingLocation or not previewCircle then return end
@@ -1035,7 +1044,7 @@ function startPlacementMode(mercName)
 
 		-- Send the raft position to the server
 		commandEvent:FireServer(
-			"setFishingLocation", placingMercName,
+			actionName, placingMercName,
 			hitPart, localOffset
 		)
 		stopAllPlacement()
@@ -1100,6 +1109,20 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		openCommandMenu(targetMerc)
 		destroyPrompt()
 	end
+end)
+
+-- ── Q key: toggle the cooldown timer above the merc ────────────────────
+
+UserInputService.InputBegan:Connect(function(input, processed)
+	if processed then return end
+	if input.KeyCode ~= Enum.KeyCode.Q then return end
+	if not targetMerc or not targetMerc.Parent then return end
+	if commandMenuOpen or mercInvGui then return end
+
+	local mercName = targetMerc:GetAttribute("MercName")
+	if typeof(mercName) ~= "string" or mercName == "" then return end
+
+	commandEvent:FireServer("toggleCooldownDisplay", mercName)
 end)
 
 -- ── Fishing catch +1 popup ─────────────────────────────────────────────

@@ -55,23 +55,24 @@ local function createEmptyInventory()
 	return inv
 end
 
--- ─── Helper: how many unique tool names does the player hold? ───
+-- ─── Helper: count each Tool instance the player holds ───
+-- Client inventory now assigns one slot per Tool Instance (no more
+-- name-based stacking), so the server's slot bookkeeping has to match:
+-- three Machetes occupy three slots, not one.
 local function countToolSlots(player)
-	local seen = {}
+	local n = 0
 	local backpack = player:FindFirstChild("Backpack")
 	if backpack then
 		for _, tool in backpack:GetChildren() do
-			if tool:IsA("Tool") then seen[tool.Name] = true end
+			if tool:IsA("Tool") then n = n + 1 end
 		end
 	end
 	local char = player.Character
 	if char then
 		for _, tool in char:GetChildren() do
-			if tool:IsA("Tool") then seen[tool.Name] = true end
+			if tool:IsA("Tool") then n = n + 1 end
 		end
 	end
-	local n = 0
-	for _ in pairs(seen) do n = n + 1 end
 	return n
 end
 
@@ -357,6 +358,24 @@ end
 
 _G.GetEmptySlotCount = function(player)
 	return computeLayoutCapacity(player, nil).emptySlots
+end
+
+-- True when the player can accept one more Tool instance. Uses the
+-- client's actual slot layout so split stacks are counted as the
+-- slots they really occupy — otherwise the raw resource count would
+-- assume stacks are packed and miscount free cells.
+_G.HasFreeToolSlot = function(player)
+	local layout = _G.GetClientSlotLayout and _G.GetClientSlotLayout(player)
+	if layout then
+		return (_G.GetEmptySlotCount(player) or 0) > 0
+	end
+	-- Fallback when the client hasn't synced a layout yet (e.g. very
+	-- early in the session): count packed stacks + tool instances.
+	local unlocked = getUnlockedSlots(player)
+	local tools = countToolSlots(player)
+	local inv = _G.GetInventory(player)
+	local stacks = getTotalResourceStacks(inv)
+	return (unlocked - tools - stacks) > 0
 end
 
 _G.SendInventory = function(player)

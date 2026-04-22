@@ -72,7 +72,10 @@ local PREVIEW_COLOR_VALID = Color3.fromRGB(80, 200, 80)
 local PREVIEW_COLOR_INVALID = Color3.fromRGB(200, 80, 80)
 
 local LOG_ICON = "rbxassetid://110032041583533"
-local FLOOR_ICON = "rbxassetid://93002853045949"
+local FLOOR_ICON = "rbxassetid://114819085093343"
+local WALL_ICON = "rbxassetid://103259353018381"
+local BEAM_ICON = "rbxassetid://128953076654373"
+local ARCH_ICON = "rbxassetid://90064054384398"
 
 -- Beam/wall X-axis correction (pivot offset in template)
 local BEAM_X_OFFSET = 1
@@ -90,9 +93,9 @@ local categories = {
 		name = "Walls",
 		icon = LOG_ICON,
 		items = {
-			{id = "beam", name = "Beam", icon = LOG_ICON, cost = 1, costType = "Log", buildType = "beam"},
-			{id = "wall_panel", name = "Wood Wall", icon = LOG_ICON, cost = 3, costType = "Log", buildType = "wall_panel"},
-			{id = "wall_arch", name = "Door Arch", icon = LOG_ICON, cost = 3, costType = "Log", buildType = "wall_arch"},
+			{id = "beam", name = "Beam", icon = BEAM_ICON, cost = 1, costType = "Log", buildType = "beam"},
+			{id = "wall_panel", name = "Wood Wall", icon = WALL_ICON, cost = 3, costType = "Log", buildType = "wall_panel"},
+			{id = "wall_arch", name = "Door Arch", icon = ARCH_ICON, cost = 3, costType = "Log", buildType = "wall_arch"},
 			{id = "door", name = "Wood Door", icon = LOG_ICON, cost = 2, costType = "Log", buildType = "door"},
 		},
 	},

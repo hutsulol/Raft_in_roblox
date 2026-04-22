@@ -53,11 +53,11 @@ while not Self:IsDescendantOf(workspace) do
 end
 
 -- ── Skip combat for non-weapon mercenaries ────────────────────────────
--- When the mercenary is equipped with a FishingRod (instead of a Sword),
--- it should fish peacefully, not attack other pirates. The Fishing script
--- handles the fishing behaviour; this script has nothing to do.
+-- FishingRod mercs fish peacefully (handled by Fishing script).
+-- Unarmed mercs harvest floating resources (handled by
+-- HarvestResources script). Neither should engage hostile pirates.
 local equippedWeapon = Self:GetAttribute("EquippedWeapon") or "Sword"
-if equippedWeapon == "FishingRod" then
+if equippedWeapon == "FishingRod" or equippedWeapon == "Unarmed" then
 	return
 end
 

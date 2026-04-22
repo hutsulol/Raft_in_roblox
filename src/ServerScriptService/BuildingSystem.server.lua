@@ -363,11 +363,118 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 	if not raft or not raft.PrimaryPart then return end
 
 	local tool = char:FindFirstChildWhichIsA("Tool")
-	if not tool or tool.Name ~= "Hammer" then return end
+	if not tool then return end
+
+	-- Anchor placement uses the Anchor_part tool (crafted at the
+	-- workbench). Every other buildType is hammer-driven.
+	local requiredTool = (buildType == "anchor") and "Anchor_part" or "Hammer"
+	if tool.Name ~= requiredTool then return end
 
 	local inv = _G.GetInventory and _G.GetInventory(player) or {}
 
-	if buildType == "raft" then
+	if buildType == "anchor" then
+		local gridX, gridZ = ...
+		if type(gridX) ~= "number" or type(gridZ) ~= "number" then return end
+
+		local gx = math.round(gridX)
+		local gz = math.round(gridZ)
+
+		local offsets = getFloorOffsets(raft)
+		if isFloorOccupied(offsets, gx, gz) then return end
+		if not isFloorAdjacent(offsets, gx, gz) then return end
+
+		local anchorTemplate = rs:FindFirstChild("Anchor_part")
+			or rs:FindFirstChild("Anchor_part", true)
+		if not anchorTemplate then return end
+
+		-- Anchor_part's PrimaryPart sits 2 studs to the right of the
+		-- visible centre (A-frame opening). PivotTo would park the
+		-- body 2 studs past the grid cell, so shift the target 2
+		-- studs left along its own X axis to compensate.
+		local ANCHOR_PIVOT_COMPENSATION = CFrame.new(-2, 0, 0)
+
+		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
+		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
+		local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
+		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE, 0, gz * GRID_SIZE))
+		local localOffset = restCF:VectorToObjectSpace(worldOffset)
+		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft) * ANCHOR_PIVOT_COMPENSATION
+
+		if (char.HumanoidRootPart.Position - worldCF.Position).Magnitude > 80 then return end
+
+		-- Physical overlap check: probe the grid cell itself (without
+		-- the X compensation) so adjacent placements on any side of
+		-- the raft don't false-positive. We only care whether the
+		-- cell the player chose is physically empty.
+		do
+			local cellCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft)
+			local probe = Vector3.new(GRID_SIZE * 0.75, GRID_SIZE * 0.75, GRID_SIZE * 0.75)
+			local params = OverlapParams.new()
+			params.FilterType = Enum.RaycastFilterType.Include
+			params.FilterDescendantsInstances = { raft }
+			local overlaps = workspace:GetPartBoundsInBox(cellCF, probe, params)
+			if #overlaps > 0 then return end
+		end
+
+		local newAnchor = anchorTemplate:Clone()
+		-- Tag it with the same grid coords as a raft tile so existing
+		-- offset / occupancy / save logic counts the cell as filled and
+		-- nothing else can be dropped on top of it.
+		newAnchor:SetAttribute("GridX", gx)
+		newAnchor:SetAttribute("GridZ", gz)
+		newAnchor:SetAttribute("BuildType", "raft")
+		newAnchor:SetAttribute("IsAnchor", true)
+
+		if newAnchor:IsA("Model") then
+			if not newAnchor.PrimaryPart then
+				local p = newAnchor:FindFirstChildWhichIsA("BasePart", true)
+				if p then newAnchor.PrimaryPart = p end
+			end
+			-- Anchor's Z matches a regular raft tile; only X is offset
+			-- (hollow centre), and worldCF already has the -2 X shift.
+			-- No WorldPivot rework — just pivot to the compensated CF
+			-- like a normal raft tile placement.
+			newAnchor:PivotTo(worldCF)
+		elseif newAnchor:IsA("BasePart") then
+			newAnchor.CFrame = worldCF
+		end
+		placeWithVelocityPreserved(raft, function()
+			newAnchor.Parent = raft
+			-- Two groups stay free of raft welds so they can move:
+			--   * the inner `anchor` submodel — the Union the rope
+			--     lowers on — must hang freely.
+			--   * every BasePart inside Wooden_Wheel except HingePart.
+			--     HingePart gets the raft weld so the wheel stays put;
+			--     the rotor spins via the template's HingeConstraint.
+			local hanging = newAnchor:FindFirstChild("anchor")
+			local wheel   = newAnchor:FindFirstChild("Wooden_Wheel")
+			local hinge   = wheel and wheel:FindFirstChild("HingePart", true)
+			for _, desc in newAnchor:GetDescendants() do
+				if desc:IsA("BasePart") then
+					local inHanging    = hanging and desc:IsDescendantOf(hanging)
+					local inWheelRotor = wheel and desc:IsDescendantOf(wheel) and desc ~= hinge
+					if inHanging or inWheelRotor then
+						desc.Anchored = false
+						pcall(function() desc:SetNetworkOwner(nil) end)
+					else
+						local weld = Instance.new("WeldConstraint")
+						weld.Part0 = desc
+						weld.Part1 = raft.PrimaryPart
+						weld.Parent = desc
+						desc.Anchored = false
+						pcall(function() desc:SetNetworkOwner(nil) end)
+					end
+				end
+			end
+		end)
+
+		-- Consume the Anchor_part tool — one craft = one placement.
+		tool:Destroy()
+
+		if _G.SendInventory then _G.SendInventory(player) end
+		return
+
+	elseif buildType == "raft" then
 		local gridX, gridZ = ...
 		if type(gridX) ~= "number" or type(gridZ) ~= "number" then return end
 		if (inv.Log or 0) < RAFT_COST then return end

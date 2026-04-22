@@ -24,6 +24,27 @@ local recipes = {
 		costs = {Log = 1},
 		craftType = "placeable",
 	},
+	{
+		name = "SmallContainer",
+		displayName = "Small Container",
+		icon = "rbxassetid://86632287242518",
+		costs = {Log = 1},
+		craftType = "placeable",
+	},
+	{
+		name = "PlasticContainer",
+		displayName = "Plastic Container",
+		icon = "rbxassetid://98308527317479",
+		costs = {Plastic = 5},
+		craftType = "placeable",
+	},
+	{
+		name = "Anchor_part",
+		displayName = "Anchor",
+		icon = "rbxassetid://120414328052740",
+		costs = {Log = 1},
+		craftType = "placeable",
+	},
 }
 
 local function findWorkBench()
@@ -84,7 +105,11 @@ craftEvent.OnServerEvent:Connect(function(player, action, data)
 	end
 
 	for item, amount in recipe.costs do
-		inv[item] = inv[item] - amount
+		if _G.RemoveResourceFromInventory then
+			_G.RemoveResourceFromInventory(player, item, amount)
+		else
+			inv[item] = inv[item] - amount
+		end
 	end
 
 	local backpack = player:FindFirstChild("Backpack")
@@ -103,12 +128,20 @@ craftEvent.OnServerEvent:Connect(function(player, action, data)
 		handle.Size = Vector3.new(1, 1, 1)
 		handle.Transparency = 1
 		handle.Parent = tool
-		tool.Parent = backpack
+		if _G.GiveToolOrDrop then
+			_G.GiveToolOrDrop(player, tool)
+		else
+			tool.Parent = backpack
+		end
 	else
 		local template = rs:FindFirstChild(recipe.model)
 		if template then
 			local tool = template:Clone()
-			tool.Parent = backpack
+			if _G.GiveToolOrDrop then
+				_G.GiveToolOrDrop(player, tool)
+			else
+				tool.Parent = backpack
+			end
 		end
 	end
 

@@ -192,6 +192,84 @@ _G.SpawnResourceDrop = function(player, itemName, amount, dropPosition)
 	return spawnPhysicalDrop(player, itemName, amount, false, dropPosition)
 end
 
+-- Hide / reveal helpers for tools attached to a drop model. Tool
+-- BaseParts still render in Workspace folders; if we left them visible
+-- they'd clip through the box visual. Same pattern SmallContainerSystem
+-- uses for chest storage.
+local TOOL_DROP_HIDDEN_TAG = "DropHidden"
+
+local function hideAttachedTool(tool)
+	if tool:GetAttribute(TOOL_DROP_HIDDEN_TAG) then return end
+	tool:SetAttribute(TOOL_DROP_HIDDEN_TAG, true)
+	for _, d in tool:GetDescendants() do
+		if d:IsA("BasePart") then
+			d:SetAttribute("__dt", d.Transparency)
+			d:SetAttribute("__dc", d.CanCollide)
+			d:SetAttribute("__dq", d.CanQuery)
+			d:SetAttribute("__dh", d.CanTouch)
+			d:SetAttribute("__da", d.Anchored)
+			d.Transparency = 1
+			d.CanCollide = false
+			d.CanQuery = false
+			d.CanTouch = false
+			d.Anchored = true
+		end
+	end
+end
+
+local function revealAttachedTool(tool)
+	if not tool:GetAttribute(TOOL_DROP_HIDDEN_TAG) then return end
+	tool:SetAttribute(TOOL_DROP_HIDDEN_TAG, nil)
+	for _, d in tool:GetDescendants() do
+		if d:IsA("BasePart") then
+			local t = d:GetAttribute("__dt")
+			local c = d:GetAttribute("__dc")
+			local q = d:GetAttribute("__dq")
+			local h = d:GetAttribute("__dh")
+			local a = d:GetAttribute("__da")
+			if t ~= nil then d.Transparency = t; d:SetAttribute("__dt", nil) end
+			if c ~= nil then d.CanCollide = c; d:SetAttribute("__dc", nil) end
+			if q ~= nil then d.CanQuery = q; d:SetAttribute("__dq", nil) end
+			if h ~= nil then d.CanTouch = h; d:SetAttribute("__dh", nil) end
+			if a ~= nil then d.Anchored = a; d:SetAttribute("__da", nil) end
+		end
+	end
+end
+
+-- Parent the Tool into the player's Backpack if there's a free slot.
+-- Otherwise spawn a physical drop carrying THIS exact Tool instance so
+-- pickup restores it intact — important for placeable stubs that have
+-- no template in ReplicatedStorage. Returns true if the tool went into
+-- Backpack, false if it dropped to the world.
+_G.GiveToolOrDrop = function(player, tool, dropPosition)
+	if not tool or not tool:IsA("Tool") then return false end
+	local backpack = player:FindFirstChild("Backpack")
+	local hasSlot = _G.HasFreeToolSlot and _G.HasFreeToolSlot(player)
+	if backpack and hasSlot then
+		tool.Parent = backpack
+		return true
+	end
+
+	local drop = spawnPhysicalDrop(player, tool.Name, 1, true, dropPosition)
+	if not drop then
+		-- No drop template available — last resort, drop into Backpack
+		-- anyway so the item isn't destroyed.
+		if backpack then tool.Parent = backpack end
+		return false
+	end
+
+	local attached = drop:FindFirstChild("AttachedTools")
+	if not attached then
+		attached = Instance.new("Folder")
+		attached.Name = "AttachedTools"
+		attached.Parent = drop
+	end
+	hideAttachedTool(tool)
+	tool.Parent = attached
+	drop:SetAttribute("HasAttachedTool", true)
+	return false
+end
+
 dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPosition)
 	if type(itemName) ~= "string" then return end
 	if type(dropCount) ~= "number" then return end
@@ -280,17 +358,33 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 	if not resType then return end
 
 	if isToolDrop then
-		-- Tool pickup: clone the tool template and give to player. Tool
-		-- templates may live under ReplicatedStorage.MainModule or other
-		-- subfolders (same pattern InventoryCrafting uses), so the lookup
-		-- must fall back to a recursive search — otherwise tools like
-		-- Phone / FishingRod silently fail to restore on pickup.
-		local toolTemplate = findTemplate(resType)
-		if not toolTemplate then return end
 		local backpack = player:FindFirstChild("Backpack")
 		if not backpack then return end
-		local toolClone = toolTemplate:Clone()
-		toolClone.Parent = backpack
+
+		-- Prefer the Tool instance attached to the drop (used by
+		-- _G.GiveToolOrDrop overflow). Only fall back to template-
+		-- cloning for drops that carry no instance, e.g. when a tool
+		-- was explicitly world-dropped via DropItem and no longer
+		-- exists as an object.
+		local attached = droppedItem:FindFirstChild("AttachedTools")
+		local moved = false
+		if attached then
+			for _, t in attached:GetChildren() do
+				if t:IsA("Tool") then
+					revealAttachedTool(t)
+					t.Parent = backpack
+					moved = true
+					break
+				end
+			end
+		end
+
+		if not moved then
+			local toolTemplate = findTemplate(resType)
+			if not toolTemplate then return end
+			local toolClone = toolTemplate:Clone()
+			toolClone.Parent = backpack
+		end
 
 		droppedItem:Destroy()
 		if _G.SendInventory then _G.SendInventory(player) end

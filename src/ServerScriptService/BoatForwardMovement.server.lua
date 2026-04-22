@@ -344,6 +344,15 @@ RunService.Heartbeat:Connect(function(dt)
 		targetSpeed = targetSpeed + PADDLE_BOOST * (paddleBoostRemaining / PADDLE_DECAY)
 		paddleBoostRemaining = math.max(0, paddleBoostRemaining - dt)
 	end
+	-- Anchor drag: below 70% depth the anchor doesn't bite at all.
+	-- Between 70% and 100% the raft's speed ramps linearly down to 0,
+	-- so fully-deployed anchor = full stop and the last ~30% of the
+	-- rope produces a natural-feeling braking arc.
+	local anchorDepth = boat:GetAttribute("AnchorDepth") or 0
+	if anchorDepth > 0.7 then
+		local brake = math.clamp((anchorDepth - 0.7) / 0.3, 0, 1)
+		targetSpeed = targetSpeed * (1 - brake)
+	end
 	local desiredVelocity = forwardDirection * targetSpeed
 
 	-- Velocity correction force. This simultaneously:

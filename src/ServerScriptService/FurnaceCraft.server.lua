@@ -111,8 +111,13 @@ craftEvent.OnServerEvent:Connect(function(player, action, data)
 	if (inv.Stone or 0) < 10 then return end
 	if (inv.Log or 0) < 5 then return end
 
-	inv.Stone = inv.Stone - 10
-	inv.Log = inv.Log - 5
+	if _G.RemoveResourceFromInventory then
+		_G.RemoveResourceFromInventory(player, "Stone", 10)
+		_G.RemoveResourceFromInventory(player, "Log", 5)
+	else
+		inv.Stone = inv.Stone - 10
+		inv.Log = inv.Log - 5
+	end
 
 	-- Create placeable tool
 	local backpack = player:FindFirstChild("Backpack")
@@ -128,7 +133,11 @@ craftEvent.OnServerEvent:Connect(function(player, action, data)
 	handle.Transparency = 1
 	handle.Parent = tool
 
-	tool.Parent = backpack
+	if _G.GiveToolOrDrop then
+		_G.GiveToolOrDrop(player, tool)
+	else
+		tool.Parent = backpack
+	end
 
 	if _G.SendInventory then _G.SendInventory(player) end
 	craftEvent:FireClient(player, "success", "Furnace")

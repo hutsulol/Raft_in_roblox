@@ -28,6 +28,7 @@ local minigameRunning = false
 local claimedLocally = {} -- client-side set; immune to server replication overwriting
 local firstDefeatShown = false
 local defeatDialogueOpen = false
+local mercenariesUnlockShown = false
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- UI construction
@@ -741,6 +742,23 @@ local function openRecruitPanel(pirate)
 
 	if _G.OpenBrainMaze then
 		_G.OpenBrainMaze(pirate, function(result)
+			if result == "completed" and pirate then
+				claimedLocally[pirate] = true
+				recruitEvent:FireServer("recruit", pirate)
+
+				if not mercenariesUnlockShown then
+					mercenariesUnlockShown = true
+					task.delay(2, function()
+						if typeof(_G.ShowQuestNotification) == "function" then
+							_G.ShowQuestNotification(
+								"Your device now has access to the 'Mercenaries' section.",
+								"New feature unlocked",
+								{ icon = "📱", sound = "achievement_complete", duration = 6 }
+							)
+						end
+					end)
+				end
+			end
 			uiOpen = false
 			currentPirate = nil
 			_G.SuppressInventoryToggle = false
@@ -762,6 +780,32 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 	local pirate = findDownedPirateNearby()
 	if pirate then
+		if mercenariesUnlockShown then
+			local char = player.Character
+			local equipped = char and char:FindFirstChildOfClass("Tool")
+			if not equipped or equipped.Name ~= "Injector" then
+				showNotification("You need an Injector.", Color3.fromRGB(255, 200, 80))
+				return
+			end
+
+			local backpack = player:FindFirstChild("Backpack")
+			local emptyCapsule = (backpack and backpack:FindFirstChild("EmptyCapsule"))
+				or (char and char:FindFirstChild("EmptyCapsule"))
+			if not emptyCapsule then
+				showNotification("You need an Empty Capsule.", Color3.fromRGB(255, 200, 80))
+				return
+			end
+
+			local injSound = equipped:FindFirstChild("Injection")
+			if injSound and injSound:IsA("Sound") then
+				injSound:Play()
+			end
+
+			claimedLocally[pirate] = true
+			recruitEvent:FireServer("collectBlood", pirate)
+			return
+		end
+
 		if not firstDefeatShown then
 			firstDefeatShown = true
 			defeatDialogueOpen = true

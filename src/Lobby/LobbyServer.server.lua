@@ -8,7 +8,7 @@ local TeleportService = game:GetService("TeleportService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DataStoreService = game:GetService("DataStoreService")
 
-local OCEAN_PLACE_ID = 128626393517258
+local OCEAN_PLACE_ID = 77272676169005
 
 -- Only run in the lobby place, NOT in the ocean sub-place
 if game.PlaceId == OCEAN_PLACE_ID then return end
@@ -271,7 +271,6 @@ local function startCountdown(pad)
 
 			local success, err = pcall(function()
 				local teleportOptions = Instance.new("TeleportOptions")
-				teleportOptions.ShouldReserveServer = true
 
 				local teleportData = {}
 
@@ -368,7 +367,6 @@ lobbyEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		task.spawn(function()
 			local success, err = pcall(function()
 				local teleportOptions = Instance.new("TeleportOptions")
-				teleportOptions.ShouldReserveServer = true
 				teleportOptions:SetTeleportData({loadSave = true, raftOwnerId = player.UserId})
 				TeleportService:TeleportAsync(OCEAN_PLACE_ID, {player}, teleportOptions)
 			end)
