@@ -916,37 +916,46 @@ local function openDNAStudyPage(ctx)
 	local _ = logValueRefs
 
 	-- ── Centre column: DNA helix rails + GENOME DECODED % ────────────
-	-- Two stacked pointed-oval "lenses" connected by a narrow waist
-	-- region. Fragment bars (6 strength inside the top lens, 4 luck
-	-- straddling the waist, 6 speed inside the bottom lens) land in
-	-- Step 9 — this commit only draws the curved rails.
+	-- Three stacked pointed-oval "lenses" connected by narrow X-
+	-- crossovers, matching real-DNA silhouettes (big / small / big).
+	-- The middle lens is short + narrow since it only needs to hold
+	-- the 4 luck fragments, while the outer lenses each host 6 bars.
 	--
 	-- Layout math lives inside centreColumn-local space:
 	--   HELIX_CENTRE_X = CENTRE_COL_W / 2
-	--   TOP_LENS_Y     = 10           (top tip)
-	--   TOP_LENS_H     = 180
-	--   waist gap      = 40           (luck fragment zone)
-	--   BOT_LENS_Y     = 230          (top tip)
-	--   BOT_LENS_H     = 180
-	--   GENOME_Y       = 430
-	local HELIX_CENTRE_X = CENTRE_COL_W / 2
-	local HELIX_WIDTH    = 140
-	local TOP_LENS_Y     = 10
-	local TOP_LENS_H     = 180
-	local BOT_LENS_Y     = TOP_LENS_Y + TOP_LENS_H + 40
-	local BOT_LENS_H     = 180
+	--   TOP_LENS_Y     = 4    (top tip)
+	--   TOP_LENS_H     = 160
+	--   waist 1        = 30   (first X-crossover)
+	--   MID_LENS_Y     = 194
+	--   MID_LENS_H     = 60   (smaller than outer lenses)
+	--   waist 2        = 30   (second X-crossover)
+	--   BOT_LENS_Y     = 284
+	--   BOT_LENS_H     = 160
+	--   GENOME_Y       = 450
+	local HELIX_CENTRE_X  = CENTRE_COL_W / 2
+	local HELIX_WIDTH     = 140
+	local MID_LENS_WIDTH  = 90
+
+	local TOP_LENS_Y      = 4
+	local TOP_LENS_H      = 160
+	local WAIST1_TOP_Y    = TOP_LENS_Y + TOP_LENS_H  -- 164
+	local WAIST1_BOT_Y    = WAIST1_TOP_Y + 30        -- 194
+	local MID_LENS_Y      = WAIST1_BOT_Y
+	local MID_LENS_H      = 60
+	local WAIST2_TOP_Y    = MID_LENS_Y + MID_LENS_H  -- 254
+	local WAIST2_BOT_Y    = WAIST2_TOP_Y + 30        -- 284
+	local BOT_LENS_Y      = WAIST2_BOT_Y
+	local BOT_LENS_H      = 160
 
 	drawLensRails(centreColumn, HELIX_CENTRE_X, TOP_LENS_Y,
 		HELIX_WIDTH, TOP_LENS_H, HOLO_EDGE, 1, 36)
+	drawLensRails(centreColumn, HELIX_CENTRE_X, MID_LENS_Y,
+		MID_LENS_WIDTH, MID_LENS_H, HOLO_EDGE, 1, 24)
 	drawLensRails(centreColumn, HELIX_CENTRE_X, BOT_LENS_Y,
 		HELIX_WIDTH, BOT_LENS_H, HOLO_EDGE, 1, 36)
 
-	-- Two diagonal rails crossing through the waist so the helix reads
-	-- as a connected figure-8 instead of two stacked tips. The cross
-	-- point sits at the waist vertical centre; the endpoints are
-	-- pulled ~18 px off-centre at each lens tip so a clear X is
-	-- visible behind the 4 luck fragment bars.
-	local function waistSegment(ax, ay, bx, by)
+	-- Shared line-segment helper used by both crossovers.
+	local function crossSegment(ax, ay, bx, by)
 		local dx, dy = bx - ax, by - ay
 		local len = math.sqrt(dx * dx + dy * dy)
 		local seg = Instance.new("Frame")
@@ -959,27 +968,29 @@ local function openDNAStudyPage(ctx)
 		seg.ZIndex = (centreColumn.ZIndex or 1) + 1
 		seg.Parent = centreColumn
 	end
-	local WAIST_TOP_Y  = TOP_LENS_Y + TOP_LENS_H   -- 190
-	local WAIST_BOT_Y  = BOT_LENS_Y                -- 230
-	local WAIST_OFFSET = 18
-	waistSegment(HELIX_CENTRE_X - WAIST_OFFSET, WAIST_TOP_Y,
-		HELIX_CENTRE_X + WAIST_OFFSET, WAIST_BOT_Y)
-	waistSegment(HELIX_CENTRE_X + WAIST_OFFSET, WAIST_TOP_Y,
-		HELIX_CENTRE_X - WAIST_OFFSET, WAIST_BOT_Y)
+
+	-- Two diagonal rails between each pair of lens tips. Endpoints
+	-- are pulled ~14 px off-centre so the X reads clearly behind any
+	-- fragment bars drawn in the crossover zone.
+	local CROSS_OFFSET = 14
+	crossSegment(HELIX_CENTRE_X - CROSS_OFFSET, WAIST1_TOP_Y,
+		HELIX_CENTRE_X + CROSS_OFFSET, WAIST1_BOT_Y)
+	crossSegment(HELIX_CENTRE_X + CROSS_OFFSET, WAIST1_TOP_Y,
+		HELIX_CENTRE_X - CROSS_OFFSET, WAIST1_BOT_Y)
+	crossSegment(HELIX_CENTRE_X - CROSS_OFFSET, WAIST2_TOP_Y,
+		HELIX_CENTRE_X + CROSS_OFFSET, WAIST2_BOT_Y)
+	crossSegment(HELIX_CENTRE_X + CROSS_OFFSET, WAIST2_TOP_Y,
+		HELIX_CENTRE_X - CROSS_OFFSET, WAIST2_BOT_Y)
 
 	-- ── 16 fragment bars ──────────────────────────────────────────────
-	-- F01-F06 strength (inside top lens), F07-F10 luck (across the
-	-- waist), F11-F16 speed (inside bottom lens). Widths inside each
-	-- lens follow the same sin(pi*t) curve the rails do, scaled to
-	-- 85 % so the bars sit clear of the rail itself; waist bars use a
-	-- short symmetric bump so the 4 rungs widen slightly toward the
-	-- middle of the crossover.
+	-- F01-F06 strength (inside top lens), F07-F10 luck (inside the
+	-- smaller middle lens), F11-F16 speed (inside bottom lens). Widths
+	-- inside each lens follow the same sin(pi*t) curve the rails do,
+	-- scaled to 85 % so the bars sit clear of the rail outline itself.
 	local FRAGMENT_COUNT = 16
 	local BAR_THICKNESS  = 2
 	local DOT_SIZE       = 4
 	local LENS_BAR_SCALE = 0.85
-	local WAIST_BAR_MIN  = 60
-	local WAIST_BAR_MAX  = 100
 
 	local function buildFragmentBar(index, y, width)
 		local frag = Instance.new("Frame")
@@ -1063,13 +1074,14 @@ local function openDNAStudyPage(ctx)
 		fragmentRefs[i] = buildFragmentBar(i, y, halfW * 2)
 	end
 
-	-- Waist: 4 bars crossing the X. Widths follow a short sin bump so
-	-- the middle two are slightly wider than the outer two.
+	-- Middle lens: 4 bars at t = 1/5 .. 4/5 of MID_LENS_H. Uses the
+	-- narrower MID_LENS_WIDTH so the bars stay inside the smaller
+	-- pinched lens instead of bleeding past its rails.
 	for i = 1, 4 do
 		local t = i / 5
-		local y = WAIST_TOP_Y + t * (WAIST_BOT_Y - WAIST_TOP_Y)
-		local w = WAIST_BAR_MIN + math.sin(t * math.pi) * (WAIST_BAR_MAX - WAIST_BAR_MIN)
-		fragmentRefs[6 + i] = buildFragmentBar(6 + i, y, w)
+		local halfW = math.sin(t * math.pi) * (MID_LENS_WIDTH * 0.5) * LENS_BAR_SCALE
+		local y = MID_LENS_Y + t * MID_LENS_H
+		fragmentRefs[6 + i] = buildFragmentBar(6 + i, y, halfW * 2)
 	end
 
 	-- Bottom lens: mirrors the top lens.
@@ -1086,7 +1098,7 @@ local function openDNAStudyPage(ctx)
 
 	-- GENOME DECODED label + percentage. Percentage value ref stashed
 	-- so Step 12 can tween it when fragments advance.
-	local GENOME_Y = BOT_LENS_Y + BOT_LENS_H + 16
+	local GENOME_Y = BOT_LENS_Y + BOT_LENS_H + 6
 	local genomeRow = Instance.new("Frame")
 	genomeRow.Name = "GenomeDecoded"
 	genomeRow.BackgroundTransparency = 1
