@@ -200,6 +200,9 @@ local function buildHoloBackground(parent)
 		h.BorderSizePixel = 0
 		h.ZIndex = 1
 		h.Parent = root
+		local hCorner = Instance.new("UICorner")
+		hCorner.CornerRadius = UDim.new(1, 0)
+		hCorner.Parent = h
 		local g = Instance.new("UIGradient")
 		g.Transparency = NumberSequence.new({
 			NumberSequenceKeypoint.new(0,    1),
@@ -1237,7 +1240,7 @@ buildPage = function(mercNames)
 	local COLUMN_GAP    = 20
 	local PANELS_TOP_Y  = 70
 	local PANELS_BOT_PAD = 24
-	local RIGHT_PANEL_Y_OFFSET = -60
+	local RIGHT_PANEL_Y_OFFSET = -50
 
 	local MENU_VERTICAL_SHIFT = 30
 
@@ -1328,6 +1331,7 @@ buildPage = function(mercNames)
 	backStroke.Color     = HOLO_PANEL_BORDER
 	backStroke.Thickness = 1
 	backStroke.Parent    = backBtn
+	cornerLs(backBtn, 8, HOLO_EDGE, 1.5)
 
 	local backGlyph = makeBackIcon(backBtn, 14, COLOR_TEXT)
 	backGlyph.AnchorPoint = Vector2.new(0, 0.5)
@@ -1370,7 +1374,7 @@ buildPage = function(mercNames)
 	local chip = Instance.new("Frame")
 	chip.Name = "CurrencyChip"
 	chip.AnchorPoint = Vector2.new(1, 1)
-	chip.Position = UDim2.new(1, EDGE_BLEED_X, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET + 14)
+	chip.Position = UDim2.new(1, EDGE_BLEED_X, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET - 6)
 	chip.Size = UDim2.fromOffset(84, 24)
 	chip.BackgroundColor3 = HOLO_PANEL_FILL
 	chip.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
@@ -1788,7 +1792,7 @@ buildPage = function(mercNames)
 	ground.Position = UDim2.new(0.5, 0, 1, -14)
 	ground.Size = UDim2.fromOffset(260, 44)
 	ground.BackgroundColor3 = HORIZON
-	ground.BackgroundTransparency = 0.72
+	ground.BackgroundTransparency = 1
 	ground.BorderSizePixel = 0
 	ground.ZIndex = 1
 	ground.Parent = slot
@@ -1840,7 +1844,7 @@ buildPage = function(mercNames)
 	local handlingBtn = Instance.new("TextButton")
 	handlingBtn.Name = "HandlingButton"
 	handlingBtn.AnchorPoint = Vector2.new(0.5, 1)
-	handlingBtn.Position = UDim2.new(0.5, 0, 1, -24)
+	handlingBtn.Position = UDim2.new(0.5, 0, 1, -8)
 	handlingBtn.Size = UDim2.fromOffset(280, 82)
 	handlingBtn.BackgroundColor3 = Color3.fromRGB(40, 90, 150)
 	handlingBtn.BackgroundTransparency = 0.15
