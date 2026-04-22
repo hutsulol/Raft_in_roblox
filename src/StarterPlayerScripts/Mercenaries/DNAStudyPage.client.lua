@@ -941,6 +941,149 @@ local function openDNAStudyPage(ctx)
 	drawLensRails(centreColumn, HELIX_CENTRE_X, BOT_LENS_Y,
 		HELIX_WIDTH, BOT_LENS_H, HOLO_EDGE, 1, 36)
 
+	-- Two diagonal rails crossing through the waist so the helix reads
+	-- as a connected figure-8 instead of two stacked tips. The cross
+	-- point sits at the waist vertical centre; the endpoints are
+	-- pulled ~18 px off-centre at each lens tip so a clear X is
+	-- visible behind the 4 luck fragment bars.
+	local function waistSegment(ax, ay, bx, by)
+		local dx, dy = bx - ax, by - ay
+		local len = math.sqrt(dx * dx + dy * dy)
+		local seg = Instance.new("Frame")
+		seg.BackgroundColor3 = HOLO_EDGE
+		seg.BorderSizePixel = 0
+		seg.AnchorPoint = Vector2.new(0.5, 0.5)
+		seg.Position = UDim2.fromOffset((ax + bx) * 0.5, (ay + by) * 0.5)
+		seg.Size = UDim2.fromOffset(len, 1)
+		seg.Rotation = math.deg(math.atan2(dy, dx))
+		seg.ZIndex = (centreColumn.ZIndex or 1) + 1
+		seg.Parent = centreColumn
+	end
+	local WAIST_TOP_Y  = TOP_LENS_Y + TOP_LENS_H   -- 190
+	local WAIST_BOT_Y  = BOT_LENS_Y                -- 230
+	local WAIST_OFFSET = 18
+	waistSegment(HELIX_CENTRE_X - WAIST_OFFSET, WAIST_TOP_Y,
+		HELIX_CENTRE_X + WAIST_OFFSET, WAIST_BOT_Y)
+	waistSegment(HELIX_CENTRE_X + WAIST_OFFSET, WAIST_TOP_Y,
+		HELIX_CENTRE_X - WAIST_OFFSET, WAIST_BOT_Y)
+
+	-- ── 16 fragment bars ──────────────────────────────────────────────
+	-- F01-F06 strength (inside top lens), F07-F10 luck (across the
+	-- waist), F11-F16 speed (inside bottom lens). Widths inside each
+	-- lens follow the same sin(pi*t) curve the rails do, scaled to
+	-- 85 % so the bars sit clear of the rail itself; waist bars use a
+	-- short symmetric bump so the 4 rungs widen slightly toward the
+	-- middle of the crossover.
+	local FRAGMENT_COUNT = 16
+	local BAR_THICKNESS  = 2
+	local DOT_SIZE       = 4
+	local LENS_BAR_SCALE = 0.85
+	local WAIST_BAR_MIN  = 60
+	local WAIST_BAR_MAX  = 100
+
+	local function buildFragmentBar(index, y, width)
+		local frag = Instance.new("Frame")
+		frag.Name = string.format("Fragment_F%02d", index)
+		frag.BackgroundTransparency = 1
+		frag.BorderSizePixel = 0
+		frag.AnchorPoint = Vector2.new(0.5, 0.5)
+		frag.Position = UDim2.fromOffset(HELIX_CENTRE_X, y)
+		frag.Size = UDim2.fromOffset(width + DOT_SIZE, math.max(BAR_THICKNESS, DOT_SIZE))
+		frag.ZIndex = (centreColumn.ZIndex or 1) + 2
+		frag.Parent = centreColumn
+
+		-- Dim track across the full bar width. The filled overlay
+		-- underneath grows from the left as the fragment is studied.
+		local track = Instance.new("Frame")
+		track.Name = "Track"
+		track.AnchorPoint = Vector2.new(0.5, 0.5)
+		track.Position = UDim2.fromScale(0.5, 0.5)
+		track.Size = UDim2.fromOffset(width, BAR_THICKNESS)
+		track.BackgroundColor3 = HOLO_PANEL_BORDER
+		track.BackgroundTransparency = 0.35
+		track.BorderSizePixel = 0
+		track.ZIndex = frag.ZIndex
+		track.Parent = frag
+
+		local fill = Instance.new("Frame")
+		fill.Name = "Fill"
+		fill.AnchorPoint = Vector2.new(0, 0.5)
+		fill.Position = UDim2.new(0, 0, 0.5, 0)
+		fill.Size = UDim2.new(0, 0, 1, 0)  -- starts empty; Step 12 resizes
+		fill.BackgroundColor3 = HOLO_EDGE
+		fill.BackgroundTransparency = 0
+		fill.BorderSizePixel = 0
+		fill.ZIndex = track.ZIndex + 1
+		fill.Parent = track
+
+		local function makeDot(xScale)
+			local d = Instance.new("Frame")
+			d.AnchorPoint = Vector2.new(0.5, 0.5)
+			d.Position = UDim2.fromScale(xScale, 0.5)
+			d.Size = UDim2.fromOffset(DOT_SIZE, DOT_SIZE)
+			d.BackgroundColor3 = HOLO_EDGE
+			d.BorderSizePixel = 0
+			d.ZIndex = frag.ZIndex + 2
+			d.Parent = frag
+			local dc = Instance.new("UICorner")
+			dc.CornerRadius = UDim.new(1, 0)
+			dc.Parent = d
+		end
+		makeDot(0)
+		makeDot(1)
+
+		-- Fragment label, centred above the bar. Small muted text so it
+		-- reads as metadata, not content — matches the mockup's F01..F10
+		-- row labels.
+		local label = Instance.new("TextLabel")
+		label.Name = "Label"
+		label.BackgroundTransparency = 1
+		label.BorderSizePixel = 0
+		label.AnchorPoint = Vector2.new(0.5, 1)
+		label.Position = UDim2.fromScale(0.5, 0)
+		label.Size = UDim2.fromOffset(30, 10)
+		label.Font = FONT_BODY
+		label.TextSize = 9
+		label.TextColor3 = COLOR_TEXT_MUTE
+		label.TextXAlignment = Enum.TextXAlignment.Center
+		label.Text = string.format("F%02d", index)
+		label.ZIndex = frag.ZIndex + 2
+		label.Parent = frag
+
+		return { frame = frag, track = track, fill = fill, width = width }
+	end
+
+	local fragmentRefs = {}
+
+	-- Top lens: 6 bars at t = 1/7 .. 6/7 of TOP_LENS_H
+	for i = 1, 6 do
+		local t = i / 7
+		local halfW = math.sin(t * math.pi) * (HELIX_WIDTH * 0.5) * LENS_BAR_SCALE
+		local y = TOP_LENS_Y + t * TOP_LENS_H
+		fragmentRefs[i] = buildFragmentBar(i, y, halfW * 2)
+	end
+
+	-- Waist: 4 bars crossing the X. Widths follow a short sin bump so
+	-- the middle two are slightly wider than the outer two.
+	for i = 1, 4 do
+		local t = i / 5
+		local y = WAIST_TOP_Y + t * (WAIST_BOT_Y - WAIST_TOP_Y)
+		local w = WAIST_BAR_MIN + math.sin(t * math.pi) * (WAIST_BAR_MAX - WAIST_BAR_MIN)
+		fragmentRefs[6 + i] = buildFragmentBar(6 + i, y, w)
+	end
+
+	-- Bottom lens: mirrors the top lens.
+	for i = 1, 6 do
+		local t = i / 7
+		local halfW = math.sin(t * math.pi) * (HELIX_WIDTH * 0.5) * LENS_BAR_SCALE
+		local y = BOT_LENS_Y + t * BOT_LENS_H
+		fragmentRefs[10 + i] = buildFragmentBar(10 + i, y, halfW * 2)
+	end
+
+	-- Step 12 will walk fragmentRefs[i] to resize .fill.Size.X.Scale
+	-- from snapshot.fragments[i] / 100.
+	local _ = fragmentRefs
+
 	-- GENOME DECODED label + percentage. Percentage value ref stashed
 	-- so Step 12 can tween it when fragments advance.
 	local GENOME_Y = BOT_LENS_Y + BOT_LENS_H + 16
