@@ -32,6 +32,10 @@ local HORIZON                 = Color3.fromRGB(80, 140, 190)
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
 
+local COLOR_TEXT_MUTE = Color3.fromRGB(100, 125, 155)
+
+local player = Players.LocalPlayer
+
 -- ─── BACK glyph (crossed diagonals — same shape as HandlingPage) ─────
 local function makeBackIcon(parent, size, color)
 	local c = Instance.new("Frame")
@@ -61,6 +65,46 @@ local function makeBackIcon(parent, size, color)
 	bot.BorderSizePixel = 0
 	bot.Rotation = 45
 	bot.Parent = c
+
+	return c
+end
+
+-- ─── Flask / capsule glyph (SAMPLES chip icon) ──────────────────────
+-- A tall outlined rectangle with a rounded bottom, pinched neck and a
+-- cap line near the top — reads as "blood vial" at small sizes
+-- without needing an image asset.
+local function makeFlaskIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "FlaskIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0.5)
+	body.Position = UDim2.fromScale(0.5, 0.58)
+	body.Size = UDim2.fromOffset(size * 0.55, size * 0.72)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.Parent = c
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, math.max(1, math.floor(size * 0.14)))
+	bc.Parent = body
+	local bs = Instance.new("UIStroke")
+	bs.Color     = color
+	bs.Thickness = 1.4
+	bs.Parent    = body
+
+	-- Cap line — two small horizontal ticks sitting at the top of the body
+	-- read as a vial stopper.
+	local cap = Instance.new("Frame")
+	cap.AnchorPoint = Vector2.new(0.5, 0)
+	cap.Position = UDim2.fromScale(0.5, 0.12)
+	cap.Size = UDim2.fromOffset(size * 0.4, math.max(1, math.floor(size * 0.08)))
+	cap.BackgroundColor3 = color
+	cap.BorderSizePixel = 0
+	cap.Parent = c
 
 	return c
 end
@@ -251,8 +295,9 @@ local function openDNAStudyPage(ctx)
 	responsiveScale.Scale = 1
 	responsiveScale.Parent = scaleWrap
 
-	local backBtnRef
+	local backBtnRef, chipRef
 	local BACK_BTN_Y = 39
+	local CHIP_Y     = 39
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
@@ -271,6 +316,9 @@ local function openDNAStudyPage(ctx)
 		dynamicBleed = math.floor(dynamicBleed + 0.5)
 		if backBtnRef then
 			backBtnRef.Position = UDim2.fromOffset(-dynamicBleed, BACK_BTN_Y)
+		end
+		if chipRef then
+			chipRef.Position = UDim2.new(1, dynamicBleed, 0, CHIP_Y)
 		end
 	end
 
@@ -337,36 +385,160 @@ local function openDNAStudyPage(ctx)
 		if ctx.onBack then ctx.onBack() end
 	end)
 
-	-- Placeholder centred title — swapped for the real DNA-research UI
-	-- once we design it in a follow-up step.
-	local title = Instance.new("TextLabel")
-	title.Name = "PlaceholderTitle"
-	title.BackgroundTransparency = 1
-	title.BorderSizePixel = 0
-	title.AnchorPoint = Vector2.new(0.5, 0.5)
-	title.Position = UDim2.fromScale(0.5, 0.45)
-	title.Size = UDim2.fromOffset(400, 32)
-	title.Font = FONT_TITLE
-	title.TextSize = 22
-	title.TextColor3 = HOLO_EDGE
-	title.TextXAlignment = Enum.TextXAlignment.Center
-	title.Text = "DNA STUDY"
-	title.ZIndex = 52
-	title.Parent = scaleWrap
+	-- ── Centred "DNA · STUDY · <MERCNAME>" cluster ──────────────────
+	-- Fixed widths + absolute positioning (same recipe as HandlingPage's
+	-- top cluster — AutomaticSize + UIListLayout renders blank on the
+	-- first frame). "DNA" and "STUDY" are dim tags, the merc name is
+	-- the bright headline.
+	local mercDisplay = tostring(ctx.mercName or "—"):upper()
+	local CLUSTER_Y    = BACK_BTN_Y + 6
+	local TAG_DNA_W    = 40  -- "DNA" at 11 pt
+	local DOT_W        = 14
+	local TAG_STUDY_W  = 52  -- "STUDY" at 11 pt
+	local NAME_W       = 160 -- big merc name
+	local CLUSTER_W    = TAG_DNA_W + DOT_W + TAG_STUDY_W + DOT_W + NAME_W
 
-	local subtitle = Instance.new("TextLabel")
-	subtitle.BackgroundTransparency = 1
-	subtitle.BorderSizePixel = 0
-	subtitle.AnchorPoint = Vector2.new(0.5, 0.5)
-	subtitle.Position = UDim2.fromScale(0.5, 0.52)
-	subtitle.Size = UDim2.fromOffset(520, 20)
-	subtitle.Font = FONT_BODY
-	subtitle.TextSize = 13
-	subtitle.TextColor3 = COLOR_TEXT_DIM
-	subtitle.TextXAlignment = Enum.TextXAlignment.Center
-	subtitle.Text = "Research interface coming soon."
-	subtitle.ZIndex = 52
-	subtitle.Parent = scaleWrap
+	local topCluster = Instance.new("Frame")
+	topCluster.Name = "TopCluster"
+	topCluster.BackgroundTransparency = 1
+	topCluster.BorderSizePixel = 0
+	topCluster.AnchorPoint = Vector2.new(0.5, 0)
+	topCluster.Position = UDim2.new(0.5, 0, 0, CLUSTER_Y)
+	topCluster.Size = UDim2.fromOffset(CLUSTER_W, 24)
+	topCluster.ZIndex = 52
+	topCluster.Parent = scaleWrap
+
+	local function tagLabel(name, text, xOffset, width, color, size)
+		local l = Instance.new("TextLabel")
+		l.Name = name
+		l.BackgroundTransparency = 1
+		l.BorderSizePixel = 0
+		l.Position = UDim2.fromOffset(xOffset, 0)
+		l.Size = UDim2.fromOffset(width, 24)
+		l.Font = FONT_TITLE
+		l.TextSize = size
+		l.TextColor3 = color
+		l.TextXAlignment = Enum.TextXAlignment.Center
+		l.Text = text
+		l.ZIndex = 53
+		l.Parent = topCluster
+		return l
+	end
+
+	tagLabel("DnaTag",   "DNA",       0,                                               TAG_DNA_W,   COLOR_TEXT_MUTE, 11)
+	tagLabel("Dot1",     "·",         TAG_DNA_W,                                       DOT_W,       COLOR_TEXT_MUTE, 14)
+	tagLabel("StudyTag", "STUDY",     TAG_DNA_W + DOT_W,                               TAG_STUDY_W, COLOR_TEXT_MUTE, 11)
+	tagLabel("Dot2",     "·",         TAG_DNA_W + DOT_W + TAG_STUDY_W,                 DOT_W,       COLOR_TEXT_MUTE, 14)
+	tagLabel("MercName", mercDisplay, TAG_DNA_W + DOT_W + TAG_STUDY_W + DOT_W,         NAME_W,      HOLO_EDGE,       18)
+
+	-- ── SAMPLES · N chip, right-edge pinned via dynamicBleed ─────────
+	-- Live-counts FullCapsule tools (in Backpack + Character) whose
+	-- BloodType attribute matches this merc, so the count mirrors
+	-- exactly what the SAMPLES slot would accept.
+	local chip = Instance.new("Frame")
+	chip.Name = "SamplesChip"
+	chip.AnchorPoint = Vector2.new(1, 0)
+	chip.Position = UDim2.new(1, 0, 0, CHIP_Y)
+	chip.Size = UDim2.fromOffset(118, 34)
+	chip.BackgroundColor3 = HOLO_PANEL_FILL
+	chip.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	chip.BorderSizePixel = 0
+	chip.ZIndex = 52
+	chip.Parent = scaleWrap
+	local chipStroke = Instance.new("UIStroke")
+	chipStroke.Color     = HOLO_PANEL_BORDER
+	chipStroke.Thickness = 1
+	chipStroke.Parent    = chip
+	chipRef = chip
+
+	local flask = makeFlaskIcon(chip, 14, HOLO_EDGE)
+	flask.AnchorPoint = Vector2.new(0, 0.5)
+	flask.Position = UDim2.new(0, 10, 0.5, 0)
+	flask.ZIndex = 53
+
+	local chipLabel = Instance.new("TextLabel")
+	chipLabel.Name = "SamplesLabel"
+	chipLabel.BackgroundTransparency = 1
+	chipLabel.BorderSizePixel = 0
+	chipLabel.Position = UDim2.fromOffset(28, 0)
+	chipLabel.Size = UDim2.new(1, -36, 1, 0)
+	chipLabel.Font = FONT_TITLE
+	chipLabel.TextSize = 13
+	chipLabel.TextColor3 = HOLO_EDGE
+	chipLabel.TextXAlignment = Enum.TextXAlignment.Left
+	chipLabel.Text = "SAMPLES · 0"
+	chipLabel.ZIndex = 53
+	chipLabel.Parent = chip
+
+	local function countMatchingSamples()
+		local mercName = ctx.mercName
+		if not mercName then return 0 end
+		local n = 0
+		local containers = { player:FindFirstChild("Backpack"), player.Character }
+		for _, container in ipairs(containers) do
+			if container then
+				for _, tool in container:GetChildren() do
+					if tool:IsA("Tool") and tool.Name == "FullCapsule"
+						and tool:GetAttribute("BloodType") == mercName then
+						n = n + 1
+					end
+				end
+			end
+		end
+		return n
+	end
+	local function refreshSamplesChip()
+		chipLabel.Text = string.format("SAMPLES · %d", countMatchingSamples())
+	end
+	refreshSamplesChip()
+
+	-- Subscribe to Backpack + Character tool add/remove so the counter
+	-- ticks in real-time when the player picks up / uses a capsule.
+	local function hookContainer(container)
+		if not container then return end
+		table.insert(activeConnections,
+			container.ChildAdded:Connect(refreshSamplesChip))
+		table.insert(activeConnections,
+			container.ChildRemoved:Connect(refreshSamplesChip))
+	end
+	hookContainer(player:FindFirstChild("Backpack"))
+	hookContainer(player.Character)
+	table.insert(activeConnections,
+		player.CharacterAdded:Connect(function(char)
+			hookContainer(char)
+			refreshSamplesChip()
+		end))
+
+	-- ── Column scaffolds (contents land in Steps 6-10) ──────────────
+	-- Positions / sizes derived from the Claude Design mockup:
+	--   left  : Sample Slot (top) + Research Log (bottom)
+	--   centre: DNA helix + decoded %
+	--   right : Decoded Traits list (8 entries)
+	local COLS_Y       = 104
+	local COLS_H       = 476
+	local LEFT_COL_X   = 40
+	local LEFT_COL_W   = 240
+	local RIGHT_COL_X  = REFERENCE_W - 40 - 240
+	local RIGHT_COL_W  = 240
+	local CENTRE_COL_X = LEFT_COL_X + LEFT_COL_W + 40
+	local CENTRE_COL_W = RIGHT_COL_X - CENTRE_COL_X - 40
+
+	local function makeColumn(name, x, w)
+		local col = Instance.new("Frame")
+		col.Name = name
+		col.BackgroundTransparency = 1
+		col.BorderSizePixel = 0
+		col.Position = UDim2.fromOffset(x, COLS_Y)
+		col.Size = UDim2.fromOffset(w, COLS_H)
+		col.ZIndex = 51
+		col.Parent = scaleWrap
+		return col
+	end
+	local leftColumn   = makeColumn("LeftColumn",   LEFT_COL_X,   LEFT_COL_W)
+	local centreColumn = makeColumn("CentreColumn", CENTRE_COL_X, CENTRE_COL_W)
+	local rightColumn  = makeColumn("RightColumn",  RIGHT_COL_X,  RIGHT_COL_W)
+	-- Silence "unused" lint until Steps 6-10 fill them.
+	local _ = { leftColumn, centreColumn, rightColumn }
 
 	updateResponsiveScale()
 
