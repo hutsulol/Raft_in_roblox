@@ -944,13 +944,20 @@ local function buildMenu()
 		if s < 0.5 then s = 0.5 end
 		responsiveScale.Scale = s
 
-		local artboardScreenW = REFERENCE_W * s
-		local sideGapPx = math.max(0, size.X - artboardScreenW) * 0.5
-		-- Pull columns back from the absolute edge so cards stay fully visible.
-		-- We use only part of free side space and clamp the extra bleed.
-		local sideGapArtboard = sideGapPx / s
-		local extraBleed = math.clamp(sideGapArtboard * 0.75, 0, 120)
-		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
+		-- Pin the left/right columns to the screen's actual left/right
+		-- edge (with a small SCREEN_MARGIN inset) instead of overshooting
+		-- past the scaled artboard. Derivation:
+		--   panel right-edge visual x = screen_center + REFERENCE_W*s/2 + dynamicBleed*s
+		-- We want that to equal  size.X - SCREEN_MARGIN, so:
+		--   dynamicBleed = size.X/(2*s) - REFERENCE_W/2 - SCREEN_MARGIN/s
+		-- When the scaled artboard is wider than the screen (dynamicBleed
+		-- would go negative), clamp to 0 so panels sit at the artboard's
+		-- own edge and the outer edge just clips naturally.
+		local SCREEN_MARGIN = 16
+		local dynamicBleed = math.max(0,
+			size.X / (2 * s) - REFERENCE_W / 2 - SCREEN_MARGIN / s
+		)
+		dynamicBleed = math.floor(dynamicBleed + 0.5)
 
 		if levelPanel then
 			levelPanel.Position = UDim2.fromOffset(-dynamicBleed, LEVEL_Y)
