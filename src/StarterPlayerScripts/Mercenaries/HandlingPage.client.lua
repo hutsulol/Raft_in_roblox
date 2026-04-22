@@ -1537,7 +1537,7 @@ local function openHandlingPage(ctx)
 	dnaHeaderGlyph.BorderSizePixel = 0
 	dnaHeaderGlyph.AnchorPoint = Vector2.new(0, 0.5)
 	dnaHeaderGlyph.Position = UDim2.new(0, 0, 0.5, 0)
-	dnaHeaderGlyph.Size = UDim2.fromOffset(12, 12)
+	dnaHeaderGlyph.Size = UDim2.fromOffset(18, 18)
 	dnaHeaderGlyph.Image = DNA_RESEARCH_ICON
 	dnaHeaderGlyph.ImageColor3 = HOLO_EDGE
 	dnaHeaderGlyph.Parent = dnaHeader
@@ -1546,7 +1546,7 @@ local function openHandlingPage(ctx)
 	local dnaTitle = Instance.new("TextLabel")
 	dnaTitle.BackgroundTransparency = 1
 	dnaTitle.BorderSizePixel = 0
-	dnaTitle.Position = UDim2.fromOffset(22, 0)
+	dnaTitle.Position = UDim2.fromOffset(28, 0)
 	dnaTitle.Size = UDim2.new(1, -58, 1, 0)
 	dnaTitle.Font = FONT_TITLE
 	dnaTitle.TextSize = 13
@@ -1589,8 +1589,8 @@ local function openHandlingPage(ctx)
 	bigHelix.BackgroundTransparency = 1
 	bigHelix.BorderSizePixel = 0
 	bigHelix.AnchorPoint = Vector2.new(0, 0.5)
-	bigHelix.Position = UDim2.new(0, 4, 0.5, 0)
-	bigHelix.Size = UDim2.fromOffset(24, 28)
+	bigHelix.Position = UDim2.new(0, 0, 0.5, 0)
+	bigHelix.Size = UDim2.fromOffset(36, 42)
 	bigHelix.Image = DNA_RESEARCH_ICON
 	bigHelix.ImageColor3 = HOLO_EDGE
 	bigHelix.ScaleType = Enum.ScaleType.Fit
