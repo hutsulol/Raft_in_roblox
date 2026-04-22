@@ -9,6 +9,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
 local SoundService      = game:GetService("SoundService")
 local RunService        = game:GetService("RunService")
+local TextService       = game:GetService("TextService")
 
 local player = Players.LocalPlayer
 
@@ -1966,10 +1967,7 @@ buildPage = function(mercNames)
 	local profCard = Instance.new("Frame")
 	profCard.Name = "ProfessionCard"
 	profCard.AnchorPoint = Vector2.new(0, 1)
-	profCard.Position = UDim2.fromOffset(
-		leftCol.Position.X.Offset + leftCol.Size.X.Offset - 240,
-		leftCol.Position.Y.Offset - 10
-	)
+	profCard.Position = UDim2.fromOffset(leftCol.Position.X.Offset, leftCol.Position.Y.Offset - 10)
 	profCard.Size = UDim2.fromOffset(240, 59)
 	profCard.BackgroundColor3 = HOLO_PANEL_FILL
 	profCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
@@ -2026,6 +2024,24 @@ buildPage = function(mercNames)
 	profValue.Position = UDim2.fromOffset(62, 24)
 	profValue.Size = UDim2.fromOffset(168, 26)
 	profValue.ZIndex = 7
+
+	local function layoutProfessionCard(roleText)
+		local rightEdge = leftCol.Position.X.Offset + leftCol.Size.X.Offset
+		local textX = 62
+		local rightPad = 10
+
+		local tagW = TextService:GetTextSize("PROFESSION:", 14, FONT_TITLE, Vector2.new(1000, 1000)).X
+		local roleW = TextService:GetTextSize(roleText, 24, FONT_TITLE, Vector2.new(1000, 1000)).X
+		local textW = math.max(tagW, roleW)
+
+		local cardW = math.max(170, textX + textW + rightPad)
+		profCard.Size = UDim2.fromOffset(cardW, 59)
+		profCard.Position = UDim2.fromOffset(rightEdge - cardW, leftCol.Position.Y.Offset - 10)
+
+		profTag.Size = UDim2.fromOffset(textW, 16)
+		profValue.Size = UDim2.fromOffset(textW, 26)
+	end
+	layoutProfessionCard("ASSISTANT")
 
 	-- ── Handling button ──────────────────────────────────────────────
 	-- Gradient pill floating at the foot of the character slot, matching
@@ -2124,6 +2140,7 @@ buildPage = function(mercNames)
 			profession = "WARRIOR"
 		end
 		profValue.Text = profession
+		layoutProfessionCard(profession)
 		if profession == "FISHERMAN" then
 			profIconImage.Image = ICON_PROF_FISHER
 			profIconImage.ImageTransparency = 0
