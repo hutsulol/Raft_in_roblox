@@ -1106,12 +1106,15 @@ local function openDNAStudyPage(ctx)
 	helper.ZIndex = 53
 	helper.Parent = sampleCard
 
-	-- ── Countdown overlay inside the drop zone ───────────────────────
+	-- ── Analysis overlay inside the drop zone ────────────────────────
 	-- Sits above the flask/drop-label; invisible while the slot is
 	-- idle. When a study is running it:
 	--   * hides the drop-zone prompt,
-	--   * shows a large MM:SS timer and a progress bar,
-	--   * blocks the click until the study completes.
+	--   * shows the inserted blood capsule in the centre with cyan
+	--     particles orbiting it (RunService-driven rotation),
+	--   * grows a green progress bar along the bottom,
+	--   * on completion, flashes a 'SUCCES!' banner for ~1.5 s before
+	--     handing the overlay back to the idle state.
 	local countdownOverlay = Instance.new("Frame")
 	countdownOverlay.Name = "CountdownOverlay"
 	countdownOverlay.BackgroundColor3 = Color3.fromRGB(6, 18, 34)
@@ -1122,41 +1125,69 @@ local function openDNAStudyPage(ctx)
 	countdownOverlay.ZIndex = 55
 	countdownOverlay.Parent = dropZone
 
-	local countdownLabel = Instance.new("TextLabel")
-	countdownLabel.BackgroundTransparency = 1
-	countdownLabel.BorderSizePixel = 0
-	countdownLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-	countdownLabel.Position = UDim2.fromScale(0.5, 0.38)
-	countdownLabel.Size = UDim2.new(1, -16, 0, 32)
-	countdownLabel.Font = FONT_TITLE
-	countdownLabel.TextSize = 24
-	countdownLabel.TextColor3 = HOLO_EDGE
-	countdownLabel.TextXAlignment = Enum.TextXAlignment.Center
-	countdownLabel.Text = "00:00"
-	countdownLabel.ZIndex = 56
-	countdownLabel.Parent = countdownOverlay
+	-- Capsule + orbit particles share a square container positioned in
+	-- the upper-middle of the overlay. The orbit container rotates
+	-- around the capsule, giving the "being studied" feel the user
+	-- asked for.
+	local analysisBox = Instance.new("Frame")
+	analysisBox.Name = "AnalysisBox"
+	analysisBox.BackgroundTransparency = 1
+	analysisBox.BorderSizePixel = 0
+	analysisBox.AnchorPoint = Vector2.new(0.5, 0.5)
+	analysisBox.Position = UDim2.fromScale(0.5, 0.46)
+	analysisBox.Size = UDim2.fromOffset(80, 80)
+	analysisBox.ZIndex = 56
+	analysisBox.Parent = countdownOverlay
 
-	local studyingLabel = Instance.new("TextLabel")
-	studyingLabel.BackgroundTransparency = 1
-	studyingLabel.BorderSizePixel = 0
-	studyingLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-	studyingLabel.Position = UDim2.fromScale(0.5, 0.62)
-	studyingLabel.Size = UDim2.new(1, -16, 0, 16)
-	studyingLabel.Font = FONT_BODY
-	studyingLabel.TextSize = 11
-	studyingLabel.TextColor3 = COLOR_TEXT_DIM
-	studyingLabel.TextXAlignment = Enum.TextXAlignment.Center
-	studyingLabel.Text = "STUDYING DNA SAMPLE"
-	studyingLabel.ZIndex = 56
-	studyingLabel.Parent = countdownOverlay
+	-- Inserted blood capsule image at the centre.
+	local capsuleImage = makeFlaskIcon(analysisBox, 56, Color3.new(1, 1, 1))
+	capsuleImage.AnchorPoint = Vector2.new(0.5, 0.5)
+	capsuleImage.Position = UDim2.fromScale(0.5, 0.5)
+	capsuleImage.ZIndex = 57
 
+	-- Orbit container — its .Rotation property is ticked by the
+	-- Heartbeat loop below, so the three dots parented to it sweep
+	-- around the capsule at a constant angular velocity.
+	local orbitContainer = Instance.new("Frame")
+	orbitContainer.Name = "Orbit"
+	orbitContainer.BackgroundTransparency = 1
+	orbitContainer.BorderSizePixel = 0
+	orbitContainer.AnchorPoint = Vector2.new(0.5, 0.5)
+	orbitContainer.Position = UDim2.fromScale(0.5, 0.5)
+	orbitContainer.Size = UDim2.fromScale(1, 1)
+	orbitContainer.ZIndex = 58
+	orbitContainer.Parent = analysisBox
+
+	local ORBIT_DOT_COUNT  = 3
+	local ORBIT_RADIUS_PCT = 0.56 -- fraction of analysisBox half-size
+	for i = 1, ORBIT_DOT_COUNT do
+		local angle = (i - 1) * (2 * math.pi / ORBIT_DOT_COUNT)
+		local dot = Instance.new("Frame")
+		dot.Name = "OrbitDot"
+		dot.AnchorPoint = Vector2.new(0.5, 0.5)
+		dot.Position = UDim2.fromScale(
+			0.5 + math.cos(angle) * ORBIT_RADIUS_PCT,
+			0.5 + math.sin(angle) * ORBIT_RADIUS_PCT)
+		dot.Size = UDim2.fromOffset(6, 6)
+		dot.BackgroundColor3 = HOLO_EDGE
+		dot.BorderSizePixel = 0
+		dot.ZIndex = 59
+		dot.Parent = orbitContainer
+		local dc = Instance.new("UICorner")
+		dc.CornerRadius = UDim.new(1, 0)
+		dc.Parent = dot
+	end
+
+	-- Green progress bar along the bottom of the drop zone. Fills from
+	-- 0 to 100 % over STUDY_DURATION (30 s, server-authoritative).
 	local progressTrack = Instance.new("Frame")
+	progressTrack.Name = "ProgressTrack"
 	progressTrack.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
 	progressTrack.BackgroundTransparency = 0.2
 	progressTrack.BorderSizePixel = 0
 	progressTrack.AnchorPoint = Vector2.new(0.5, 1)
-	progressTrack.Position = UDim2.new(0.5, 0, 1, -12)
-	progressTrack.Size = UDim2.new(1, -24, 0, 4)
+	progressTrack.Position = UDim2.new(0.5, 0, 1, -14)
+	progressTrack.Size = UDim2.new(1, -24, 0, 6)
 	progressTrack.ZIndex = 56
 	progressTrack.Parent = countdownOverlay
 	local ptStroke = Instance.new("UIStroke")
@@ -1165,11 +1196,31 @@ local function openDNAStudyPage(ctx)
 	ptStroke.Parent    = progressTrack
 
 	local progressFill = Instance.new("Frame")
-	progressFill.BackgroundColor3 = HOLO_EDGE
+	progressFill.Name = "ProgressFill"
+	progressFill.BackgroundColor3 = Color3.fromRGB(148, 222, 110)
 	progressFill.BorderSizePixel = 0
 	progressFill.Size = UDim2.new(0, 0, 1, 0)
 	progressFill.ZIndex = 57
 	progressFill.Parent = progressTrack
+
+	-- SUCCES flash — hidden until the study timer hits 0; shown
+	-- instead of the capsule + orbit for ~1.5 s before the overlay
+	-- hands control back to the idle state.
+	local successLabel = Instance.new("TextLabel")
+	successLabel.Name = "SuccessLabel"
+	successLabel.BackgroundTransparency = 1
+	successLabel.BorderSizePixel = 0
+	successLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	successLabel.Position = UDim2.fromScale(0.5, 0.62)
+	successLabel.Size = UDim2.new(1, -20, 0, 28)
+	successLabel.Font = FONT_TITLE
+	successLabel.TextSize = 22
+	successLabel.TextColor3 = Color3.fromRGB(255, 255, 255)
+	successLabel.TextXAlignment = Enum.TextXAlignment.Center
+	successLabel.Text = "SUCCES!"
+	successLabel.Visible = false
+	successLabel.ZIndex = 59
+	successLabel.Parent = countdownOverlay
 
 	-- Transient "NO SAMPLE" / "SLOT BUSY" message, shown under the
 	-- drop-label when an insert is rejected by the server.
@@ -1216,47 +1267,80 @@ local function openDNAStudyPage(ctx)
 	-- snapshot when the tick actually completes so we just re-sync
 	-- from that instead of trying to reach zero on our own clock.
 	local studyRemaining = 0
-	local studyDuration  = 60
+	local studyDuration  = 30
 	local studyActive    = false
+	-- Guard: while the SUCCES flash is playing we don't want an
+	-- idle-state snapshot to clobber the overlay. Set to os.clock() +
+	-- flash-duration whenever showSuccessFlash is invoked; renderSlot-
+	-- FromSnapshot short-circuits if os.clock() < successFlashUntil.
+	local successFlashUntil = 0
+
+	local function setOverlayIdle()
+		countdownOverlay.Visible = false
+		analysisBox.Visible = true
+		progressTrack.Visible = true
+		successLabel.Visible = false
+		bigFlask.Visible  = true
+		dropLabel.Visible = true
+	end
+
+	local function showSuccessFlash()
+		if not countdownOverlay.Visible then return end
+		successFlashUntil = os.clock() + 1.5
+		analysisBox.Visible = false
+		progressTrack.Visible = false
+		successLabel.Visible = true
+		task.delay(1.5, function()
+			if os.clock() >= successFlashUntil - 0.01 then
+				setOverlayIdle()
+			end
+		end)
+	end
+
+	local function paintProgress(remaining, duration)
+		local pct = 1 - (remaining / math.max(1, duration))
+		progressFill.Size = UDim2.new(math.clamp(pct, 0, 1), 0, 1, 0)
+	end
 
 	local function renderSlotFromSnapshot(snapshot)
+		if os.clock() < successFlashUntil then
+			-- SUCCES flash owns the overlay right now; ignore snapshot
+			-- repaints until its 1.5 s timer lapses.
+			return
+		end
 		local slot = snapshot and snapshot.activeSlot or nil
-		studyDuration  = (slot and slot.totalDuration) or 60
+		studyDuration  = (slot and slot.totalDuration) or 30
 		studyRemaining = math.max(0, (slot and slot.secondsRemaining) or 0)
 		studyActive    = (slot ~= nil and slot.bloodType ~= nil and studyRemaining > 0)
 
-		countdownOverlay.Visible = studyActive
-		bigFlask.Visible  = not studyActive
-		dropLabel.Visible = not studyActive
-
 		if studyActive then
-			local mins = math.floor(studyRemaining / 60)
-			local secs = studyRemaining - mins * 60
-			countdownLabel.Text = string.format("%02d:%02d", mins, secs)
-			local pct = 1 - (studyRemaining / math.max(1, studyDuration))
-			progressFill.Size = UDim2.new(math.clamp(pct, 0, 1), 0, 1, 0)
+			countdownOverlay.Visible = true
+			analysisBox.Visible = true
+			progressTrack.Visible = true
+			successLabel.Visible = false
+			bigFlask.Visible  = false
+			dropLabel.Visible = false
+			paintProgress(studyRemaining, studyDuration)
+		else
+			setOverlayIdle()
 		end
 	end
 
-	-- Local 1 Hz ticker — only runs while studyActive. Decrements the
-	-- locally-cached remaining seconds and re-renders the MM:SS +
-	-- progress bar. Server still owns the authoritative completion
-	-- event; this is just for smooth UI.
+	-- Heartbeat: drives the orbit rotation while studying, and smooths
+	-- out the progress-bar + countdown between server snapshots. The
+	-- server still owns authoritative completion via studyComplete;
+	-- when studyRemaining locally hits 0 we flip to the SUCCES flash
+	-- immediately so the UI doesn't sit on a stale near-empty bar.
 	table.insert(activeConnections, RunService.Heartbeat:Connect(function(dt)
-		if not studyActive then return end
-		studyRemaining = math.max(0, studyRemaining - dt)
-		local mins = math.floor(studyRemaining / 60)
-		local secs = math.floor(studyRemaining - mins * 60)
-		countdownLabel.Text = string.format("%02d:%02d", mins, secs)
-		local pct = 1 - (studyRemaining / math.max(1, studyDuration))
-		progressFill.Size = UDim2.new(math.clamp(pct, 0, 1), 0, 1, 0)
-		if studyRemaining <= 0 then
-			-- Server will fire 'studyComplete' within ~1 s; hide the
-			-- overlay now so the UI doesn't look stuck on 00:00.
-			studyActive = false
-			countdownOverlay.Visible = false
-			bigFlask.Visible  = true
-			dropLabel.Visible = true
+		if studyActive then
+			studyRemaining = math.max(0, studyRemaining - dt)
+			orbitContainer.Rotation = (orbitContainer.Rotation + dt * 160) % 360
+			paintProgress(studyRemaining, studyDuration)
+			if studyRemaining <= 0 then
+				studyActive = false
+				progressFill.Size = UDim2.new(1, 0, 1, 0)
+				showSuccessFlash()
+			end
 		end
 	end))
 
