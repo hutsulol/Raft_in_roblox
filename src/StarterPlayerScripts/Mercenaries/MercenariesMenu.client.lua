@@ -64,6 +64,9 @@ local ICON_STAT_STRENGTH = "rbxassetid://121469289292513"
 local ICON_STAT_LUCK     = "rbxassetid://81616209216042"
 local ICON_STAT_SPEED    = "rbxassetid://79004787166831"
 local ICON_PIRATE        = "rbxassetid://86890035031466"
+local STAR_EMPTY         = "rbxassetid://96860361998800"
+local STAR_FULL          = "rbxassetid://128398990741410"
+local STAR_HALF          = "rbxassetid://97995242534538"
 
 -- Per-mercenary data
 local MERC_THEMES = {
@@ -685,6 +688,50 @@ local function makeStarRow(parent, filled, total, size, color)
 			ss.Transparency = 0.6
 			ss.Parent      = star
 		end
+	end
+
+	return c
+end
+
+-- Image-based rarity stars (full / half / empty). Matches the meta-bar
+-- visuals and is used in the left mercenary list cards as requested.
+local function makeImageStarRow(parent, filled, total, size)
+	total = total or 5
+	size = size or 12
+	local gap = 3
+
+	local c = Instance.new("Frame")
+	c.Name = "ImageStarRow"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(total * size + (total - 1) * gap, size)
+	c.Parent = parent
+
+	local raw = tonumber(filled) or 0
+	local full = math.floor(raw)
+	local half = (raw - full) >= 0.5
+
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.Padding = UDim.new(0, gap)
+	layout.Parent = c
+
+	for i = 1, total do
+		local star = Instance.new("ImageLabel")
+		star.Name = "Star_" .. i
+		star.BackgroundTransparency = 1
+		star.BorderSizePixel = 0
+		star.Size = UDim2.fromOffset(size, size)
+		if i <= full then
+			star.Image = STAR_FULL
+		elseif i == full + 1 and half then
+			star.Image = STAR_HALF
+		else
+			star.Image = STAR_EMPTY
+		end
+		star.Parent = c
 	end
 
 	return c
@@ -1636,6 +1683,8 @@ buildPage = function(mercNames)
 		for name, rec in pairs(mercCards) do
 			local isSel = (name == mercName)
 			local color = isSel and HOLO_EDGE or HOLO_PANEL_BORDER
+			rec.frame.BackgroundColor3 = isSel and Color3.fromRGB(28, 72, 116) or HOLO_PANEL_FILL
+			rec.frame.BackgroundTransparency = isSel and 0.08 or HOLO_PANEL_TRANSPARENCY
 			rec.stroke.Color = color
 			rec.portraitStroke.Color = color
 			for _, bracket in rec.brackets do
@@ -1730,8 +1779,9 @@ buildPage = function(mercNames)
 			Color3.fromRGB(110, 200, 140), Enum.TextXAlignment.Center)
 		ownedLbl.Size = UDim2.fromScale(1, 1)
 
-		local starRow = makeStarRow(card, theme.stars or 1, 5, 9, COLOR_GOLD)
-		starRow.Position = UDim2.fromOffset(62, 24)
+		local starRow = makeImageStarRow(card, theme.stars or 1, 5, 12)
+		starRow.AnchorPoint = Vector2.new(1, 0)
+		starRow.Position = UDim2.new(1, -10, 0, 22)
 
 		local role = makeLabel(card, theme.role or "Crew", FONT_BODY, 10, COLOR_TEXT_DIM)
 		role.Position = UDim2.fromOffset(62, 38)
@@ -1826,9 +1876,6 @@ buildPage = function(mercNames)
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 	-- Rarity stars: image-based icons on the right side of the meta strip.
-	local STAR_EMPTY = "rbxassetid://96860361998800"
-	local STAR_FULL  = "rbxassetid://128398990741410"
-	local STAR_HALF  = "rbxassetid://97995242534538"
 	local rarityIconsRow = Instance.new("Frame")
 	rarityIconsRow.Name = "RarityIconsRow"
 	rarityIconsRow.AnchorPoint = Vector2.new(1, 0.5)
