@@ -1261,7 +1261,7 @@ buildPage = function(mercNames)
 	responsiveScale.Name = "ResponsiveScale"
 	responsiveScale.Scale = 1
 	responsiveScale.Parent = scaleWrap
-	local leftColRef, rightColRef
+	local leftColRef, rightColRef, chipRef
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
@@ -1272,17 +1272,19 @@ buildPage = function(mercNames)
 		if s < 0.5 then s = 0.5 end
 		responsiveScale.Scale = s
 
-		-- Adaptive side spread:
-		-- - small/regular widths keep baseline composition unchanged
-		-- - wider screens gradually push side blocks outward
-		local artboardScreenW = REFERENCE_W * s
-		local sideGapPx = math.max(0, size.X - artboardScreenW) * 0.5
-		local sideGapArtboard = sideGapPx / s
-		local extraBleed = 0
-		if sideGapArtboard > 40 then
-			extraBleed = math.clamp((sideGapArtboard - 40) * 0.55, 0, 90)
-		end
-		local dynamicBleed = EDGE_BLEED_X + math.floor(extraBleed + 0.5)
+		-- Pin the columns to the screen's actual left/right edge with
+		-- a small SCREEN_MARGIN inset. Derivation:
+		--   panel right-edge visual x = size.X/2 + REFERENCE_W*s/2 + dynamicBleed*s
+		-- We want  = size.X - SCREEN_MARGIN, so:
+		--   dynamicBleed = size.X/(2*s) - REFERENCE_W/2 - SCREEN_MARGIN/s
+		-- Clamp at 0: if the scaled artboard is already as wide as (or
+		-- wider than) the screen the panels just sit at the artboard's
+		-- own edge.
+		local SCREEN_MARGIN = 16
+		local dynamicBleed = math.max(0,
+			size.X / (2 * s) - REFERENCE_W / 2 - SCREEN_MARGIN / s
+		)
+		dynamicBleed = math.floor(dynamicBleed + 0.5)
 
 		if leftColRef then
 			leftColRef.Position = UDim2.fromOffset(-dynamicBleed, PANELS_TOP_Y + LEFT_PANEL_Y_OFFSET)
@@ -1290,15 +1292,45 @@ buildPage = function(mercNames)
 		if rightColRef then
 			rightColRef.Position = UDim2.new(1, dynamicBleed, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET)
 		end
+		if chipRef then
+			chipRef.Position = UDim2.new(1, dynamicBleed, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET - 6)
+		end
 	end
 	updateResponsiveScale()
+
+	-- ScreenGui.AbsoluteSize's PropertyChangedSignal does not fire
+	-- reliably when the window resizes in Roblox — it's a derived
+	-- value from Camera.ViewportSize. Listen to the camera's
+	-- ViewportSize directly instead (and rehook whenever
+	-- CurrentCamera swaps, e.g. on character respawn). The
+	-- AbsoluteSize listener is kept as a belt-and-suspenders for
+	-- edge cases where it does fire (initial parent, ResetOnSpawn).
+	local viewportConn
+	local cameraSwapConn
+	local function hookCamera(cam)
+		if viewportConn then
+			viewportConn:Disconnect()
+			viewportConn = nil
+		end
+		if cam then
+			viewportConn = cam:GetPropertyChangedSignal("ViewportSize")
+				:Connect(updateResponsiveScale)
+		end
+		updateResponsiveScale()
+	end
+	hookCamera(workspace.CurrentCamera)
+	cameraSwapConn = workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+		hookCamera(workspace.CurrentCamera)
+	end)
 	local scaleConn = screenGui:GetPropertyChangedSignal("AbsoluteSize"):Connect(updateResponsiveScale)
-	-- Disconnect when the page goes away so we don't leak listeners
-	-- across repeated open/close cycles.
+
+	-- Disconnect all responsive-scale listeners when the page goes
+	-- away so we don't leak them across repeated open/close cycles.
 	page.AncestryChanged:Connect(function(_, newParent)
-		if not newParent and scaleConn then
-			scaleConn:Disconnect()
-			scaleConn = nil
+		if not newParent then
+			if scaleConn       then scaleConn:Disconnect();       scaleConn       = nil end
+			if viewportConn    then viewportConn:Disconnect();    viewportConn    = nil end
+			if cameraSwapConn  then cameraSwapConn:Disconnect();  cameraSwapConn  = nil end
 		end
 	end)
 
@@ -1376,6 +1408,7 @@ buildPage = function(mercNames)
 	-- the gem + number so a 5-digit count still reads cleanly.
 	local chip = Instance.new("Frame")
 	chip.Name = "CurrencyChip"
+	chipRef = chip
 	chip.AnchorPoint = Vector2.new(1, 1)
 	chip.Position = UDim2.new(1, EDGE_BLEED_X, 0, PANELS_TOP_Y + RIGHT_PANEL_Y_OFFSET - 6)
 	chip.Size = UDim2.fromOffset(84, 24)
