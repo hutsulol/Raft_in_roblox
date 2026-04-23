@@ -1466,32 +1466,24 @@ local function openDNAStudyPage(ctx)
 
 	addRow(1, "SUBJECT",   "SUBJECT",      subject)
 	addRow(2, "CLASS",     "CLASS",        class)
-	addRow(3, "FRAGMENTS", "FRAGMENTS",    "0 / 9")
+	addRow(3, "FRAGMENTS", "FRAGMENTS",    "0 / 6")
 	addRow(4, "KILLS",     "KILLS LOGGED", "0")
 
 	-- logValueRefs is consumed by refreshFromSnapshot below.
 
 	-- ── Centre column: DNA double helix + GENOME DECODED % ───────────
-	-- Two continuous sine-wave rails twisting around each other with
-	-- a +π/2 phase shift so the rails START at their widest (top
-	-- bracket cap) and end there too (bottom bracket cap). Over a
-	-- HELIX_H of 360 px the rails cross each other 4 times (y = 45,
-	-- 135, 225, 315), which cuts the span into three full lenses
-	-- plus two half-lens caps — the exact silhouette from the new
-	-- reference image.
-	--
-	-- Layout (centreColumn-local):
-	--   HELIX_CENTRE_X = CENTRE_COL_W / 2
-	--   HELIX_TOP_Y    = 30
-	--   HELIX_H        = 360                         (2 * period)
-	--   HELIX_AMP      = 44                          (bracket half-width)
-	--   HELIX_PERIOD   = 180                         (lens = period/2 = 90)
-	--   GENOME_Y       = HELIX_TOP_Y + HELIX_H + 16  = 406
+	-- Compact double-helix matching the project DNA icon. Same maths
+	-- as before (continuous sine-wave rails, +π/2 phase shift so the
+	-- rails START at their widest separation), just dimensions
+	-- shrunk so the helix occupies roughly half the centre column
+	-- instead of dominating it. HELIX_H still spans exactly 2 *
+	-- HELIX_PERIOD so we get 4 crossovers + 3 lenses + the same
+	-- half-lens bracket caps the user kept.
 	local HELIX_CENTRE_X = (REFERENCE_W * 0.5) - CENTRE_COL_X
-	local HELIX_H        = 540
+	local HELIX_H        = 320
 	local HELIX_TOP_Y    = (REFERENCE_H - HELIX_H) * 0.5 - 50
-	local HELIX_AMP      = 66
-	local HELIX_PERIOD   = 270
+	local HELIX_AMP      = 36
+	local HELIX_PERIOD   = 160
 
 	-- Two rails with a slight "glow" underlay: wider low-opacity pass
 	-- first, thinner bright pass on top. Reads as a soft cyan beam at
@@ -1502,17 +1494,17 @@ local function openDNAStudyPage(ctx)
 	drawHelixRails(centreColumn, HELIX_CENTRE_X, HELIX_TOP_Y, HELIX_AMP,
 		HELIX_H, HELIX_PERIOD, HOLO_EDGE, 3, 96)
 
-	-- ── 9 fragment bars ───────────────────────────────────────────────
-	-- F01-F03 strength (top lens), F04-F06 luck (middle lens),
-	-- F07-F09 speed (bottom lens) — matches the server's SECTION_STAT
-	-- map. Three rungs per lens, placed at the quarter / half / three-
-	-- quarter points of the lens's vertical span so the middle rung
-	-- sits at the widest part of the rail gap. Widths derive from the
-	-- actual rail gap at each rung's Y (|2 * amp * sin(phase)|) scaled
-	-- slightly so the bars stop just shy of the rails.
-	local FRAGMENT_COUNT = 9
+	-- ── 6 fragment bars ───────────────────────────────────────────────
+	-- F01-F02 strength (top lens), F03-F04 luck (middle lens),
+	-- F05-F06 speed (bottom lens) — matches the server's SECTION_STAT
+	-- map. Two rungs per lens, placed at the third / two-thirds points
+	-- of the lens's vertical span so they sit clear of the rail
+	-- pinches. Widths derive from the actual rail gap at each rung's
+	-- Y (|2 * amp * sin(phase)|) scaled slightly so the bars stop
+	-- just shy of the rails.
+	local FRAGMENT_COUNT = 6
 	local LENS_COUNT     = 3
-	local BARS_PER_LENS  = 3
+	local BARS_PER_LENS  = 2
 	local BAR_THICKNESS  = 2
 	local DOT_SIZE       = 4
 	local LENS_BAR_SCALE = 0.82

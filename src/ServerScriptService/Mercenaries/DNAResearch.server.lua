@@ -33,7 +33,7 @@ local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- ─── Constants ────────────────────────────────────────────────────────
-local FRAGMENT_COUNT     = 9
+local FRAGMENT_COUNT     = 6
 local STUDY_DURATION     = 30   -- seconds per study tick
 local FIRST_BAR_FILL_PCT = 10   -- % each study adds while F01 < 100
 local LATER_BAR_FILL_PCT = 5    -- % each study adds once F01 is full
@@ -45,13 +45,14 @@ local AUTO_SAVE_INTERVAL = 120  -- seconds, mirrors InventoryManager
 local STAT_TICK_MIN      = 1
 local STAT_TICK_MAX      = 2
 
--- Fragment-index → stat-name map. F01-F03 strength (top lens),
--- F04-F06 luck (middle lens), F07-F09 speed (bottom lens). The three
--- equal-sized sections match the visual helix on the client.
+-- Fragment-index → stat-name map. F01-F02 strength (top lens),
+-- F03-F04 luck (middle lens), F05-F06 speed (bottom lens). Three
+-- equal sections × 2 bars each = 6 fragments total — matches the
+-- compact 3-lens client helix.
 local SECTION_STAT = {
-	"strength", "strength", "strength",
-	"luck",     "luck",     "luck",
-	"speed",    "speed",    "speed",
+	"strength", "strength",
+	"luck",     "luck",
+	"speed",    "speed",
 }
 
 _G.DNAResearch_FragmentCount = FRAGMENT_COUNT
@@ -350,7 +351,7 @@ local function applyStudyTick(player, mercName, mercState)
 	--     adds FIRST_BAR_FILL_PCT (10 %) to F01 specifically → 10 studies
 	--     to fill the first bar.
 	--   * Once F01 is full, every study picks a uniform-random bar from
-	--     the remaining-unfilled F02..F09 and adds LATER_BAR_FILL_PCT
+	--     the remaining-unfilled F02..F06 and adds LATER_BAR_FILL_PCT
 	--     (5 %) → 20 studies to fill each of the other bars.
 	--   * When every bar is at 100 % the helix is fully decoded; we
 	--     still fire a snapshot so the client can reflect the RP /
