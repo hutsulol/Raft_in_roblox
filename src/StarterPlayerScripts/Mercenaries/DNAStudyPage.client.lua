@@ -711,7 +711,7 @@ local function openDNAStudyPage(ctx)
 	local backBtnRef, leftColumnRef, rightColumnRef
 	local BACK_BTN_Y = 10
 	local SIDE_MENU_SCALE = 1.33
-	local LEFT_SIDE_MENU_RAISE_Y = 110
+	local LEFT_SIDE_MENU_RAISE_Y = 130
 	local RIGHT_SIDE_MENU_RAISE_Y = 240
 
 	local function updateResponsiveScale()
@@ -1512,11 +1512,11 @@ local function openDNAStudyPage(ctx)
 	--   HELIX_AMP      = 44                          (bracket half-width)
 	--   HELIX_PERIOD   = 180                         (lens = period/2 = 90)
 	--   GENOME_Y       = HELIX_TOP_Y + HELIX_H + 16  = 406
-	local HELIX_CENTRE_X = CENTRE_COL_W / 2
-	local HELIX_TOP_Y    = 30
-	local HELIX_H        = 360
-	local HELIX_AMP      = 44
-	local HELIX_PERIOD   = 180
+	local HELIX_CENTRE_X = (REFERENCE_W * 0.5) - CENTRE_COL_X
+	local HELIX_TOP_Y    = -60
+	local HELIX_H        = 540
+	local HELIX_AMP      = 66
+	local HELIX_PERIOD   = 270
 
 	-- Two rails with a slight "glow" underlay: wider low-opacity pass
 	-- first, thinner bright pass on top. Reads as a soft cyan beam at
