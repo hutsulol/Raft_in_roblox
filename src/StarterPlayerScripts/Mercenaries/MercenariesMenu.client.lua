@@ -77,6 +77,13 @@ _G.AttachBackHotkey = function(backBtn, onBack, options)
 	letter.Name = "QLetter"
 	letter.BackgroundTransparency = 1
 	letter.BorderSizePixel = 0
+	-- Visually centre the Q in the halo circle. A TextLabel sized (1,1)
+	-- centres the glyph by font metrics, which for Q drops the visible
+	-- O-shape a pixel low because of the descender tail. Anchoring the
+	-- label at (0.5, 0.5) + nudging 1 px up cancels that bias so the Q
+	-- sits in the centre of the halo regardless of its animation state.
+	letter.AnchorPoint = Vector2.new(0.5, 0.5)
+	letter.Position = UDim2.new(0.5, 0, 0.5, -1)
 	letter.Size = UDim2.fromScale(1, 1)
 	letter.Font = fontTitle
 	letter.TextSize = 14
@@ -84,18 +91,66 @@ _G.AttachBackHotkey = function(backBtn, onBack, options)
 	letter.TextXAlignment = Enum.TextXAlignment.Center
 	letter.TextYAlignment = Enum.TextYAlignment.Center
 	letter.Text = "Q"
-	letter.ZIndex = zIndex + 1
+	letter.ZIndex = zIndex + 2
 	letter.Parent = hint
 
-	-- Arrival-flash animation: brighten the halo then fade back out.
-	-- Plays on the INCOMING page when the user navigated via Q — the
-	-- outgoing page's halo would be destroyed before the tween could
-	-- finish anyway, so the visible feedback lives on the destination.
+	-- Arrival-flash animation — a double-pulse + expanding ring.
+	-- Plays on the INCOMING page when the user navigated via Q so the
+	-- glow reads like the mockup's "AFTER PRESSING Q" state (not just
+	-- the halo fading from solid).
+	--
+	--   halo        — bright fill inside the hint box, quick pop then
+	--                 slower fade, brighter peak than the static state.
+	--   ring        — transient second Frame parented to the hint, starts
+	--                 at 100% scale and expands to ~220% while stroke
+	--                 fades to transparent — the radiating "ripple".
+	--   letterFlash — short TextColor3 pulse to near-white + back to
+	--                 the normal text color so the glyph "pings" with
+	--                 the rest of the effect.
 	local function flashHalo()
-		halo.BackgroundTransparency = 0.15
+		-- Halo pop.
+		halo.BackgroundTransparency = 0.05
 		TweenService:Create(halo,
-			TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			TweenInfo.new(0.65, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 			{ BackgroundTransparency = 1 }):Play()
+
+		-- Ring ripple. Own Frame so the expanding scale doesn't disturb
+		-- the hint or letter layout — the hint stays a fixed 20x20 box
+		-- anchored off the BACK button, and the ring is destroyed after
+		-- the animation so no residual state lingers.
+		local ring = Instance.new("Frame")
+		ring.Name = "QRing"
+		ring.AnchorPoint = Vector2.new(0.5, 0.5)
+		ring.Position = UDim2.fromScale(0.5, 0.5)
+		ring.Size = UDim2.fromScale(1, 1)
+		ring.BackgroundTransparency = 1
+		ring.BorderSizePixel = 0
+		ring.ZIndex = zIndex
+		ring.Parent = hint
+		local ringCorner = Instance.new("UICorner")
+		ringCorner.CornerRadius = UDim.new(1, 0)
+		ringCorner.Parent = ring
+		local ringStroke = Instance.new("UIStroke")
+		ringStroke.Color       = haloColor
+		ringStroke.Thickness   = 2
+		ringStroke.Transparency = 0.1
+		ringStroke.Parent      = ring
+
+		local ringInfo = TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		TweenService:Create(ring,       ringInfo, { Size = UDim2.fromScale(2.4, 2.4) }):Play()
+		TweenService:Create(ringStroke, ringInfo, { Transparency = 1 }):Play()
+		task.delay(0.8, function()
+			if ring and ring.Parent then ring:Destroy() end
+		end)
+
+		-- Letter "ping": flash toward white for a few frames, then
+		-- tween back. Gives the glyph a little sparkle so it's part of
+		-- the effect rather than a silent label behind the glow.
+		local WHITE = Color3.fromRGB(255, 255, 255)
+		letter.TextColor3 = WHITE
+		TweenService:Create(letter,
+			TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ TextColor3 = color }):Play()
 	end
 
 	local function isButtonOnScreen()
