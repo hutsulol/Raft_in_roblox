@@ -37,8 +37,10 @@
 local Players        = game:GetService("Players")
 local RunService     = game:GetService("RunService")
 local TweenService   = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
+local dnaResearchEvent = ReplicatedStorage:WaitForChild("DNAResearch", 10)
 
 -- ─── Palette (matches MercenariesMenu's amethyst-dark holo variant) ──
 local COLOR_TEXT              = Color3.fromRGB(220, 240, 255)
@@ -1625,10 +1627,9 @@ local function openHandlingPage(ctx)
 	dnaTitle.ZIndex = 73
 	dnaTitle.Parent = dnaHeader
 
-	-- Placeholder progress numbers — real values get wired in a later step.
-	local FRAGMENTS_DECODED = 10
-	local FRAGMENTS_TOTAL   = 16
-	local progressPct       = math.floor((FRAGMENTS_DECODED / FRAGMENTS_TOTAL) * 100 + 0.5)
+	-- DNA progress mirrors the same server snapshot consumed by
+	-- DNAStudyPage (DNAResearch.getState / studyComplete).
+	local FRAGMENTS_TOTAL = 6
 
 	local dnaPct = Instance.new("TextLabel")
 	dnaPct.BackgroundTransparency = 1
@@ -1640,7 +1641,7 @@ local function openHandlingPage(ctx)
 	dnaPct.TextSize = 13
 	dnaPct.TextColor3 = HOLO_EDGE
 	dnaPct.TextXAlignment = Enum.TextXAlignment.Right
-	dnaPct.Text = progressPct .. "%"
+	dnaPct.Text = "0%"
 	dnaPct.ZIndex = 73
 	dnaPct.Parent = dnaHeader
 
@@ -1678,7 +1679,7 @@ local function openHandlingPage(ctx)
 	fragmentsLbl.RichText = true
 	fragmentsLbl.Text = string.format(
 		"Fragments decoded: <b><font color=\"rgb(220,240,255)\">%d/%d</font></b>",
-		FRAGMENTS_DECODED, FRAGMENTS_TOTAL)
+		0, FRAGMENTS_TOTAL)
 	fragmentsLbl.ZIndex = 73
 	fragmentsLbl.Parent = dnaBody
 
@@ -1688,7 +1689,39 @@ local function openHandlingPage(ctx)
 		FRAGMENTS_TOTAL,
 		73)
 	barTrack.Position = UDim2.fromOffset(56, 20)
-	barFill.Size = UDim2.new(FRAGMENTS_DECODED / FRAGMENTS_TOTAL, 0, 1, 0)
+	barFill.Size = UDim2.new(0, 0, 1, 0)
+
+	local function decodeProgressFromSnapshot(snapshot)
+		if type(snapshot) ~= "table" then
+			return 0, FRAGMENTS_TOTAL, 0
+		end
+		local fragments = snapshot.fragments
+		if type(fragments) ~= "table" then
+			return 0, FRAGMENTS_TOTAL, 0
+		end
+
+		local total = math.max(1, #fragments)
+		local decoded = 0
+		local sum = 0
+		for i = 1, total do
+			local pct = math.clamp(tonumber(fragments[i]) or 0, 0, 100)
+			sum += pct
+			if pct >= 100 then
+				decoded += 1
+			end
+		end
+		local genomePct = math.floor((sum / total) + 0.5)
+		return decoded, total, genomePct
+	end
+
+	local function applyDnaSnapshot(snapshot)
+		local decoded, total, genomePct = decodeProgressFromSnapshot(snapshot)
+		dnaPct.Text = string.format("%d%%", genomePct)
+		fragmentsLbl.Text = string.format(
+			"Fragments decoded: <b><font color=\"rgb(220,240,255)\">%d/%d</font></b>",
+			decoded, total)
+		barFill.Size = UDim2.new(math.clamp(decoded / math.max(1, total), 0, 1), 0, 1, 0)
+	end
 
 	local dnaSubtext = Instance.new("TextLabel")
 	dnaSubtext.BackgroundTransparency = 1
@@ -1771,6 +1804,22 @@ local function openHandlingPage(ctx)
 			end,
 		})
 	end)
+
+	-- Keep Handling's DNA card synced with the authoritative
+	-- DNAResearch snapshot used by DNAStudyPage.
+	if dnaResearchEvent and ctx.mercName then
+		table.insert(activeConnections,
+			dnaResearchEvent.OnClientEvent:Connect(function(action, mercName, ...)
+				if mercName ~= ctx.mercName then return end
+				local args = table.pack(...)
+				if action == "state" then
+					applyDnaSnapshot(args[1])
+				elseif action == "studyComplete" then
+					applyDnaSnapshot(args[2])
+				end
+			end))
+		dnaResearchEvent:FireServer("getState", ctx.mercName)
+	end
 
 	-- Force the first scale computation now that the refs are all
 	-- set (the earlier updateResponsiveScale() call happened before
