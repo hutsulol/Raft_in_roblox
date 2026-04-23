@@ -12,7 +12,20 @@ local RunService        = game:GetService("RunService")
 local TextService       = game:GetService("TextService")
 
 local player = Players.LocalPlayer
-local BackHotkey = require(script.Parent:WaitForChild("BackHotkey"))
+
+-- Optional hotkey helper: if the BackHotkey ModuleScript hasn't
+-- synced into Studio yet, fall back to a no-op attach so the MAIN
+-- MENU wiring at the bottom of this file (_G.OpenMercenariesMenu)
+-- still executes. A bounded WaitForChild + pcall on require guards
+-- against both "not yet present" and "errored during load" cases.
+local BackHotkey = { attach = function() end }
+local _ok, _mod = pcall(function()
+	local inst = script.Parent:WaitForChild("BackHotkey", 2)
+	return inst and require(inst) or nil
+end)
+if _ok and typeof(_mod) == "table" and typeof(_mod.attach) == "function" then
+	BackHotkey = _mod
+end
 
 -- ─── Wait for SpawnMercenary remote ─────────────────────────────────────
 local spawnEvent = ReplicatedStorage:WaitForChild("SpawnMercenary", 30)

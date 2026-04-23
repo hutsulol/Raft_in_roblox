@@ -3,7 +3,19 @@
 -- reachable via BACK can also be dismissed with a Q keypress.
 --
 -- Usage from a LocalScript (e.g. HandlingPage.client.lua):
---   local BackHotkey = require(script.Parent:WaitForChild("BackHotkey"))
+--   -- Defensive require so a missing / slow-syncing module never
+--   -- blocks the rest of the page (see Mercenaries folder for the
+--   -- established pattern):
+--   local BackHotkey = { attach = function() end }
+--   do
+--       local ok, mod = pcall(function()
+--           local inst = script.Parent:WaitForChild("BackHotkey", 2)
+--           return inst and require(inst) or nil
+--       end)
+--       if ok and typeof(mod) == "table" and typeof(mod.attach) == "function" then
+--           BackHotkey = mod
+--       end
+--   end
 --
 --   local function triggerBack()
 --       closeHandlingPage()

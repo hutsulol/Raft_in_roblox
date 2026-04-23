@@ -41,7 +41,18 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local dnaResearchEvent = ReplicatedStorage:WaitForChild("DNAResearch", 10)
-local BackHotkey = require(script.Parent:WaitForChild("BackHotkey"))
+-- Defensive require: if BackHotkey hasn't synced yet or errors on
+-- load, fall back to a no-op attach so the page still opens.
+local BackHotkey = { attach = function() end }
+do
+	local ok, mod = pcall(function()
+		local inst = script.Parent:WaitForChild("BackHotkey", 2)
+		return inst and require(inst) or nil
+	end)
+	if ok and typeof(mod) == "table" and typeof(mod.attach) == "function" then
+		BackHotkey = mod
+	end
+end
 
 -- ─── Palette (matches MercenariesMenu's amethyst-dark holo variant) ──
 local COLOR_TEXT              = Color3.fromRGB(220, 240, 255)

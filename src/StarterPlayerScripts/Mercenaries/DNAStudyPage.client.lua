@@ -46,7 +46,18 @@ local FONT_BODY  = Enum.Font.Gotham
 local COLOR_TEXT_MUTE = Color3.fromRGB(100, 125, 155)
 
 local player = Players.LocalPlayer
-local BackHotkey = require(script.Parent:WaitForChild("BackHotkey"))
+-- Defensive require: if BackHotkey hasn't synced yet or errors on
+-- load, fall back to a no-op attach so the page still opens.
+local BackHotkey = { attach = function() end }
+do
+	local ok, mod = pcall(function()
+		local inst = script.Parent:WaitForChild("BackHotkey", 2)
+		return inst and require(inst) or nil
+	end)
+	if ok and typeof(mod) == "table" and typeof(mod.attach) == "function" then
+		BackHotkey = mod
+	end
+end
 
 -- ─── BACK glyph (crossed diagonals — same shape as HandlingPage) ─────
 local function makeBackIcon(parent, size, color)
