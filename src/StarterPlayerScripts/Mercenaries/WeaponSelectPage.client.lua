@@ -26,6 +26,8 @@ local RunService        = game:GetService("RunService")
 local TweenService      = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+local player = Players.LocalPlayer
+
 -- ─── Palette (matches HandlingPage / DNAStudyPage amethyst-dark) ─────
 local COLOR_TEXT              = Color3.fromRGB(220, 240, 255)
 local COLOR_TEXT_DIM          = Color3.fromRGB(140, 180, 220)
@@ -361,6 +363,40 @@ local function openWeaponSelectPage(ctx)
 	title.Text = "SELECT WEAPON"
 	title.ZIndex = 52
 	title.Parent = scaleWrap
+
+	-- ── Centre viewport ─────────────────────────────────────────────
+	-- Host is positioned + sized identically to HandlingPage's
+	-- viewportHost (400, 104, 160×472), so the cached rig lands at
+	-- the exact same scaleWrap-local coords (centre Y = 264.48) and
+	-- the Merc→Handling→WeaponSelect→Handling round-trip doesn't make
+	-- the character jump. No clip frame here — no bottom cards need
+	-- to crop the rig on this page, so the pirate renders fully.
+	-- Per Q9 we don't add any "FOR · <MERC>" label — just the model.
+	local equippedWeaponId = "Sword"
+	local mercFolder = player:FindFirstChild("Mercenaries")
+	if mercFolder and ctx.mercName then
+		local entry = mercFolder:FindFirstChild(ctx.mercName)
+		if entry then
+			local eq = entry:GetAttribute("EquippedWeapon")
+			if eq and eq ~= "" then equippedWeaponId = eq end
+		end
+	end
+
+	local viewportHost = Instance.new("Frame")
+	viewportHost.Name = "ViewportHost"
+	viewportHost.BackgroundTransparency = 1
+	viewportHost.BorderSizePixel = 0
+	viewportHost.Position = UDim2.fromOffset(400, 104)
+	viewportHost.Size = UDim2.fromOffset(160, 472)
+	viewportHost.ZIndex = 55
+	viewportHost.Parent = scaleWrap
+
+	if ctx.buildMercViewport and ctx.mercName then
+		local vp = ctx.buildMercViewport(viewportHost, ctx.mercName, equippedWeaponId)
+		if vp then
+			vp.ZIndex = 60 -- above future arsenal / detail panels
+		end
+	end
 
 	updateResponsiveScale()
 
