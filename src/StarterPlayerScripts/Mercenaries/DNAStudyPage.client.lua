@@ -1523,7 +1523,14 @@ local function openDNAStudyPage(ctx)
 	local BARS_PER_LENS  = 3
 	local BAR_THICKNESS  = 2
 	local DOT_SIZE       = 4
-	local LENS_BAR_SCALE = 1.0 -- endpoints land on the rail centerline
+	local LENS_BAR_SCALE = 1.0 -- fraction of the rail gap
+	-- Rail has a visible glow-underlay thickness (6 px) plus a 3 px
+	-- bright pass centered inside it, so from the rail centerline to
+	-- the rail's INNER edge is 3 px. Subtracting twice that (one side
+	-- per rail) from the gap pulls the bar endpoints off the
+	-- centerline and onto the inner wall of each rail — otherwise the
+	-- bar sticks out past the rail's outer glow.
+	local RAIL_INNER_OFFSET = 6
 
 	local function buildFragmentBar(index, y, width)
 		local frag = Instance.new("Frame")
@@ -1619,7 +1626,7 @@ local function openDNAStudyPage(ctx)
 			-- +π/2 phase shift so the widths align with the rails).
 			local phase = 2 * math.pi * (y - HELIX_TOP_Y) / HELIX_PERIOD + math.pi * 0.5
 			local gap   = 2 * HELIX_AMP * math.abs(math.sin(phase))
-			local width = gap * LENS_BAR_SCALE
+			local width = math.max(0, gap * LENS_BAR_SCALE - RAIL_INNER_OFFSET)
 			local idx = (lensIdx - 1) * BARS_PER_LENS + rung
 			fragmentRefs[idx] = buildFragmentBar(idx, y, width)
 		end
