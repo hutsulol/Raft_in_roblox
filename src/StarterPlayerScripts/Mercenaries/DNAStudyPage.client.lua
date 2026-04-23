@@ -712,6 +712,7 @@ local function openDNAStudyPage(ctx)
 	local BACK_BTN_Y = 39
 	local CHIP_Y     = 39
 	local SIDE_MENU_SCALE = 2
+	local SIDE_MENU_RAISE_Y = 48
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
@@ -966,7 +967,7 @@ local function openDNAStudyPage(ctx)
 		col.BackgroundTransparency = 1
 		col.BorderSizePixel = 0
 		col.AnchorPoint = Vector2.new(opts.anchorX or 0, 0)
-		col.Position = UDim2.fromOffset(x, COLS_Y)
+		col.Position = UDim2.fromOffset(x, COLS_Y - (opts.yOffset or 0))
 		col.Size = UDim2.fromOffset(w, COLS_H)
 		col.ZIndex = 51
 		col.Parent = scaleWrap
@@ -987,9 +988,9 @@ local function openDNAStudyPage(ctx)
 
 		return col
 	end
-	local leftColumn   = makeColumn("LeftColumn",   LEFT_COL_X,   LEFT_COL_W, { scale = SIDE_MENU_SCALE })
+	local leftColumn   = makeColumn("LeftColumn",   LEFT_COL_X,   LEFT_COL_W, { scale = SIDE_MENU_SCALE, yOffset = SIDE_MENU_RAISE_Y })
 	local centreColumn = makeColumn("CentreColumn", CENTRE_COL_X, CENTRE_COL_W)
-	local rightColumn  = makeColumn("RightColumn",  RIGHT_COL_X,  RIGHT_COL_W, { anchorX = 1, scale = SIDE_MENU_SCALE })
+	local rightColumn  = makeColumn("RightColumn",  RIGHT_COL_X,  RIGHT_COL_W, { anchorX = 1, scale = SIDE_MENU_SCALE, yOffset = SIDE_MENU_RAISE_Y })
 	leftColumnRef = leftColumn
 	rightColumnRef = rightColumn
 	local _ = { centreColumn, rightColumn } -- Steps 8-10 fill these
