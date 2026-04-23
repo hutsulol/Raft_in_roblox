@@ -800,6 +800,59 @@ local function applySlotTilePreview(handle, imageId)
 	setZIndexRecursive(preview, (tile.ZIndex or 55) + 2)
 end
 
+-- ─── Adaptive slot-tile icon helpers ────────────────────────────────
+-- The tile's icon zone can be repainted to reflect the currently-
+-- equipped item (MAIN HAND follows EquippedWeapon, BODY follows
+-- EquippedBackpack). Three painters share a common "clear iconZone"
+-- step and pick the right visual:
+--   applySlotTilePreview       — full-bleed hero image (Crop) — kept
+--                                 for Sword's cinematic tile art.
+--   applySlotTileIconImage     — centered inventory icon (Fit) at
+--                                 ~70% of the zone so small-asset
+--                                 item icons read as icons, not art.
+--   applySlotTileGlyph         — generic glyph fallback when the
+--                                 equipped def has no icon at all.
+local function clearSlotTileIconZone(handle)
+	local tile = handle and handle.tile
+	if not tile then return nil, nil end
+	local iconZone = tile:FindFirstChild("IconZone")
+	if not iconZone or not iconZone:IsA("GuiObject") then return nil, tile end
+	for _, child in ipairs(iconZone:GetChildren()) do
+		child:Destroy()
+	end
+	return iconZone, tile
+end
+
+local function applySlotTileIconImage(handle, imageId)
+	local iconZone, tile = clearSlotTileIconZone(handle)
+	if not iconZone then return end
+	local img = Instance.new("ImageLabel")
+	img.Name = "SlotIconImage"
+	img.BackgroundTransparency = 1
+	img.BorderSizePixel = 0
+	img.AnchorPoint = Vector2.new(0.5, 0.5)
+	img.Position = UDim2.fromScale(0.5, 0.5)
+	-- Keep the icon comfortably inset from the tile frame so the
+	-- asset never fights the stroke / corner treatment.
+	img.Size = UDim2.new(0.72, 0, 0.72, 0)
+	img.Image = imageId
+	img.ScaleType = Enum.ScaleType.Fit
+	img.ImageColor3 = Color3.new(1, 1, 1)
+	img.Parent = iconZone
+	setZIndexRecursive(img, (tile.ZIndex or 55) + 2)
+end
+
+local function applySlotTileGlyph(handle, iconBuilder, color, sizePx)
+	local iconZone, tile = clearSlotTileIconZone(handle)
+	if not iconZone or not iconBuilder then return end
+	local glyph = iconBuilder(iconZone, sizePx or 48, color or Color3.fromRGB(160, 200, 230))
+	if glyph then
+		glyph.AnchorPoint = Vector2.new(0.5, 0.5)
+		glyph.Position = UDim2.fromScale(0.5, 0.5)
+		setZIndexRecursive(glyph, (tile.ZIndex or 55) + 2)
+	end
+end
+
 -- ─── Module state ────────────────────────────────────────────────────
 local activePage = nil
 local activeConnections = {}
@@ -1197,22 +1250,81 @@ local function openHandlingPage(ctx)
 	-- provided; fall back to 1 star otherwise. MAIN HAND defaults
 	-- to selected on open.
 	local equippedWeaponId = "Sword"
+	local equippedBackpackId = ""
 	local mercFolder = player:FindFirstChild("Mercenaries")
 	if mercFolder and ctx.mercName then
 		local entry = mercFolder:FindFirstChild(ctx.mercName)
 		if entry then
 			local eq = entry:GetAttribute("EquippedWeapon")
 			if eq and eq ~= "" then equippedWeaponId = eq end
+			local bp = entry:GetAttribute("EquippedBackpack")
+			if bp and bp ~= "" then equippedBackpackId = bp end
 		end
 	end
 
-	local function rarityForWeapon(id)
-		local items = ctx.equipItems and ctx.equipItems.Weapons
-		if not items then return 1 end
+	local function findEquipDef(category, id)
+		local items = ctx.equipItems and ctx.equipItems[category]
+		if not items or not id or id == "" then return nil end
 		for _, def in ipairs(items) do
-			if def.id == id then return def.stars or 1 end
+			if def.id == id then return def end
 		end
-		return 1
+		return nil
+	end
+
+	local function rarityForWeapon(id)
+		local def = findEquipDef("Weapons", id)
+		return (def and def.stars) or 1
+	end
+
+	local function rarityForBackpack(id)
+		local def = findEquipDef("Artifacts", id)
+		return (def and def.stars) or 0
+	end
+
+	-- Picks the right icon treatment for a slot tile given the
+	-- currently-equipped def. The Sword def has no `icon` field (the
+	-- arsenal card uses the makeWeaponIcon glyph for it), but we DO
+	-- have a hero tile image for the MAIN HAND slot that reads as
+	-- "this is a melee weapon" — so when the equipped weapon is Sword
+	-- or Unarmed we prefer per-id fallbacks over def.icon. Any def
+	-- that ships its own icon asset (FishingRod today, future weapons
+	-- later) wins over the per-id table so the menu automatically
+	-- picks up new art without a code edit.
+	local MAIN_HAND_HERO_IMAGE_BY_ID = {
+		Sword   = MAIN_HAND_TILE_IMAGE,    -- cinematic sword tile art
+	}
+	local MAIN_HAND_ICON_IMAGE_BY_ID = {
+		Unarmed = MAIN_HAND_DETAIL_ICON,   -- hand outline from the detail card
+	}
+
+	local function paintMainHandTile(handle, def)
+		if def then
+			local heroImage = MAIN_HAND_HERO_IMAGE_BY_ID[def.id]
+			if heroImage then
+				applySlotTilePreview(handle, heroImage)
+				return
+			end
+			if def.icon and def.icon ~= "" then
+				applySlotTileIconImage(handle, def.icon)
+				return
+			end
+			local fallback = MAIN_HAND_ICON_IMAGE_BY_ID[def.id]
+			if fallback then
+				applySlotTileIconImage(handle, fallback)
+				return
+			end
+		end
+		applySlotTileGlyph(handle, makeWeaponIcon, SLOT_ICON_COLOR_SEL, SLOT_ICON_SIZE)
+	end
+
+	local function paintBodyTile(handle, def)
+		if def and def.icon and def.icon ~= "" then
+			applySlotTileIconImage(handle, def.icon)
+			return
+		end
+		-- No backpack equipped (or unknown def): keep the generic
+		-- backpack glyph so the slot still reads as "body gear".
+		applySlotTileGlyph(handle, makeBackpackIcon, SLOT_ICON_COLOR_SEL, SLOT_ICON_SIZE)
 	end
 
 	local slotHandles = {}
@@ -1264,7 +1376,11 @@ local function openHandlingPage(ctx)
 		zIndex       = 55,
 		onClick      = openWeaponSelectFromMainHand,
 	})
-	applySlotTilePreview(slotHandles.MainHand, MAIN_HAND_TILE_IMAGE)
+	-- Adaptive MAIN HAND preview: follow the equipped weapon instead
+	-- of always showing the cinematic sword art. Re-computed on every
+	-- page open (the BACK trip from WeaponSelectPage reopens us with
+	-- fresh ctx), so equip → back → tile updates "for free".
+	paintMainHandTile(slotHandles.MainHand, findEquipDef("Weapons", equippedWeaponId))
 
 	-- Hover affordance for the MAIN HAND slot: the bottom label swaps
 	-- from 'MAIN HAND' → 'CHANGE' while the cursor is over the tile so
@@ -1314,12 +1430,16 @@ local function openHandlingPage(ctx)
 	slotHandles.Relic = buildSlotTile(scaleWrap, {
 		name         = "BODY",
 		iconBuilder  = makeBackpackIcon,
-		stars        = 0,
+		stars        = rarityForBackpack(equippedBackpackId),
 		selected     = false,
 		position     = UDim2.fromOffset(LEFT_COL_X, TILE_BOTTOM_Y),
 		zIndex       = 55,
 		onClick      = openBodySelectFromBody,
 	})
+	-- Adaptive BODY preview: follow EquippedBackpack. Re-computed on
+	-- every page open (BACK from BodySelectPage reopens Handling with
+	-- fresh ctx) so equip → back → tile updates automatically.
+	paintBodyTile(slotHandles.Relic, findEquipDef("Artifacts", equippedBackpackId))
 
 	-- Hover affordance mirroring MAIN HAND: the bottom label swaps
 	-- from 'BODY' → 'CHANGE' while the cursor is over the tile so it
