@@ -708,9 +708,10 @@ local function openDNAStudyPage(ctx)
 	responsiveScale.Scale = 1
 	responsiveScale.Parent = scaleWrap
 
-	local backBtnRef, chipRef
+	local backBtnRef, chipRef, leftColumnRef, rightColumnRef
 	local BACK_BTN_Y = 39
 	local CHIP_Y     = 39
+	local SIDE_MENU_SCALE = 2
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
@@ -732,6 +733,12 @@ local function openDNAStudyPage(ctx)
 		end
 		if chipRef then
 			chipRef.Position = UDim2.new(1, dynamicBleed, 0, CHIP_Y)
+		end
+		if leftColumnRef then
+			leftColumnRef.Position = UDim2.fromOffset(-dynamicBleed, leftColumnRef.Position.Y.Offset)
+		end
+		if rightColumnRef then
+			rightColumnRef.Position = UDim2.new(1, dynamicBleed, 0, rightColumnRef.Position.Y.Offset)
 		end
 	end
 
@@ -945,27 +952,46 @@ local function openDNAStudyPage(ctx)
 	--   right : Decoded Traits list (8 entries)
 	local COLS_Y       = 104
 	local COLS_H       = 476
-	local LEFT_COL_X   = 40
+	local LEFT_COL_X   = 0
 	local LEFT_COL_W   = 240
-	local RIGHT_COL_X  = REFERENCE_W - 40 - 240
+	local RIGHT_COL_X  = REFERENCE_W
 	local RIGHT_COL_W  = 240
 	local CENTRE_COL_X = LEFT_COL_X + LEFT_COL_W + 40
 	local CENTRE_COL_W = RIGHT_COL_X - CENTRE_COL_X - 40
 
-	local function makeColumn(name, x, w)
+	local function makeColumn(name, x, w, opts)
+		opts = opts or {}
 		local col = Instance.new("Frame")
 		col.Name = name
 		col.BackgroundTransparency = 1
 		col.BorderSizePixel = 0
+		col.AnchorPoint = Vector2.new(opts.anchorX or 0, 0)
 		col.Position = UDim2.fromOffset(x, COLS_Y)
 		col.Size = UDim2.fromOffset(w, COLS_H)
 		col.ZIndex = 51
 		col.Parent = scaleWrap
+
+		if opts.scale and opts.scale ~= 1 then
+			local colScale = Instance.new("UIScale")
+			colScale.Scale = opts.scale
+			colScale.Parent = col
+
+			local scaledYComp = math.floor((opts.scale - 1) * COLS_H * 0.5 + 0.5)
+			local scaledXComp = math.floor((opts.scale - 1) * w * 0.5 + 0.5)
+			if (opts.anchorX or 0) >= 1 then
+				col.Position = col.Position + UDim2.fromOffset(-scaledXComp, scaledYComp)
+			else
+				col.Position = col.Position + UDim2.fromOffset(scaledXComp, scaledYComp)
+			end
+		end
+
 		return col
 	end
-	local leftColumn   = makeColumn("LeftColumn",   LEFT_COL_X,   LEFT_COL_W)
+	local leftColumn   = makeColumn("LeftColumn",   LEFT_COL_X,   LEFT_COL_W, { scale = SIDE_MENU_SCALE })
 	local centreColumn = makeColumn("CentreColumn", CENTRE_COL_X, CENTRE_COL_W)
-	local rightColumn  = makeColumn("RightColumn",  RIGHT_COL_X,  RIGHT_COL_W)
+	local rightColumn  = makeColumn("RightColumn",  RIGHT_COL_X,  RIGHT_COL_W, { anchorX = 1, scale = SIDE_MENU_SCALE })
+	leftColumnRef = leftColumn
+	rightColumnRef = rightColumn
 	local _ = { centreColumn, rightColumn } -- Steps 8-10 fill these
 
 	-- ── Sample Slot card (top of left column) ─────────────────────────
