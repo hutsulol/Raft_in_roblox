@@ -720,15 +720,20 @@ local function buildSlotTile(parent, opts)
 
 	-- Rarity row — image-asset stars (4 total, full / half / empty)
 	-- centred horizontally just above the label band's top border so
-	-- the stars sit between the item art and the slot label. Hidden
-	-- for empty slots (SKINS / ARTIFACTS) the same way as before.
+	-- the stars sit between the item art and the slot label. Parented
+	-- to `tile` (not iconZone) so the adaptive-icon paint helpers —
+	-- which wipe every iconZone child on each repaint — can't destroy
+	-- the stars. Y offset = label band height + 4px breathing room
+	-- puts the row exactly on the border, same pixel line in both
+	-- populated and empty-glyph variants. Empty slots (SKINS /
+	-- ARTIFACTS) still suppress the row via the emptyGlyph opt.
 	local starRow
 	if not opts.emptyGlyph then
 		local starsCount = math.clamp(opts.stars or 0, 0, 4)
-		starRow = makeImageStarRow(iconZone, starsCount, 4, 12)
+		starRow = makeImageStarRow(tile, starsCount, 4, 12)
 		starRow.Name = "Stars"
 		starRow.AnchorPoint = Vector2.new(0.5, 1)
-		starRow.Position = UDim2.new(0.5, 0, 1, -4)
+		starRow.Position = UDim2.new(0.5, 0, 1, -(SLOT_LABEL_H + 4))
 		setZIndexRecursive(starRow, zBase + 2)
 	end
 
