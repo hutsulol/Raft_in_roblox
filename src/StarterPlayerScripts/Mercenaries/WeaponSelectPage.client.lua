@@ -92,6 +92,89 @@ local function makeWeaponIcon(parent, size, color)
 	return c
 end
 
+-- ─── Rarity star row (N small rotated-square stars) ───────────────
+-- Mirrors HandlingPage / MercenariesMenu's makeStarRow so the rarity
+-- visual stays in lock-step across every phone sub-page. Filled
+-- stars render as solid rotated squares, empty as outlines.
+local COLOR_GOLD = Color3.fromRGB(230, 190, 100)
+
+local function makeStarRow(parent, filled, total, size, color)
+	size   = size   or 9
+	total  = total  or 5
+	color  = color  or COLOR_GOLD
+	filled = math.clamp(filled or 0, 0, total)
+
+	local gap = 2
+	local c = Instance.new("Frame")
+	c.Name = "StarRow"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(total * size + (total - 1) * gap, size)
+	c.Parent = parent
+
+	for i = 1, total do
+		local star = Instance.new("Frame")
+		star.AnchorPoint = Vector2.new(0.5, 0.5)
+		star.Position = UDim2.new(0, (i - 1) * (size + gap) + size * 0.5, 0.5, 0)
+		star.Size = UDim2.fromOffset(size * 0.72, size * 0.72)
+		star.Rotation = 45
+		star.BorderSizePixel = 0
+		if i <= filled then
+			star.BackgroundColor3 = color
+			star.BackgroundTransparency = 0
+			star.Parent = c
+		else
+			star.BackgroundTransparency = 1
+			star.Parent = c
+			local ss = Instance.new("UIStroke")
+			ss.Color       = color
+			ss.Thickness   = 1
+			ss.Transparency = 0.6
+			ss.Parent      = star
+		end
+	end
+
+	return c
+end
+
+-- ─── Padlock glyph (overlay for locked weapon cards) ────────────────
+local function makeLockIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "LockIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local arc = Instance.new("Frame")
+	arc.AnchorPoint = Vector2.new(0.5, 1)
+	arc.Position = UDim2.fromScale(0.5, 0.48)
+	arc.Size = UDim2.fromOffset(size * 0.5, size * 0.4)
+	arc.BackgroundTransparency = 1
+	arc.BorderSizePixel = 0
+	arc.Parent = c
+	local ac = Instance.new("UICorner")
+	ac.CornerRadius = UDim.new(0.5, 0)
+	ac.Parent = arc
+	local as = Instance.new("UIStroke")
+	as.Color     = color
+	as.Thickness = 1.4
+	as.Parent    = arc
+
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0)
+	body.Position = UDim2.fromScale(0.5, 0.48)
+	body.Size = UDim2.fromOffset(size * 0.72, size * 0.42)
+	body.BackgroundColor3 = color
+	body.BorderSizePixel = 0
+	body.Parent = c
+	local bc = Instance.new("UICorner")
+	bc.CornerRadius = UDim.new(0, math.max(1, math.floor(size * 0.14)))
+	bc.Parent = body
+
+	return c
+end
+
 -- ─── BACK glyph (crossed diagonals — matches the other sub-pages) ────
 local function makeBackIcon(parent, size, color)
 	local c = Instance.new("Frame")
@@ -611,6 +694,278 @@ local function openWeaponSelectPage(ctx)
 	buildTab("Fisherman", "FISHERMAN", 2)
 	buildTab("Assistant", "ASSISTANT", 3)
 	refreshTabVisuals()
+
+	-- ── Arsenal weapon grid (cards) ─────────────────────────────────
+	-- 3-column grid under the filter tabs. One card per EQUIP_ITEMS
+	-- .Weapons entry. Step 6 renders ALL weapons (no filter yet);
+	-- Step 7 hooks the tabs so buildGrid gets called again with the
+	-- active profession.
+	local GRID_TOP      = 80
+	local GRID_COLS     = 3
+	local GRID_COL_GAP  = 6
+	local GRID_ROW_GAP  = 6
+	local CARD_H        = 96
+	local CARD_W        = (TAB_INNER_W - GRID_COL_GAP * (GRID_COLS - 1)) / GRID_COLS
+
+	-- Unlocked-weapon set: UnlockedEquipment folder children +
+	-- anything already in Backpack / Character as a tool fallback.
+	-- `alwaysUnlocked` flag on the def overrides both.
+	local function collectUnlockedSet()
+		local set = {}
+		local eq = player:FindFirstChild("UnlockedEquipment")
+		if eq then
+			for _, child in eq:GetChildren() do
+				set[child.Name] = true
+			end
+		end
+		local bp = player:FindFirstChild("Backpack")
+		if bp then
+			for _, child in bp:GetChildren() do
+				if child:IsA("Tool") then set[child.Name] = true end
+			end
+		end
+		local char = player.Character
+		if char then
+			for _, child in char:GetChildren() do
+				if child:IsA("Tool") then set[child.Name] = true end
+			end
+		end
+		return set
+	end
+
+	-- Card-visual palette (local to the grid so the constants stay
+	-- beside the buildCard body below).
+	local CARD_FILL         = Color3.fromRGB(10, 24, 44)
+	local CARD_FILL_ALPHA   = 0.30
+	local CARD_STROKE       = HOLO_PANEL_BORDER
+	local CARD_STROKE_SEL   = HOLO_EDGE
+	local CHIP_FILL         = Color3.fromRGB(6, 16, 30)
+	local CHIP_FILL_ALPHA   = 0.25
+	local NEW_CHIP_COLOR    = Color3.fromRGB(230, 160,  70)
+	local NEW_CHIP_TEXT     = Color3.fromRGB(255, 245, 220)
+	local EQUIP_CHIP_COLOR  = Color3.fromRGB( 90, 190, 120)
+	local EQUIP_CHIP_TEXT   = Color3.fromRGB(230, 255, 235)
+
+	-- Placeholder: NEW-badge set. Step 12 replaces this with a
+	-- DataStore-backed table of weapons the player has already
+	-- clicked; for Step 6 everything the player owns counts as
+	-- not-new so no NEW badges flash unless the step's commits land
+	-- independently from 12.
+	local seenWeapons = {}
+	local function isNew(def, unlocked)
+		if not unlocked then return false end
+		return not seenWeapons[def.id]
+	end
+
+	-- Single weapon card. Returns a table of its named sub-refs so
+	-- Step 10's selection + Step 11's equip-refresh can flip chip
+	-- states without rebuilding the card.
+	local function buildCard(def, col, row, unlocked, equipped)
+		local x = (col - 1) * (CARD_W + GRID_COL_GAP)
+		local y = GRID_TOP + (row - 1) * (CARD_H + GRID_ROW_GAP)
+
+		local card = Instance.new("TextButton")
+		card.Name = "Card_" .. def.id
+		card.AutoButtonColor = false
+		card.Text = ""
+		card.BackgroundColor3 = CARD_FILL
+		card.BackgroundTransparency = CARD_FILL_ALPHA
+		card.BorderSizePixel = 0
+		card.Position = UDim2.fromOffset(ARSENAL_PAD_X + x, y)
+		card.Size = UDim2.fromOffset(CARD_W, CARD_H)
+		card.ZIndex = 54
+		card.Parent = arsenal
+
+		local stroke = Instance.new("UIStroke")
+		stroke.Color     = equipped and CARD_STROKE_SEL or CARD_STROKE
+		stroke.Thickness = equipped and 1.4 or 1
+		stroke.Parent    = card
+
+		-- Level chip top-left. EQUIP_ITEMS has no per-weapon level
+		-- mechanic yet, so every card reads 'Lv 1' for now; the chip
+		-- will pull from def.level once that mechanic exists.
+		local levelChip = Instance.new("Frame")
+		levelChip.Name = "LevelChip"
+		levelChip.BackgroundColor3 = CHIP_FILL
+		levelChip.BackgroundTransparency = CHIP_FILL_ALPHA
+		levelChip.BorderSizePixel = 0
+		levelChip.Position = UDim2.fromOffset(4, 4)
+		levelChip.Size = UDim2.fromOffset(28, 14)
+		levelChip.ZIndex = 55
+		levelChip.Parent = card
+		local lvStroke = Instance.new("UIStroke")
+		lvStroke.Color     = CARD_STROKE
+		lvStroke.Thickness = 1
+		lvStroke.Parent    = levelChip
+		local lvLabel = Instance.new("TextLabel")
+		lvLabel.BackgroundTransparency = 1
+		lvLabel.BorderSizePixel = 0
+		lvLabel.Size = UDim2.fromScale(1, 1)
+		lvLabel.Font = FONT_TITLE
+		lvLabel.TextSize = 10
+		lvLabel.TextColor3 = COLOR_TEXT_DIM
+		lvLabel.TextXAlignment = Enum.TextXAlignment.Center
+		lvLabel.Text = string.format("Lv %d", def.level or 1)
+		lvLabel.ZIndex = 56
+		lvLabel.Parent = levelChip
+
+		-- Icon area — big enough to read at the card size. Image
+		-- asset if the def supplies one, otherwise the generic
+		-- slanted-blade glyph as a placeholder.
+		local ICON_BOX_SIZE = 40
+		local iconBox = Instance.new("Frame")
+		iconBox.Name = "IconBox"
+		iconBox.BackgroundTransparency = 1
+		iconBox.BorderSizePixel = 0
+		iconBox.AnchorPoint = Vector2.new(0.5, 0)
+		iconBox.Position = UDim2.new(0.5, 0, 0, 24)
+		iconBox.Size = UDim2.fromOffset(ICON_BOX_SIZE, ICON_BOX_SIZE)
+		iconBox.ZIndex = 55
+		iconBox.Parent = card
+
+		if def.icon and def.icon ~= "" then
+			local img = Instance.new("ImageLabel")
+			img.BackgroundTransparency = 1
+			img.BorderSizePixel = 0
+			img.Size = UDim2.fromScale(1, 1)
+			img.Image = def.icon
+			img.ScaleType = Enum.ScaleType.Fit
+			img.ImageColor3 = Color3.new(1, 1, 1)
+			img.ZIndex = 56
+			img.Parent = iconBox
+		else
+			local glyph = makeWeaponIcon(iconBox, ICON_BOX_SIZE, HOLO_EDGE)
+			glyph.AnchorPoint = Vector2.new(0.5, 0.5)
+			glyph.Position = UDim2.fromScale(0.5, 0.5)
+		end
+
+		-- Rarity star row pinned to the bottom of the card.
+		local stars = math.clamp(def.stars or 0, 0, 5)
+		local starRow = makeStarRow(card, stars, 5, 8, COLOR_GOLD)
+		starRow.Name = "Stars"
+		starRow.AnchorPoint = Vector2.new(0.5, 1)
+		starRow.Position = UDim2.new(0.5, 0, 1, -8)
+		for _, d in starRow:GetDescendants() do
+			if d:IsA("Frame") then d.ZIndex = 56 end
+		end
+
+		-- Top-right badge area. EQUIPPED chip wins over NEW; if
+		-- neither applies we render nothing. Both chips sit at the
+		-- same coords so the visual lines up no matter which shows.
+		local badgeHolder = Instance.new("Frame")
+		badgeHolder.Name = "BadgeHolder"
+		badgeHolder.BackgroundTransparency = 1
+		badgeHolder.BorderSizePixel = 0
+		badgeHolder.AnchorPoint = Vector2.new(1, 0)
+		badgeHolder.Position = UDim2.new(1, -4, 0, 4)
+		badgeHolder.Size = UDim2.fromOffset(36, 14)
+		badgeHolder.ZIndex = 55
+		badgeHolder.Parent = card
+
+		local function mkChip(text, fill, textColor)
+			local chip = Instance.new("Frame")
+			chip.Name = "Chip_" .. text
+			chip.BackgroundColor3 = fill
+			chip.BackgroundTransparency = 0
+			chip.BorderSizePixel = 0
+			chip.AnchorPoint = Vector2.new(1, 0)
+			chip.Position = UDim2.new(1, 0, 0, 0)
+			chip.Size = UDim2.fromOffset(#text <= 1 and 16 or 36, 14)
+			chip.ZIndex = 55
+			chip.Parent = badgeHolder
+			local cc = Instance.new("UICorner")
+			cc.CornerRadius = UDim.new(0, 2)
+			cc.Parent = chip
+			local lbl = Instance.new("TextLabel")
+			lbl.BackgroundTransparency = 1
+			lbl.BorderSizePixel = 0
+			lbl.Size = UDim2.fromScale(1, 1)
+			lbl.Font = FONT_TITLE
+			lbl.TextSize = 10
+			lbl.TextColor3 = textColor
+			lbl.TextXAlignment = Enum.TextXAlignment.Center
+			lbl.Text = text
+			lbl.ZIndex = 56
+			lbl.Parent = chip
+			return chip
+		end
+
+		local equippedChip, newChip
+		if equipped then
+			equippedChip = mkChip("E", EQUIP_CHIP_COLOR, EQUIP_CHIP_TEXT)
+		elseif isNew(def, unlocked) then
+			newChip = mkChip("NEW", NEW_CHIP_COLOR, NEW_CHIP_TEXT)
+		end
+
+		-- Lock treatment: dims the card contents + centres a small
+		-- padlock glyph on top. Only applied when the weapon isn't
+		-- in the unlocked set.
+		local lockOverlay, lockIcon
+		if not unlocked then
+			lockOverlay = Instance.new("Frame")
+			lockOverlay.Name = "LockOverlay"
+			lockOverlay.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+			lockOverlay.BackgroundTransparency = 0.35
+			lockOverlay.BorderSizePixel = 0
+			lockOverlay.Size = UDim2.fromScale(1, 1)
+			lockOverlay.ZIndex = 57
+			lockOverlay.Parent = card
+
+			lockIcon = makeLockIcon(lockOverlay, 20, COLOR_TEXT_DIM)
+			lockIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+			lockIcon.Position = UDim2.fromScale(0.5, 0.5)
+			for _, d in lockIcon:GetDescendants() do
+				if d:IsA("Frame") then d.ZIndex = 58 end
+			end
+		end
+
+		return {
+			def          = def,
+			card         = card,
+			stroke       = stroke,
+			levelChip    = levelChip,
+			lvLabel      = lvLabel,
+			iconBox      = iconBox,
+			starRow      = starRow,
+			badgeHolder  = badgeHolder,
+			equippedChip = equippedChip,
+			newChip      = newChip,
+			lockOverlay  = lockOverlay,
+			unlocked     = unlocked,
+		}
+	end
+
+	-- Cached refs so Step 7 can destroy the old cards on re-filter,
+	-- and Steps 10 / 11 can mutate chips in place without rebuilding.
+	local weaponCardRefs = {}
+
+	local function clearGrid()
+		for _, ref in pairs(weaponCardRefs) do
+			if ref.card then ref.card:Destroy() end
+		end
+		table.clear(weaponCardRefs)
+	end
+
+	local function buildGrid(profession)
+		clearGrid()
+		local weapons = ctx.equipItems and ctx.equipItems.Weapons or {}
+		local unlockedSet = collectUnlockedSet()
+		local visible = 0
+		for _, def in ipairs(weapons) do
+			-- Step 6 ignores `profession` and shows every weapon;
+			-- Step 7 will filter here.
+			local _ = profession
+			local col = (visible % GRID_COLS) + 1
+			local row = math.floor(visible / GRID_COLS) + 1
+			local unlocked = def.alwaysUnlocked or unlockedSet[def.id] == true
+			local equipped = (def.id == equippedWeaponId)
+			weaponCardRefs[def.id] = buildCard(def, col, row, unlocked, equipped)
+			visible = visible + 1
+		end
+		arsenalCountLabel.Text = string.format("%d · ITEMS", visible)
+	end
+
+	buildGrid(arsenalActiveProfession)
 
 	updateResponsiveScale()
 
