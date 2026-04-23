@@ -1489,7 +1489,7 @@ local function openDNAStudyPage(ctx)
 	--   GENOME_Y       = HELIX_TOP_Y + HELIX_H + 16  = 406
 	local HELIX_CENTRE_X = (REFERENCE_W * 0.5) - CENTRE_COL_X
 	local HELIX_H        = 540
-	local HELIX_TOP_Y    = (REFERENCE_H - HELIX_H) * 0.5
+	local HELIX_TOP_Y    = (REFERENCE_H - HELIX_H) * 0.5 - 50
 	local HELIX_AMP      = 66
 	local HELIX_PERIOD   = 270
 
