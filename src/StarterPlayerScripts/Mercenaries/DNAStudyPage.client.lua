@@ -711,8 +711,8 @@ local function openDNAStudyPage(ctx)
 	local backBtnRef, leftColumnRef, rightColumnRef
 	local BACK_BTN_Y = 39
 	local SIDE_MENU_SCALE = 2
-	local LEFT_SIDE_MENU_RAISE_Y = 16
-	local RIGHT_SIDE_MENU_RAISE_Y = 30
+	local LEFT_SIDE_MENU_RAISE_Y = 116
+	local RIGHT_SIDE_MENU_RAISE_Y = 130
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
