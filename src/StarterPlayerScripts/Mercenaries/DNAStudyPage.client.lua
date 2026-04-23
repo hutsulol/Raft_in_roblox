@@ -29,12 +29,16 @@ local dnaResearchEvent = ReplicatedStorage:WaitForChild("DNAResearch", 10)
 
 -- ─── Palette (matches HandlingPage/MercenariesMenu's amethyst-dark) ──
 local COLOR_TEXT              = Color3.fromRGB(220, 240, 255)
-local COLOR_TEXT_DIM          = Color3.fromRGB(140, 180, 220)
-local HOLO_PANEL_FILL         = Color3.fromRGB(10, 24, 44)
-local HOLO_PANEL_TRANSPARENCY = 0.28
-local HOLO_PANEL_BORDER       = Color3.fromRGB(75, 100, 125)
-local HOLO_EDGE               = Color3.fromRGB(190, 220, 245)
+local COLOR_TEXT_DIM          = Color3.fromRGB(155, 198, 232)
+local HOLO_PANEL_FILL         = Color3.fromRGB(14, 34, 62)
+local HOLO_PANEL_TRANSPARENCY = 0.22
+local HOLO_PANEL_BORDER       = Color3.fromRGB(90, 132, 172)
+local HOLO_EDGE               = Color3.fromRGB(176, 232, 255)
 local HORIZON                 = Color3.fromRGB(98, 168, 218)
+local COLOR_BG                = Color3.fromRGB(10, 24, 46)
+local COLOR_PANEL             = Color3.fromRGB(16, 34, 66)
+local COLOR_BAR_BG            = Color3.fromRGB(26, 58, 96)
+local COLOR_BAR_FILL          = Color3.fromRGB(118, 210, 255)
 
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
@@ -1003,7 +1007,7 @@ local function openDNAStudyPage(ctx)
 	dropZone.Name = "DropZone"
 	dropZone.AutoButtonColor = false
 	dropZone.Text = ""
-	dropZone.BackgroundColor3 = Color3.fromRGB(8, 22, 40)
+	dropZone.BackgroundColor3 = COLOR_PANEL
 	dropZone.BackgroundTransparency = 0.25
 	dropZone.BorderSizePixel = 0
 	dropZone.Position = UDim2.fromOffset(DROP_ZONE_SIDE, DROP_ZONE_TOP)
@@ -1063,7 +1067,7 @@ local function openDNAStudyPage(ctx)
 	--     handing the overlay back to the idle state.
 	local countdownOverlay = Instance.new("Frame")
 	countdownOverlay.Name = "CountdownOverlay"
-	countdownOverlay.BackgroundColor3 = Color3.fromRGB(6, 18, 34)
+	countdownOverlay.BackgroundColor3 = COLOR_BG
 	countdownOverlay.BackgroundTransparency = 0.15
 	countdownOverlay.BorderSizePixel = 0
 	countdownOverlay.Size = UDim2.fromScale(1, 1)
@@ -1143,7 +1147,7 @@ local function openDNAStudyPage(ctx)
 	-- 0 to 100 % over STUDY_DURATION (30 s, server-authoritative).
 	local progressTrack = Instance.new("Frame")
 	progressTrack.Name = "ProgressTrack"
-	progressTrack.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
+	progressTrack.BackgroundColor3 = COLOR_BAR_BG
 	progressTrack.BackgroundTransparency = 0.2
 	progressTrack.BorderSizePixel = 0
 	progressTrack.AnchorPoint = Vector2.new(0.5, 1)
@@ -1821,7 +1825,7 @@ local function openDNAStudyPage(ctx)
 		stroke.Parent    = tile
 
 		local iconBox = Instance.new("Frame")
-		iconBox.BackgroundColor3 = Color3.fromRGB(16, 34, 58)
+		iconBox.BackgroundColor3 = COLOR_PANEL
 		iconBox.BackgroundTransparency = 0.3
 		iconBox.BorderSizePixel = 0
 		iconBox.Position = UDim2.fromOffset(TRAIT_PAD_X, (TRAIT_TILE_H - 26) / 2)
@@ -1883,7 +1887,7 @@ local function openDNAStudyPage(ctx)
 				bodyLbl.TextColor3 = COLOR_TEXT_DIM
 			else
 				tile.BackgroundTransparency = 0.6
-				stroke.Color      = Color3.fromRGB(55, 75, 100)
+				stroke.Color      = HOLO_PANEL_BORDER
 				nameLbl.TextColor3 = COLOR_TEXT_DIM
 				bodyLbl.TextColor3 = COLOR_TEXT_MUTE
 			end
