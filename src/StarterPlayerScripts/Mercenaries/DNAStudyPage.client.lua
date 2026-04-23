@@ -709,9 +709,9 @@ local function openDNAStudyPage(ctx)
 	responsiveScale.Parent = scaleWrap
 
 	local backBtnRef, leftColumnRef, rightColumnRef
-	local BACK_BTN_Y = 24
+	local BACK_BTN_Y = 10
 	local SIDE_MENU_SCALE = 1.33
-	local LEFT_SIDE_MENU_RAISE_Y = 8
+	local LEFT_SIDE_MENU_RAISE_Y = 80
 	local RIGHT_SIDE_MENU_RAISE_Y = 240
 
 	local function updateResponsiveScale()
