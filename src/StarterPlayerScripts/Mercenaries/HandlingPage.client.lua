@@ -1594,63 +1594,16 @@ local function openHandlingPage(ctx)
 	dnaContent.ZIndex = 71
 	dnaContent.Parent = dnaCard
 
-	-- Header: helix glyph (small) + DNA RESEARCH title + NN% (right)
-	local dnaHeader = Instance.new("Frame")
-	dnaHeader.BackgroundTransparency = 1
-	dnaHeader.BorderSizePixel = 0
-	dnaHeader.Size = UDim2.new(1, 0, 0, 18)
-	dnaHeader.ZIndex = 72
-	dnaHeader.Parent = dnaContent
-
-	local dnaHeaderGlyph = Instance.new("ImageLabel")
-	dnaHeaderGlyph.Name = "DnaHeaderIcon"
-	dnaHeaderGlyph.BackgroundTransparency = 1
-	dnaHeaderGlyph.BorderSizePixel = 0
-	dnaHeaderGlyph.AnchorPoint = Vector2.new(0, 0.5)
-	dnaHeaderGlyph.Position = UDim2.new(0, 0, 0.5, 0)
-	dnaHeaderGlyph.Size = UDim2.fromOffset(18, 18)
-	dnaHeaderGlyph.Image = DNA_RESEARCH_ICON
-	dnaHeaderGlyph.ImageColor3 = HOLO_EDGE
-	dnaHeaderGlyph.Parent = dnaHeader
-	dnaHeaderGlyph.ZIndex = 73
-
-	local dnaTitle = Instance.new("TextLabel")
-	dnaTitle.BackgroundTransparency = 1
-	dnaTitle.BorderSizePixel = 0
-	dnaTitle.Position = UDim2.fromOffset(28, 0)
-	dnaTitle.Size = UDim2.new(1, -58, 1, 0)
-	dnaTitle.Font = FONT_TITLE
-	dnaTitle.TextSize = 13
-	dnaTitle.TextColor3 = COLOR_TEXT
-	dnaTitle.TextXAlignment = Enum.TextXAlignment.Left
-	dnaTitle.Text = "DNA RESEARCH"
-	dnaTitle.ZIndex = 73
-	dnaTitle.Parent = dnaHeader
-
 	-- DNA progress mirrors the same server snapshot consumed by
 	-- DNAStudyPage (DNAResearch.getState / studyComplete).
 	local FRAGMENTS_TOTAL = 6
 
-	local dnaPct = Instance.new("TextLabel")
-	dnaPct.BackgroundTransparency = 1
-	dnaPct.BorderSizePixel = 0
-	dnaPct.AnchorPoint = Vector2.new(1, 0)
-	dnaPct.Position = UDim2.fromScale(1, 0)
-	dnaPct.Size = UDim2.fromOffset(50, 18)
-	dnaPct.Font = FONT_TITLE
-	dnaPct.TextSize = 13
-	dnaPct.TextColor3 = HOLO_EDGE
-	dnaPct.TextXAlignment = Enum.TextXAlignment.Right
-	dnaPct.Text = "0%"
-	dnaPct.ZIndex = 73
-	dnaPct.Parent = dnaHeader
-
-	-- Body: large helix on the left, fragments / bar / subtext stack on right
+	-- Body fills the whole card (minus bottom STUDY DNA action).
 	local dnaBody = Instance.new("Frame")
 	dnaBody.BackgroundTransparency = 1
 	dnaBody.BorderSizePixel = 0
-	dnaBody.Position = UDim2.fromOffset(0, 24)
-	dnaBody.Size = UDim2.new(1, 0, 0, 52)
+	dnaBody.Position = UDim2.fromOffset(0, 0)
+	dnaBody.Size = UDim2.new(1, 0, 1, -30)
 	dnaBody.ZIndex = 72
 	dnaBody.Parent = dnaContent
 
@@ -1660,17 +1613,44 @@ local function openHandlingPage(ctx)
 	bigHelix.BorderSizePixel = 0
 	bigHelix.AnchorPoint = Vector2.new(0, 0.5)
 	bigHelix.Position = UDim2.new(0, 0, 0.5, 0)
-	bigHelix.Size = UDim2.fromOffset(36, 42)
+	bigHelix.Size = UDim2.fromOffset(42, 48)
 	bigHelix.Image = DNA_RESEARCH_ICON
 	bigHelix.ImageColor3 = HOLO_EDGE
 	bigHelix.ScaleType = Enum.ScaleType.Fit
 	bigHelix.Parent = dnaBody
 	bigHelix.ZIndex = 73
 
+	local dnaTitle = Instance.new("TextLabel")
+	dnaTitle.BackgroundTransparency = 1
+	dnaTitle.BorderSizePixel = 0
+	dnaTitle.Position = UDim2.fromOffset(56, 0)
+	dnaTitle.Size = UDim2.new(1, -112, 0, 18)
+	dnaTitle.Font = FONT_TITLE
+	dnaTitle.TextSize = 13
+	dnaTitle.TextColor3 = COLOR_TEXT
+	dnaTitle.TextXAlignment = Enum.TextXAlignment.Left
+	dnaTitle.Text = "DNA RESEARCH"
+	dnaTitle.ZIndex = 73
+	dnaTitle.Parent = dnaBody
+
+	local dnaPct = Instance.new("TextLabel")
+	dnaPct.BackgroundTransparency = 1
+	dnaPct.BorderSizePixel = 0
+	dnaPct.AnchorPoint = Vector2.new(1, 0)
+	dnaPct.Position = UDim2.new(1, 0, 0, 0)
+	dnaPct.Size = UDim2.fromOffset(50, 18)
+	dnaPct.Font = FONT_TITLE
+	dnaPct.TextSize = 13
+	dnaPct.TextColor3 = HOLO_EDGE
+	dnaPct.TextXAlignment = Enum.TextXAlignment.Right
+	dnaPct.Text = "0%"
+	dnaPct.ZIndex = 73
+	dnaPct.Parent = dnaBody
+
 	local fragmentsLbl = Instance.new("TextLabel")
 	fragmentsLbl.BackgroundTransparency = 1
 	fragmentsLbl.BorderSizePixel = 0
-	fragmentsLbl.Position = UDim2.fromOffset(56, 0)
+	fragmentsLbl.Position = UDim2.fromOffset(56, 22)
 	fragmentsLbl.Size = UDim2.new(1, -56, 0, 16)
 	fragmentsLbl.Font = FONT_BODY
 	fragmentsLbl.TextSize = 13
@@ -1685,11 +1665,24 @@ local function openHandlingPage(ctx)
 
 	local barTrack, barFill = makeHoloBar(
 		dnaBody,
-		UDim2.new(1, -60, 0, 6),
+		UDim2.new(1, -60, 0, 8),
 		FRAGMENTS_TOTAL,
 		73)
-	barTrack.Position = UDim2.fromOffset(56, 20)
+	barTrack.Position = UDim2.fromOffset(56, 44)
 	barFill.Size = UDim2.new(0, 0, 1, 0)
+
+	local dnaSubtext = Instance.new("TextLabel")
+	dnaSubtext.BackgroundTransparency = 1
+	dnaSubtext.BorderSizePixel = 0
+	dnaSubtext.Position = UDim2.fromOffset(56, 58)
+	dnaSubtext.Size = UDim2.new(1, -56, 0, 18)
+	dnaSubtext.Font = FONT_BODY
+	dnaSubtext.TextSize = 11
+	dnaSubtext.TextColor3 = COLOR_TEXT_MUTE
+	dnaSubtext.TextXAlignment = Enum.TextXAlignment.Left
+	dnaSubtext.Text = "Hunt more pirates to decode additional DNA fragments."
+	dnaSubtext.ZIndex = 73
+	dnaSubtext.Parent = dnaBody
 
 	local function decodeProgressFromSnapshot(snapshot)
 		if type(snapshot) ~= "table" then
@@ -1699,10 +1692,6 @@ local function openHandlingPage(ctx)
 		if type(fragments) ~= "table" then
 			return 0, FRAGMENTS_TOTAL, 0
 		end
-
-		-- Handling card mirrors the visual DNA model on this page:
-		-- always 6 fragment lanes (F01..F06), even if the server table
-		-- carries extra/internal indices for other systems.
 		local total = FRAGMENTS_TOTAL
 		local decoded = 0
 		local sum = 0
@@ -1725,19 +1714,6 @@ local function openHandlingPage(ctx)
 			decoded, total)
 		barFill.Size = UDim2.new(math.clamp(decoded / math.max(1, total), 0, 1), 0, 1, 0)
 	end
-
-	local dnaSubtext = Instance.new("TextLabel")
-	dnaSubtext.BackgroundTransparency = 1
-	dnaSubtext.BorderSizePixel = 0
-	dnaSubtext.Position = UDim2.fromOffset(56, 30)
-	dnaSubtext.Size = UDim2.new(1, -56, 0, 16)
-	dnaSubtext.Font = FONT_BODY
-	dnaSubtext.TextSize = 11
-	dnaSubtext.TextColor3 = COLOR_TEXT_MUTE
-	dnaSubtext.TextXAlignment = Enum.TextXAlignment.Left
-	dnaSubtext.Text = "Hunt more pirates to decode additional DNA fragments."
-	dnaSubtext.ZIndex = 73
-	dnaSubtext.Parent = dnaBody
 
 	-- STUDY DNA button
 	local studyBtn = Instance.new("TextButton")
