@@ -82,9 +82,24 @@ end
 local startScanSound = script:FindFirstChild("Start_Scan")
 local endScanSound   = script:FindFirstChild("End_Scan")
 local failureSound   = script:FindFirstChild("Failure")
+
+-- Preload so the first Play() doesn't stall fetching the asset —
+-- without this, the initial scan / failure / completion sound
+-- audibly lags behind its trigger by ~0.5 s on first use.
+task.spawn(function()
+	local ContentProvider = game:GetService("ContentProvider")
+	local toPreload = {}
+	if startScanSound then table.insert(toPreload, startScanSound) end
+	if endScanSound   then table.insert(toPreload, endScanSound)   end
+	if failureSound   then table.insert(toPreload, failureSound)   end
+	if #toPreload > 0 then
+		pcall(function() ContentProvider:PreloadAsync(toPreload) end)
+	end
+end)
+
 local function playSound(sound)
 	if not sound then return end
-	sound.TimePosition = 0  -- restart if already playing
+	sound:Stop()
 	sound:Play()
 end
 
@@ -1327,29 +1342,14 @@ local function openDNAStudyPage(ctx)
 	--   "state"          mercName, snapshot
 	--   "studyComplete"  mercName, fragmentIndex, snapshot, meta
 	--   "insertFailed"   mercName, reason
-	-- Tracks that we're waiting for the server's response to an
-	-- insertBlood we just fired. Used to gate the Start_Scan sound to
-	-- the exact round-trip that accepted a capsule; a 'state' snapshot
-	-- arriving for other reasons (initial getState, resumed study from
-	-- a previous session) leaves pendingInsert false and plays nothing.
-	local pendingInsert = false
-
 	if dnaResearchEvent then
 		table.insert(activeConnections,
 			dnaResearchEvent.OnClientEvent:Connect(function(action, mercName, ...)
 				if mercName ~= ctx.mercName then return end
 				local args = table.pack(...)
 				if action == "state" then
-					local snapshot = args[1]
-					if pendingInsert then
-						pendingInsert = false
-						local slot = snapshot and snapshot.activeSlot
-						if slot and slot.bloodType and (slot.secondsRemaining or 0) > 0 then
-							playSound(startScanSound)
-						end
-					end
-					renderSlotFromSnapshot(snapshot)
-					if refreshFromSnapshot then refreshFromSnapshot(snapshot) end
+					renderSlotFromSnapshot(args[1])
+					if refreshFromSnapshot then refreshFromSnapshot(args[1]) end
 				elseif action == "studyComplete" then
 					-- args[1] = fragmentIndex, args[2] = snapshot, args[3] = meta
 					renderSlotFromSnapshot(args[2])
@@ -1360,10 +1360,10 @@ local function openDNAStudyPage(ctx)
 					-- Roll back the optimistic studyActive flag set by
 					-- the click handler, otherwise the slot stays
 					-- locked after a rejected insert until the next
-					-- snapshot arrives.
+					-- snapshot arrives. Sound effects are handled
+					-- client-side in the click handler so there's no
+					-- server round-trip delay.
 					studyActive = false
-					pendingInsert = false
-					playSound(failureSound)
 					local reason = args[1]
 					if reason == "busy" then
 						showToast("SLOT BUSY")
@@ -1384,18 +1384,26 @@ local function openDNAStudyPage(ctx)
 
 	dropZone.MouseButton1Click:Connect(function()
 		if studyActive then
+			playSound(failureSound)
 			showToast("SLOT BUSY")
 			return
 		end
 		if os.clock() < clickCooldownUntil then return end
 		if not dnaResearchEvent or not ctx.mercName then return end
 		clickCooldownUntil = os.clock() + 0.5
-		pendingInsert = true
+
+		-- Client-side preview of the result so sounds fire the
+		-- instant the player clicks — no server round-trip wait. The
+		-- server still validates + echoes a state/insertFailed, and
+		-- drives the actual consumption + countdown off that, but we
+		-- already know locally whether a matching capsule exists and
+		-- whether the slot is free.
+		if countMatchingSamples() <= 0 then
+			playSound(failureSound)
+		else
+			playSound(startScanSound)
+		end
 		dnaResearchEvent:FireServer("insertBlood", ctx.mercName)
-		-- Start_Scan plays from the OnClientEvent handler once the
-		-- server confirms the insert landed; Failure plays if it
-		-- rejects (no capsule / slot busy). Firing here would bark
-		-- on every click, even when the server refuses.
 	end)
 
 	-- ── Research Log card (bottom of left column) ─────────────────────
