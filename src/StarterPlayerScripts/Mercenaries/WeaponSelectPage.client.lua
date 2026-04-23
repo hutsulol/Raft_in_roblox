@@ -632,11 +632,34 @@ local function openWeaponSelectPage(ctx)
 	local TAB_TEXT_SEL       = Color3.fromRGB(230, 245, 255)
 	local TAB_TEXT_UNSEL     = COLOR_TEXT_DIM
 
+	-- Default the initial tab to the equipped weapon's profession so
+	-- the selected-card stroke is visible the moment the page opens.
+	-- Falls back to Warrior if the weapons list is missing the def
+	-- or the def has no profession tag (catch-all weapons).
 	local arsenalActiveProfession = "Warrior"
+	do
+		local weapons = ctx.equipItems and ctx.equipItems.Weapons or {}
+		for _, def in ipairs(weapons) do
+			if def.id == equippedWeaponId and def.profession then
+				arsenalActiveProfession = def.profession
+				break
+			end
+		end
+	end
 	local arsenalTabRefs = {}
 	-- Forward-declared so the tab click handler below can invoke it.
 	-- Real implementation is assigned after the card helpers exist.
 	local buildGrid
+
+	-- Step 10 state: which weapon the detail card is currently
+	-- previewing. Default mirrors the equipped weapon so opening the
+	-- page lands the player on "what am I using right now?".
+	-- setSelectedCard + refreshDetailCard are assigned later in this
+	-- function; forward-declared so buildCard's click handler can
+	-- invoke them without caring about declaration order.
+	local selectedWeaponId = equippedWeaponId
+	local setSelectedCard
+	local refreshDetailCard
 
 	local function refreshTabVisuals()
 		for profession, ref in pairs(arsenalTabRefs) do
@@ -763,7 +786,7 @@ local function openWeaponSelectPage(ctx)
 	-- Single weapon card. Returns a table of its named sub-refs so
 	-- Step 10's selection + Step 11's equip-refresh can flip chip
 	-- states without rebuilding the card.
-	local function buildCard(def, col, row, unlocked, equipped)
+	local function buildCard(def, col, row, unlocked, equipped, selected)
 		local x = (col - 1) * (CARD_W + GRID_COL_GAP)
 		local y = GRID_TOP + (row - 1) * (CARD_H + GRID_ROW_GAP)
 
@@ -779,10 +802,17 @@ local function openWeaponSelectPage(ctx)
 		card.ZIndex = 54
 		card.Parent = arsenal
 
+		-- Stroke tracks SELECTION (which card is previewed in the
+		-- detail panel), not equipped state — the "E" chip marks the
+		-- equipped card so both concerns stay independent.
 		local stroke = Instance.new("UIStroke")
-		stroke.Color     = equipped and CARD_STROKE_SEL or CARD_STROKE
-		stroke.Thickness = equipped and 1.4 or 1
+		stroke.Color     = selected and CARD_STROKE_SEL or CARD_STROKE
+		stroke.Thickness = selected and 1.4 or 1
 		stroke.Parent    = card
+
+		card.MouseButton1Click:Connect(function()
+			if setSelectedCard then setSelectedCard(def.id) end
+		end)
 
 		-- Level chip top-left. EQUIP_ITEMS has no per-weapon level
 		-- mechanic yet, so every card reads 'Lv 1' for now; the chip
@@ -964,7 +994,8 @@ local function openWeaponSelectPage(ctx)
 				local row = math.floor(visible / GRID_COLS) + 1
 				local unlocked = def.alwaysUnlocked or unlockedSet[def.id] == true
 				local equipped = (def.id == equippedWeaponId)
-				weaponCardRefs[def.id] = buildCard(def, col, row, unlocked, equipped)
+				local selected = (def.id == selectedWeaponId)
+				weaponCardRefs[def.id] = buildCard(def, col, row, unlocked, equipped, selected)
 				visible = visible + 1
 			end
 		end
@@ -1318,7 +1349,7 @@ local function openWeaponSelectPage(ctx)
 		return string.format("%d", math.floor(v + 0.5))
 	end
 
-	local function refreshDetailCard(def)
+	refreshDetailCard = function(def)
 		if not def then
 			detailName.Text = "—"
 			detailType.Text = "—"
@@ -1429,9 +1460,35 @@ local function openWeaponSelectPage(ctx)
 		end
 	end
 
-	-- Initial paint — equipped weapon by default. Step 10 adds the
-	-- grid-click path that swaps the detail card to any other def.
-	refreshDetailCard(findWeaponDef(equippedWeaponId))
+	-- Clicking a card preselects that weapon: flip the old highlight
+	-- off, flip the new one on, and repaint the detail panel. No-op
+	-- if the clicked card is already selected.
+	setSelectedCard = function(weaponId)
+		local def = findWeaponDef(weaponId)
+		if not def then return end
+		if selectedWeaponId == weaponId then return end
+
+		local prevRef = weaponCardRefs[selectedWeaponId]
+		if prevRef and prevRef.stroke then
+			prevRef.stroke.Color     = CARD_STROKE
+			prevRef.stroke.Thickness = 1
+		end
+
+		selectedWeaponId = weaponId
+
+		local newRef = weaponCardRefs[weaponId]
+		if newRef and newRef.stroke then
+			newRef.stroke.Color     = CARD_STROKE_SEL
+			newRef.stroke.Thickness = 1.4
+		end
+
+		refreshDetailCard(def)
+	end
+
+	-- Initial paint — selectedWeaponId was seeded at page-open to the
+	-- currently-equipped weapon, so this just fills the detail panel
+	-- to match whatever buildGrid already highlighted.
+	refreshDetailCard(findWeaponDef(selectedWeaponId))
 
 	updateResponsiveScale()
 
