@@ -98,17 +98,22 @@ local function makeBackpackIcon(parent, size, color)
 	return c
 end
 
--- ─── Rarity star row (N small rotated-square stars) ───────────────
--- Mirrors HandlingPage / MercenariesMenu's makeStarRow so the rarity
--- visual stays in lock-step across every phone sub-page. Filled
--- stars render as solid rotated squares, empty as outlines.
-local COLOR_GOLD = Color3.fromRGB(230, 190, 100)
+-- ─── Rarity star row (image-asset stars, 4 total) ────────────────
+-- Mirrors HandlingPage's makeImageStarRow so the rarity visual stays
+-- in lock-step across every phone sub-page. `filled` can be fractional:
+-- a boundary slot more than 25% of the way toward the next integer
+-- renders as a half-star.
+local COLOR_GOLD = Color3.fromRGB(230, 190, 100) -- retained for other
+                                                 -- golden UI accents
 
-local function makeStarRow(parent, filled, total, size, color)
-	size   = size   or 9
-	total  = total  or 5
-	color  = color  or COLOR_GOLD
-	filled = math.clamp(filled or 0, 0, total)
+local STAR_IMAGE_FULL  = "rbxassetid://128398990741410"
+local STAR_IMAGE_EMPTY = "rbxassetid://96860361998800"
+local STAR_IMAGE_HALF  = "rbxassetid://97995242534538"
+
+local function makeStarRow(parent, filled, total, size)
+	size   = size   or 12
+	total  = total  or 4
+	filled = math.clamp(tonumber(filled) or 0, 0, total)
 
 	local gap = 2
 	local c = Instance.new("Frame")
@@ -119,25 +124,25 @@ local function makeStarRow(parent, filled, total, size, color)
 	c.Parent = parent
 
 	for i = 1, total do
-		local star = Instance.new("Frame")
+		local assetId
+		if filled >= i then
+			assetId = STAR_IMAGE_FULL
+		elseif (i - filled) < 0.75 then
+			assetId = STAR_IMAGE_HALF
+		else
+			assetId = STAR_IMAGE_EMPTY
+		end
+
+		local star = Instance.new("ImageLabel")
+		star.Name = "Star" .. i
+		star.BackgroundTransparency = 1
+		star.BorderSizePixel = 0
 		star.AnchorPoint = Vector2.new(0.5, 0.5)
 		star.Position = UDim2.new(0, (i - 1) * (size + gap) + size * 0.5, 0.5, 0)
-		star.Size = UDim2.fromOffset(size * 0.72, size * 0.72)
-		star.Rotation = 45
-		star.BorderSizePixel = 0
-		if i <= filled then
-			star.BackgroundColor3 = color
-			star.BackgroundTransparency = 0
-			star.Parent = c
-		else
-			star.BackgroundTransparency = 1
-			star.Parent = c
-			local ss = Instance.new("UIStroke")
-			ss.Color       = color
-			ss.Thickness   = 1
-			ss.Transparency = 0.6
-			ss.Parent      = star
-		end
+		star.Size = UDim2.fromOffset(size, size)
+		star.Image = assetId
+		star.ScaleType = Enum.ScaleType.Fit
+		star.Parent = c
 	end
 
 	return c
@@ -845,7 +850,7 @@ local function openBodySelectPage(ctx)
 
 		-- Rarity star row pinned to the bottom of the card.
 		local stars = math.clamp(def.stars or 0, 0, 5)
-		local starRow = makeStarRow(card, stars, 5, 8, COLOR_GOLD)
+		local starRow = makeStarRow(card, math.min(stars, 4), 4, 10)
 		starRow.Name = "Stars"
 		starRow.AnchorPoint = Vector2.new(0.5, 1)
 		starRow.Position = UDim2.new(0.5, 0, 1, -8)
@@ -1358,7 +1363,7 @@ local function openBodySelectPage(ctx)
 		for _, child in detailStarsRow:GetChildren() do
 			if child:IsA("GuiObject") then child:Destroy() end
 		end
-		local stars = makeStarRow(detailStarsRow, def.stars or 0, 5, 11, COLOR_GOLD)
+		local stars = makeStarRow(detailStarsRow, math.min(def.stars or 0, 4), 4, 13)
 		stars.AnchorPoint = Vector2.new(0, 0.5)
 		stars.Position = UDim2.new(0, 0, 0.5, 0)
 		stars.ZIndex = 54
