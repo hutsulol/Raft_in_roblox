@@ -76,6 +76,17 @@ local function makeBackIcon(parent, size, color)
 	return c
 end
 
+-- Study-phase sound effects (Sound instances parented directly to
+-- this script in Studio). Look them up once; if either is missing
+-- we fall through silently rather than spamming warnings per click.
+local startScanSound = script:FindFirstChild("Start_Scan")
+local endScanSound   = script:FindFirstChild("End_Scan")
+local function playSound(sound)
+	if not sound then return end
+	sound.TimePosition = 0  -- restart if already playing
+	sound:Play()
+end
+
 -- Asset id for the DNA-sample (blood-capsule) icon used for the top
 -- SAMPLES chip and the SAMPLE SLOT card-header counter.
 local SAMPLE_ICON_ID = "rbxassetid://115522744020445"
@@ -1224,6 +1235,7 @@ local function openDNAStudyPage(ctx)
 		analysisBox.Visible = false
 		progressTrack.Visible = false
 		successLabel.Visible = true
+		playSound(endScanSound)
 		task.delay(1.5, function()
 			if os.clock() >= successFlashUntil - 0.01 then
 				setOverlayIdle()
@@ -1361,6 +1373,7 @@ local function openDNAStudyPage(ctx)
 		if not dnaResearchEvent or not ctx.mercName then return end
 		clickCooldownUntil = os.clock() + 0.5
 		dnaResearchEvent:FireServer("insertBlood", ctx.mercName)
+		playSound(startScanSound)
 	end)
 
 	-- ── Research Log card (bottom of left column) ─────────────────────
