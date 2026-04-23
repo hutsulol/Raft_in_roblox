@@ -843,7 +843,25 @@ end
 -- Rebuild only the weapon inside an already-constructed clone. Called at
 -- viewport creation time and on every equipment change so swapping
 -- between Sword and FishingRod doesn't restart the idle animation.
+-- Backpack ids never belong in the weapon slot — they're body-slot
+-- accessories handled by syncBackpackVisibility. If one ever leaks in
+-- (stale cache, wrong caller), we downgrade to Unarmed so the hand
+-- cleanup still runs but no ReplicatedStorage "Backpack" Tool gets
+-- welded to the right arm. Keep this table in lock-step with the
+-- server's EQUIPPABLE_BACKPACKS in MercenaryEquipment.server.lua.
+local WEAPON_SLOT_BACKPACK_IDS = {
+	Backpack      = true,
+	BackPack_lvl2 = true,
+}
+
 local function applyWeaponToClone(clone, weaponId)
+	-- Sanitise backpack ids up front so the ReplicatedStorage lookup
+	-- below can't possibly grab a backpack Tool and weld it to the
+	-- hand. Falls through to the Unarmed branch (strip-only, no attach).
+	if weaponId and WEAPON_SLOT_BACKPACK_IDS[weaponId] then
+		weaponId = "Unarmed"
+	end
+
 	local requestedTool = weaponId
 	if not requestedTool or requestedTool == "Sword" then
 		requestedTool = "ClassicSword"
@@ -985,10 +1003,12 @@ local function buildMercViewport(parent, mercName, weaponId)
 		cached.vp.Parent = parent
 	end
 	if cached and cached.vp then
-		if cached.weaponId ~= weaponId then
-			applyWeaponToClone(cached.clone, weaponId)
-			cached.weaponId = weaponId
-		end
+		-- Re-applying is cheap (idempotent strip+reweld) and it also
+		-- acts as a self-heal: any leftover Tool in the right arm from
+		-- a polluted earlier state gets stripped on the next cache hit,
+		-- not only when the weapon id actually differs.
+		applyWeaponToClone(cached.clone, weaponId)
+		cached.weaponId = weaponId
 		syncBackpackVisibility(cached.clone, mercName)
 		return cached.vp
 	end
