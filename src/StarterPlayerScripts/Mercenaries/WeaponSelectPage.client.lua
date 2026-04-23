@@ -1087,28 +1087,104 @@ local function openWeaponSelectPage(ctx)
 	divider.ZIndex = 53
 	divider.Parent = detailCard
 
-	-- ── Stat rows (content populated in Step 9) ─────────────────────
-	-- Reserved Frame so Step 9's per-weapon stat-row builder has a
-	-- known parent. Height left flexible; the builder will write the
-	-- actual rows in.
+	-- ── Primary stat row (Base Attack / Fishing Speed / Extraction Speed)
+	-- Label on top, big numeric value on the left, and a dim speed-bonus
+	-- chip on the right when the weapon's stat scales with merc speed.
+	-- Profession decides the label + which base field we read from the
+	-- def; refreshDetailCard writes the actual text.
+	local STAT_ROW_H = 58
 	local detailStatRow = Instance.new("Frame")
-	detailStatRow.Name = "StatRows"
+	detailStatRow.Name = "StatRow"
 	detailStatRow.BackgroundTransparency = 1
 	detailStatRow.BorderSizePixel = 0
 	detailStatRow.Position = UDim2.fromOffset(DETAIL_PAD_X, HEADER_TOP + ICON_SIZE + 20)
-	detailStatRow.Size = UDim2.new(1, -DETAIL_PAD_X * 2, 0, 44)
+	detailStatRow.Size = UDim2.new(1, -DETAIL_PAD_X * 2, 0, STAT_ROW_H)
 	detailStatRow.ZIndex = 53
 	detailStatRow.Parent = detailCard
+
+	local statLabel = Instance.new("TextLabel")
+	statLabel.Name = "StatLabel"
+	statLabel.BackgroundTransparency = 1
+	statLabel.BorderSizePixel = 0
+	statLabel.Position = UDim2.fromOffset(0, 0)
+	statLabel.Size = UDim2.new(1, 0, 0, 14)
+	statLabel.Font = FONT_BODY
+	statLabel.TextSize = 11
+	statLabel.TextColor3 = COLOR_TEXT_DIM
+	statLabel.TextXAlignment = Enum.TextXAlignment.Left
+	statLabel.Text = "BASE ATTACK"
+	statLabel.ZIndex = 54
+	statLabel.Parent = detailStatRow
+
+	local statValue = Instance.new("TextLabel")
+	statValue.Name = "StatValue"
+	statValue.BackgroundTransparency = 1
+	statValue.BorderSizePixel = 0
+	statValue.Position = UDim2.fromOffset(0, 16)
+	statValue.Size = UDim2.new(0.5, 0, 0, 30)
+	statValue.Font = FONT_TITLE
+	statValue.TextSize = 24
+	statValue.TextColor3 = COLOR_TEXT
+	statValue.TextXAlignment = Enum.TextXAlignment.Left
+	statValue.TextYAlignment = Enum.TextYAlignment.Center
+	statValue.Text = "0"
+	statValue.ZIndex = 54
+	statValue.Parent = detailStatRow
+
+	local statBonus = Instance.new("TextLabel")
+	statBonus.Name = "StatBonus"
+	statBonus.BackgroundTransparency = 1
+	statBonus.BorderSizePixel = 0
+	statBonus.AnchorPoint = Vector2.new(1, 0.5)
+	statBonus.Position = UDim2.new(1, 0, 0, 31)
+	statBonus.Size = UDim2.fromOffset(130, 14)
+	statBonus.Font = FONT_BODY
+	statBonus.TextSize = 11
+	statBonus.TextColor3 = Color3.fromRGB(150, 210, 235)
+	statBonus.TextXAlignment = Enum.TextXAlignment.Right
+	statBonus.Text = ""
+	statBonus.Visible = false
+	statBonus.ZIndex = 54
+	statBonus.Parent = detailStatRow
+
+	-- Mini progress bar under the value so the number has visual
+	-- weight even when values are small. Fill ratio = value / cap;
+	-- cap varies by stat type so fishing/extraction bars aren't
+	-- crushed by the higher Base-Attack scale.
+	local statBarTrack = Instance.new("Frame")
+	statBarTrack.Name = "StatBar"
+	statBarTrack.BackgroundColor3 = Color3.fromRGB(24, 40, 62)
+	statBarTrack.BackgroundTransparency = 0.2
+	statBarTrack.BorderSizePixel = 0
+	statBarTrack.Position = UDim2.fromOffset(0, 49)
+	statBarTrack.Size = UDim2.new(1, 0, 0, 4)
+	statBarTrack.ZIndex = 54
+	statBarTrack.Parent = detailStatRow
+	local statBarCorner = Instance.new("UICorner")
+	statBarCorner.CornerRadius = UDim.new(1, 0)
+	statBarCorner.Parent = statBarTrack
+
+	local statBarFill = Instance.new("Frame")
+	statBarFill.Name = "Fill"
+	statBarFill.BackgroundColor3 = HOLO_EDGE
+	statBarFill.BorderSizePixel = 0
+	statBarFill.Size = UDim2.new(0, 0, 1, 0)
+	statBarFill.ZIndex = 55
+	statBarFill.Parent = statBarTrack
+	local statBarFillCorner = Instance.new("UICorner")
+	statBarFillCorner.CornerRadius = UDim.new(1, 0)
+	statBarFillCorner.Parent = statBarFill
 
 	-- ── Star row + level line ───────────────────────────────────────
 	-- Star row gets rebuilt on every refresh (so the filled count
 	-- tracks def.stars), so we keep a parent Frame with a constant
 	-- position and destroy the previous stars before drawing new.
+	local STATS_BOTTOM = HEADER_TOP + ICON_SIZE + 20 + STAT_ROW_H
 	local detailStarsRow = Instance.new("Frame")
 	detailStarsRow.Name = "StarsRow"
 	detailStarsRow.BackgroundTransparency = 1
 	detailStarsRow.BorderSizePixel = 0
-	detailStarsRow.Position = UDim2.fromOffset(DETAIL_PAD_X, HEADER_TOP + ICON_SIZE + 72)
+	detailStarsRow.Position = UDim2.fromOffset(DETAIL_PAD_X, STATS_BOTTOM + 8)
 	detailStarsRow.Size = UDim2.new(1, -DETAIL_PAD_X * 2, 0, 16)
 	detailStarsRow.ZIndex = 53
 	detailStarsRow.Parent = detailCard
@@ -1117,7 +1193,7 @@ local function openWeaponSelectPage(ctx)
 	detailLevelLabel.Name = "LevelLine"
 	detailLevelLabel.BackgroundTransparency = 1
 	detailLevelLabel.BorderSizePixel = 0
-	detailLevelLabel.Position = UDim2.fromOffset(DETAIL_PAD_X, HEADER_TOP + ICON_SIZE + 92)
+	detailLevelLabel.Position = UDim2.fromOffset(DETAIL_PAD_X, STATS_BOTTOM + 28)
 	detailLevelLabel.Size = UDim2.new(1, -DETAIL_PAD_X * 2, 0, 18)
 	detailLevelLabel.Font = FONT_TITLE
 	detailLevelLabel.TextSize = 12
@@ -1134,8 +1210,8 @@ local function openWeaponSelectPage(ctx)
 	detailDescription.Name = "Description"
 	detailDescription.BackgroundTransparency = 1
 	detailDescription.BorderSizePixel = 0
-	detailDescription.Position = UDim2.fromOffset(DETAIL_PAD_X, HEADER_TOP + ICON_SIZE + 122)
-	detailDescription.Size = UDim2.new(1, -DETAIL_PAD_X * 2, 0, 220)
+	detailDescription.Position = UDim2.fromOffset(DETAIL_PAD_X, STATS_BOTTOM + 58)
+	detailDescription.Size = UDim2.new(1, -DETAIL_PAD_X * 2, 0, 200)
 	detailDescription.Font = FONT_BODY
 	detailDescription.TextSize = 12
 	detailDescription.TextColor3 = COLOR_TEXT_DIM
@@ -1197,12 +1273,61 @@ local function openWeaponSelectPage(ctx)
 		return unlockedSet[def.id] == true
 	end
 
+	-- Merc speed pulled from the theme charStats we were handed. Used
+	-- by the fishing / extraction stat rows, which scale linearly
+	-- with speed. Falls back to 0 if the theme is missing.
+	local function getMercSpeed()
+		local theme = ctx.theme or {}
+		local stats = theme.charStats or {}
+		return tonumber(stats.spd) or 0
+	end
+
+	-- Maps a weapon's profession to (label, baseField, cap, unit,
+	-- scalesWithSpeed). Warrior weapons use a flat Base Attack — speed
+	-- doesn't make them hit harder — while Fisherman / Assistant
+	-- roles have rate-based stats that scale with merc speed.
+	--   cap drives the mini progress bar's fill ratio.
+	--   unit is appended after the numeric value ("/min", "", ...).
+	local STAT_PROFILE_WARRIOR   = {
+		label = "BASE ATTACK",        baseKey = "baseAttack",
+		cap = 100, unit = "", scales = false,
+	}
+	local STAT_PROFILE_FISHERMAN = {
+		label = "FISHING SPEED",      baseKey = "baseFishSpeed",
+		cap = 20,  unit = " /min", scales = true,
+	}
+	local STAT_PROFILE_ASSISTANT = {
+		label = "EXTRACTION SPEED",   baseKey = "baseExtractSpeed",
+		cap = 20,  unit = " /min", scales = true,
+	}
+
+	local function getStatProfile(def)
+		local prof = def and def.profession or "Assistant"
+		if prof == "Warrior"   then return STAT_PROFILE_WARRIOR   end
+		if prof == "Fisherman" then return STAT_PROFILE_FISHERMAN end
+		return STAT_PROFILE_ASSISTANT
+	end
+
+	-- Formats the stat value. Integer for attack, one decimal for
+	-- rate-based stats so a small +N% speed bonus is visible on the
+	-- number, not only on the bonus chip.
+	local function formatStatValue(profile, v)
+		if profile.scales then
+			return string.format("%.1f", v)
+		end
+		return string.format("%d", math.floor(v + 0.5))
+	end
+
 	local function refreshDetailCard(def)
 		if not def then
 			detailName.Text = "—"
 			detailType.Text = "—"
 			detailDescription.Text = ""
 			detailEquippedChip.Visible = false
+			statLabel.Text = "—"
+			statValue.Text = "0"
+			statBonus.Visible = false
+			statBarFill.Size = UDim2.new(0, 0, 1, 0)
 			for _, child in detailIconBox:GetChildren() do
 				if child:IsA("GuiObject") then child:Destroy() end
 			end
@@ -1241,6 +1366,29 @@ local function openWeaponSelectPage(ctx)
 			glyph.Position = UDim2.fromScale(0.5, 0.5)
 			glyph.ZIndex = 54
 		end
+
+		-- Stat row — label/value/bonus/bar driven by the weapon's
+		-- profession profile. Speed-scaling stats get a cyan "+N%"
+		-- chip; flat stats (Base Attack) hide it.
+		local profile = getStatProfile(def)
+		local base    = tonumber(def[profile.baseKey]) or 0
+		local speed   = getMercSpeed()
+		local speedMult = profile.scales and (1 + speed / 100) or 1
+		local finalVal  = base * speedMult
+
+		statLabel.Text = profile.label
+		statValue.Text = formatStatValue(profile, finalVal)
+		if profile.scales and speed > 0 and base > 0 then
+			statBonus.Visible = true
+			statBonus.Text = string.format("+%d%% SPEED", speed)
+		else
+			statBonus.Visible = false
+		end
+		local ratio = profile.cap > 0 and math.clamp(finalVal / profile.cap, 0, 1) or 0
+		statBarFill.Size = UDim2.new(ratio, 0, 1, 0)
+		statBarFill.BackgroundColor3 = (profile == STAT_PROFILE_WARRIOR)
+			and Color3.fromRGB(235, 150, 110)
+			or HOLO_EDGE
 
 		-- Star row — destroy the old and draw fresh.
 		for _, child in detailStarsRow:GetChildren() do
