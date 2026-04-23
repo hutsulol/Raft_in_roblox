@@ -1498,12 +1498,16 @@ local function openDNAStudyPage(ctx)
 
 	-- Two rails with a slight "glow" underlay: wider low-opacity pass
 	-- first, thinner bright pass on top. Reads as a soft cyan beam at
-	-- screen size without needing shader tricks.
+	-- screen size without needing shader tricks. Segment count is
+	-- generous (240 per rail) so the sine curve stays smooth at the
+	-- current ~190 px amplitude — the previous 96 showed visible
+	-- polygonal kinks near the crossovers where the slope is
+	-- steepest.
 	drawHelixRails(centreColumn, HELIX_CENTRE_X, HELIX_TOP_Y, HELIX_AMP,
 		HELIX_H, HELIX_PERIOD,
-		Color3.fromRGB(70, 140, 200), 6, 96)
+		Color3.fromRGB(70, 140, 200), 6, 240)
 	drawHelixRails(centreColumn, HELIX_CENTRE_X, HELIX_TOP_Y, HELIX_AMP,
-		HELIX_H, HELIX_PERIOD, HOLO_EDGE, 3, 96)
+		HELIX_H, HELIX_PERIOD, HOLO_EDGE, 3, 240)
 
 	-- ── 6 fragment bars ───────────────────────────────────────────────
 	-- Two lenses × three rungs each = 6 fragments total. Index mapping
@@ -1519,7 +1523,7 @@ local function openDNAStudyPage(ctx)
 	local BARS_PER_LENS  = 3
 	local BAR_THICKNESS  = 2
 	local DOT_SIZE       = 4
-	local LENS_BAR_SCALE = 0.82
+	local LENS_BAR_SCALE = 1.0 -- endpoints land on the rail centerline
 
 	local function buildFragmentBar(index, y, width)
 		local frag = Instance.new("Frame")
