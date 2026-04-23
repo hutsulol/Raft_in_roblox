@@ -302,6 +302,26 @@ end
 
 local lastAttack = 0
 
+-- WeaponSelect's UI shows Extraction Speed as `base * (1 + speed/100)`;
+-- mirror that multiplier here so the harvest cooldown actually shrinks
+-- as the merc's DNA-research speed stat grows. Falls back to the raw
+-- ATTACK_COOLDOWN if the DNAResearch module isn't loaded yet or the
+-- owner has disconnected.
+local function getHarvestCooldown()
+	local getState = _G.GetDNAResearchMercState
+	if not getState then return ATTACK_COOLDOWN end
+	local ownerUserId = model:GetAttribute("OwnerUserId")
+	local mercName    = model:GetAttribute("MercName")
+	if not ownerUserId or not mercName then return ATTACK_COOLDOWN end
+	local player = Players:GetPlayerByUserId(ownerUserId)
+	if not player then return ATTACK_COOLDOWN end
+	local state = getState(player, mercName)
+	local speed = state and state.stats and tonumber(state.stats.speed) or 0
+	local mult  = 1 + speed / 100
+	if mult <= 0 then return ATTACK_COOLDOWN end
+	return ATTACK_COOLDOWN / mult
+end
+
 task.spawn(function()
 	while model.Parent and humanoid.Health > 0 do
 		local hrp = getHRP()
@@ -323,9 +343,10 @@ task.spawn(function()
 		end
 
 		local now = tick()
-		if now - lastAttack >= ATTACK_COOLDOWN then
+		local cooldown = getHarvestCooldown()
+		if now - lastAttack >= cooldown then
 			lastAttack = now
-			cooldownEndsAt = now + ATTACK_COOLDOWN
+			cooldownEndsAt = now + cooldown
 			playHitAnim()
 
 			-- Let the swing animation (~0.3 s) finish before the resource

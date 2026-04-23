@@ -121,6 +121,21 @@ end
 
 -- ── Fishing catch loop ─────────────────────────────────────────────────
 
+-- WeaponSelect's UI displays Fishing Speed as `base * (1 + speed/100)`;
+-- mirror that multiplier here so the catch interval actually shortens
+-- as the merc's DNA-research speed stat grows. Falls back to the raw
+-- CATCH_INTERVAL if the DNAResearch module isn't loaded yet or the
+-- player has disconnected.
+local function getFishingInterval(player, mercName)
+	local getState = _G.GetDNAResearchMercState
+	if not getState or not player or not mercName then return CATCH_INTERVAL end
+	local state = getState(player, mercName)
+	local speed = state and state.stats and tonumber(state.stats.speed) or 0
+	local mult  = 1 + speed / 100
+	if mult <= 0 then return CATCH_INTERVAL end
+	return CATCH_INTERVAL / mult
+end
+
 local function startFishingLoop(model)
 	local ownerUserId = model:GetAttribute("OwnerUserId")
 	local mercName = model:GetAttribute("MercName")
@@ -128,7 +143,12 @@ local function startFishingLoop(model)
 
 	task.spawn(function()
 		while model.Parent do
-			task.wait(CATCH_INTERVAL)
+			-- Resolve the owner before the wait so the interval can be
+			-- scaled by the current merc speed. Recomputed every cycle
+			-- so research completed mid-session takes effect on the
+			-- very next catch, not only at next spawn.
+			local player = getPlayerByUserId(ownerUserId)
+			task.wait(getFishingInterval(player, mercName))
 			if not model.Parent then break end
 
 			local humanoid = model:FindFirstChildOfClass("Humanoid")
@@ -138,8 +158,9 @@ local function startFishingLoop(model)
 			local catch = rollCatch()
 			if not catch then continue end
 
-			-- Find the owning player and merc entry
-			local player = getPlayerByUserId(ownerUserId)
+			-- Re-resolve the player after the wait in case they
+			-- (re)joined during the interval.
+			player = getPlayerByUserId(ownerUserId)
 			if not player then continue end
 			local mercFolder = player:FindFirstChild("Mercenaries")
 			local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
