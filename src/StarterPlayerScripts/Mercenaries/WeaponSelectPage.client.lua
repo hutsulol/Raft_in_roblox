@@ -773,15 +773,46 @@ local function openWeaponSelectPage(ctx)
 	local EQUIP_CHIP_COLOR  = Color3.fromRGB( 90, 190, 120)
 	local EQUIP_CHIP_TEXT   = Color3.fromRGB(230, 255, 235)
 
-	-- Placeholder: NEW-badge set. Step 12 replaces this with a
-	-- DataStore-backed table of weapons the player has already
-	-- clicked; for Step 6 everything the player owns counts as
-	-- not-new so no NEW badges flash unless the step's commits land
-	-- independently from 12.
+	-- NEW-badge set, kept in sync with the WeaponSeenState DataStore.
+	-- Starter gear (alwaysUnlocked weapons) never shows NEW — those
+	-- are default-equipped items, not discoveries. Anything the
+	-- player has unlocked but hasn't clicked yet in this or a prior
+	-- session gets the NEW chip.
 	local seenWeapons = {}
+	local seenEvent   = ReplicatedStorage:FindFirstChild("WeaponSeenState")
 	local function isNew(def, unlocked)
 		if not unlocked then return false end
+		if def.alwaysUnlocked then return false end
 		return not seenWeapons[def.id]
+	end
+
+	-- Pull the persisted seen set on page open. The grid is already
+	-- built by the time the response fires, so on arrival we merge
+	-- into the local table and rebuild the grid in place so any NEW
+	-- chips stamped by the initial (empty) state disappear.
+	if seenEvent then
+		table.insert(activeConnections, seenEvent.OnClientEvent:Connect(function(action, payload)
+			if action ~= "state" then return end
+			if type(payload) ~= "table" then return end
+			for weaponId, flag in pairs(payload) do
+				if flag == true and type(weaponId) == "string" then
+					seenWeapons[weaponId] = true
+				end
+			end
+			if buildGrid then buildGrid(arsenalActiveProfession) end
+		end))
+		seenEvent:FireServer("getState")
+	end
+
+	-- Flips a weapon to "seen" locally and tells the server. Safe to
+	-- call on already-seen ids (early-outs).
+	local function markWeaponSeen(weaponId)
+		if not weaponId or weaponId == "" then return end
+		if seenWeapons[weaponId] then return end
+		seenWeapons[weaponId] = true
+		if seenEvent then
+			seenEvent:FireServer("markSeen", weaponId)
+		end
 	end
 
 	-- Single weapon card. Returns a table of its named sub-refs so
@@ -810,6 +841,22 @@ local function openWeaponSelectPage(ctx)
 		stroke.Color     = selected and CARD_STROKE_SEL or CARD_STROKE
 		stroke.Thickness = selected and 1.4 or 1
 		stroke.Parent    = card
+
+		-- Hover state: only brighten non-selected cards so the
+		-- selected card's cyan stroke stays visually dominant. The
+		-- hover color sits midway between the default border and the
+		-- selection cyan so hovering doesn't mimic selection.
+		local CARD_STROKE_HOVER = Color3.fromRGB(130, 170, 210)
+		card.MouseEnter:Connect(function()
+			if def.id == selectedWeaponId then return end
+			stroke.Color = CARD_STROKE_HOVER
+			stroke.Thickness = 1.2
+		end)
+		card.MouseLeave:Connect(function()
+			if def.id == selectedWeaponId then return end
+			stroke.Color = CARD_STROKE
+			stroke.Thickness = 1
+		end)
 
 		card.MouseButton1Click:Connect(function()
 			if setSelectedCard then setSelectedCard(def.id) end
@@ -1467,7 +1514,17 @@ local function openWeaponSelectPage(ctx)
 	setSelectedCard = function(weaponId)
 		local def = findWeaponDef(weaponId)
 		if not def then return end
-		if selectedWeaponId == weaponId then return end
+		if selectedWeaponId == weaponId then
+			-- Even a re-click on the same card should dismiss its NEW
+			-- chip — the user has clearly seen it.
+			local ref = weaponCardRefs[weaponId]
+			if ref and ref.newChip then
+				ref.newChip:Destroy()
+				ref.newChip = nil
+				markWeaponSeen(weaponId)
+			end
+			return
+		end
 
 		local prevRef = weaponCardRefs[selectedWeaponId]
 		if prevRef and prevRef.stroke then
@@ -1482,6 +1539,13 @@ local function openWeaponSelectPage(ctx)
 			newRef.stroke.Color     = CARD_STROKE_SEL
 			newRef.stroke.Thickness = 1.4
 		end
+		-- Strip the NEW chip off the just-clicked card so the player
+		-- gets instant feedback even before the server round-trip.
+		if newRef and newRef.newChip then
+			newRef.newChip:Destroy()
+			newRef.newChip = nil
+		end
+		markWeaponSeen(weaponId)
 
 		refreshDetailCard(def)
 	end
