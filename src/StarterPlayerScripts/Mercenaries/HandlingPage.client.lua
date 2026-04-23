@@ -1547,46 +1547,44 @@ local function openHandlingPage(ctx)
 	dnaContent.ZIndex = 71
 	dnaContent.Parent = dnaCard
 
-	-- Full-card clickable header (requested): icon + title + percent.
-	local dnaHeader = Instance.new("TextButton")
-	dnaHeader.Name = "DnaStudyHotspot"
-	dnaHeader.AutoButtonColor = true
-	dnaHeader.Text = ""
-	dnaHeader.BackgroundTransparency = 1
-	dnaHeader.BorderSizePixel = 0
-	dnaHeader.Size = UDim2.fromScale(1, 1)
-	dnaHeader.ZIndex = 72
-	dnaHeader.Parent = dnaContent
+	-- DNA progress mirrors the same server snapshot consumed by
+	-- DNAStudyPage (DNAResearch.getState / studyComplete).
+	local FRAGMENTS_TOTAL = 6
 
-	local dnaHeaderGlyph = Instance.new("ImageLabel")
-	dnaHeaderGlyph.Name = "DnaHeaderIcon"
-	dnaHeaderGlyph.BackgroundTransparency = 1
-	dnaHeaderGlyph.BorderSizePixel = 0
-	dnaHeaderGlyph.AnchorPoint = Vector2.new(0, 0)
-	dnaHeaderGlyph.Position = UDim2.fromOffset(0, 0)
-	dnaHeaderGlyph.Size = UDim2.fromOffset(18, 18)
-	dnaHeaderGlyph.Image = DNA_RESEARCH_ICON
-	dnaHeaderGlyph.ImageColor3 = HOLO_EDGE
-	dnaHeaderGlyph.Parent = dnaHeader
-	dnaHeaderGlyph.ZIndex = 73
+	-- Body fills the whole card (minus bottom STUDY DNA action).
+	local dnaBody = Instance.new("Frame")
+	dnaBody.BackgroundTransparency = 1
+	dnaBody.BorderSizePixel = 0
+	dnaBody.Position = UDim2.fromOffset(0, 0)
+	dnaBody.Size = UDim2.new(1, 0, 1, -30)
+	dnaBody.ZIndex = 72
+	dnaBody.Parent = dnaContent
+
+	local bigHelix = Instance.new("ImageLabel")
+	bigHelix.Name = "DnaBodyIcon"
+	bigHelix.BackgroundTransparency = 1
+	bigHelix.BorderSizePixel = 0
+	bigHelix.AnchorPoint = Vector2.new(0, 0.5)
+	bigHelix.Position = UDim2.new(0, 0, 0.5, 0)
+	bigHelix.Size = UDim2.fromOffset(42, 48)
+	bigHelix.Image = DNA_RESEARCH_ICON
+	bigHelix.ImageColor3 = HOLO_EDGE
+	bigHelix.ScaleType = Enum.ScaleType.Fit
+	bigHelix.Parent = dnaBody
+	bigHelix.ZIndex = 73
 
 	local dnaTitle = Instance.new("TextLabel")
 	dnaTitle.BackgroundTransparency = 1
 	dnaTitle.BorderSizePixel = 0
-	dnaTitle.Position = UDim2.fromOffset(28, 0)
-	dnaTitle.Size = UDim2.new(1, -78, 0, 18)
+	dnaTitle.Position = UDim2.fromOffset(56, 0)
+	dnaTitle.Size = UDim2.new(1, -112, 0, 18)
 	dnaTitle.Font = FONT_TITLE
 	dnaTitle.TextSize = 13
 	dnaTitle.TextColor3 = COLOR_TEXT
 	dnaTitle.TextXAlignment = Enum.TextXAlignment.Left
-	dnaTitle.TextYAlignment = Enum.TextYAlignment.Top
 	dnaTitle.Text = "DNA RESEARCH"
 	dnaTitle.ZIndex = 73
-	dnaTitle.Parent = dnaHeader
-
-	-- DNA progress mirrors the same server snapshot consumed by
-	-- DNAStudyPage (DNAResearch.getState / studyComplete).
-	local FRAGMENTS_TOTAL = 6
+	dnaTitle.Parent = dnaBody
 
 	local dnaPct = Instance.new("TextLabel")
 	dnaPct.BackgroundTransparency = 1
@@ -1598,36 +1596,120 @@ local function openHandlingPage(ctx)
 	dnaPct.TextSize = 13
 	dnaPct.TextColor3 = HOLO_EDGE
 	dnaPct.TextXAlignment = Enum.TextXAlignment.Right
-	dnaPct.TextYAlignment = Enum.TextYAlignment.Top
 	dnaPct.Text = "0%"
 	dnaPct.ZIndex = 73
-	dnaPct.Parent = dnaHeader
+	dnaPct.Parent = dnaBody
+
+	local fragmentsLbl = Instance.new("TextLabel")
+	fragmentsLbl.BackgroundTransparency = 1
+	fragmentsLbl.BorderSizePixel = 0
+	fragmentsLbl.Position = UDim2.fromOffset(56, 22)
+	fragmentsLbl.Size = UDim2.new(1, -56, 0, 16)
+	fragmentsLbl.Font = FONT_BODY
+	fragmentsLbl.TextSize = 13
+	fragmentsLbl.TextColor3 = COLOR_TEXT_DIM
+	fragmentsLbl.TextXAlignment = Enum.TextXAlignment.Left
+	fragmentsLbl.RichText = true
+	fragmentsLbl.Text = string.format(
+		"Fragments decoded: <b><font color=\"rgb(220,240,255)\">%d/%d</font></b>",
+		0, FRAGMENTS_TOTAL)
+	fragmentsLbl.ZIndex = 73
+	fragmentsLbl.Parent = dnaBody
+
+	local barTrack, barFill = makeHoloBar(
+		dnaBody,
+		UDim2.new(1, -60, 0, 8),
+		FRAGMENTS_TOTAL,
+		73)
+	barTrack.Position = UDim2.fromOffset(56, 44)
+	barFill.Size = UDim2.new(0, 0, 1, 0)
+
+	local dnaSubtext = Instance.new("TextLabel")
+	dnaSubtext.BackgroundTransparency = 1
+	dnaSubtext.BorderSizePixel = 0
+	dnaSubtext.Position = UDim2.fromOffset(56, 58)
+	dnaSubtext.Size = UDim2.new(1, -56, 0, 18)
+	dnaSubtext.Font = FONT_BODY
+	dnaSubtext.TextSize = 11
+	dnaSubtext.TextColor3 = COLOR_TEXT_MUTE
+	dnaSubtext.TextXAlignment = Enum.TextXAlignment.Left
+	dnaSubtext.Text = "Hunt more pirates to decode additional DNA fragments."
+	dnaSubtext.ZIndex = 73
+	dnaSubtext.Parent = dnaBody
 
 	local function decodeProgressFromSnapshot(snapshot)
 		if type(snapshot) ~= "table" then
-			return 0
+			return 0, FRAGMENTS_TOTAL, 0
 		end
 		local fragments = snapshot.fragments
 		if type(fragments) ~= "table" then
-			return 0
+			return 0, FRAGMENTS_TOTAL, 0
 		end
-
-		-- Handling card mirrors the visual DNA model on this page:
-		-- always 6 fragment lanes (F01..F06), even if the server table
-		-- carries extra/internal indices for other systems.
 		local total = FRAGMENTS_TOTAL
+		local decoded = 0
 		local sum = 0
 		for i = 1, total do
 			local pct = math.clamp(tonumber(fragments[i]) or 0, 0, 100)
 			sum += pct
+			if pct >= 100 then
+				decoded += 1
+			end
 		end
 		local genomePct = math.floor((sum / total) + 0.5)
-		return genomePct
+		return decoded, total, genomePct
 	end
 
 	local function applyDnaSnapshot(snapshot)
-		dnaPct.Text = string.format("%d%%", decodeProgressFromSnapshot(snapshot))
+		local decoded, total, genomePct = decodeProgressFromSnapshot(snapshot)
+		dnaPct.Text = string.format("%d%%", genomePct)
+		fragmentsLbl.Text = string.format(
+			"Fragments decoded: <b><font color=\"rgb(220,240,255)\">%d/%d</font></b>",
+			decoded, total)
+		barFill.Size = UDim2.new(math.clamp(decoded / math.max(1, total), 0, 1), 0, 1, 0)
 	end
+
+	-- STUDY DNA button
+	local studyBtn = Instance.new("TextButton")
+	studyBtn.Name = "StudyDna"
+	studyBtn.BackgroundColor3 = COLOR_PANEL
+	studyBtn.BackgroundTransparency = 0.1
+	studyBtn.BorderSizePixel = 0
+	studyBtn.AnchorPoint = Vector2.new(0, 1)
+	studyBtn.Position = UDim2.new(0, 0, 1, 0)
+	studyBtn.Size = UDim2.new(1, 0, 0, 26)
+	studyBtn.AutoButtonColor = true
+	studyBtn.Text = ""
+	studyBtn.ZIndex = 72
+	studyBtn.Parent = dnaContent
+	local sbStroke = Instance.new("UIStroke")
+	sbStroke.Color     = HOLO_EDGE
+	sbStroke.Thickness = 1
+	sbStroke.Parent    = studyBtn
+	local sbGrad = Instance.new("UIGradient")
+	sbGrad.Rotation = 90
+	sbGrad.Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, Color3.fromRGB(40, 90, 150)),
+		ColorSequenceKeypoint.new(1, Color3.fromRGB(20, 50, 90)),
+	})
+	sbGrad.Parent = studyBtn
+
+	local studyLbl = Instance.new("TextLabel")
+	studyLbl.BackgroundTransparency = 1
+	studyLbl.BorderSizePixel = 0
+	studyLbl.AnchorPoint = Vector2.new(0.5, 0.5)
+	studyLbl.Position = UDim2.fromScale(0.5, 0.5)
+	studyLbl.Size = UDim2.fromScale(1, 1)
+	studyLbl.Font = FONT_TITLE
+	studyLbl.TextSize = 14
+	studyLbl.TextColor3 = COLOR_TEXT
+	studyLbl.Text = "STUDY DNA"
+	studyLbl.ZIndex = 73
+	studyLbl.Parent = studyBtn
+
+	local studyChev = makeChevronRight(studyBtn, 12, COLOR_TEXT)
+	studyChev.AnchorPoint = Vector2.new(1, 0.5)
+	studyChev.Position = UDim2.new(1, -14, 0.5, 0)
+	setZIndexRecursive(studyChev, 73)
 
 	-- STUDY DNA → close Handling (detaches the cached merc viewport so
 	-- the rig + idle animation survive), then open the dedicated DNA
@@ -1637,7 +1719,7 @@ local function openHandlingPage(ctx)
 	-- equipItems, hidePhonePanels, detachCachedViewports,
 	-- buildMercViewport, onBack) so the round-trip is lossless.
 	local handlingCtx = ctx
-	dnaHeader.MouseButton1Click:Connect(function()
+	studyBtn.MouseButton1Click:Connect(function()
 		if typeof(_G.OpenDNAStudyPage) ~= "function" then
 			warn("[HandlingPage] DNAStudyPage not loaded")
 			return
