@@ -1648,7 +1648,7 @@ buildPage = function(mercNames)
 	local function triggerBack()
 		closePage()
 	end
-	backBtn.MouseButton1Click:Connect(triggerBack)
+	backBtn.MouseButton1Click:Connect(triggerBack);
 	_G.AttachBackHotkey(backBtn, triggerBack, {
 		color     = COLOR_TEXT,
 		haloColor = HOLO_EDGE,
@@ -2968,7 +2968,7 @@ buildEquipmentPage = function(mercName, mercNames)
 	local function triggerBack()
 		buildPage(currentMercNames)
 	end
-	backBtn.MouseButton1Click:Connect(triggerBack)
+	backBtn.MouseButton1Click:Connect(triggerBack);
 	_G.AttachBackHotkey(backBtn, triggerBack, {
 		color     = COLOR_TEXT,
 		haloColor = HOLO_EDGE,

@@ -483,7 +483,7 @@ local function openWeaponSelectPage(ctx)
 		closeWeaponSelectPage()
 		if ctx.onBack then ctx.onBack() end
 	end
-	backBtn.MouseButton1Click:Connect(triggerBack)
+	backBtn.MouseButton1Click:Connect(triggerBack);
 	(_G.AttachBackHotkey or function() end)(backBtn, triggerBack, {
 		activeConnections = activeConnections,
 		color             = COLOR_TEXT,
