@@ -12,19 +12,128 @@ local RunService        = game:GetService("RunService")
 local TextService       = game:GetService("TextService")
 
 local player = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
 
--- Optional hotkey helper: if the BackHotkey ModuleScript hasn't
--- synced into Studio yet, fall back to a no-op attach so the MAIN
--- MENU wiring at the bottom of this file (_G.OpenMercenariesMenu)
--- still executes. A bounded WaitForChild + pcall on require guards
--- against both "not yet present" and "errored during load" cases.
-local BackHotkey = { attach = function() end }
-local _ok, _mod = pcall(function()
-	local inst = script.Parent:WaitForChild("BackHotkey", 2)
-	return inst and require(inst) or nil
-end)
-if _ok and typeof(_mod) == "table" and typeof(_mod.attach) == "function" then
-	BackHotkey = _mod
+-- ─── Shared Q-hotkey helper (exposed as _G.AttachBackHotkey) ─────────
+-- Inlined here instead of requiring a separate ModuleScript so the
+-- phone doesn't need a new file sync to pick it up — matches the
+-- existing _G.OpenXPage pattern used by every other sub-page.
+--
+-- Usage (from any phone sub-page):
+--   if typeof(_G.AttachBackHotkey) == "function" then
+--       _G.AttachBackHotkey(backBtn, triggerBack, {
+--           activeConnections = activeConnections,
+--           color       = COLOR_TEXT,
+--           haloColor   = HOLO_EDGE,
+--           fontTitle   = FONT_TITLE,
+--       })
+--   end
+--
+-- Visual: a 20x20 "Q" glyph sits 8px outside the right edge of the
+-- BACK button, vertically centred. On Q press a halo circle behind
+-- the glyph tweens in and fades back out.
+--
+-- Input guard: walks the button's ancestry every keypress — if any
+-- GuiObject parent is Visible=false the listener ignores the event,
+-- so overlapping pages (e.g. Mercenaries hidden under HandlingPage)
+-- don't also fire.
+_G.AttachBackHotkey = function(backBtn, onBack, options)
+	if typeof(backBtn) ~= "Instance" then return nil end
+	if typeof(onBack) ~= "function" then return nil end
+	options = options or {}
+
+	local color     = options.color     or Color3.fromRGB(220, 240, 255)
+	local haloColor = options.haloColor or Color3.fromRGB(190, 220, 245)
+	local fontTitle = options.fontTitle or Enum.Font.GothamBold
+	local zIndex    = options.zIndex    or (backBtn.ZIndex or 1) + 2
+	local hintSize  = 20
+	local hintGap   = 8
+
+	local hint = Instance.new("Frame")
+	hint.Name = "QHint"
+	hint.AnchorPoint = Vector2.new(0, 0.5)
+	hint.Position = UDim2.new(1, hintGap, 0.5, 0)
+	hint.Size = UDim2.fromOffset(hintSize, hintSize)
+	hint.BackgroundTransparency = 1
+	hint.BorderSizePixel = 0
+	hint.ZIndex = zIndex
+	hint.Parent = backBtn
+
+	local halo = Instance.new("Frame")
+	halo.Name = "QHalo"
+	halo.AnchorPoint = Vector2.new(0.5, 0.5)
+	halo.Position = UDim2.fromScale(0.5, 0.5)
+	halo.Size = UDim2.fromScale(1, 1)
+	halo.BackgroundColor3 = haloColor
+	halo.BackgroundTransparency = 1
+	halo.BorderSizePixel = 0
+	halo.ZIndex = zIndex
+	halo.Parent = hint
+	local haloCorner = Instance.new("UICorner")
+	haloCorner.CornerRadius = UDim.new(1, 0)
+	haloCorner.Parent = halo
+
+	local letter = Instance.new("TextLabel")
+	letter.Name = "QLetter"
+	letter.BackgroundTransparency = 1
+	letter.BorderSizePixel = 0
+	letter.Size = UDim2.fromScale(1, 1)
+	letter.Font = fontTitle
+	letter.TextSize = 14
+	letter.TextColor3 = color
+	letter.TextXAlignment = Enum.TextXAlignment.Center
+	letter.TextYAlignment = Enum.TextYAlignment.Center
+	letter.Text = "Q"
+	letter.ZIndex = zIndex + 1
+	letter.Parent = hint
+
+	local function flashHalo()
+		halo.BackgroundTransparency = 0.35
+		TweenService:Create(halo,
+			TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ BackgroundTransparency = 1 }):Play()
+	end
+
+	local function isButtonOnScreen()
+		if not hint.Parent then return false end
+		local node = backBtn
+		while node and node ~= game do
+			if node:IsA("GuiObject") and node.Visible == false then
+				return false
+			end
+			node = node.Parent
+		end
+		return true
+	end
+
+	local conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		if input.KeyCode ~= Enum.KeyCode.Q then return end
+		if not isButtonOnScreen() then return end
+		if backBtn:IsA("GuiButton") and backBtn.Active == false then return end
+		flashHalo()
+		task.spawn(onBack)
+	end)
+
+	if typeof(options.activeConnections) == "table" then
+		table.insert(options.activeConnections, conn)
+	end
+
+	hint.AncestryChanged:Connect(function(_, newParent)
+		if newParent == nil and conn.Connected then
+			conn:Disconnect()
+		end
+	end)
+
+	return {
+		hint   = hint,
+		halo   = halo,
+		letter = letter,
+		flash  = flashHalo,
+		disconnect = function()
+			if conn.Connected then conn:Disconnect() end
+		end,
+	}
 end
 
 -- ─── Wait for SpawnMercenary remote ─────────────────────────────────────
@@ -1540,7 +1649,7 @@ buildPage = function(mercNames)
 		closePage()
 	end
 	backBtn.MouseButton1Click:Connect(triggerBack)
-	BackHotkey.attach(backBtn, triggerBack, {
+	_G.AttachBackHotkey(backBtn, triggerBack, {
 		color     = COLOR_TEXT,
 		haloColor = HOLO_EDGE,
 		fontTitle = FONT_TITLE,
@@ -2860,7 +2969,7 @@ buildEquipmentPage = function(mercName, mercNames)
 		buildPage(currentMercNames)
 	end
 	backBtn.MouseButton1Click:Connect(triggerBack)
-	BackHotkey.attach(backBtn, triggerBack, {
+	_G.AttachBackHotkey(backBtn, triggerBack, {
 		color     = COLOR_TEXT,
 		haloColor = HOLO_EDGE,
 		fontTitle = FONT_TITLE,
