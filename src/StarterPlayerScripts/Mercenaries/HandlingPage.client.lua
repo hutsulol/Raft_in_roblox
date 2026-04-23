@@ -661,7 +661,7 @@ local function buildSlotTile(parent, opts)
 
 	table.insert(motesOccludeList, tile)
 
-	local handle = { tile = tile }
+	local handle = { tile = tile, label = label, defaultLabel = tostring(opts.name or ""):upper() }
 
 	function handle.setSelected(selected)
 		handle.selected = selected and true or false
@@ -1161,6 +1161,36 @@ local function openHandlingPage(ctx)
 		end
 	end
 
+	-- Hoisted so the MAIN HAND tile's onClick below can reach it. Used
+	-- later (around the STUDY DNA button) too; the redeclaration there
+	-- is dropped so this single binding is authoritative.
+	local handlingCtx = ctx
+
+	local function openWeaponSelectFromMainHand()
+		if typeof(_G.OpenWeaponSelectPage) ~= "function" then
+			warn("[HandlingPage] WeaponSelectPage not loaded")
+			return
+		end
+		closeHandlingPage()
+		_G.OpenWeaponSelectPage({
+			screenGui             = handlingCtx.screenGui,
+			mercName              = handlingCtx.mercName,
+			theme                 = handlingCtx.theme,
+			equipItems            = handlingCtx.equipItems,
+			hidePhonePanels       = handlingCtx.hidePhonePanels,
+			detachCachedViewports = handlingCtx.detachCachedViewports,
+			buildMercViewport     = handlingCtx.buildMercViewport,
+			onBack = function()
+				if typeof(_G.CloseWeaponSelectPage) == "function" then
+					_G.CloseWeaponSelectPage()
+				end
+				if typeof(_G.OpenHandlingPage) == "function" then
+					_G.OpenHandlingPage(handlingCtx)
+				end
+			end,
+		})
+	end
+
 	slotHandles.MainHand = buildSlotTile(scaleWrap, {
 		name         = "MAIN HAND",
 		iconBuilder  = makeWeaponIcon,
@@ -1168,9 +1198,26 @@ local function openHandlingPage(ctx)
 		selected     = true,
 		position     = UDim2.fromOffset(LEFT_COL_X, TILE_TOP_Y),
 		zIndex       = 55,
-		onClick      = function() selectSlot("MainHand") end,
+		onClick      = openWeaponSelectFromMainHand,
 	})
 	applySlotTilePreview(slotHandles.MainHand, MAIN_HAND_TILE_IMAGE)
+
+	-- Hover affordance for the MAIN HAND slot: the bottom label swaps
+	-- from 'MAIN HAND' → 'CHANGE' while the cursor is over the tile so
+	-- it reads as a button. Clicking enters the weapon-select page
+	-- (wired via onClick above). Other slot tiles keep their plain
+	-- selection behaviour.
+	do
+		local mainHandTile  = slotHandles.MainHand.tile
+		local mainHandLabel = slotHandles.MainHand.label
+		local defaultLabel  = slotHandles.MainHand.defaultLabel or "MAIN HAND"
+		mainHandTile.MouseEnter:Connect(function()
+			mainHandLabel.Text = "CHANGE"
+		end)
+		mainHandTile.MouseLeave:Connect(function()
+			mainHandLabel.Text = defaultLabel
+		end)
+	end
 
 	slotHandles.Relic = buildSlotTile(scaleWrap, {
 		name         = "RELIC",
@@ -1698,11 +1745,8 @@ local function openHandlingPage(ctx)
 	-- STUDY DNA → close Handling (detaches the cached merc viewport so
 	-- the rig + idle animation survive), then open the dedicated DNA
 	-- Study sub-page with a BACK callback that reopens Handling using
-	-- the original ctx. Capturing `ctx` here preserves everything
-	-- MercenariesMenu handed in (screenGui, mercName, theme,
-	-- equipItems, hidePhonePanels, detachCachedViewports,
-	-- buildMercViewport, onBack) so the round-trip is lossless.
-	local handlingCtx = ctx
+	-- handlingCtx was hoisted earlier so the MAIN HAND tile's click
+	-- handler can reach the same captured ctx as this STUDY DNA one.
 	studyBtn.MouseButton1Click:Connect(function()
 		if typeof(_G.OpenDNAStudyPage) ~= "function" then
 			warn("[HandlingPage] DNAStudyPage not loaded")
