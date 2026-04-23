@@ -956,7 +956,7 @@ local function openHandlingPage(ctx)
 	responsiveScale.Parent = scaleWrap
 
 	local backBtnRef
-	local BACK_BTN_Y = 39
+	local BACK_BTN_Y = 10  -- matches DNAStudyPage for consistent BACK placement
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize

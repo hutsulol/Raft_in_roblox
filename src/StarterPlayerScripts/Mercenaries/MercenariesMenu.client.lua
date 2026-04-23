@@ -1346,7 +1346,7 @@ buildPage = function(mercNames)
 	-- BACK button's static y inside scaleWrap — matches the old
 	-- topBar-local (16 + 23) layout so the visual offset from the top
 	-- of the artboard is unchanged.
-	local BACK_BTN_Y = 39
+	local BACK_BTN_Y = 10  -- matches DNAStudyPage for consistent BACK placement
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
@@ -1461,40 +1461,45 @@ buildPage = function(mercNames)
 	-- the left column uses — otherwise BACK's absolute x slides around
 	-- with scaleWrap's centering while the left column stays glued to
 	-- the screen edge, making the two drift apart at different scales.
+	-- Matches DNAStudyPage's BACK button 1:1: 92×34 holo panel, glyph
+	-- + left-aligned uppercase label, ZIndex 52. updateResponsiveScale
+	-- above overrides the Position.X via dynamicBleed so BACK sits
+	-- SCREEN_MARGIN from the left edge.
 	local backBtn = Instance.new("TextButton")
 	backBtn.Name = "BackButton"
 	backBtn.AnchorPoint = Vector2.new(0, 0)
-	backBtn.Position = UDim2.fromOffset(-EDGE_BLEED_X, 39) -- overridden by updateResponsiveScale
-	backBtn.Size = UDim2.fromOffset(84, 34)
+	backBtn.Position = UDim2.fromOffset(0, BACK_BTN_Y)
+	backBtn.Size = UDim2.fromOffset(92, 34)
 	backBtn.BackgroundColor3 = HOLO_PANEL_FILL
 	backBtn.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	backBtn.BorderSizePixel = 0
 	backBtn.AutoButtonColor = true
-	backBtn.Text = "" -- label drawn as a child for precise positioning
-	backBtn.ZIndex = 6
+	backBtn.Text = "" -- glyph + label drawn as children
+	backBtn.ZIndex = 52
 	backBtn.Parent = scaleWrap
-	backBtnRef = backBtn
 	local backStroke = Instance.new("UIStroke")
 	backStroke.Color     = HOLO_PANEL_BORDER
 	backStroke.Thickness = 1
 	backStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	backStroke.Parent    = backBtn
+	backBtnRef = backBtn
 
 	local backGlyph = makeBackIcon(backBtn, 14, COLOR_TEXT)
 	backGlyph.AnchorPoint = Vector2.new(0, 0.5)
-	backGlyph.Position = UDim2.new(0, 14, 0.5, 0)
-	backGlyph.Visible = false
+	backGlyph.Position = UDim2.new(0, 12, 0.5, 0)
+	backGlyph.ZIndex = 53
 
 	local backLabel = Instance.new("TextLabel")
 	backLabel.BackgroundTransparency = 1
 	backLabel.BorderSizePixel = 0
-	backLabel.Position = UDim2.fromOffset(0, 0)
-	backLabel.Size = UDim2.fromScale(1, 1)
+	backLabel.Position = UDim2.fromOffset(30, 0)
+	backLabel.Size = UDim2.new(1, -34, 1, 0)
 	backLabel.Font = FONT_TITLE
-	backLabel.TextSize = 15
+	backLabel.TextSize = 13
 	backLabel.TextColor3 = COLOR_TEXT
-	backLabel.TextXAlignment = Enum.TextXAlignment.Center
+	backLabel.TextXAlignment = Enum.TextXAlignment.Left
 	backLabel.Text = "BACK"
+	backLabel.ZIndex = 53
 	backLabel.Parent = backBtn
 
 	backBtn.MouseButton1Click:Connect(function()
