@@ -77,10 +77,11 @@ local function makeBackIcon(parent, size, color)
 end
 
 -- Study-phase sound effects (Sound instances parented directly to
--- this script in Studio). Look them up once; if either is missing
--- we fall through silently rather than spamming warnings per click.
+-- this script in Studio). Look them up once; if any is missing we
+-- fall through silently rather than spamming warnings per click.
 local startScanSound = script:FindFirstChild("Start_Scan")
 local endScanSound   = script:FindFirstChild("End_Scan")
+local failureSound   = script:FindFirstChild("Failure")
 local function playSound(sound)
 	if not sound then return end
 	sound.TimePosition = 0  -- restart if already playing
@@ -1326,14 +1327,29 @@ local function openDNAStudyPage(ctx)
 	--   "state"          mercName, snapshot
 	--   "studyComplete"  mercName, fragmentIndex, snapshot, meta
 	--   "insertFailed"   mercName, reason
+	-- Tracks that we're waiting for the server's response to an
+	-- insertBlood we just fired. Used to gate the Start_Scan sound to
+	-- the exact round-trip that accepted a capsule; a 'state' snapshot
+	-- arriving for other reasons (initial getState, resumed study from
+	-- a previous session) leaves pendingInsert false and plays nothing.
+	local pendingInsert = false
+
 	if dnaResearchEvent then
 		table.insert(activeConnections,
 			dnaResearchEvent.OnClientEvent:Connect(function(action, mercName, ...)
 				if mercName ~= ctx.mercName then return end
 				local args = table.pack(...)
 				if action == "state" then
-					renderSlotFromSnapshot(args[1])
-					if refreshFromSnapshot then refreshFromSnapshot(args[1]) end
+					local snapshot = args[1]
+					if pendingInsert then
+						pendingInsert = false
+						local slot = snapshot and snapshot.activeSlot
+						if slot and slot.bloodType and (slot.secondsRemaining or 0) > 0 then
+							playSound(startScanSound)
+						end
+					end
+					renderSlotFromSnapshot(snapshot)
+					if refreshFromSnapshot then refreshFromSnapshot(snapshot) end
 				elseif action == "studyComplete" then
 					-- args[1] = fragmentIndex, args[2] = snapshot, args[3] = meta
 					renderSlotFromSnapshot(args[2])
@@ -1346,6 +1362,8 @@ local function openDNAStudyPage(ctx)
 					-- locked after a rejected insert until the next
 					-- snapshot arrives.
 					studyActive = false
+					pendingInsert = false
+					playSound(failureSound)
 					local reason = args[1]
 					if reason == "busy" then
 						showToast("SLOT BUSY")
@@ -1372,8 +1390,12 @@ local function openDNAStudyPage(ctx)
 		if os.clock() < clickCooldownUntil then return end
 		if not dnaResearchEvent or not ctx.mercName then return end
 		clickCooldownUntil = os.clock() + 0.5
+		pendingInsert = true
 		dnaResearchEvent:FireServer("insertBlood", ctx.mercName)
-		playSound(startScanSound)
+		-- Start_Scan plays from the OnClientEvent handler once the
+		-- server confirms the insert landed; Failure plays if it
+		-- rejects (no capsule / slot busy). Firing here would bark
+		-- on every click, even when the server refuses.
 	end)
 
 	-- ── Research Log card (bottom of left column) ─────────────────────
