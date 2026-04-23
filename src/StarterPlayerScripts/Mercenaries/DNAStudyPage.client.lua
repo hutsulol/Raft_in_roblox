@@ -425,19 +425,18 @@ end
 
 -- ─── Continuous sine-wave double-helix rails ────────────────────────
 -- Draws two rails twisting around each other as two phase-shifted sine
--- waves, forming a proper DNA silhouette. The phase is offset by +π/2
--- so the rails START at their maximum left/right separation at y=topY
--- (and again at y=topY+H, since H is tuned to a full multiple of the
--- period). This gives the bracket-capped look from the reference image
--- instead of a helix that pinches at its endpoints.
+-- waves, forming a proper DNA silhouette. The helix begins and ends
+-- at a pinch (both rails meet at cx) — matching the classic double-
+-- helix icon where the top and bottom taper to points instead of
+-- flaring open into bracket caps.
 --
--- x_L(y) = cx - A * sin(2π (y-topY) / period + π/2)
--- x_R(y) = cx + A * sin(2π (y-topY) / period + π/2)
--- (at y=topY both are ±A, sin(π/2)=1)
+-- x_L(y) = cx - A * sin(2π (y-topY) / period)
+-- x_R(y) = cx + A * sin(2π (y-topY) / period)
+-- (at y=topY both are at cx, sin(0)=0)
 --
 -- `thickness` is the on-screen line weight. Each rail is approximated
 -- by `segments` short rotated Frames; 72+ keeps the curve smooth at
--- ~360 px helix heights.
+-- ~320 px helix heights.
 local function drawHelixRails(parent, cx, topY, amplitude, H, period, color, thickness, segments)
 	segments  = segments  or 72
 	thickness = thickness or 3
@@ -462,7 +461,7 @@ local function drawHelixRails(parent, cx, topY, amplitude, H, period, color, thi
 	local prevL, prevR
 	for i = 0, segments do
 		local y = topY + (i / segments) * H
-		local phase = 2 * math.pi * (y - topY) / period + math.pi * 0.5
+		local phase = 2 * math.pi * (y - topY) / period
 		local dx = amplitude * math.sin(phase)
 		local xL = cx - dx
 		local xR = cx + dx
@@ -1472,18 +1471,17 @@ local function openDNAStudyPage(ctx)
 	-- logValueRefs is consumed by refreshFromSnapshot below.
 
 	-- ── Centre column: DNA double helix + GENOME DECODED % ───────────
-	-- Compact double-helix matching the project DNA icon. Same maths
-	-- as before (continuous sine-wave rails, +π/2 phase shift so the
-	-- rails START at their widest separation), just dimensions
-	-- shrunk so the helix occupies roughly half the centre column
-	-- instead of dominating it. HELIX_H still spans exactly 2 *
-	-- HELIX_PERIOD so we get 4 crossovers + 3 lenses + the same
-	-- half-lens bracket caps the user kept.
+	-- Classic pinched double-helix matching the project DNA icon.
+	-- Continuous sine-wave rails without the +π/2 shift, so the rails
+	-- start at a pinch at the top, cross once in the middle, and end
+	-- at a pinch at the bottom. HELIX_H = HELIX_PERIOD fits exactly
+	-- two lens shapes between the two end pinches (sin goes through
+	-- one full wave over the helix height: 0 → +A → 0 → -A → 0).
 	local HELIX_CENTRE_X = (REFERENCE_W * 0.5) - CENTRE_COL_X
-	local HELIX_H        = 320
-	local HELIX_TOP_Y    = (REFERENCE_H - HELIX_H) * 0.5 - 50
-	local HELIX_AMP      = 36
-	local HELIX_PERIOD   = 160
+	local HELIX_H        = 360
+	local HELIX_TOP_Y    = (REFERENCE_H - HELIX_H) * 0.5 - 40
+	local HELIX_AMP      = 44
+	local HELIX_PERIOD   = HELIX_H
 
 	-- Two rails with a slight "glow" underlay: wider low-opacity pass
 	-- first, thinner bright pass on top. Reads as a soft cyan beam at
@@ -1495,16 +1493,17 @@ local function openDNAStudyPage(ctx)
 		HELIX_H, HELIX_PERIOD, HOLO_EDGE, 3, 96)
 
 	-- ── 6 fragment bars ───────────────────────────────────────────────
-	-- F01-F02 strength (top lens), F03-F04 luck (middle lens),
-	-- F05-F06 speed (bottom lens) — matches the server's SECTION_STAT
-	-- map. Two rungs per lens, placed at the third / two-thirds points
-	-- of the lens's vertical span so they sit clear of the rail
-	-- pinches. Widths derive from the actual rail gap at each rung's
-	-- Y (|2 * amp * sin(phase)|) scaled slightly so the bars stop
-	-- just shy of the rails.
+	-- Two lenses × three rungs each = 6 fragments total. Index mapping
+	-- follows the server's SECTION_STAT (2 strength + 2 luck + 2 speed):
+	-- F01-F02 strength, F03-F04 luck, F05-F06 speed. Because the helix
+	-- now has only two lenses, the luck pair straddles the crossover —
+	-- F03 sits at the bottom of the top lens, F04 at the top of the
+	-- bottom lens. Bar widths derive from the actual rail gap at each
+	-- rung's Y (|2 * amp * sin(phase)|) scaled slightly so the bars
+	-- stop just shy of the rails.
 	local FRAGMENT_COUNT = 6
-	local LENS_COUNT     = 3
-	local BARS_PER_LENS  = 2
+	local LENS_COUNT     = 2
+	local BARS_PER_LENS  = 3
 	local BAR_THICKNESS  = 2
 	local DOT_SIZE       = 4
 	local LENS_BAR_SCALE = 0.82
@@ -1583,25 +1582,23 @@ local function openDNAStudyPage(ctx)
 
 	local fragmentRefs = {}
 
-	-- Each lens spans HELIX_PERIOD / 2 = 90 px and lives between two
-	-- consecutive rail crossovers. With the +π/2 phase shift the
-	-- crossovers fall at y = HELIX_TOP_Y + (k + 0.25) * HELIX_PERIOD
-	-- for k = 0, 1, 2, 3 — so the three usable lenses start at
-	--   lens 1: HELIX_TOP_Y + 0.25 * P   (y = 75)
-	--   lens 2: HELIX_TOP_Y + 0.75 * P   (y = 165)
-	--   lens 3: HELIX_TOP_Y + 1.25 * P   (y = 255)
-	-- Half-lens regions above and below host no fragments — they're
-	-- the bracket caps from the reference image.
-	local LENS_H     = HELIX_PERIOD / 2       -- 90
-	local LENS_1_TOP = HELIX_TOP_Y + HELIX_PERIOD * 0.25
+	-- Each lens spans HELIX_PERIOD / 2 and lives between two pinches.
+	-- With no phase shift the pinches fall at y = HELIX_TOP_Y + k * P/2
+	-- for k = 0, 1, 2 — so the two usable lenses start at:
+	--   lens 1: HELIX_TOP_Y            (top pinch)
+	--   lens 2: HELIX_TOP_Y + P / 2    (middle crossover)
+	-- Three rungs per lens, at local t = 1/4, 2/4, 3/4 of the lens
+	-- height so the middle rung coincides with the widest rail gap.
+	local LENS_H     = HELIX_PERIOD / 2
+	local LENS_1_TOP = HELIX_TOP_Y
 	for lensIdx = 1, LENS_COUNT do
 		local lensTopY = LENS_1_TOP + (lensIdx - 1) * LENS_H
 		for rung = 1, BARS_PER_LENS do
 			local t = rung / (BARS_PER_LENS + 1)  -- 1/4, 2/4, 3/4
 			local y = lensTopY + t * LENS_H
 			-- Rail gap at this y, matching drawHelixRails' math
-			-- (same +π/2 phase shift).
-			local phase = 2 * math.pi * (y - HELIX_TOP_Y) / HELIX_PERIOD + math.pi * 0.5
+			-- (no phase shift, so the helix pinches at the end-points).
+			local phase = 2 * math.pi * (y - HELIX_TOP_Y) / HELIX_PERIOD
 			local gap   = 2 * HELIX_AMP * math.abs(math.sin(phase))
 			local width = gap * LENS_BAR_SCALE
 			local idx = (lensIdx - 1) * BARS_PER_LENS + rung
