@@ -1482,11 +1482,19 @@ local function openDNAStudyPage(ctx)
 	-- HELIX_PERIOD = HELIX_H * 2 means the helix spans exactly half a
 	-- sine period (phase π/2 → 3π/2 with the +π/2 shift), giving the
 	-- widest-crossover-widest pattern with a single X in the middle.
-	local HELIX_CENTRE_X = (REFERENCE_W * 0.5) - CENTRE_COL_X
-	local HELIX_H        = 520
-	local HELIX_TOP_Y    = (REFERENCE_H - HELIX_H) * 0.5
-	local HELIX_AMP      = 180
+	-- The helix renders under centreColumn (positioned at COLS_Y
+	-- down the artboard), so HELIX_TOP_Y is expressed in column-local
+	-- coordinates. Centring the helix vertically in the 600 px
+	-- ARTBOARD (rather than just inside the 476 px column) means the
+	-- local top value goes slightly negative — Roblox has no clip on
+	-- the column, so the rails happily extend above it into the page.
+	-- Same for HELIX_CENTRE_X: we subtract CENTRE_COL_X so the local
+	-- position lands at the artboard's horizontal midline.
+	local HELIX_H        = 540
+	local HELIX_AMP      = 190
 	local HELIX_PERIOD   = HELIX_H * 2
+	local HELIX_CENTRE_X = (REFERENCE_W * 0.5) - CENTRE_COL_X
+	local HELIX_TOP_Y    = (REFERENCE_H - HELIX_H) * 0.5 - COLS_Y
 
 	-- Two rails with a slight "glow" underlay: wider low-opacity pass
 	-- first, thinner bright pass on top. Reads as a soft cyan beam at
