@@ -634,6 +634,9 @@ local function openWeaponSelectPage(ctx)
 
 	local arsenalActiveProfession = "Warrior"
 	local arsenalTabRefs = {}
+	-- Forward-declared so the tab click handler below can invoke it.
+	-- Real implementation is assigned after the card helpers exist.
+	local buildGrid
 
 	local function refreshTabVisuals()
 		for profession, ref in pairs(arsenalTabRefs) do
@@ -686,7 +689,7 @@ local function openWeaponSelectPage(ctx)
 			if arsenalActiveProfession == profession then return end
 			arsenalActiveProfession = profession
 			refreshTabVisuals()
-			-- Step 7 will also rebuild the weapon grid here.
+			if buildGrid then buildGrid(arsenalActiveProfession) end
 		end)
 	end
 
@@ -946,21 +949,24 @@ local function openWeaponSelectPage(ctx)
 		table.clear(weaponCardRefs)
 	end
 
-	local function buildGrid(profession)
+	-- Assign the forward-declared upvalue (see near the tab build). A
+	-- weapon def lacking a `profession` field is treated as an
+	-- unfiltered catch-all and rendered in every tab so content we
+	-- haven't categorised yet still shows up somewhere.
+	buildGrid = function(profession)
 		clearGrid()
 		local weapons = ctx.equipItems and ctx.equipItems.Weapons or {}
 		local unlockedSet = collectUnlockedSet()
 		local visible = 0
 		for _, def in ipairs(weapons) do
-			-- Step 6 ignores `profession` and shows every weapon;
-			-- Step 7 will filter here.
-			local _ = profession
-			local col = (visible % GRID_COLS) + 1
-			local row = math.floor(visible / GRID_COLS) + 1
-			local unlocked = def.alwaysUnlocked or unlockedSet[def.id] == true
-			local equipped = (def.id == equippedWeaponId)
-			weaponCardRefs[def.id] = buildCard(def, col, row, unlocked, equipped)
-			visible = visible + 1
+			if def.profession == nil or def.profession == profession then
+				local col = (visible % GRID_COLS) + 1
+				local row = math.floor(visible / GRID_COLS) + 1
+				local unlocked = def.alwaysUnlocked or unlockedSet[def.id] == true
+				local equipped = (def.id == equippedWeaponId)
+				weaponCardRefs[def.id] = buildCard(def, col, row, unlocked, equipped)
+				visible = visible + 1
+			end
 		end
 		arsenalCountLabel.Text = string.format("%d · ITEMS", visible)
 	end
