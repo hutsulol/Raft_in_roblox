@@ -708,9 +708,8 @@ local function openDNAStudyPage(ctx)
 	responsiveScale.Scale = 1
 	responsiveScale.Parent = scaleWrap
 
-	local backBtnRef, chipRef, leftColumnRef, rightColumnRef
+	local backBtnRef, leftColumnRef, rightColumnRef
 	local BACK_BTN_Y = 39
-	local CHIP_Y     = 39
 	local SIDE_MENU_SCALE = 2
 	local SIDE_MENU_RAISE_Y = 48
 
@@ -731,9 +730,6 @@ local function openDNAStudyPage(ctx)
 		dynamicBleed = math.floor(dynamicBleed + 0.5)
 		if backBtnRef then
 			backBtnRef.Position = UDim2.fromOffset(-dynamicBleed, BACK_BTN_Y)
-		end
-		if chipRef then
-			chipRef.Position = UDim2.new(1, dynamicBleed, 0, CHIP_Y)
 		end
 		if leftColumnRef then
 			leftColumnRef.Position = UDim2.fromOffset(-dynamicBleed, leftColumnRef.Position.Y.Offset)
@@ -806,90 +802,8 @@ local function openDNAStudyPage(ctx)
 		if ctx.onBack then ctx.onBack() end
 	end)
 
-	-- ── Centred "DNA · STUDY · <MERCNAME>" cluster ──────────────────
-	-- Fixed widths + absolute positioning (same recipe as HandlingPage's
-	-- top cluster — AutomaticSize + UIListLayout renders blank on the
-	-- first frame). "DNA" and "STUDY" are dim tags, the merc name is
-	-- the bright headline.
-	local mercDisplay = tostring(ctx.mercName or "—"):upper()
-	local CLUSTER_Y    = BACK_BTN_Y + 6
-	local TAG_DNA_W    = 40  -- "DNA" at 11 pt
-	local DOT_W        = 14
-	local TAG_STUDY_W  = 52  -- "STUDY" at 11 pt
-	local NAME_W       = 160 -- big merc name
-	local CLUSTER_W    = TAG_DNA_W + DOT_W + TAG_STUDY_W + DOT_W + NAME_W
-
-	local topCluster = Instance.new("Frame")
-	topCluster.Name = "TopCluster"
-	topCluster.BackgroundTransparency = 1
-	topCluster.BorderSizePixel = 0
-	topCluster.AnchorPoint = Vector2.new(0.5, 0)
-	topCluster.Position = UDim2.new(0.5, 0, 0, CLUSTER_Y)
-	topCluster.Size = UDim2.fromOffset(CLUSTER_W, 24)
-	topCluster.ZIndex = 52
-	topCluster.Parent = scaleWrap
-
-	local function tagLabel(name, text, xOffset, width, color, size)
-		local l = Instance.new("TextLabel")
-		l.Name = name
-		l.BackgroundTransparency = 1
-		l.BorderSizePixel = 0
-		l.Position = UDim2.fromOffset(xOffset, 0)
-		l.Size = UDim2.fromOffset(width, 24)
-		l.Font = FONT_TITLE
-		l.TextSize = size
-		l.TextColor3 = color
-		l.TextXAlignment = Enum.TextXAlignment.Center
-		l.Text = text
-		l.ZIndex = 53
-		l.Parent = topCluster
-		return l
-	end
-
-	tagLabel("DnaTag",   "DNA",       0,                                               TAG_DNA_W,   COLOR_TEXT_MUTE, 11)
-	tagLabel("Dot1",     "·",         TAG_DNA_W,                                       DOT_W,       COLOR_TEXT_MUTE, 14)
-	tagLabel("StudyTag", "STUDY",     TAG_DNA_W + DOT_W,                               TAG_STUDY_W, COLOR_TEXT_MUTE, 11)
-	tagLabel("Dot2",     "·",         TAG_DNA_W + DOT_W + TAG_STUDY_W,                 DOT_W,       COLOR_TEXT_MUTE, 14)
-	tagLabel("MercName", mercDisplay, TAG_DNA_W + DOT_W + TAG_STUDY_W + DOT_W,         NAME_W,      HOLO_EDGE,       18)
-
-	-- ── SAMPLES · N chip, right-edge pinned via dynamicBleed ─────────
-	-- Live-counts FullCapsule tools (in Backpack + Character) whose
-	-- BloodType attribute matches this merc, so the count mirrors
-	-- exactly what the SAMPLES slot would accept.
-	local chip = Instance.new("Frame")
-	chip.Name = "SamplesChip"
-	chip.AnchorPoint = Vector2.new(1, 0)
-	chip.Position = UDim2.new(1, 0, 0, CHIP_Y)
-	chip.Size = UDim2.fromOffset(118, 34)
-	chip.BackgroundColor3 = HOLO_PANEL_FILL
-	chip.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
-	chip.BorderSizePixel = 0
-	chip.ZIndex = 52
-	chip.Parent = scaleWrap
-	local chipStroke = Instance.new("UIStroke")
-	chipStroke.Color     = HOLO_PANEL_BORDER
-	chipStroke.Thickness = 1
-	chipStroke.Parent    = chip
-	chipRef = chip
-
-	local flask = makeFlaskIcon(chip, 14, HOLO_EDGE)
-	flask.AnchorPoint = Vector2.new(0, 0.5)
-	flask.Position = UDim2.new(0, 10, 0.5, 0)
-	flask.ZIndex = 53
-
-	local chipLabel = Instance.new("TextLabel")
-	chipLabel.Name = "SamplesLabel"
-	chipLabel.BackgroundTransparency = 1
-	chipLabel.BorderSizePixel = 0
-	chipLabel.Position = UDim2.fromOffset(28, 0)
-	chipLabel.Size = UDim2.new(1, -36, 1, 0)
-	chipLabel.Font = FONT_TITLE
-	chipLabel.TextSize = 13
-	chipLabel.TextColor3 = HOLO_EDGE
-	chipLabel.TextXAlignment = Enum.TextXAlignment.Left
-	chipLabel.Text = "SAMPLES · 0"
-	chipLabel.ZIndex = 53
-	chipLabel.Parent = chip
+	-- Верхний кластер (DNA · STUDY · MERC) и правый chip SAMPLES удалены
+	-- по запросу дизайна этой страницы.
 
 	local function countMatchingSamples()
 		local mercName = ctx.mercName
@@ -914,15 +828,13 @@ local function openDNAStudyPage(ctx)
 		end
 		return n
 	end
-	-- Sample-count chip inside the SAMPLE SLOT card header (built a
-	-- bit further down in Step 6's block). Forward-declared so the
-	-- refresher below can populate it without caring about build
-	-- order.
+	-- Sample-count label inside the SAMPLE SLOT card header (built a
+	-- bit further down). Forward-declared so the refresher below can
+	-- populate it without caring about build order.
 	local sampleCardCountLabel
 
 	local function refreshSamplesChip()
 		local n = countMatchingSamples()
-		chipLabel.Text = string.format("SAMPLES · %d", n)
 		if sampleCardCountLabel then
 			sampleCardCountLabel.Text = tostring(n)
 		end
@@ -1046,10 +958,8 @@ local function openDNAStudyPage(ctx)
 	headerLabel.Parent = header
 
 	-- Matching-capsule counter on the right of the card header.
-	-- Shares state with the top-right SAMPLES chip — refreshSamplesChip
-	-- writes to both. Assigned to the forward-declared upvalue above
-	-- so the first refreshSamplesChip() call that already ran picks
-	-- it up on the next refresh (after inventory changes).
+	-- Assigned to the forward-declared upvalue above so
+	-- refreshSamplesChip() keeps it in sync with inventory changes.
 	local countIcon = makeFlaskIcon(header, 14, HOLO_EDGE)
 	countIcon.AnchorPoint = Vector2.new(1, 0.5)
 	countIcon.Position = UDim2.new(1, 0, 0.5, 0)
