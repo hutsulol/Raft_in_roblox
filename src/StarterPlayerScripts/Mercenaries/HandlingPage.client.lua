@@ -188,8 +188,53 @@ local function makeStarRow(parent, filled, total, size, color)
 	return c
 end
 
--- Slanted-blade weapon glyph (matches the MAIN HAND tile in the mockup:
--- a thin parallelogram blade with a small crossguard + pommel dot).
+-- Image-asset star row used on the Handling slot tiles. Renders `total`
+-- star icons in a row; each is full, half, or empty based on `filled`.
+-- A fractional `filled` between two integers becomes a half-star on
+-- the boundary slot (>0.25 of the way toward the next integer counts
+-- as half), so a 1.5-rarity item draws as 1 full + 1 half + (rest) empty.
+local STAR_IMAGE_FULL  = "rbxassetid://128398990741410"
+local STAR_IMAGE_EMPTY = "rbxassetid://96860361998800"
+local STAR_IMAGE_HALF  = "rbxassetid://97995242534538"
+
+local function makeImageStarRow(parent, filled, total, size)
+	size   = size   or 12
+	total  = total  or 4
+	filled = math.clamp(tonumber(filled) or 0, 0, total)
+
+	local gap = 2
+	local c = Instance.new("Frame")
+	c.Name = "StarRow"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(total * size + (total - 1) * gap, size)
+	c.Parent = parent
+
+	for i = 1, total do
+		local assetId
+		if filled >= i then
+			assetId = STAR_IMAGE_FULL
+		elseif (i - filled) < 0.75 then
+			-- more than a quarter of this star's width is filled → half
+			assetId = STAR_IMAGE_HALF
+		else
+			assetId = STAR_IMAGE_EMPTY
+		end
+
+		local star = Instance.new("ImageLabel")
+		star.Name = "Star" .. i
+		star.BackgroundTransparency = 1
+		star.BorderSizePixel = 0
+		star.AnchorPoint = Vector2.new(0.5, 0.5)
+		star.Position = UDim2.new(0, (i - 1) * (size + gap) + size * 0.5, 0.5, 0)
+		star.Size = UDim2.fromOffset(size, size)
+		star.Image = assetId
+		star.ScaleType = Enum.ScaleType.Fit
+		star.Parent = c
+	end
+
+	return c
+end
 local function makeWeaponIcon(parent, size, color)
 	local c = Instance.new("Frame")
 	c.Name = "WeaponIcon"
@@ -673,14 +718,17 @@ local function buildSlotTile(parent, opts)
 		plusBadge.Parent = iconZone
 	end
 
-	-- Rarity row, hidden for empty slots.
+	-- Rarity row — image-asset stars (4 total, full / half / empty)
+	-- centred horizontally just above the label band's top border so
+	-- the stars sit between the item art and the slot label. Hidden
+	-- for empty slots (SKINS / ARTIFACTS) the same way as before.
 	local starRow
 	if not opts.emptyGlyph then
-		local starsCount = math.clamp(opts.stars or 0, 0, 5)
-		starRow = makeStarRow(iconZone, starsCount, 5, 9, COLOR_GOLD)
+		local starsCount = math.clamp(opts.stars or 0, 0, 4)
+		starRow = makeImageStarRow(iconZone, starsCount, 4, 12)
 		starRow.Name = "Stars"
-		starRow.AnchorPoint = Vector2.new(1, 1)
-		starRow.Position = UDim2.new(1, -8, 1, -6)
+		starRow.AnchorPoint = Vector2.new(0.5, 1)
+		starRow.Position = UDim2.new(0.5, 0, 1, -4)
 		setZIndexRecursive(starRow, zBase + 2)
 	end
 
