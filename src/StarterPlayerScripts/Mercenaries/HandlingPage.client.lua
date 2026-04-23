@@ -278,6 +278,64 @@ local function makeCrownIcon(parent, size, color)
 	return c
 end
 
+-- Backpack glyph (BODY slot). Flat-top satchel silhouette: rounded
+-- body + top flap + small front-pocket hint. Drawn from rounded
+-- frames + UIStrokes so it reads clean at the tile / detail-card
+-- sizes without needing an image asset — same language as the other
+-- handling-page icon builders.
+local function makeBackpackIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "BackpackIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	-- Body (main compartment) — rounded rectangle outline.
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 1)
+	body.Position = UDim2.fromScale(0.5, 0.92)
+	body.Size = UDim2.fromOffset(size * 0.66, size * 0.60)
+	body.BackgroundTransparency = 1
+	body.BorderSizePixel = 0
+	body.Parent = c
+	local bodyCorner = Instance.new("UICorner")
+	bodyCorner.CornerRadius = UDim.new(0, math.max(2, math.floor(size * 0.12)))
+	bodyCorner.Parent = body
+	local bodyStroke = Instance.new("UIStroke")
+	bodyStroke.Color     = color
+	bodyStroke.Thickness = 1.5
+	bodyStroke.Parent    = body
+
+	-- Top flap — shorter, same rounded style, sits just above the body.
+	local flap = Instance.new("Frame")
+	flap.AnchorPoint = Vector2.new(0.5, 1)
+	flap.Position = UDim2.fromScale(0.5, 0.40)
+	flap.Size = UDim2.fromOffset(size * 0.50, size * 0.18)
+	flap.BackgroundTransparency = 1
+	flap.BorderSizePixel = 0
+	flap.Parent = c
+	local flapCorner = Instance.new("UICorner")
+	flapCorner.CornerRadius = UDim.new(0, math.max(2, math.floor(size * 0.08)))
+	flapCorner.Parent = flap
+	local flapStroke = Instance.new("UIStroke")
+	flapStroke.Color     = color
+	flapStroke.Thickness = 1.5
+	flapStroke.Parent    = flap
+
+	-- Front pocket hint — small horizontal bar centred in the body.
+	local pocket = Instance.new("Frame")
+	pocket.AnchorPoint = Vector2.new(0.5, 0.5)
+	pocket.Position = UDim2.fromScale(0.5, 0.68)
+	pocket.Size = UDim2.fromOffset(size * 0.40, math.max(1, math.floor(size * 0.06)))
+	pocket.BackgroundColor3 = color
+	pocket.BackgroundTransparency = 0.25
+	pocket.BorderSizePixel = 0
+	pocket.Parent = c
+
+	return c
+end
+
 -- Four-point spark glyph (stat-row prefix on the detail card).
 -- Two crossed thin Frames — same recipe as MercenariesMenu.
 local function makeSparkIcon(parent, size, color)
@@ -1225,15 +1283,58 @@ local function openHandlingPage(ctx)
 		end)
 	end
 
+	-- BODY tile replaces the old RELIC placeholder. Same slot geometry
+	-- (left column, bottom row), but the click routes into the new
+	-- BodySelectPage the same way MAIN HAND routes into WeaponSelect.
+	local function openBodySelectFromBody()
+		if typeof(_G.OpenBodySelectPage) ~= "function" then
+			warn("[HandlingPage] BodySelectPage not loaded")
+			return
+		end
+		closeHandlingPage()
+		_G.OpenBodySelectPage({
+			screenGui             = handlingCtx.screenGui,
+			mercName              = handlingCtx.mercName,
+			theme                 = handlingCtx.theme,
+			equipItems            = handlingCtx.equipItems,
+			hidePhonePanels       = handlingCtx.hidePhonePanels,
+			detachCachedViewports = handlingCtx.detachCachedViewports,
+			buildMercViewport     = handlingCtx.buildMercViewport,
+			onBack = function()
+				if typeof(_G.CloseBodySelectPage) == "function" then
+					_G.CloseBodySelectPage()
+				end
+				if typeof(_G.OpenHandlingPage) == "function" then
+					_G.OpenHandlingPage(handlingCtx)
+				end
+			end,
+		})
+	end
+
 	slotHandles.Relic = buildSlotTile(scaleWrap, {
-		name         = "RELIC",
-		iconBuilder  = makeCrownIcon,
+		name         = "BODY",
+		iconBuilder  = makeBackpackIcon,
 		stars        = 0,
 		selected     = false,
 		position     = UDim2.fromOffset(LEFT_COL_X, TILE_BOTTOM_Y),
 		zIndex       = 55,
-		onClick      = function() selectSlot("Relic") end,
+		onClick      = openBodySelectFromBody,
 	})
+
+	-- Hover affordance mirroring MAIN HAND: the bottom label swaps
+	-- from 'BODY' → 'CHANGE' while the cursor is over the tile so it
+	-- reads as a button.
+	do
+		local bodyTile  = slotHandles.Relic.tile
+		local bodyLabel = slotHandles.Relic.label
+		local defaultLabel = slotHandles.Relic.defaultLabel or "BODY"
+		bodyTile.MouseEnter:Connect(function()
+			bodyLabel.Text = "CHANGE"
+		end)
+		bodyTile.MouseLeave:Connect(function()
+			bodyLabel.Text = defaultLabel
+		end)
+	end
 
 	slotHandles.Skins = buildSlotTile(scaleWrap, {
 		name         = "SKINS",
@@ -1345,7 +1446,7 @@ local function openHandlingPage(ctx)
 	-- data, render the empty-placeholder variant.
 	local SLOT_DEFS = {
 		MainHand  = { label = "MAIN HAND", iconBuilder = makeWeaponIcon,  category = "Weapons" },
-		Relic     = { label = "RELIC",     iconBuilder = makeCrownIcon,   category = nil       },
+		Relic     = { label = "BODY",      iconBuilder = makeBackpackIcon, category = nil       },
 		Skins     = { label = "SKINS",     iconBuilder = makeGemIcon,     category = nil       },
 		Artifacts = { label = "ARTIFACTS", iconBuilder = makeDiamondIcon, category = nil       },
 	}
