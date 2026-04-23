@@ -42,12 +42,16 @@ local player = Players.LocalPlayer
 
 -- ─── Palette (matches MercenariesMenu's amethyst-dark holo variant) ──
 local COLOR_TEXT              = Color3.fromRGB(220, 240, 255)
-local COLOR_TEXT_DIM          = Color3.fromRGB(140, 180, 220)
-local HOLO_PANEL_FILL         = Color3.fromRGB(10, 24, 44)
-local HOLO_PANEL_TRANSPARENCY = 0.28
-local HOLO_PANEL_BORDER       = Color3.fromRGB(75, 100, 125)
-local HOLO_EDGE               = Color3.fromRGB(190, 220, 245)
+local COLOR_TEXT_DIM          = Color3.fromRGB(155, 198, 232)
+local HOLO_PANEL_FILL         = Color3.fromRGB(14, 34, 62)
+local HOLO_PANEL_TRANSPARENCY = 0.22
+local HOLO_PANEL_BORDER       = Color3.fromRGB(90, 132, 172)
+local HOLO_EDGE               = Color3.fromRGB(176, 232, 255)
 local HORIZON                 = Color3.fromRGB(98, 168, 218)
+local COLOR_BG                = Color3.fromRGB(10, 24, 46)
+local COLOR_PANEL             = Color3.fromRGB(16, 34, 66)
+local COLOR_BAR_BG            = Color3.fromRGB(26, 58, 96)
+local COLOR_BAR_FILL          = Color3.fromRGB(118, 210, 255)
 
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
@@ -385,7 +389,7 @@ local function makeHoloBar(parent, size, segments, zBase)
 	zBase = zBase or 1
 	local track = Instance.new("Frame")
 	track.Name = "HoloBar"
-	track.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
+	track.BackgroundColor3 = COLOR_BAR_BG
 	track.BackgroundTransparency = 0.2
 	track.BorderSizePixel = 0
 	track.Size = size
@@ -418,7 +422,7 @@ local function makeHoloBar(parent, size, segments, zBase)
 			d.AnchorPoint = Vector2.new(0.5, 0)
 			d.Position = UDim2.fromScale(i / segments, 0)
 			d.Size = UDim2.new(0, 1, 1, 0)
-			d.BackgroundColor3 = Color3.fromRGB(8, 20, 38)
+			d.BackgroundColor3 = COLOR_BAR_BG
 			d.BackgroundTransparency = 0.35
 			d.BorderSizePixel = 0
 			d.ZIndex = zBase + 2
@@ -514,18 +518,18 @@ local SLOT_ICON_SIZE           = 48
 
 local SLOT_FILL_UNSELECTED     = HOLO_PANEL_FILL
 local SLOT_FILL_UNSEL_ALPHA    = 0.40
-local SLOT_FILL_SELECTED       = Color3.fromRGB(16, 42, 72)
+local SLOT_FILL_SELECTED       = COLOR_BAR_BG
 local SLOT_FILL_SEL_ALPHA      = 0.15
-local SLOT_STROKE_UNSELECTED   = Color3.fromRGB(60, 85, 110)
+local SLOT_STROKE_UNSELECTED   = HOLO_PANEL_BORDER
 local SLOT_STROKE_UNSEL_THICK  = 1
-local SLOT_STROKE_SELECTED     = Color3.fromRGB(120, 220, 255)
+local SLOT_STROKE_SELECTED     = COLOR_BAR_FILL
 local SLOT_STROKE_SEL_THICK    = 1.6
-local SLOT_LABEL_FILL          = Color3.fromRGB(6, 16, 30)
+local SLOT_LABEL_FILL          = COLOR_BG
 local SLOT_LABEL_FILL_ALPHA    = 0.55
-local SLOT_LABEL_COLOR_SEL     = Color3.fromRGB(230, 245, 255)
-local SLOT_LABEL_COLOR_UNSEL   = Color3.fromRGB(140, 170, 200)
-local SLOT_ICON_COLOR_SEL      = Color3.fromRGB(130, 220, 255)
-local SLOT_ICON_COLOR_UNSEL    = Color3.fromRGB(110, 160, 200)
+local SLOT_LABEL_COLOR_SEL     = COLOR_TEXT
+local SLOT_LABEL_COLOR_UNSEL   = COLOR_TEXT_DIM
+local SLOT_ICON_COLOR_SEL      = HOLO_EDGE
+local SLOT_ICON_COLOR_UNSEL    = COLOR_TEXT_DIM
 
 -- buildSlotTile — 120×140 holo tile used for MAIN HAND / RELIC / SKINS
 -- / ARTIFACTS. Returns a small handle with `setSelected(bool)` so the
@@ -1402,7 +1406,7 @@ local function openHandlingPage(ctx)
 			-- Populated variant: icon + name + stars/tag + divider + stat
 			local iconBox = Instance.new("Frame")
 			iconBox.Name = "IconBox"
-			iconBox.BackgroundColor3 = Color3.fromRGB(16, 34, 58)
+			iconBox.BackgroundColor3 = COLOR_PANEL
 			iconBox.BackgroundTransparency = 0.3
 			iconBox.BorderSizePixel = 0
 			iconBox.Position = UDim2.fromOffset(0, 0)
@@ -1702,7 +1706,7 @@ local function openHandlingPage(ctx)
 	-- STUDY DNA button
 	local studyBtn = Instance.new("TextButton")
 	studyBtn.Name = "StudyDna"
-	studyBtn.BackgroundColor3 = Color3.fromRGB(18, 44, 78)
+	studyBtn.BackgroundColor3 = COLOR_PANEL
 	studyBtn.BackgroundTransparency = 0.1
 	studyBtn.BorderSizePixel = 0
 	studyBtn.AnchorPoint = Vector2.new(0, 1)
