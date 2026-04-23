@@ -1483,9 +1483,9 @@ local function openDNAStudyPage(ctx)
 	-- sine period (phase π/2 → 3π/2 with the +π/2 shift), giving the
 	-- widest-crossover-widest pattern with a single X in the middle.
 	local HELIX_CENTRE_X = (REFERENCE_W * 0.5) - CENTRE_COL_X
-	local HELIX_H        = 280
-	local HELIX_TOP_Y    = (REFERENCE_H - HELIX_H) * 0.5 - 20
-	local HELIX_AMP      = 96
+	local HELIX_H        = 520
+	local HELIX_TOP_Y    = (REFERENCE_H - HELIX_H) * 0.5
+	local HELIX_AMP      = 180
 	local HELIX_PERIOD   = HELIX_H * 2
 
 	-- Two rails with a slight "glow" underlay: wider low-opacity pass
