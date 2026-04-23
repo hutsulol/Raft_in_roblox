@@ -25,6 +25,7 @@ local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local TweenService      = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService      = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 
@@ -1484,6 +1485,65 @@ local function openWeaponSelectPage(ctx)
 
 		refreshDetailCard(def)
 	end
+
+	-- ── EQUIP button wiring ─────────────────────────────────────────
+	-- Mirrors the MercenariesMenu Equipment page: fires the remote,
+	-- optimistically flips the merc's EquippedWeapon attribute, plays
+	-- the per-weapon equip SFX, hot-swaps the viewport rig's tool via
+	-- ctx.buildMercViewport (cache-hit path), then rebuilds the grid
+	-- + repaints the detail card so the "E" chip and button state
+	-- track the new equipped weapon.
+	local equipEvent = ReplicatedStorage:FindFirstChild("MercenaryEquipment")
+	local EQUIP_SOUND_BY_WEAPON = {
+		Sword      = "Sword_pirate_equip",
+		FishingRod = "FishingRod_1lvl_equip",
+	}
+
+	detailEquipButton.MouseButton1Click:Connect(function()
+		-- Guard rails: no-op if nothing picked, already equipped, or
+		-- the weapon is still locked. The detail button's visual state
+		-- already reflects these, but the click is still callable
+		-- because TextButton.Active is advisory for rendering only.
+		if not selectedWeaponId then return end
+		if selectedWeaponId == equippedWeaponId then return end
+		local def = findWeaponDef(selectedWeaponId)
+		if not def then return end
+		if not isWeaponUnlocked(def) then return end
+
+		if equipEvent then
+			equipEvent:FireServer("equip", ctx.mercName, selectedWeaponId)
+		end
+
+		local mercFolder = player:FindFirstChild("Mercenaries")
+		local mercEntry  = mercFolder and mercFolder:FindFirstChild(ctx.mercName)
+		if mercEntry then
+			mercEntry:SetAttribute("EquippedWeapon", selectedWeaponId)
+		end
+
+		local soundName = EQUIP_SOUND_BY_WEAPON[selectedWeaponId]
+		if soundName then
+			local equipSoundsFolder = SoundService:FindFirstChild("Items_equip")
+			local snd = equipSoundsFolder and equipSoundsFolder:FindFirstChild(soundName)
+			if snd then snd:Play() end
+		end
+
+		equippedWeaponId = selectedWeaponId
+
+		-- Hot-swap the tool on the cached merc rig. buildMercViewport
+		-- is cache-aware: when the viewport is already built for this
+		-- merc it just calls applyWeaponToClone, preserving the idle
+		-- animation tracks (no rig rebuild).
+		if ctx.buildMercViewport and ctx.mercName then
+			local vp = ctx.buildMercViewport(viewportHost, ctx.mercName, equippedWeaponId)
+			if vp then vp.ZIndex = 60 end
+		end
+
+		-- Rebuild the grid so the "E" chip moves to the new card.
+		-- selectedWeaponId now == equippedWeaponId so the same card
+		-- also keeps the selection stroke.
+		buildGrid(arsenalActiveProfession)
+		refreshDetailCard(def)
+	end)
 
 	-- Initial paint — selectedWeaponId was seeded at page-open to the
 	-- currently-equipped weapon, so this just fills the detail panel
