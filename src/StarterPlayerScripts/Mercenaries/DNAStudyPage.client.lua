@@ -688,7 +688,12 @@ local function openDNAStudyPage(ctx)
 	local BACK_BTN_Y = 10
 	local SIDE_MENU_SCALE = 1.33
 	local LEFT_SIDE_MENU_RAISE_Y = 130
-	local RIGHT_SIDE_MENU_RAISE_Y = 240
+	-- Raise such that the column's rendered top edge lines up with the
+	-- BACK button. makeColumn places the Frame at COLS_Y - raise, then
+	-- adds scaledYComp = ((scale - 1) * COLS_H * 0.5) ≈ 79 to
+	-- compensate for UIScale content-shift. To land the top at
+	-- BACK_BTN_Y, solve 104 - raise + 79 = BACK_BTN_Y = 10 → raise = 173.
+	local RIGHT_SIDE_MENU_RAISE_Y = 173
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
