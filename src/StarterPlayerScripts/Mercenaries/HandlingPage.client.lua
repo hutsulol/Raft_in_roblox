@@ -1700,7 +1700,10 @@ local function openHandlingPage(ctx)
 			return 0, FRAGMENTS_TOTAL, 0
 		end
 
-		local total = math.max(1, #fragments)
+		-- Handling card mirrors the visual DNA model on this page:
+		-- always 6 fragment lanes (F01..F06), even if the server table
+		-- carries extra/internal indices for other systems.
+		local total = FRAGMENTS_TOTAL
 		local decoded = 0
 		local sum = 0
 		for i = 1, total do
