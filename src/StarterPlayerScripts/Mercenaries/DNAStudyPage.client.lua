@@ -34,7 +34,7 @@ local HOLO_PANEL_FILL         = Color3.fromRGB(10, 24, 44)
 local HOLO_PANEL_TRANSPARENCY = 0.28
 local HOLO_PANEL_BORDER       = Color3.fromRGB(75, 100, 125)
 local HOLO_EDGE               = Color3.fromRGB(190, 220, 245)
-local HORIZON                 = Color3.fromRGB(80, 140, 190)
+local HORIZON                 = Color3.fromRGB(98, 168, 218)
 
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
@@ -541,10 +541,10 @@ end
 -- occlusion list here — this page has no panels that need the motes
 -- dimmed behind them yet, and adding one later is a two-line change.
 local function buildHoloBackground(parent)
-	local BG_TOP   = Color3.fromRGB(2,  2,  6)
-	local BG_MID   = Color3.fromRGB(4,  6, 12)
-	local BG_BOT   = Color3.fromRGB(8, 12, 22)
-	local MOTE_COL = Color3.fromRGB(180, 215, 240)
+	local BG_TOP   = Color3.fromRGB(18, 38, 66)
+	local BG_MID   = Color3.fromRGB(28, 58, 92)
+	local BG_BOT   = Color3.fromRGB(40, 80, 122)
+	local MOTE_COL = Color3.fromRGB(205, 236, 255)
 
 	local root = Instance.new("Frame")
 	root.Name = "Backdrop"
@@ -582,36 +582,11 @@ local function buildHoloBackground(parent)
 			NumberSequenceKeypoint.new(0.72, 0.85),
 			NumberSequenceKeypoint.new(1,    1),
 		})
-		g.Rotation = 0
+		g.Rotation = 90
 		g.Parent = h
 	end
 	horizonLayer(1.6, 0.22, 0.90, 0.50)
 	horizonLayer(1.0, 0.08, 0.72, 0.15)
-
-	local function makeVignette(yPos, flip)
-		local v = Instance.new("Frame")
-		v.Name = flip and "VignetteBottom" or "VignetteTop"
-		v.Size = UDim2.new(1, 0, 0.38, 0)
-		v.Position = UDim2.fromScale(0, yPos)
-		v.BackgroundColor3 = Color3.new(0, 0, 0)
-		v.BorderSizePixel = 0
-		v.ZIndex = 2
-		v.Parent = root
-		local g = Instance.new("UIGradient")
-		g.Transparency = flip
-			and NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 1),
-				NumberSequenceKeypoint.new(1, 0.35),
-			})
-			or NumberSequence.new({
-				NumberSequenceKeypoint.new(0, 0.35),
-				NumberSequenceKeypoint.new(1, 1),
-			})
-		g.Rotation = 90
-		g.Parent = v
-	end
-	makeVignette(0,    false)
-	makeVignette(0.62, true)
 
 	local motes = Instance.new("Frame")
 	motes.Name = "Motes"
@@ -708,9 +683,11 @@ local function openDNAStudyPage(ctx)
 	responsiveScale.Scale = 1
 	responsiveScale.Parent = scaleWrap
 
-	local backBtnRef, chipRef
-	local BACK_BTN_Y = 39
-	local CHIP_Y     = 39
+	local backBtnRef, leftColumnRef, rightColumnRef
+	local BACK_BTN_Y = 10
+	local SIDE_MENU_SCALE = 1.33
+	local LEFT_SIDE_MENU_RAISE_Y = 130
+	local RIGHT_SIDE_MENU_RAISE_Y = 240
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
@@ -730,8 +707,11 @@ local function openDNAStudyPage(ctx)
 		if backBtnRef then
 			backBtnRef.Position = UDim2.fromOffset(-dynamicBleed, BACK_BTN_Y)
 		end
-		if chipRef then
-			chipRef.Position = UDim2.new(1, dynamicBleed, 0, CHIP_Y)
+		if leftColumnRef then
+			leftColumnRef.Position = UDim2.fromOffset(-dynamicBleed, leftColumnRef.Position.Y.Offset)
+		end
+		if rightColumnRef then
+			rightColumnRef.Position = UDim2.new(1, dynamicBleed, 0, rightColumnRef.Position.Y.Offset)
 		end
 	end
 
@@ -798,90 +778,8 @@ local function openDNAStudyPage(ctx)
 		if ctx.onBack then ctx.onBack() end
 	end)
 
-	-- ── Centred "DNA · STUDY · <MERCNAME>" cluster ──────────────────
-	-- Fixed widths + absolute positioning (same recipe as HandlingPage's
-	-- top cluster — AutomaticSize + UIListLayout renders blank on the
-	-- first frame). "DNA" and "STUDY" are dim tags, the merc name is
-	-- the bright headline.
-	local mercDisplay = tostring(ctx.mercName or "—"):upper()
-	local CLUSTER_Y    = BACK_BTN_Y + 6
-	local TAG_DNA_W    = 40  -- "DNA" at 11 pt
-	local DOT_W        = 14
-	local TAG_STUDY_W  = 52  -- "STUDY" at 11 pt
-	local NAME_W       = 160 -- big merc name
-	local CLUSTER_W    = TAG_DNA_W + DOT_W + TAG_STUDY_W + DOT_W + NAME_W
-
-	local topCluster = Instance.new("Frame")
-	topCluster.Name = "TopCluster"
-	topCluster.BackgroundTransparency = 1
-	topCluster.BorderSizePixel = 0
-	topCluster.AnchorPoint = Vector2.new(0.5, 0)
-	topCluster.Position = UDim2.new(0.5, 0, 0, CLUSTER_Y)
-	topCluster.Size = UDim2.fromOffset(CLUSTER_W, 24)
-	topCluster.ZIndex = 52
-	topCluster.Parent = scaleWrap
-
-	local function tagLabel(name, text, xOffset, width, color, size)
-		local l = Instance.new("TextLabel")
-		l.Name = name
-		l.BackgroundTransparency = 1
-		l.BorderSizePixel = 0
-		l.Position = UDim2.fromOffset(xOffset, 0)
-		l.Size = UDim2.fromOffset(width, 24)
-		l.Font = FONT_TITLE
-		l.TextSize = size
-		l.TextColor3 = color
-		l.TextXAlignment = Enum.TextXAlignment.Center
-		l.Text = text
-		l.ZIndex = 53
-		l.Parent = topCluster
-		return l
-	end
-
-	tagLabel("DnaTag",   "DNA",       0,                                               TAG_DNA_W,   COLOR_TEXT_MUTE, 11)
-	tagLabel("Dot1",     "·",         TAG_DNA_W,                                       DOT_W,       COLOR_TEXT_MUTE, 14)
-	tagLabel("StudyTag", "STUDY",     TAG_DNA_W + DOT_W,                               TAG_STUDY_W, COLOR_TEXT_MUTE, 11)
-	tagLabel("Dot2",     "·",         TAG_DNA_W + DOT_W + TAG_STUDY_W,                 DOT_W,       COLOR_TEXT_MUTE, 14)
-	tagLabel("MercName", mercDisplay, TAG_DNA_W + DOT_W + TAG_STUDY_W + DOT_W,         NAME_W,      HOLO_EDGE,       18)
-
-	-- ── SAMPLES · N chip, right-edge pinned via dynamicBleed ─────────
-	-- Live-counts FullCapsule tools (in Backpack + Character) whose
-	-- BloodType attribute matches this merc, so the count mirrors
-	-- exactly what the SAMPLES slot would accept.
-	local chip = Instance.new("Frame")
-	chip.Name = "SamplesChip"
-	chip.AnchorPoint = Vector2.new(1, 0)
-	chip.Position = UDim2.new(1, 0, 0, CHIP_Y)
-	chip.Size = UDim2.fromOffset(118, 34)
-	chip.BackgroundColor3 = HOLO_PANEL_FILL
-	chip.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
-	chip.BorderSizePixel = 0
-	chip.ZIndex = 52
-	chip.Parent = scaleWrap
-	local chipStroke = Instance.new("UIStroke")
-	chipStroke.Color     = HOLO_PANEL_BORDER
-	chipStroke.Thickness = 1
-	chipStroke.Parent    = chip
-	chipRef = chip
-
-	local flask = makeFlaskIcon(chip, 14, HOLO_EDGE)
-	flask.AnchorPoint = Vector2.new(0, 0.5)
-	flask.Position = UDim2.new(0, 10, 0.5, 0)
-	flask.ZIndex = 53
-
-	local chipLabel = Instance.new("TextLabel")
-	chipLabel.Name = "SamplesLabel"
-	chipLabel.BackgroundTransparency = 1
-	chipLabel.BorderSizePixel = 0
-	chipLabel.Position = UDim2.fromOffset(28, 0)
-	chipLabel.Size = UDim2.new(1, -36, 1, 0)
-	chipLabel.Font = FONT_TITLE
-	chipLabel.TextSize = 13
-	chipLabel.TextColor3 = HOLO_EDGE
-	chipLabel.TextXAlignment = Enum.TextXAlignment.Left
-	chipLabel.Text = "SAMPLES · 0"
-	chipLabel.ZIndex = 53
-	chipLabel.Parent = chip
+	-- Верхний кластер (DNA · STUDY · MERC) и правый chip SAMPLES удалены
+	-- по запросу дизайна этой страницы.
 
 	local function countMatchingSamples()
 		local mercName = ctx.mercName
@@ -906,15 +804,13 @@ local function openDNAStudyPage(ctx)
 		end
 		return n
 	end
-	-- Sample-count chip inside the SAMPLE SLOT card header (built a
-	-- bit further down in Step 6's block). Forward-declared so the
-	-- refresher below can populate it without caring about build
-	-- order.
+	-- Sample-count label inside the SAMPLE SLOT card header (built a
+	-- bit further down). Forward-declared so the refresher below can
+	-- populate it without caring about build order.
 	local sampleCardCountLabel
 
 	local function refreshSamplesChip()
 		local n = countMatchingSamples()
-		chipLabel.Text = string.format("SAMPLES · %d", n)
 		if sampleCardCountLabel then
 			sampleCardCountLabel.Text = tostring(n)
 		end
@@ -945,27 +841,46 @@ local function openDNAStudyPage(ctx)
 	--   right : Decoded Traits list (8 entries)
 	local COLS_Y       = 104
 	local COLS_H       = 476
-	local LEFT_COL_X   = 40
+	local LEFT_COL_X   = 0
 	local LEFT_COL_W   = 240
-	local RIGHT_COL_X  = REFERENCE_W - 40 - 240
+	local RIGHT_COL_X  = REFERENCE_W
 	local RIGHT_COL_W  = 240
 	local CENTRE_COL_X = LEFT_COL_X + LEFT_COL_W + 40
 	local CENTRE_COL_W = RIGHT_COL_X - CENTRE_COL_X - 40
 
-	local function makeColumn(name, x, w)
+	local function makeColumn(name, x, w, opts)
+		opts = opts or {}
 		local col = Instance.new("Frame")
 		col.Name = name
 		col.BackgroundTransparency = 1
 		col.BorderSizePixel = 0
-		col.Position = UDim2.fromOffset(x, COLS_Y)
+		col.AnchorPoint = Vector2.new(opts.anchorX or 0, 0)
+		col.Position = UDim2.fromOffset(x, COLS_Y - (opts.yOffset or 0))
 		col.Size = UDim2.fromOffset(w, COLS_H)
 		col.ZIndex = 51
 		col.Parent = scaleWrap
+
+		if opts.scale and opts.scale ~= 1 then
+			local colScale = Instance.new("UIScale")
+			colScale.Scale = opts.scale
+			colScale.Parent = col
+
+			local scaledYComp = math.floor((opts.scale - 1) * COLS_H * 0.5 + 0.5)
+			local scaledXComp = math.floor((opts.scale - 1) * w * 0.5 + 0.5)
+			if (opts.anchorX or 0) >= 1 then
+				col.Position = col.Position + UDim2.fromOffset(-scaledXComp, scaledYComp)
+			else
+				col.Position = col.Position + UDim2.fromOffset(scaledXComp, scaledYComp)
+			end
+		end
+
 		return col
 	end
-	local leftColumn   = makeColumn("LeftColumn",   LEFT_COL_X,   LEFT_COL_W)
+	local leftColumn   = makeColumn("LeftColumn",   LEFT_COL_X,   LEFT_COL_W, { scale = SIDE_MENU_SCALE, yOffset = LEFT_SIDE_MENU_RAISE_Y })
 	local centreColumn = makeColumn("CentreColumn", CENTRE_COL_X, CENTRE_COL_W)
-	local rightColumn  = makeColumn("RightColumn",  RIGHT_COL_X,  RIGHT_COL_W)
+	local rightColumn  = makeColumn("RightColumn",  RIGHT_COL_X,  RIGHT_COL_W, { anchorX = 1, scale = SIDE_MENU_SCALE, yOffset = RIGHT_SIDE_MENU_RAISE_Y })
+	leftColumnRef = leftColumn
+	rightColumnRef = rightColumn
 	local _ = { centreColumn, rightColumn } -- Steps 8-10 fill these
 
 	-- ── Sample Slot card (top of left column) ─────────────────────────
@@ -1019,10 +934,8 @@ local function openDNAStudyPage(ctx)
 	headerLabel.Parent = header
 
 	-- Matching-capsule counter on the right of the card header.
-	-- Shares state with the top-right SAMPLES chip — refreshSamplesChip
-	-- writes to both. Assigned to the forward-declared upvalue above
-	-- so the first refreshSamplesChip() call that already ran picks
-	-- it up on the next refresh (after inventory changes).
+	-- Assigned to the forward-declared upvalue above so
+	-- refreshSamplesChip() keeps it in sync with inventory changes.
 	local countIcon = makeFlaskIcon(header, 14, HOLO_EDGE)
 	countIcon.AnchorPoint = Vector2.new(1, 0.5)
 	countIcon.Position = UDim2.new(1, 0, 0.5, 0)
@@ -1449,7 +1362,7 @@ local function openDNAStudyPage(ctx)
 	-- Values exposed via logValueRefs so Step 12 can refresh them when
 	-- a DNAResearch snapshot arrives without re-rendering the card.
 	local LOG_CARD_TOP  = SAMPLE_CARD_H + 14
-	local LOG_CARD_H    = COLS_H - LOG_CARD_TOP
+	local LOG_CARD_H    = 170
 
 	local logCard = Instance.new("Frame")
 	logCard.Name = "ResearchLogCard"
@@ -1574,11 +1487,11 @@ local function openDNAStudyPage(ctx)
 	--   HELIX_AMP      = 44                          (bracket half-width)
 	--   HELIX_PERIOD   = 180                         (lens = period/2 = 90)
 	--   GENOME_Y       = HELIX_TOP_Y + HELIX_H + 16  = 406
-	local HELIX_CENTRE_X = CENTRE_COL_W / 2
-	local HELIX_TOP_Y    = 30
-	local HELIX_H        = 360
-	local HELIX_AMP      = 44
-	local HELIX_PERIOD   = 180
+	local HELIX_CENTRE_X = (REFERENCE_W * 0.5) - CENTRE_COL_X
+	local HELIX_H        = 540
+	local HELIX_TOP_Y    = (REFERENCE_H - HELIX_H) * 0.5 - 50
+	local HELIX_AMP      = 66
+	local HELIX_PERIOD   = 270
 
 	-- Two rails with a slight "glow" underlay: wider low-opacity pass
 	-- first, thinner bright pass on top. Reads as a soft cyan beam at
