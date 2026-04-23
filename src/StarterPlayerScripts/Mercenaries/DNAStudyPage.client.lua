@@ -711,7 +711,8 @@ local function openDNAStudyPage(ctx)
 	local backBtnRef, leftColumnRef, rightColumnRef
 	local BACK_BTN_Y = 39
 	local SIDE_MENU_SCALE = 2
-	local SIDE_MENU_RAISE_Y = 48
+	local LEFT_SIDE_MENU_RAISE_Y = 16
+	local RIGHT_SIDE_MENU_RAISE_Y = 30
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
@@ -900,9 +901,9 @@ local function openDNAStudyPage(ctx)
 
 		return col
 	end
-	local leftColumn   = makeColumn("LeftColumn",   LEFT_COL_X,   LEFT_COL_W, { scale = SIDE_MENU_SCALE, yOffset = SIDE_MENU_RAISE_Y })
+	local leftColumn   = makeColumn("LeftColumn",   LEFT_COL_X,   LEFT_COL_W, { scale = SIDE_MENU_SCALE, yOffset = LEFT_SIDE_MENU_RAISE_Y })
 	local centreColumn = makeColumn("CentreColumn", CENTRE_COL_X, CENTRE_COL_W)
-	local rightColumn  = makeColumn("RightColumn",  RIGHT_COL_X,  RIGHT_COL_W, { anchorX = 1, scale = SIDE_MENU_SCALE, yOffset = SIDE_MENU_RAISE_Y })
+	local rightColumn  = makeColumn("RightColumn",  RIGHT_COL_X,  RIGHT_COL_W, { anchorX = 1, scale = SIDE_MENU_SCALE, yOffset = RIGHT_SIDE_MENU_RAISE_Y })
 	leftColumnRef = leftColumn
 	rightColumnRef = rightColumn
 	local _ = { centreColumn, rightColumn } -- Steps 8-10 fill these
