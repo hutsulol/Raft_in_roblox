@@ -46,6 +46,7 @@ local FONT_BODY  = Enum.Font.Gotham
 local COLOR_TEXT_MUTE = Color3.fromRGB(100, 125, 155)
 
 local player = Players.LocalPlayer
+local BackHotkey = require(script.Parent:WaitForChild("BackHotkey"))
 
 -- ─── BACK glyph (crossed diagonals — same shape as HandlingPage) ─────
 local function makeBackIcon(parent, size, color)
@@ -810,10 +811,17 @@ local function openDNAStudyPage(ctx)
 	backLabel.ZIndex = 53
 	backLabel.Parent = backBtn
 
-	backBtn.MouseButton1Click:Connect(function()
+	local function triggerBack()
 		closeDNAStudyPage()
 		if ctx.onBack then ctx.onBack() end
-	end)
+	end
+	backBtn.MouseButton1Click:Connect(triggerBack)
+	BackHotkey.attach(backBtn, triggerBack, {
+		activeConnections = activeConnections,
+		color             = COLOR_TEXT,
+		haloColor         = HOLO_EDGE,
+		fontTitle         = FONT_TITLE,
+	})
 
 	-- Верхний кластер (DNA · STUDY · MERC) и правый chip SAMPLES удалены
 	-- по запросу дизайна этой страницы.

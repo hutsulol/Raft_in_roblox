@@ -41,6 +41,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local player = Players.LocalPlayer
 local dnaResearchEvent = ReplicatedStorage:WaitForChild("DNAResearch", 10)
+local BackHotkey = require(script.Parent:WaitForChild("BackHotkey"))
 
 -- ─── Palette (matches MercenariesMenu's amethyst-dark holo variant) ──
 local COLOR_TEXT              = Color3.fromRGB(220, 240, 255)
@@ -1219,10 +1220,17 @@ local function openHandlingPage(ctx)
 	backLabel.ZIndex = 53
 	backLabel.Parent = backBtn
 
-	backBtn.MouseButton1Click:Connect(function()
+	local function triggerBack()
 		closeHandlingPage()
 		if ctx.onBack then ctx.onBack() end
-	end)
+	end
+	backBtn.MouseButton1Click:Connect(triggerBack)
+	BackHotkey.attach(backBtn, triggerBack, {
+		activeConnections = activeConnections,
+		color             = COLOR_TEXT,
+		haloColor         = HOLO_EDGE,
+		fontTitle         = FONT_TITLE,
+	})
 
 	-- ── Centred <NAME> / LV N cluster ────────────────────────────────
 	-- Fixed widths + absolute positioning inside a centred container,

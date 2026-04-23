@@ -28,6 +28,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService      = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
+local BackHotkey = require(script.Parent:WaitForChild("BackHotkey"))
 
 -- ─── Palette (matches HandlingPage / DNAStudyPage amethyst-dark) ─────
 local COLOR_TEXT              = Color3.fromRGB(220, 240, 255)
@@ -484,10 +485,17 @@ local function openBodySelectPage(ctx)
 	backLabel.ZIndex = 53
 	backLabel.Parent = backBtn
 
-	backBtn.MouseButton1Click:Connect(function()
+	local function triggerBack()
 		closeBodySelectPage()
 		if ctx.onBack then ctx.onBack() end
-	end)
+	end
+	backBtn.MouseButton1Click:Connect(triggerBack)
+	BackHotkey.attach(backBtn, triggerBack, {
+		activeConnections = activeConnections,
+		color             = COLOR_TEXT,
+		haloColor         = HOLO_EDGE,
+		fontTitle         = FONT_TITLE,
+	})
 
 	-- ── Centred title: "SELECT BACKPACK" ──────────────────────────────
 	-- Single label for the scaffold step; Step 4 onward can add a

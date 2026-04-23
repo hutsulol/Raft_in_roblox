@@ -12,6 +12,7 @@ local RunService        = game:GetService("RunService")
 local TextService       = game:GetService("TextService")
 
 local player = Players.LocalPlayer
+local BackHotkey = require(script.Parent:WaitForChild("BackHotkey"))
 
 -- ─── Wait for SpawnMercenary remote ─────────────────────────────────────
 local spawnEvent = ReplicatedStorage:WaitForChild("SpawnMercenary", 30)
@@ -1522,9 +1523,15 @@ buildPage = function(mercNames)
 	backLabel.ZIndex = 53
 	backLabel.Parent = backBtn
 
-	backBtn.MouseButton1Click:Connect(function()
+	local function triggerBack()
 		closePage()
-	end)
+	end
+	backBtn.MouseButton1Click:Connect(triggerBack)
+	BackHotkey.attach(backBtn, triggerBack, {
+		color     = COLOR_TEXT,
+		haloColor = HOLO_EDGE,
+		fontTitle = FONT_TITLE,
+	})
 
 	-- Centred uppercase MERCENARIES title in holo-edge cyan.
 	local title = Instance.new("TextLabel")
@@ -2836,9 +2843,15 @@ buildEquipmentPage = function(mercName, mercNames)
 	backBtn.Parent = topBar
 	corner(backBtn, 8)
 
-	backBtn.MouseButton1Click:Connect(function()
+	local function triggerBack()
 		buildPage(currentMercNames)
-	end)
+	end
+	backBtn.MouseButton1Click:Connect(triggerBack)
+	BackHotkey.attach(backBtn, triggerBack, {
+		color     = COLOR_TEXT,
+		haloColor = HOLO_EDGE,
+		fontTitle = FONT_TITLE,
+	})
 
 	-- ── Category tabs (centered) ────────────────────────────────────
 	local tabW, tabH, tabGap = 110, 34, 10
