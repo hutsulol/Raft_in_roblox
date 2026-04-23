@@ -871,6 +871,11 @@ local function buildMenu()
 	-- below is manually pushed down past the topbar so the interactive
 	-- panels still stay clear of the Roblox chrome.
 	screenGui.IgnoreGuiInset = true
+	-- Pin to Sibling so the holoCover Frame (which hides the menu
+	-- during the boot animation) can rely on its own ZIndex to sit on
+	-- top of root's entire subtree — under Global the panel corner
+	-- L's and other high-ZIndex descendants bleed through the cover.
+	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	screenGui.Enabled = false
 	screenGui.DisplayOrder = 50
 	screenGui.Parent = playerGui
@@ -1581,6 +1586,11 @@ local function buildMenu()
 	cover.BorderSizePixel = 0
 	cover.Size = UDim2.fromScale(1, 1)
 	cover.Visible = false
+	-- ZIndex 1000 so the cover sits above every menu panel no matter
+	-- how high their internal ZIndex climbs. Overlay goes one higher
+	-- below so the 'LOAD…' / 'SYSTEM READY' text renders on top of
+	-- the cover.
+	cover.ZIndex = 1000
 	cover.Parent = screenGui
 	holoCover = cover
 
@@ -1595,6 +1605,7 @@ local function buildMenu()
 	overlay.Position = UDim2.fromScale(0.5, 0.5)
 	overlay.Size = UDim2.fromOffset(300, 60)
 	overlay.Visible = false
+	overlay.ZIndex = 1001 -- one above holoCover so text + bar read
 	overlay.Parent = screenGui
 
 	local loadText = makeLabel(overlay, "LOAD...", FONT_TITLE, 22, COLOR_TEXT, Enum.TextXAlignment.Center)
