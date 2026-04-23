@@ -87,10 +87,14 @@ _G.AttachBackHotkey = function(backBtn, onBack, options)
 	letter.ZIndex = zIndex + 1
 	letter.Parent = hint
 
+	-- Arrival-flash animation: brighten the halo then fade back out.
+	-- Plays on the INCOMING page when the user navigated via Q — the
+	-- outgoing page's halo would be destroyed before the tween could
+	-- finish anyway, so the visible feedback lives on the destination.
 	local function flashHalo()
-		halo.BackgroundTransparency = 0.35
+		halo.BackgroundTransparency = 0.15
 		TweenService:Create(halo,
-			TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			TweenInfo.new(0.55, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 			{ BackgroundTransparency = 1 }):Play()
 	end
 
@@ -106,12 +110,28 @@ _G.AttachBackHotkey = function(backBtn, onBack, options)
 		return true
 	end
 
+	-- Handshake for the arrival flash. The listener on the outgoing
+	-- page stamps _G.BackHotkeyArriveAt with the current clock before
+	-- firing onBack; the incoming page's attach (this function, on
+	-- the new Q) consumes the stamp if it's still fresh (< 1 s) and
+	-- plays the flash on the destination halo. A stamp that expires
+	-- without being consumed — e.g. the Q route led to a page with
+	-- no Q (closing the phone) — simply gets ignored when the next
+	-- unrelated attach checks it.
+	local arriveAt = tonumber(_G.BackHotkeyArriveAt)
+	if arriveAt then
+		_G.BackHotkeyArriveAt = nil
+		if (os.clock() - arriveAt) < 1 then
+			task.defer(flashHalo)  -- wait a frame so the halo is parented
+		end
+	end
+
 	local conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		if gameProcessed then return end
 		if input.KeyCode ~= Enum.KeyCode.Q then return end
 		if not isButtonOnScreen() then return end
 		if backBtn:IsA("GuiButton") and backBtn.Active == false then return end
-		flashHalo()
+		_G.BackHotkeyArriveAt = os.clock()
 		task.spawn(onBack)
 	end)
 
