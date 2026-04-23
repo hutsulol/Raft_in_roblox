@@ -709,9 +709,9 @@ local function openDNAStudyPage(ctx)
 	responsiveScale.Parent = scaleWrap
 
 	local backBtnRef, leftColumnRef, rightColumnRef
-	local BACK_BTN_Y = 39
+	local BACK_BTN_Y = 24
 	local SIDE_MENU_SCALE = 1.33
-	local LEFT_SIDE_MENU_RAISE_Y = 220
+	local LEFT_SIDE_MENU_RAISE_Y = 8
 	local RIGHT_SIDE_MENU_RAISE_Y = 240
 
 	local function updateResponsiveScale()
@@ -1387,7 +1387,7 @@ local function openDNAStudyPage(ctx)
 	-- Values exposed via logValueRefs so Step 12 can refresh them when
 	-- a DNAResearch snapshot arrives without re-rendering the card.
 	local LOG_CARD_TOP  = SAMPLE_CARD_H + 14
-	local LOG_CARD_H    = COLS_H - LOG_CARD_TOP
+	local LOG_CARD_H    = 170
 
 	local logCard = Instance.new("Frame")
 	logCard.Name = "ResearchLogCard"
