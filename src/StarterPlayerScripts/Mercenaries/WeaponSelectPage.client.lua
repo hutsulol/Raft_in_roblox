@@ -41,6 +41,57 @@ local HORIZON                 = Color3.fromRGB(80, 140, 190)
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
 
+-- ─── Slanted-blade weapon glyph (ARSENAL header icon) ──────────────
+-- Same recipe HandlingPage's MAIN HAND tile uses, scaled down. Thin
+-- parallelogram blade with a small crossguard + pommel — reads as
+-- "sword" at ~12-14 px without needing an image asset.
+local function makeWeaponIcon(parent, size, color)
+	local c = Instance.new("Frame")
+	c.Name = "WeaponIcon"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(size, size)
+	c.Parent = parent
+
+	local blade = Instance.new("Frame")
+	blade.AnchorPoint = Vector2.new(0.5, 0.5)
+	blade.Position = UDim2.fromScale(0.5, 0.45)
+	blade.Size = UDim2.fromOffset(size * 0.22, size * 0.78)
+	blade.BackgroundTransparency = 1
+	blade.BorderSizePixel = 0
+	blade.Rotation = -28
+	blade.Parent = c
+	local bCorner = Instance.new("UICorner")
+	bCorner.CornerRadius = UDim.new(0, math.max(1, math.floor(size * 0.06)))
+	bCorner.Parent = blade
+	local bStroke = Instance.new("UIStroke")
+	bStroke.Color     = color
+	bStroke.Thickness = 1.4
+	bStroke.Parent    = blade
+
+	local guard = Instance.new("Frame")
+	guard.AnchorPoint = Vector2.new(0.5, 0.5)
+	guard.Position = UDim2.fromScale(0.62, 0.72)
+	guard.Size = UDim2.fromOffset(size * 0.42, math.max(1, math.floor(size * 0.10)))
+	guard.BackgroundColor3 = color
+	guard.BorderSizePixel = 0
+	guard.Rotation = -28
+	guard.Parent = c
+
+	local pommel = Instance.new("Frame")
+	pommel.AnchorPoint = Vector2.new(0.5, 0.5)
+	pommel.Position = UDim2.fromScale(0.78, 0.86)
+	pommel.Size = UDim2.fromOffset(size * 0.18, size * 0.18)
+	pommel.BackgroundColor3 = color
+	pommel.BorderSizePixel = 0
+	pommel.Parent = c
+	local pCorner = Instance.new("UICorner")
+	pCorner.CornerRadius = UDim.new(1, 0)
+	pCorner.Parent = pommel
+
+	return c
+end
+
 -- ─── BACK glyph (crossed diagonals — matches the other sub-pages) ────
 local function makeBackIcon(parent, size, color)
 	local c = Instance.new("Frame")
@@ -397,6 +448,169 @@ local function openWeaponSelectPage(ctx)
 			vp.ZIndex = 60 -- above future arsenal / detail panels
 		end
 	end
+
+	-- ── Arsenal panel (left column) ─────────────────────────────────
+	-- Holo card containing: [ARSENAL header + item counter] + [three
+	-- profession filter tabs] + (grid area reserved for Step 6). Tab
+	-- click currently just flips the active-visual state; wiring the
+	-- filter rebuild lands in Step 7 once EQUIP_ITEMS carries the
+	-- profession field (Step 5).
+	local ARSENAL_X     = 40
+	local ARSENAL_Y     = 60
+	local ARSENAL_W     = 280
+	local ARSENAL_H     = 510
+	local ARSENAL_PAD_X = 14
+
+	local arsenal = Instance.new("Frame")
+	arsenal.Name = "ArsenalCard"
+	arsenal.BackgroundColor3 = HOLO_PANEL_FILL
+	arsenal.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	arsenal.BorderSizePixel = 0
+	arsenal.Position = UDim2.fromOffset(ARSENAL_X, ARSENAL_Y)
+	arsenal.Size = UDim2.fromOffset(ARSENAL_W, ARSENAL_H)
+	arsenal.ZIndex = 52
+	arsenal.Parent = scaleWrap
+	local arsenalStroke = Instance.new("UIStroke")
+	arsenalStroke.Color     = HOLO_PANEL_BORDER
+	arsenalStroke.Thickness = 1
+	arsenalStroke.Parent    = arsenal
+
+	-- Header row: weapon glyph + 'ARSENAL' label (left) + 'N · ITEMS'
+	-- counter (right). Count label ref stashed in arsenalCountLabel
+	-- so Step 7 can overwrite it whenever the active filter changes.
+	local header = Instance.new("Frame")
+	header.Name = "Header"
+	header.BackgroundTransparency = 1
+	header.BorderSizePixel = 0
+	header.Position = UDim2.fromOffset(ARSENAL_PAD_X, 14)
+	header.Size = UDim2.new(1, -ARSENAL_PAD_X * 2, 0, 18)
+	header.ZIndex = 53
+	header.Parent = arsenal
+
+	local headerGlyph = makeWeaponIcon(header, 14, HOLO_EDGE)
+	headerGlyph.AnchorPoint = Vector2.new(0, 0.5)
+	headerGlyph.Position = UDim2.new(0, 0, 0.5, 0)
+	headerGlyph.ZIndex = 54
+
+	local headerLabel = Instance.new("TextLabel")
+	headerLabel.BackgroundTransparency = 1
+	headerLabel.BorderSizePixel = 0
+	headerLabel.Position = UDim2.fromOffset(20, 0)
+	headerLabel.Size = UDim2.new(1, -90, 1, 0)
+	headerLabel.Font = FONT_TITLE
+	headerLabel.TextSize = 13
+	headerLabel.TextColor3 = COLOR_TEXT
+	headerLabel.TextXAlignment = Enum.TextXAlignment.Left
+	headerLabel.Text = "ARSENAL"
+	headerLabel.ZIndex = 54
+	headerLabel.Parent = header
+
+	local arsenalCountLabel = Instance.new("TextLabel")
+	arsenalCountLabel.Name = "ItemCount"
+	arsenalCountLabel.BackgroundTransparency = 1
+	arsenalCountLabel.BorderSizePixel = 0
+	arsenalCountLabel.AnchorPoint = Vector2.new(1, 0.5)
+	arsenalCountLabel.Position = UDim2.new(1, 0, 0.5, 0)
+	arsenalCountLabel.Size = UDim2.fromOffset(80, 16)
+	arsenalCountLabel.Font = FONT_TITLE
+	arsenalCountLabel.TextSize = 11
+	arsenalCountLabel.TextColor3 = COLOR_TEXT_DIM
+	arsenalCountLabel.TextXAlignment = Enum.TextXAlignment.Right
+	arsenalCountLabel.Text = "0 · ITEMS"
+	arsenalCountLabel.ZIndex = 54
+	arsenalCountLabel.Parent = header
+	local _ = arsenalCountLabel -- Step 7 will overwrite Text on filter change
+
+	-- ── Profession filter tabs (WARRIOR / FISHERMAN / ASSISTANT) ────
+	-- Three equal-width pills below the header. One active at a time;
+	-- default = Warrior per the plan. Only flips the visual state for
+	-- now — grid rebuild wires up in Step 7.
+	local TAB_ROW_Y   = 40
+	local TAB_H       = 26
+	local TAB_GAP     = 6
+	local TAB_INNER_W = ARSENAL_W - ARSENAL_PAD_X * 2
+	local TAB_W       = (TAB_INNER_W - TAB_GAP * 2) / 3
+
+	local tabRow = Instance.new("Frame")
+	tabRow.Name = "FilterTabs"
+	tabRow.BackgroundTransparency = 1
+	tabRow.BorderSizePixel = 0
+	tabRow.Position = UDim2.fromOffset(ARSENAL_PAD_X, TAB_ROW_Y)
+	tabRow.Size = UDim2.fromOffset(TAB_INNER_W, TAB_H)
+	tabRow.ZIndex = 53
+	tabRow.Parent = arsenal
+
+	local TAB_FILL_SEL       = Color3.fromRGB(16, 42, 72)
+	local TAB_FILL_SEL_ALPHA = 0.10
+	local TAB_FILL_UNSEL     = HOLO_PANEL_FILL
+	local TAB_FILL_UNSEL_ALPHA = 0.45
+	local TAB_STROKE_SEL     = HOLO_EDGE
+	local TAB_STROKE_UNSEL   = HOLO_PANEL_BORDER
+	local TAB_TEXT_SEL       = Color3.fromRGB(230, 245, 255)
+	local TAB_TEXT_UNSEL     = COLOR_TEXT_DIM
+
+	local arsenalActiveProfession = "Warrior"
+	local arsenalTabRefs = {}
+
+	local function refreshTabVisuals()
+		for profession, ref in pairs(arsenalTabRefs) do
+			local selected = (profession == arsenalActiveProfession)
+			if selected then
+				ref.tile.BackgroundColor3 = TAB_FILL_SEL
+				ref.tile.BackgroundTransparency = TAB_FILL_SEL_ALPHA
+				ref.stroke.Color = TAB_STROKE_SEL
+				ref.stroke.Thickness = 1.4
+				ref.label.TextColor3 = TAB_TEXT_SEL
+			else
+				ref.tile.BackgroundColor3 = TAB_FILL_UNSEL
+				ref.tile.BackgroundTransparency = TAB_FILL_UNSEL_ALPHA
+				ref.stroke.Color = TAB_STROKE_UNSEL
+				ref.stroke.Thickness = 1
+				ref.label.TextColor3 = TAB_TEXT_UNSEL
+			end
+		end
+	end
+
+	local function buildTab(profession, displayText, index)
+		local tile = Instance.new("TextButton")
+		tile.Name = "Tab_" .. profession
+		tile.AutoButtonColor = false
+		tile.Text = ""
+		tile.BorderSizePixel = 0
+		tile.Position = UDim2.fromOffset((index - 1) * (TAB_W + TAB_GAP), 0)
+		tile.Size = UDim2.fromOffset(TAB_W, TAB_H)
+		tile.ZIndex = 54
+		tile.Parent = tabRow
+		local stroke = Instance.new("UIStroke")
+		stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		stroke.Parent = tile
+
+		local label = Instance.new("TextLabel")
+		label.BackgroundTransparency = 1
+		label.BorderSizePixel = 0
+		label.Size = UDim2.fromScale(1, 1)
+		label.Font = FONT_TITLE
+		label.TextSize = 11
+		label.TextXAlignment = Enum.TextXAlignment.Center
+		label.TextYAlignment = Enum.TextYAlignment.Center
+		label.Text = displayText
+		label.ZIndex = 55
+		label.Parent = tile
+
+		arsenalTabRefs[profession] = { tile = tile, stroke = stroke, label = label }
+
+		tile.MouseButton1Click:Connect(function()
+			if arsenalActiveProfession == profession then return end
+			arsenalActiveProfession = profession
+			refreshTabVisuals()
+			-- Step 7 will also rebuild the weapon grid here.
+		end)
+	end
+
+	buildTab("Warrior",   "WARRIOR",   1)
+	buildTab("Fisherman", "FISHERMAN", 2)
+	buildTab("Assistant", "ASSISTANT", 3)
+	refreshTabVisuals()
 
 	updateResponsiveScale()
 
