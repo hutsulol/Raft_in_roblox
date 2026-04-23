@@ -973,6 +973,318 @@ local function openWeaponSelectPage(ctx)
 
 	buildGrid(arsenalActiveProfession)
 
+	-- ── Detail card (right column) ──────────────────────────────────
+	-- Mirrors the arsenal's geometry on the right edge. Shell is
+	-- built once; its inner labels / icon / stars / stat rows are
+	-- rewritten by refreshDetailCard(def). Step 8 paints it once
+	-- with the currently-equipped weapon; Step 10 hooks grid card
+	-- clicks to refreshDetailCard, and Step 11 wires the EQUIP
+	-- button + viewport swap.
+	local DETAIL_X     = REFERENCE_W - 40 - 280
+	local DETAIL_Y     = 60
+	local DETAIL_W     = 280
+	local DETAIL_H     = 510
+	local DETAIL_PAD_X = 14
+
+	local detailCard = Instance.new("Frame")
+	detailCard.Name = "DetailCard"
+	detailCard.BackgroundColor3 = HOLO_PANEL_FILL
+	detailCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	detailCard.BorderSizePixel = 0
+	detailCard.Position = UDim2.fromOffset(DETAIL_X, DETAIL_Y)
+	detailCard.Size = UDim2.fromOffset(DETAIL_W, DETAIL_H)
+	detailCard.ZIndex = 52
+	detailCard.Parent = scaleWrap
+	local detailStroke = Instance.new("UIStroke")
+	detailStroke.Color     = HOLO_PANEL_BORDER
+	detailStroke.Thickness = 1
+	detailStroke.Parent    = detailCard
+
+	-- ── Header row: icon box + name / type / EQUIPPED chip ──────────
+	local HEADER_TOP   = 14
+	local ICON_SIZE    = 56
+	local detailIconBox = Instance.new("Frame")
+	detailIconBox.Name = "IconBox"
+	detailIconBox.BackgroundColor3 = Color3.fromRGB(16, 34, 58)
+	detailIconBox.BackgroundTransparency = 0.3
+	detailIconBox.BorderSizePixel = 0
+	detailIconBox.Position = UDim2.fromOffset(DETAIL_PAD_X, HEADER_TOP)
+	detailIconBox.Size = UDim2.fromOffset(ICON_SIZE, ICON_SIZE)
+	detailIconBox.ZIndex = 53
+	detailIconBox.Parent = detailCard
+	local iconStroke = Instance.new("UIStroke")
+	iconStroke.Color     = HOLO_PANEL_BORDER
+	iconStroke.Thickness = 1
+	iconStroke.Parent    = detailIconBox
+
+	local headerTextX = DETAIL_PAD_X + ICON_SIZE + 12
+	local detailName = Instance.new("TextLabel")
+	detailName.Name = "WeaponName"
+	detailName.BackgroundTransparency = 1
+	detailName.BorderSizePixel = 0
+	detailName.Position = UDim2.fromOffset(headerTextX, HEADER_TOP + 2)
+	detailName.Size = UDim2.new(1, -(headerTextX + DETAIL_PAD_X), 0, 20)
+	detailName.Font = FONT_TITLE
+	detailName.TextSize = 17
+	detailName.TextColor3 = COLOR_TEXT
+	detailName.TextXAlignment = Enum.TextXAlignment.Left
+	detailName.Text = "—"
+	detailName.ZIndex = 53
+	detailName.Parent = detailCard
+
+	local detailType = Instance.new("TextLabel")
+	detailType.Name = "WeaponType"
+	detailType.BackgroundTransparency = 1
+	detailType.BorderSizePixel = 0
+	detailType.Position = UDim2.fromOffset(headerTextX, HEADER_TOP + 24)
+	detailType.Size = UDim2.fromOffset(120, 16)
+	detailType.Font = FONT_BODY
+	detailType.TextSize = 12
+	detailType.TextColor3 = COLOR_TEXT_DIM
+	detailType.TextXAlignment = Enum.TextXAlignment.Left
+	detailType.Text = "—"
+	detailType.ZIndex = 53
+	detailType.Parent = detailCard
+
+	-- EQUIPPED chip in the header — shown only when the currently
+	-- selected weapon is the one actually equipped on the merc.
+	local detailEquippedChip = Instance.new("Frame")
+	detailEquippedChip.Name = "EquippedChip"
+	detailEquippedChip.BackgroundColor3 = Color3.fromRGB(40, 74, 50)
+	detailEquippedChip.BackgroundTransparency = 0.15
+	detailEquippedChip.BorderSizePixel = 0
+	detailEquippedChip.Position = UDim2.fromOffset(headerTextX, HEADER_TOP + 42)
+	detailEquippedChip.Size = UDim2.fromOffset(64, 14)
+	detailEquippedChip.Visible = false
+	detailEquippedChip.ZIndex = 53
+	detailEquippedChip.Parent = detailCard
+	local chipCorner = Instance.new("UICorner")
+	chipCorner.CornerRadius = UDim.new(0, 2)
+	chipCorner.Parent = detailEquippedChip
+	local chipStroke = Instance.new("UIStroke")
+	chipStroke.Color     = Color3.fromRGB(90, 190, 120)
+	chipStroke.Thickness = 1
+	chipStroke.Parent    = detailEquippedChip
+	local chipLabel = Instance.new("TextLabel")
+	chipLabel.BackgroundTransparency = 1
+	chipLabel.BorderSizePixel = 0
+	chipLabel.Size = UDim2.fromScale(1, 1)
+	chipLabel.Font = FONT_TITLE
+	chipLabel.TextSize = 10
+	chipLabel.TextColor3 = Color3.fromRGB(200, 240, 210)
+	chipLabel.TextXAlignment = Enum.TextXAlignment.Center
+	chipLabel.Text = "EQUIPPED"
+	chipLabel.ZIndex = 54
+	chipLabel.Parent = detailEquippedChip
+
+	-- Hairline divider below the header.
+	local divider = Instance.new("Frame")
+	divider.BackgroundColor3 = HOLO_PANEL_BORDER
+	divider.BackgroundTransparency = 0.35
+	divider.BorderSizePixel = 0
+	divider.Position = UDim2.fromOffset(DETAIL_PAD_X, HEADER_TOP + ICON_SIZE + 10)
+	divider.Size = UDim2.new(1, -DETAIL_PAD_X * 2, 0, 1)
+	divider.ZIndex = 53
+	divider.Parent = detailCard
+
+	-- ── Stat rows (content populated in Step 9) ─────────────────────
+	-- Reserved Frame so Step 9's per-weapon stat-row builder has a
+	-- known parent. Height left flexible; the builder will write the
+	-- actual rows in.
+	local detailStatRow = Instance.new("Frame")
+	detailStatRow.Name = "StatRows"
+	detailStatRow.BackgroundTransparency = 1
+	detailStatRow.BorderSizePixel = 0
+	detailStatRow.Position = UDim2.fromOffset(DETAIL_PAD_X, HEADER_TOP + ICON_SIZE + 20)
+	detailStatRow.Size = UDim2.new(1, -DETAIL_PAD_X * 2, 0, 44)
+	detailStatRow.ZIndex = 53
+	detailStatRow.Parent = detailCard
+
+	-- ── Star row + level line ───────────────────────────────────────
+	-- Star row gets rebuilt on every refresh (so the filled count
+	-- tracks def.stars), so we keep a parent Frame with a constant
+	-- position and destroy the previous stars before drawing new.
+	local detailStarsRow = Instance.new("Frame")
+	detailStarsRow.Name = "StarsRow"
+	detailStarsRow.BackgroundTransparency = 1
+	detailStarsRow.BorderSizePixel = 0
+	detailStarsRow.Position = UDim2.fromOffset(DETAIL_PAD_X, HEADER_TOP + ICON_SIZE + 72)
+	detailStarsRow.Size = UDim2.new(1, -DETAIL_PAD_X * 2, 0, 16)
+	detailStarsRow.ZIndex = 53
+	detailStarsRow.Parent = detailCard
+
+	local detailLevelLabel = Instance.new("TextLabel")
+	detailLevelLabel.Name = "LevelLine"
+	detailLevelLabel.BackgroundTransparency = 1
+	detailLevelLabel.BorderSizePixel = 0
+	detailLevelLabel.Position = UDim2.fromOffset(DETAIL_PAD_X, HEADER_TOP + ICON_SIZE + 92)
+	detailLevelLabel.Size = UDim2.new(1, -DETAIL_PAD_X * 2, 0, 18)
+	detailLevelLabel.Font = FONT_TITLE
+	detailLevelLabel.TextSize = 12
+	detailLevelLabel.TextColor3 = HOLO_EDGE
+	detailLevelLabel.TextXAlignment = Enum.TextXAlignment.Left
+	detailLevelLabel.Text = "Lv 1"
+	detailLevelLabel.ZIndex = 53
+	detailLevelLabel.Parent = detailCard
+
+	-- ── Description / flavor text ───────────────────────────────────
+	-- Word-wrapped body copy pulled from def.description. No ability
+	-- block above it per Q7.
+	local detailDescription = Instance.new("TextLabel")
+	detailDescription.Name = "Description"
+	detailDescription.BackgroundTransparency = 1
+	detailDescription.BorderSizePixel = 0
+	detailDescription.Position = UDim2.fromOffset(DETAIL_PAD_X, HEADER_TOP + ICON_SIZE + 122)
+	detailDescription.Size = UDim2.new(1, -DETAIL_PAD_X * 2, 0, 220)
+	detailDescription.Font = FONT_BODY
+	detailDescription.TextSize = 12
+	detailDescription.TextColor3 = COLOR_TEXT_DIM
+	detailDescription.TextXAlignment = Enum.TextXAlignment.Left
+	detailDescription.TextYAlignment = Enum.TextYAlignment.Top
+	detailDescription.TextWrapped = true
+	detailDescription.Text = ""
+	detailDescription.ZIndex = 53
+	detailDescription.Parent = detailCard
+
+	-- ── EQUIP button pinned to the bottom ───────────────────────────
+	-- Renders one of three visual states:
+	--   equipped → solid green outline 'EQUIPPED' label, not clickable.
+	--   unlocked → active cyan-fill 'EQUIP' button.
+	--   locked   → dim grey 'LOCKED' label, not clickable.
+	-- Step 11 wires the click + viewport swap.
+	local detailEquipButton = Instance.new("TextButton")
+	detailEquipButton.Name = "EquipButton"
+	detailEquipButton.AutoButtonColor = false
+	detailEquipButton.Text = ""
+	detailEquipButton.BackgroundColor3 = Color3.fromRGB(24, 56, 96)
+	detailEquipButton.BackgroundTransparency = 0
+	detailEquipButton.BorderSizePixel = 0
+	detailEquipButton.AnchorPoint = Vector2.new(0, 1)
+	detailEquipButton.Position = UDim2.new(0, DETAIL_PAD_X, 1, -DETAIL_PAD_X)
+	detailEquipButton.Size = UDim2.new(1, -DETAIL_PAD_X * 2, 0, 38)
+	detailEquipButton.ZIndex = 53
+	detailEquipButton.Parent = detailCard
+	local eqStroke = Instance.new("UIStroke")
+	eqStroke.Color     = HOLO_EDGE
+	eqStroke.Thickness = 1.2
+	eqStroke.Parent    = detailEquipButton
+	local eqLabel = Instance.new("TextLabel")
+	eqLabel.Name = "Label"
+	eqLabel.BackgroundTransparency = 1
+	eqLabel.BorderSizePixel = 0
+	eqLabel.Size = UDim2.fromScale(1, 1)
+	eqLabel.Font = FONT_TITLE
+	eqLabel.TextSize = 15
+	eqLabel.TextColor3 = COLOR_TEXT
+	eqLabel.TextXAlignment = Enum.TextXAlignment.Center
+	eqLabel.Text = "EQUIP"
+	eqLabel.ZIndex = 54
+	eqLabel.Parent = detailEquipButton
+
+	-- ── Detail refresh: paints the card from a weapon def ───────────
+	local function findWeaponDef(weaponId)
+		local weapons = ctx.equipItems and ctx.equipItems.Weapons or {}
+		for _, def in ipairs(weapons) do
+			if def.id == weaponId then return def end
+		end
+		return nil
+	end
+
+	local function isWeaponUnlocked(def, unlockedSet)
+		if not def then return false end
+		if def.alwaysUnlocked then return true end
+		unlockedSet = unlockedSet or collectUnlockedSet()
+		return unlockedSet[def.id] == true
+	end
+
+	local function refreshDetailCard(def)
+		if not def then
+			detailName.Text = "—"
+			detailType.Text = "—"
+			detailDescription.Text = ""
+			detailEquippedChip.Visible = false
+			for _, child in detailIconBox:GetChildren() do
+				if child:IsA("GuiObject") then child:Destroy() end
+			end
+			for _, child in detailStarsRow:GetChildren() do
+				if child:IsA("GuiObject") then child:Destroy() end
+			end
+			return
+		end
+
+		detailName.Text = def.displayName or def.id or "—"
+		detailType.Text = string.upper(def.typeName or "")
+
+		local unlocked = isWeaponUnlocked(def)
+		local equipped = (def.id == equippedWeaponId)
+		detailEquippedChip.Visible = equipped
+
+		-- Swap icon box content.
+		for _, child in detailIconBox:GetChildren() do
+			if child:IsA("GuiObject") then child:Destroy() end
+		end
+		if def.icon and def.icon ~= "" then
+			local img = Instance.new("ImageLabel")
+			img.BackgroundTransparency = 1
+			img.BorderSizePixel = 0
+			img.AnchorPoint = Vector2.new(0.5, 0.5)
+			img.Position = UDim2.fromScale(0.5, 0.5)
+			img.Size = UDim2.fromOffset(ICON_SIZE - 12, ICON_SIZE - 12)
+			img.Image = def.icon
+			img.ScaleType = Enum.ScaleType.Fit
+			img.ImageColor3 = Color3.new(1, 1, 1)
+			img.ZIndex = 54
+			img.Parent = detailIconBox
+		else
+			local glyph = makeWeaponIcon(detailIconBox, ICON_SIZE - 12, HOLO_EDGE)
+			glyph.AnchorPoint = Vector2.new(0.5, 0.5)
+			glyph.Position = UDim2.fromScale(0.5, 0.5)
+			glyph.ZIndex = 54
+		end
+
+		-- Star row — destroy the old and draw fresh.
+		for _, child in detailStarsRow:GetChildren() do
+			if child:IsA("GuiObject") then child:Destroy() end
+		end
+		local stars = makeStarRow(detailStarsRow, def.stars or 0, 5, 11, COLOR_GOLD)
+		stars.AnchorPoint = Vector2.new(0, 0.5)
+		stars.Position = UDim2.new(0, 0, 0.5, 0)
+		stars.ZIndex = 54
+
+		-- Level line placeholder (real weapon-leveling comes later).
+		detailLevelLabel.Text = string.format("Lv %d", def.level or 1)
+
+		detailDescription.Text = def.description or ""
+
+		-- EQUIP button state.
+		if not unlocked then
+			detailEquipButton.BackgroundColor3 = Color3.fromRGB(28, 34, 46)
+			detailEquipButton.Active = false
+			detailEquipButton.AutoButtonColor = false
+			eqStroke.Color = HOLO_PANEL_BORDER
+			eqLabel.Text = "LOCKED"
+			eqLabel.TextColor3 = COLOR_TEXT_MUTE
+		elseif equipped then
+			detailEquipButton.BackgroundColor3 = Color3.fromRGB(32, 64, 46)
+			detailEquipButton.Active = false
+			detailEquipButton.AutoButtonColor = false
+			eqStroke.Color = Color3.fromRGB(90, 190, 120)
+			eqLabel.Text = "EQUIPPED"
+			eqLabel.TextColor3 = Color3.fromRGB(200, 240, 210)
+		else
+			detailEquipButton.BackgroundColor3 = Color3.fromRGB(24, 56, 96)
+			detailEquipButton.Active = true
+			detailEquipButton.AutoButtonColor = true
+			eqStroke.Color = HOLO_EDGE
+			eqLabel.Text = "EQUIP"
+			eqLabel.TextColor3 = COLOR_TEXT
+		end
+	end
+
+	-- Initial paint — equipped weapon by default. Step 10 adds the
+	-- grid-click path that swaps the detail card to any other def.
+	refreshDetailCard(findWeaponDef(equippedWeaponId))
+
 	updateResponsiveScale()
 
 	-- Cleanup listeners when the page leaves the hierarchy (belt-and-
