@@ -447,7 +447,27 @@ local function updateTooltipPosition(mousePos)
 	tooltipLabel.Position = UDim2.fromOffset(x, y)
 end
 
+-- Returns true when another full-screen overlay is on top of the
+-- inventory (phone menu, shop, etc.) and hotbar hover tooltips
+-- would visually bleed through. PhoneMenu publishes _G.PhoneScreenGui
+-- which flips .Enabled on open/close, so checking that is enough for
+-- the current UI set; future overlays can hook the same handshake.
+local function isHoverBlockingOverlayOpen()
+	local phone = _G.PhoneScreenGui
+	if phone and phone:IsA("ScreenGui") and phone.Enabled then
+		return true
+	end
+	return false
+end
+
 local function showTooltipForSlot(slotIndex)
+	-- Don't show while the phone (or any future overlay) is covering
+	-- the playfield — the cursor may still technically be over a
+	-- hotbar slot, but the tooltip would render on top of the overlay.
+	if isHoverBlockingOverlayOpen() then
+		hideTooltip()
+		return
+	end
 	local data = slotData[slotIndex]
 	local name = getDisplayName(data)
 	if not name then
@@ -2286,7 +2306,16 @@ UserInputService.InputChanged:Connect(function(input)
 			updateDragPosition(UserInputService:GetMouseLocation())
 		end
 		if tooltipGui and tooltipGui.Enabled then
-			updateTooltipPosition(UserInputService:GetMouseLocation())
+			-- Self-heal: if an overlay opened after the tooltip was
+			-- already showing (MouseLeave never fired because the
+			-- cursor stayed inside the slot's rect), drop the
+			-- tooltip on the next mouse move so it doesn't linger
+			-- on top of the phone / shop / etc.
+			if isHoverBlockingOverlayOpen() then
+				hideTooltip()
+			else
+				updateTooltipPosition(UserInputService:GetMouseLocation())
+			end
 		end
 	end
 end)
