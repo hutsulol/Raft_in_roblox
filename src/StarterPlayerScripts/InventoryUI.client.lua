@@ -2291,6 +2291,14 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	end
 	local slotNum = numberKeys[input.KeyCode]
 	if slotNum then
+		-- Don't swap to a hotbar tool while the phone (or any other
+		-- full-screen overlay) is on top — the player is interacting
+		-- with the overlay, not trying to switch tools. Prevents
+		-- pressing "1..8" from unequipping the phone and revealing
+		-- a hotbar item behind the open menu.
+		if isHoverBlockingOverlayOpen() then
+			return
+		end
 		local data = slotData[slotNum]
 		if data and data.type == "tool" then
 			equipToolByName(data.toolName)

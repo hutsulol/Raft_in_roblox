@@ -214,6 +214,16 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	-- Q key drop from hovered hotbar slot
 	if processed then return end
 	if input.KeyCode == Enum.KeyCode.Q then
+		-- While a full-screen overlay (e.g. the phone) is up the Q
+		-- key is reserved for that overlay's own binding — the BACK
+		-- hotkey on every phone sub-page uses Q. Dropping the hovered
+		-- hotbar item when the player is navigating the phone menu
+		-- is the bug this guard prevents.
+		local phone = _G.PhoneScreenGui
+		if phone and phone:IsA("ScreenGui") and phone.Enabled then
+			return
+		end
+
 		local slotIndex = getHoveredHotbarSlot()
 		if not slotIndex then return end
 
