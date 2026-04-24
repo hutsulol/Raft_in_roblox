@@ -698,40 +698,77 @@ local function buildHoloBackground(parent)
 		return mote
 	end
 
-	for _ = 1, 34 do
-		local roll = math.random()
-		local sizePx, duration, opacity, builder
+	-- Three depth bands give the field a parallax feel. Far motes read
+	-- as distant atmosphere (tiny, dim, slow, straight-line drift),
+	-- near motes as foreground sparkle (larger, brighter, faster,
+	-- wider horizontal arc). Mid motes sit between. ZIndex also climbs
+	-- with depth so any overlap resolves in the expected order (near
+	-- draws over far) even within the same Motes container.
+	--
+	-- Shape-class probabilities lean on depth too: dots dominate the
+	-- far layer (they're the visually-cheapest atmosphere), glows and
+	-- twinkles cluster on the near layer where their detail registers.
+	for _ = 1, 38 do
+		local depthRoll = math.random()
+		local sizePx, duration, opacity, driftRange, zIndex, shapeRoll, builder
 
-		if roll < 0.55 then
-			-- Tiny dot: the bread-and-butter ambient speckle.
-			sizePx   = 1.2 + math.random() * 1.6   -- 1.2 .. 2.8 px
-			duration = 14 + math.random() * 10     -- 14 .. 24 s
-			opacity  = 0.28 + math.random() * 0.42 -- dim
-			builder  = makeDot
-		elseif roll < 0.88 then
-			-- Medium glow: a little brighter, bigger, slightly slower.
-			sizePx   = 3 + math.random() * 3       -- 3 .. 6 px
-			duration = 16 + math.random() * 10     -- 16 .. 26 s
-			opacity  = 0.45 + math.random() * 0.35
-			builder  = makeGlow
+		if depthRoll < 0.47 then
+			-- FAR — distant atmosphere. Tiny + dim + slow. Almost
+			-- straight-line vertical drift so the eye reads them as
+			-- being at infinity.
+			sizePx     = 0.8 + math.random() * 1.4  -- 0.8 .. 2.2 px
+			duration   = 22 + math.random() * 10    -- 22 .. 32 s
+			opacity    = 0.15 + math.random() * 0.22
+			driftRange = 0.04                       -- ±2 % screen
+			zIndex     = 3
+			shapeRoll  = math.random()
+			builder    = (shapeRoll < 0.92) and makeDot or makeGlow
+		elseif depthRoll < 0.82 then
+			-- MID — the middle plane. Medium everything; fills the
+			-- gap between the ambient speckle and the near sparkle.
+			sizePx     = 2.0 + math.random() * 2.5  -- 2.0 .. 4.5 px
+			duration   = 14 + math.random() * 8     -- 14 .. 22 s
+			opacity    = 0.40 + math.random() * 0.25
+			driftRange = 0.08                       -- ±4 % screen
+			zIndex     = 4
+			shapeRoll  = math.random()
+			if shapeRoll < 0.60 then
+				builder = makeDot
+			elseif shapeRoll < 0.95 then
+				builder = makeGlow
+			else
+				builder = makeTwinkle
+			end
 		else
-			-- Twinkle spark: rarer + larger, slowest of all so the
-			-- "+" / "×" pattern reads without feeling like confetti.
-			sizePx   = 5 + math.random() * 4       -- 5 .. 9 px
-			duration = 20 + math.random() * 12     -- 20 .. 32 s
-			opacity  = 0.55 + math.random() * 0.35
-			builder  = makeTwinkle
+			-- NEAR — foreground sparkle. Larger + brighter + fastest;
+			-- widest horizontal arc sells the parallax since near
+			-- objects sweep further across the screen per unit time.
+			sizePx     = 4.5 + math.random() * 3.5  -- 4.5 .. 8.0 px
+			duration   = 8 + math.random() * 6      -- 8 .. 14 s
+			opacity    = 0.60 + math.random() * 0.25
+			driftRange = 0.16                       -- ±8 % screen
+			zIndex     = 5
+			shapeRoll  = math.random()
+			if shapeRoll < 0.18 then
+				builder = makeDot
+			elseif shapeRoll < 0.70 then
+				builder = makeGlow
+			else
+				builder = makeTwinkle
+			end
 		end
 
 		local startDelay = math.random() * 18
 		local color      = pickTintedColor()
 		local mote       = builder(motes, sizePx, color, opacity)
+		-- Near layer draws over mid, mid draws over far.
+		mote.ZIndex = zIndex
 
 		task.spawn(function()
 			task.wait(startDelay)
 			while mote.Parent do
 				local startX = math.random()
-				local driftX = (math.random() - 0.5) * 0.06
+				local driftX = (math.random() - 0.5) * driftRange
 				mote.Position = UDim2.new(startX, 0, 1.05, 0)
 				local goal = UDim2.new(startX + driftX, 0, -0.05, 0)
 				local tw = TweenService:Create(mote,
