@@ -1101,7 +1101,13 @@ local function openHandlingPage(ctx)
 	if ctx.hidePhonePanels then ctx.hidePhonePanels() end
 
 	-- Backdrop (first child so everything else renders over it).
-	buildHoloBackground(page)
+	-- Holo backdrop (gradient + horizon + drifting motes) lives on the
+	-- PhoneMenu's persistent screenGui now, so it survives the page
+	-- transitions. Don't re-build a per-page copy here — that was
+	-- rewinding the motes to the bottom of the screen every time a
+	-- sub-page opened. `page` stays transparent and the shared
+	-- backdrop shows through unchanged.
+	-- buildHoloBackground(page)  -- intentionally disabled
 
 	-- Responsive 960x600 artboard, centred on screen. Same recipe as
 	-- MercenariesMenu — UIScale driven off Camera.ViewportSize so the

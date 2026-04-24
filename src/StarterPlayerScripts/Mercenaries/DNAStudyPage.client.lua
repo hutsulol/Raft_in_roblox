@@ -696,7 +696,9 @@ local function openDNAStudyPage(ctx)
 	page.Parent = screenGui
 	activePage = page
 
-	buildHoloBackground(page)
+	-- Shared phone backdrop now lives on the persistent screenGui —
+	-- skip the per-page backdrop so motes don't rewind on navigation.
+	-- buildHoloBackground(page)  -- intentionally disabled
 
 	-- Responsive 960×600 artboard (same math as HandlingPage).
 	local MENU_VERTICAL_SHIFT = 30

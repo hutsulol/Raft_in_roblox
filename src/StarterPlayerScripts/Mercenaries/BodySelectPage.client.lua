@@ -379,7 +379,9 @@ local function openBodySelectPage(ctx)
 
 	if ctx.hidePhonePanels then ctx.hidePhonePanels() end
 
-	buildHoloBackground(page)
+	-- Shared phone backdrop now lives on the persistent screenGui —
+	-- skip the per-page backdrop so motes don't rewind on navigation.
+	-- buildHoloBackground(page)  -- intentionally disabled
 
 	-- Responsive 960×600 artboard (same math as HandlingPage /
 	-- DNAStudyPage), centred on screen with a small downward shift

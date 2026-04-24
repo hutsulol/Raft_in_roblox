@@ -1521,9 +1521,12 @@ buildPage = function(mercNames)
 	-- built so the mote-fade heartbeat finds them.
 	table.clear(motesOccludeList)
 
-	-- Holo sea-mist backdrop — first child so everything below
-	-- renders on top of it.
-	buildHoloBackground(page)
+	-- Holo sea-mist backdrop lives on the persistent PhoneMenu screenGui
+	-- now, so the gradient + motes carry across page transitions
+	-- instead of restarting from the bottom every time a sub-page
+	-- builds. Intentionally no per-page backdrop here — `page` stays
+	-- transparent and the shared backdrop shows through.
+	-- buildHoloBackground(page)  -- intentionally disabled
 
 	-- ── Responsive artboard (matches PhoneMenu) ──────────────────────
 	-- The Claude Design canvas base is 960x600; we use a wider artboard here
