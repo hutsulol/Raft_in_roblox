@@ -854,6 +854,11 @@ end
 
 local function beginDragPending(slotIndex, data, mousePos, isSplit)
 	if not data then return end
+	-- Never start a drag while the phone (or any other full-screen
+	-- overlay) is on top — the hotbar's MouseButton1Down still fires
+	-- because the phone's backdrop Frames don't sink pointer events,
+	-- but the ghost visual would bleed over the overlay.
+	if isHoverBlockingOverlayOpen() then return end
 	dragState.sourceSlot = slotIndex
 	dragState.data = data
 	dragState.startPos = mousePos
@@ -1837,6 +1842,7 @@ local function buildHotbar()
 		end)
 
 		slot.MouseButton1Down:Connect(function()
+			if isHoverBlockingOverlayOpen() then return end
 			local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
 				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 			if shiftHeld then
@@ -1853,6 +1859,7 @@ local function buildHotbar()
 		end)
 
 		slot.MouseButton2Down:Connect(function()
+			if isHoverBlockingOverlayOpen() then return end
 			local shiftHeld = UserInputService:IsKeyDown(Enum.KeyCode.LeftShift)
 				or UserInputService:IsKeyDown(Enum.KeyCode.RightShift)
 			if shiftHeld then
@@ -1873,6 +1880,7 @@ local function buildHotbar()
 				dragState.didDrag = false
 				return
 			end
+			if isHoverBlockingOverlayOpen() then return end
 			local data = slotData[slotIndex]
 			if data and data.type == "tool" then
 				equipToolByName(data.toolName)
