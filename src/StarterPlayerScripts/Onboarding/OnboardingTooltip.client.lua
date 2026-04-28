@@ -600,8 +600,18 @@ local function buildTooltipPanel(opts)
 	bodyPad.PaddingRight  = UDim.new(0, 14)
 	bodyPad.Parent = body
 
+	-- Vertical stack inside the body card so bodyText + progress row
+	-- auto-flow without manually summing heights every render. Step 1D
+	-- adds the progress row as a second child.
+	local bodyLayout = Instance.new("UIListLayout")
+	bodyLayout.FillDirection = Enum.FillDirection.Vertical
+	bodyLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	bodyLayout.Padding = UDim.new(0, 10)
+	bodyLayout.Parent = body
+
 	local bodyText = Instance.new("TextLabel")
 	bodyText.Name = "BodyText"
+	bodyText.LayoutOrder = 1
 	bodyText.Size = UDim2.new(1, 0, 0, 0)
 	bodyText.AutomaticSize = Enum.AutomaticSize.Y
 	bodyText.BackgroundTransparency = 1
@@ -618,16 +628,99 @@ local function buildTooltipPanel(opts)
 	bodyText.ZIndex = BODY_Z
 	bodyText.Parent = body
 
+	-- ── Progress row (only rendered when opts.goal is a positive int) ─
+	-- Pill track + green-gradient fill + "N/M" label. Mirrors the
+	-- mockup's `.progress-wrap`. Fill width tweens from old → new on
+	-- handle.setProgress(n).
+	local progressTrack, progressFill, progressLabel
+	local goalRaw = tonumber(opts.goal)
+	local goal = (goalRaw and goalRaw > 0) and math.floor(goalRaw) or nil
+	if goal then
+		local progressWrap = Instance.new("Frame")
+		progressWrap.Name = "ProgressWrap"
+		progressWrap.LayoutOrder = 2
+		progressWrap.Size = UDim2.new(1, 0, 0, 14)
+		progressWrap.BackgroundTransparency = 1
+		progressWrap.BorderSizePixel = 0
+		progressWrap.ZIndex = BODY_Z
+		progressWrap.Parent = body
+
+		-- Reserve a small fixed slot on the right for the "N/M" label
+		-- so the track + label never overlap regardless of goal size.
+		local LABEL_W = 44
+		local LABEL_GAP = 10
+
+		progressTrack = Instance.new("Frame")
+		progressTrack.Name = "Track"
+		progressTrack.AnchorPoint = Vector2.new(0, 0.5)
+		progressTrack.Position = UDim2.new(0, 0, 0.5, 0)
+		progressTrack.Size = UDim2.new(1, -(LABEL_W + LABEL_GAP), 1, 0)
+		-- Mockup background: rgba(0,0,0,.18) — solid dark with low
+		-- alpha. Roblox doesn't blend Frame fills with the parent the
+		-- same way CSS does (BackgroundTransparency only, no real
+		-- alpha-multiply on color), so use a near-black colour with
+		-- partial transparency to land on the same visual.
+		progressTrack.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+		progressTrack.BackgroundTransparency = 0.82
+		progressTrack.BorderSizePixel = 0
+		progressTrack.ClipsDescendants = true     -- so the fill can't poke past the pill
+		progressTrack.ZIndex = BODY_Z + 1
+		progressTrack.Parent = progressWrap
+		corner(progressTrack, 999)
+		stroke(progressTrack, 2, COLOR_WOOD_DARK)
+
+		progressFill = Instance.new("Frame")
+		progressFill.Name = "Fill"
+		progressFill.AnchorPoint = Vector2.new(0, 0.5)
+		progressFill.Position = UDim2.new(0, 0, 0.5, 0)
+		progressFill.Size = UDim2.new(0, 0, 1, 0) -- starts empty; setProgress fills it
+		progressFill.BackgroundColor3 = COLOR_GREEN
+		progressFill.BorderSizePixel = 0
+		progressFill.ZIndex = BODY_Z + 2
+		progressFill.Parent = progressTrack
+
+		-- Vertical gradient: light → mid → dark. Mockup uses
+		-- `linear-gradient(180deg, #6fa84a, var(--green) 60%, #3d6630)`.
+		local fillGrad = Instance.new("UIGradient")
+		fillGrad.Rotation = 90
+		fillGrad.Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0,    COLOR_GREEN_LIGHT),
+			ColorSequenceKeypoint.new(0.6,  COLOR_GREEN),
+			ColorSequenceKeypoint.new(1,    COLOR_GREEN_DARK),
+		})
+		fillGrad.Parent = progressFill
+
+		progressLabel = Instance.new("TextLabel")
+		progressLabel.Name = "Label"
+		progressLabel.AnchorPoint = Vector2.new(1, 0.5)
+		progressLabel.Position = UDim2.new(1, 0, 0.5, 0)
+		progressLabel.Size = UDim2.fromOffset(LABEL_W, 16)
+		progressLabel.BackgroundTransparency = 1
+		progressLabel.BorderSizePixel = 0
+		progressLabel.Font = FONT_TITLE
+		progressLabel.TextSize = 14
+		progressLabel.TextColor3 = COLOR_WOOD_DARK -- not-done default; turns green when done
+		progressLabel.TextXAlignment = Enum.TextXAlignment.Right
+		progressLabel.TextYAlignment = Enum.TextYAlignment.Center
+		progressLabel.Text = "0/" .. tostring(goal)
+		progressLabel.ZIndex = BODY_Z + 1
+		progressLabel.Parent = progressWrap
+	end
+
 	return {
-		panel     = panel,
-		header    = header,
-		iconBox   = iconBox,
-		iconGlyph = iconGlyph,
-		eyebrow   = eyebrow,
-		title     = title,
-		body      = body,
-		bodyText  = bodyText,
-		closeBtn  = closeBtn,
+		panel          = panel,
+		header         = header,
+		iconBox        = iconBox,
+		iconGlyph      = iconGlyph,
+		eyebrow        = eyebrow,
+		title          = title,
+		body           = body,
+		bodyText       = bodyText,
+		closeBtn       = closeBtn,
+		progressTrack  = progressTrack,   -- nil when no progress bar
+		progressFill   = progressFill,
+		progressLabel  = progressLabel,
+		goal           = goal,
 	}
 end
 
@@ -649,6 +742,11 @@ local function showOnboardingTip(opts)
 		instance = refs.panel,
 	}
 
+	-- Internal progress state. Tracked separately from the bar's
+	-- visual width so handle.setProgress(n) can clamp + de-dup
+	-- repeated calls (e.g. server fires "still 2/3" twice in a row).
+	local currentProgress = 0
+
 	function handle.dismiss()
 		if not refs.panel or not refs.panel.Parent then return end
 		refs.panel:Destroy()
@@ -661,10 +759,58 @@ local function showOnboardingTip(opts)
 		end
 	end
 
-	-- setProgress / complete are still no-ops in Step 1B — Steps 1D/1F
-	-- replace these with real bar updates and completion flashes.
-	function handle.setProgress(_) end
-	function handle.complete() end
+	-- Tween the fill width to match `n / goal`. No-op when the panel
+	-- has no progress bar (caller didn't pass `goal`). The label flips
+	-- from wood-dark to green once the goal is reached, mirroring the
+	-- mockup's `style={{color: done ? "var(--green)" : "var(--wood-dark)"}}`.
+	function handle.setProgress(n)
+		if not refs.goal or not refs.progressFill then return end
+		local goal = refs.goal
+		local clamped = math.clamp(tonumber(n) or 0, 0, goal)
+		if clamped == currentProgress then return end
+		currentProgress = clamped
+
+		local pct = clamped / goal
+		-- Mockup: `transition: width .5s cubic-bezier(.4,1.4,.5,1)`.
+		-- Roblox's closest with the same overshoot feel is Back/Out.
+		local tw = TweenService:Create(refs.progressFill,
+			TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+			{ Size = UDim2.new(pct, 0, 1, 0) })
+		tw:Play()
+
+		if refs.progressLabel then
+			refs.progressLabel.Text = string.format("%d/%d", clamped, goal)
+			refs.progressLabel.TextColor3 = (clamped >= goal)
+				and COLOR_GREEN
+				or  COLOR_WOOD_DARK
+		end
+	end
+
+	-- complete() will gain the flash + auto-dismiss path in Step 1F.
+	-- For now it's just shorthand for "set progress to goal" so any
+	-- caller wired up early sees the fill animate to 100%.
+	function handle.complete()
+		if refs.goal then
+			handle.setProgress(refs.goal)
+		end
+	end
+
+	-- Apply the caller's starting progress, if any. Snap (no tween)
+	-- so the entrance animation doesn't fight a half-second tween on
+	-- first paint — the tween path only kicks in for later updates.
+	if refs.goal then
+		local startN = math.clamp(tonumber(opts.progress) or 0, 0, refs.goal)
+		currentProgress = startN
+		if refs.progressFill then
+			refs.progressFill.Size = UDim2.new(startN / refs.goal, 0, 1, 0)
+		end
+		if refs.progressLabel then
+			refs.progressLabel.Text = string.format("%d/%d", startN, refs.goal)
+			refs.progressLabel.TextColor3 = (startN >= refs.goal)
+				and COLOR_GREEN
+				or  COLOR_WOOD_DARK
+		end
+	end
 
 	if refs.closeBtn then
 		refs.closeBtn.MouseButton1Click:Connect(function()
