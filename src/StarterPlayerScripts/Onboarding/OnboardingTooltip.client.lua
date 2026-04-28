@@ -424,7 +424,13 @@ local activeHandle
 local function buildTooltipPanel(opts)
 	local gui = ensureScreenGui()
 
-	local panel = Instance.new("Frame")
+	-- CanvasGroup as the panel root so the entrance / exit animations
+	-- can fade the whole tooltip via a single GroupTransparency knob
+	-- (no manual walk over every TextLabel / Frame / UIStroke). UIScale
+	-- handles the bounce-in scale so AutomaticSize.Y on the panel still
+	-- works — UIScale only multiplies the rendered size, not the
+	-- layout box.
+	local panel = Instance.new("CanvasGroup")
 	panel.Name = "OnboardingTooltip"
 	panel.AnchorPoint = Vector2.new(0, 0)
 	panel.Position = UDim2.fromOffset(TOOLTIP_MARGIN_X, TOOLTIP_MARGIN_Y)
@@ -433,10 +439,19 @@ local function buildTooltipPanel(opts)
 	panel.BackgroundColor3 = COLOR_WOOD_BASE
 	panel.BorderSizePixel = 0
 	panel.ZIndex = PANEL_BASE_Z
+	-- Hidden until the entrance tween fades us in. GroupTransparency
+	-- starts at 1.0 (fully transparent for the whole subtree) so
+	-- nothing flashes on screen for a frame between buildTooltipPanel
+	-- finishing and the entrance tween kicking off.
+	panel.GroupTransparency = 1
 	panel.Parent = gui
 	corner(panel, RADIUS_LG)
 	stroke(panel, 3, COLOR_WOOD_DARK)
 	padding(panel, TOOLTIP_PAD)
+
+	local panelScale = Instance.new("UIScale")
+	panelScale.Scale = 0.96   -- entrance start
+	panelScale.Parent = panel
 
 	-- Inner 1px white-18% alpha highlight stroke, inset 2 px from the
 	-- outer border. Same trick the mockup's `.tip::before` uses to
@@ -709,6 +724,7 @@ local function buildTooltipPanel(opts)
 
 	return {
 		panel          = panel,
+		panelScale     = panelScale,
 		header         = header,
 		iconBox        = iconBox,
 		iconGlyph      = iconGlyph,
@@ -747,16 +763,70 @@ local function showOnboardingTip(opts)
 	-- repeated calls (e.g. server fires "still 2/3" twice in a row).
 	local currentProgress = 0
 
+	-- ── Entrance / exit animation state ───────────────────────────────
+	-- Mockup keyframes (.tipIn / .tipOut) adapted for the upper-corner
+	-- anchor: the original "rise from below" becomes "drop in from
+	-- above", and the exit retreats back up the way the panel arrived.
+	--   Entrance — 0.55 s Back/Out on Position (Y starts 28 px above
+	--              resting and overshoots past, settles to rest),
+	--              GroupTransparency 1 → 0, UIScale 0.96 → 1.0.
+	--   Exit     — 0.25 s Quad/In, Y back up to (rest − 20) while
+	--              GroupTransparency goes 0 → 1 and Scale 1.0 → 0.97.
+	-- The dismissing flag prevents re-entry; a second dismiss() call
+	-- mid-exit is a no-op.
+	local restPosition       = refs.panel.Position
+	local ENTRANCE_Y_OFFSET  = -28   -- pre-entrance Y, relative to rest
+	local EXIT_Y_OFFSET      = -20   -- post-exit Y, relative to rest
+
+	-- Park the panel at its pre-entrance offset before showing it so
+	-- a frame between buildTooltipPanel and the tween kicking off
+	-- doesn't flash the panel at its rest position.
+	refs.panel.Position = restPosition + UDim2.fromOffset(0, ENTRANCE_Y_OFFSET)
+
+	local entranceInfo = TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+	local exitInfo     = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+	local dismissing   = false
+
+	local function playEntrance()
+		TweenService:Create(refs.panel, entranceInfo,
+			{ Position = restPosition, GroupTransparency = 0 }):Play()
+		TweenService:Create(refs.panelScale, entranceInfo,
+			{ Scale = 1.0 }):Play()
+	end
+
 	function handle.dismiss()
-		if not refs.panel or not refs.panel.Parent then return end
-		refs.panel:Destroy()
-		refs.panel = nil
-		if activeHandle == handle then
-			activeHandle = nil
+		if dismissing then return end
+		dismissing = true
+		if not refs.panel or not refs.panel.Parent then
+			-- Already destroyed somehow (e.g. ScreenGui was nuked) —
+			-- still fire onDismiss so callers can clean their state.
+			if typeof(opts.onDismiss) == "function" then
+				task.spawn(opts.onDismiss)
+			end
+			if activeHandle == handle then activeHandle = nil end
+			return
 		end
-		if typeof(opts.onDismiss) == "function" then
-			task.spawn(opts.onDismiss)
-		end
+
+		local exitPos = restPosition + UDim2.fromOffset(0, EXIT_Y_OFFSET)
+		local posTween   = TweenService:Create(refs.panel, exitInfo,
+			{ Position = exitPos, GroupTransparency = 1 })
+		local scaleTween = TweenService:Create(refs.panelScale, exitInfo,
+			{ Scale = 0.97 })
+		posTween:Play()
+		scaleTween:Play()
+
+		posTween.Completed:Once(function()
+			if refs.panel and refs.panel.Parent then
+				refs.panel:Destroy()
+			end
+			refs.panel = nil
+			if activeHandle == handle then
+				activeHandle = nil
+			end
+			if typeof(opts.onDismiss) == "function" then
+				task.spawn(opts.onDismiss)
+			end
+		end)
 	end
 
 	-- Tween the fill width to match `n / goal`. No-op when the panel
@@ -819,6 +889,7 @@ local function showOnboardingTip(opts)
 	end
 
 	activeHandle = handle
+	playEntrance()
 	return handle
 end
 
