@@ -121,29 +121,283 @@ local function ensureScreenGui()
 	return screenGui
 end
 
--- ─── Public API stub (Step 1A) ────────────────────────────────────────
--- Real implementation lands in Step 1B+. The stub returns a handle
--- shaped like the final API so callers wired up in Step 2 can be
--- written + reviewed before the visuals are done.
+-- ─── Static tooltip build (Step 1B) ───────────────────────────────────
+-- Renders the panel + header (icon box, eyebrow, title) + paper body
+-- card + X close button. No animations / progress bar / icon glyph
+-- yet — Steps 1C-1F layer those on. The ZIndex ladder is set up
+-- ahead so later steps don't have to renumber every child:
+--   2 inner highlight inset
+--   3 close button
+--   4 header (icon box + text)
+--   5 body card
+--   6 progress + future content
+--   8 close button glyph (text inside the button)
+
+local PANEL_BASE_Z   = 1
+local HIGHLIGHT_Z    = PANEL_BASE_Z + 1
+local CLOSE_BG_Z     = PANEL_BASE_Z + 2
+local HEADER_Z       = PANEL_BASE_Z + 3
+local BODY_Z         = PANEL_BASE_Z + 4
+local CLOSE_GLYPH_Z  = PANEL_BASE_Z + 7
+
+local ICON_BOX_SIZE   = 56
+local CLOSE_BTN_SIZE  = 26
+local HEADER_GAP      = 12
+
+-- Single active tooltip — calling showOnboardingTip a second time
+-- replaces the first. Step 1F may upgrade this to "update in place
+-- if id matches" but the contract is the same.
+local activeHandle
+
+local function buildTooltipPanel(opts)
+	local gui = ensureScreenGui()
+
+	local panel = Instance.new("Frame")
+	panel.Name = "OnboardingTooltip"
+	panel.AnchorPoint = Vector2.new(0, 0)
+	panel.Position = UDim2.fromOffset(TOOLTIP_MARGIN_X, TOOLTIP_MARGIN_Y)
+	panel.Size = UDim2.fromOffset(TOOLTIP_WIDTH, 0)   -- height auto-fits
+	panel.AutomaticSize = Enum.AutomaticSize.Y
+	panel.BackgroundColor3 = COLOR_WOOD_BASE
+	panel.BorderSizePixel = 0
+	panel.ZIndex = PANEL_BASE_Z
+	panel.Parent = gui
+	corner(panel, RADIUS_LG)
+	stroke(panel, 3, COLOR_WOOD_DARK)
+	padding(panel, TOOLTIP_PAD)
+
+	-- Inner 1px white-18% alpha highlight stroke, inset 2 px from the
+	-- outer border. Same trick the mockup's `.tip::before` uses to
+	-- make the wood panel feel raised.
+	local highlight = Instance.new("Frame")
+	highlight.Name = "InnerHighlight"
+	highlight.AnchorPoint = Vector2.new(0.5, 0.5)
+	highlight.Position = UDim2.fromScale(0.5, 0.5)
+	-- The Frame must extend past the parent's UIPadding so the inner
+	-- stroke kisses the panel's outer edge instead of the padding box.
+	highlight.Size = UDim2.new(1, (TOOLTIP_PAD - 2) * 2, 1, (TOOLTIP_PAD - 2) * 2)
+	highlight.BackgroundTransparency = 1
+	highlight.BorderSizePixel = 0
+	highlight.ZIndex = HIGHLIGHT_Z
+	highlight.Parent = panel
+	local hCorner = Instance.new("UICorner")
+	hCorner.CornerRadius = UDim.new(0, RADIUS_LG - 4)
+	hCorner.Parent = highlight
+	stroke(highlight, 1, COLOR_HIGHLIGHT_W, 0.82)
+
+	-- Vertical layout inside the panel. UIListLayout + AutomaticSize.Y
+	-- saves us from manually summing header + body heights every time
+	-- the body wraps to a different number of lines.
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Vertical
+	layout.SortOrder = Enum.SortOrder.LayoutOrder
+	layout.Padding = UDim.new(0, 10)
+	layout.Parent = panel
+
+	-- ── Header row ────────────────────────────────────────────────────
+	local header = Instance.new("Frame")
+	header.Name = "Header"
+	header.LayoutOrder = 1
+	header.Size = UDim2.new(1, 0, 0, ICON_BOX_SIZE)
+	header.BackgroundTransparency = 1
+	header.BorderSizePixel = 0
+	header.ZIndex = HEADER_Z
+	header.Parent = panel
+
+	-- Icon box on the left. Step 1C fills it with a glyph (or an
+	-- ImageLabel if iconImage was passed). Step 1B leaves it empty so
+	-- callers can still see the layout is correct.
+	local iconBox = Instance.new("Frame")
+	iconBox.Name = "IconBox"
+	iconBox.AnchorPoint = Vector2.new(0, 0.5)
+	iconBox.Position = UDim2.new(0, 0, 0.5, 0)
+	iconBox.Size = UDim2.fromOffset(ICON_BOX_SIZE, ICON_BOX_SIZE)
+	iconBox.BackgroundColor3 = COLOR_PAPER
+	iconBox.BorderSizePixel = 0
+	iconBox.ZIndex = HEADER_Z
+	iconBox.Parent = header
+	corner(iconBox, RADIUS_MD)
+	stroke(iconBox, 2, COLOR_WOOD_DARK)
+
+	-- Eyebrow + title stack to the right of the icon box.
+	local titles = Instance.new("Frame")
+	titles.Name = "Titles"
+	titles.AnchorPoint = Vector2.new(0, 0.5)
+	titles.Position = UDim2.new(0, ICON_BOX_SIZE + HEADER_GAP, 0.5, 0)
+	titles.Size = UDim2.new(1, -(ICON_BOX_SIZE + HEADER_GAP + CLOSE_BTN_SIZE + 8), 1, 0)
+	titles.BackgroundTransparency = 1
+	titles.BorderSizePixel = 0
+	titles.ZIndex = HEADER_Z
+	titles.Parent = header
+
+	local eyebrow = Instance.new("TextLabel")
+	eyebrow.Name = "Eyebrow"
+	eyebrow.AnchorPoint = Vector2.new(0, 0)
+	eyebrow.Position = UDim2.fromOffset(0, 4)
+	eyebrow.Size = UDim2.new(1, 0, 0, 14)
+	eyebrow.BackgroundTransparency = 1
+	eyebrow.BorderSizePixel = 0
+	eyebrow.Font = FONT_TITLE
+	eyebrow.TextSize = 11
+	eyebrow.TextColor3 = COLOR_WOOD_DARKEST
+	eyebrow.TextTransparency = 0.35   -- mockup uses rgba(61,40,23,.65)
+	eyebrow.TextXAlignment = Enum.TextXAlignment.Left
+	eyebrow.TextYAlignment = Enum.TextYAlignment.Top
+	eyebrow.Text = string.upper(tostring(opts.eyebrow or "HINT"))
+	eyebrow.ZIndex = HEADER_Z
+	eyebrow.Parent = titles
+
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.AnchorPoint = Vector2.new(0, 0)
+	title.Position = UDim2.fromOffset(0, 22)
+	title.Size = UDim2.new(1, 0, 0, 26)
+	title.BackgroundTransparency = 1
+	title.BorderSizePixel = 0
+	title.Font = FONT_TITLE
+	title.TextSize = 20
+	title.TextColor3 = COLOR_WOOD_DARKEST
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextYAlignment = Enum.TextYAlignment.Top
+	title.TextTruncate = Enum.TextTruncate.AtEnd
+	title.Text = tostring(opts.title or "")
+	title.ZIndex = HEADER_Z
+	title.Parent = titles
+
+	-- ── Close button (top-right of the panel) ─────────────────────────
+	local closeBtn
+	if opts.showClose ~= false then
+		closeBtn = Instance.new("TextButton")
+		closeBtn.Name = "CloseButton"
+		closeBtn.AnchorPoint = Vector2.new(1, 0)
+		-- Anchored to the panel's top-right corner, then nudged out
+		-- past the parent UIPadding so it lands 8 px from the visible
+		-- panel edge — same offset the mockup's `.close-btn` uses.
+		-- (padding - desiredMargin) = (14 - 8) = 6.
+		closeBtn.Position = UDim2.new(1, TOOLTIP_PAD - 8, 0, -(TOOLTIP_PAD - 8))
+		closeBtn.Size = UDim2.fromOffset(CLOSE_BTN_SIZE, CLOSE_BTN_SIZE)
+		closeBtn.BackgroundColor3 = COLOR_WOOD_MID
+		closeBtn.BorderSizePixel = 0
+		closeBtn.AutoButtonColor = false
+		closeBtn.Text = ""
+		closeBtn.ZIndex = CLOSE_BG_Z
+		closeBtn.Parent = panel
+		corner(closeBtn, RADIUS_SM)
+		stroke(closeBtn, 2, COLOR_WOOD_DARK)
+
+		local glyph = Instance.new("TextLabel")
+		glyph.BackgroundTransparency = 1
+		glyph.BorderSizePixel = 0
+		glyph.Size = UDim2.fromScale(1, 1)
+		glyph.Font = FONT_TITLE
+		glyph.TextSize = 14
+		glyph.TextColor3 = COLOR_PAPER_LIGHT
+		glyph.Text = "✕"
+		glyph.ZIndex = CLOSE_GLYPH_Z
+		glyph.Parent = closeBtn
+
+		-- Pressed-state visual feedback (mockup uses a 1px shift +
+		-- darker fill on :active / :hover).
+		closeBtn.MouseEnter:Connect(function()
+			closeBtn.BackgroundColor3 = COLOR_WOOD_DARK
+		end)
+		closeBtn.MouseLeave:Connect(function()
+			closeBtn.BackgroundColor3 = COLOR_WOOD_MID
+		end)
+	end
+
+	-- ── Body card (paper-fill) ────────────────────────────────────────
+	local body = Instance.new("Frame")
+	body.Name = "Body"
+	body.LayoutOrder = 2
+	body.Size = UDim2.new(1, 0, 0, 0)
+	body.AutomaticSize = Enum.AutomaticSize.Y
+	body.BackgroundColor3 = COLOR_PAPER
+	body.BorderSizePixel = 0
+	body.ZIndex = BODY_Z
+	body.Parent = panel
+	corner(body, RADIUS_MD)
+	stroke(body, 2, COLOR_WOOD_DARK)
+
+	local bodyPad = Instance.new("UIPadding")
+	bodyPad.PaddingTop    = UDim.new(0, 12)
+	bodyPad.PaddingBottom = UDim.new(0, 12)
+	bodyPad.PaddingLeft   = UDim.new(0, 14)
+	bodyPad.PaddingRight  = UDim.new(0, 14)
+	bodyPad.Parent = body
+
+	local bodyText = Instance.new("TextLabel")
+	bodyText.Name = "BodyText"
+	bodyText.Size = UDim2.new(1, 0, 0, 0)
+	bodyText.AutomaticSize = Enum.AutomaticSize.Y
+	bodyText.BackgroundTransparency = 1
+	bodyText.BorderSizePixel = 0
+	bodyText.Font = FONT_BODY
+	bodyText.TextSize = 15
+	bodyText.TextColor3 = Color3.fromRGB(46, 29, 16) -- mockup #2e1d10
+	bodyText.TextXAlignment = Enum.TextXAlignment.Left
+	bodyText.TextYAlignment = Enum.TextYAlignment.Top
+	bodyText.TextWrapped = true
+	bodyText.RichText = true
+	bodyText.LineHeight = 1.25
+	bodyText.Text = tostring(opts.body or "")
+	bodyText.ZIndex = BODY_Z
+	bodyText.Parent = body
+
+	return {
+		panel    = panel,
+		header   = header,
+		iconBox  = iconBox,
+		eyebrow  = eyebrow,
+		title    = title,
+		body     = body,
+		bodyText = bodyText,
+		closeBtn = closeBtn,
+	}
+end
+
+-- ─── Public API ───────────────────────────────────────────────────────
 
 local function showOnboardingTip(opts)
 	opts = opts or {}
-	warn(string.format(
-		"[OnboardingTooltip] _G.ShowOnboardingTip is a stub — visuals land in Step 1B. "
-		.. "Called for id=%s title=%q",
-		tostring(opts.id), tostring(opts.title)))
 
-	-- Reserve the GUI host so anything that probes for the screen gui
-	-- (e.g. occlusion checks similar to _G.PhoneScreenGui) finds the
-	-- right Instance even before Step 1B paints anything into it.
-	ensureScreenGui()
+	-- One tooltip at a time: dismiss the current one before painting
+	-- the new one. Step 1F can extend this to "update in place when
+	-- the id matches" so progress updates don't replay the entrance.
+	if activeHandle and activeHandle.dismiss then
+		activeHandle.dismiss()
+	end
+
+	local refs = buildTooltipPanel(opts)
 
 	local handle = {
-		instance    = nil,
-		setProgress = function() end,
-		complete    = function() end,
-		dismiss     = function() end,
+		instance = refs.panel,
 	}
+
+	function handle.dismiss()
+		if not refs.panel or not refs.panel.Parent then return end
+		refs.panel:Destroy()
+		refs.panel = nil
+		if activeHandle == handle then
+			activeHandle = nil
+		end
+		if typeof(opts.onDismiss) == "function" then
+			task.spawn(opts.onDismiss)
+		end
+	end
+
+	-- setProgress / complete are still no-ops in Step 1B — Steps 1D/1F
+	-- replace these with real bar updates and completion flashes.
+	function handle.setProgress(_) end
+	function handle.complete() end
+
+	if refs.closeBtn then
+		refs.closeBtn.MouseButton1Click:Connect(function()
+			handle.dismiss()
+		end)
+	end
+
+	activeHandle = handle
 	return handle
 end
 
