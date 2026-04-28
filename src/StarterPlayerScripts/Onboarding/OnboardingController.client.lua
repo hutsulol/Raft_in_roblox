@@ -20,6 +20,7 @@
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 
 local CHOP_TREES_GOAL = 3   -- mirror of CHOP_TREES_GOAL in
                             -- ChopTreesFlow.server.lua. Used only for
@@ -59,10 +60,81 @@ local activeHandles = {}
 -- the persisted state.
 local completedFlags = {}
 
+-- ─── Green log highlights (chop-trees flow only) ─────────────────────
+-- While the tooltip is up, every floating Log in the workspace gets a
+-- green Highlight so the player can spot them at a glance. ResourceSpawner
+-- tags every spawned resource model with "Resource" + sets a ResourceType
+-- attribute, so we listen on CollectionService and filter by attribute.
+-- Highlights are parented to the resource itself — when ResourceSpawner
+-- destroys the model on harvest the Highlight goes with it, no manual
+-- cleanup needed for the per-log case.
+
+local LOG_HIGHLIGHT_NAME = "OnboardingChopTreesHighlight"
+local LOG_HIGHLIGHT_FILL    = Color3.fromRGB(120, 220,  90)
+local LOG_HIGHLIGHT_OUTLINE = Color3.fromRGB(180, 255, 140)
+
+local logHighlightAddedConn   -- CollectionService:GetInstanceAddedSignal handle
+
+local function isLogResource(resource)
+	if not resource then return false end
+	-- Resource models are tagged on the Model itself; the Log type
+	-- check on the same node confirms we're not lighting up Plastic
+	-- canisters or future resource types.
+	return resource:GetAttribute("ResourceType") == "Log"
+end
+
+local function tryHighlightLog(resource)
+	if not isLogResource(resource) then return end
+	if resource:FindFirstChild(LOG_HIGHLIGHT_NAME) then return end
+	local hl = Instance.new("Highlight")
+	hl.Name = LOG_HIGHLIGHT_NAME
+	hl.FillColor = LOG_HIGHLIGHT_FILL
+	hl.FillTransparency = 0.55
+	hl.OutlineColor = LOG_HIGHLIGHT_OUTLINE
+	hl.OutlineTransparency = 0
+	-- AlwaysOnTop so the player can spot the target log even when
+	-- it's bobbing past the raft's logs in the foreground — this is
+	-- a teaching highlight, not an immersion accent.
+	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+	hl.Adornee = resource
+	hl.Parent = resource
+end
+
+local function startLogHighlights()
+	-- Tag every Log already in the world.
+	for _, resource in ipairs(CollectionService:GetTagged("Resource")) do
+		tryHighlightLog(resource)
+	end
+	-- And every Log that spawns while the flow is active. The
+	-- ResourceType attribute is set before the model is parented +
+	-- tagged, so it's available by the time this signal fires.
+	if not logHighlightAddedConn then
+		logHighlightAddedConn = CollectionService:GetInstanceAddedSignal("Resource"):Connect(tryHighlightLog)
+	end
+end
+
+local function stopLogHighlights()
+	if logHighlightAddedConn then
+		logHighlightAddedConn:Disconnect()
+		logHighlightAddedConn = nil
+	end
+	-- Sweep any Highlights still attached to surviving logs (a Log
+	-- the player didn't chop yet stays in the workspace; we just
+	-- want the green to disappear when the flow ends).
+	for _, resource in ipairs(CollectionService:GetTagged("Resource")) do
+		local hl = resource:FindFirstChild(LOG_HIGHLIGHT_NAME)
+		if hl then hl:Destroy() end
+	end
+end
+
 local function startChopTreesTip(initialProgress)
 	if activeHandles.chopTrees then return end -- already showing
 
 	completedFlags.chopTrees = false
+
+	-- Light up every Log in the world while this tooltip is up. Will
+	-- be torn down via stopLogHighlights() in onDismiss below.
+	startLogHighlights()
 
 	activeHandles.chopTrees = _G.ShowOnboardingTip({
 		id        = "chopTrees",
@@ -85,6 +157,11 @@ local function startChopTreesTip(initialProgress)
 			local wasComplete = completedFlags.chopTrees == true
 			activeHandles.chopTrees = nil
 			completedFlags.chopTrees = nil
+			-- Drop the green Highlights regardless of how the flow
+			-- ended (manual X, auto-complete, server pushed an
+			-- already-complete state on rejoin) — they're scoped to
+			-- the tooltip's on-screen lifetime.
+			stopLogHighlights()
 			if not wasComplete then
 				-- Manual X: tell the server so we don't show the tip
 				-- again on rejoin. Idempotent; server early-outs if
