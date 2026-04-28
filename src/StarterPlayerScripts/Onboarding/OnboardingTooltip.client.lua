@@ -508,6 +508,15 @@ local function buildTooltipPanel(opts)
 
 	local iconGlyph = paintIconBox(iconBox, opts)
 
+	-- UIScale on the glyph drives the looping pulse (Step 1F) without
+	-- fighting the icon box's fixed Size or any UIPadding inside it.
+	local iconScale
+	if iconGlyph then
+		iconScale = Instance.new("UIScale")
+		iconScale.Scale = 1
+		iconScale.Parent = iconGlyph
+	end
+
 	-- Eyebrow + title stack to the right of the icon box.
 	local titles = Instance.new("Frame")
 	titles.Name = "Titles"
@@ -728,6 +737,7 @@ local function buildTooltipPanel(opts)
 		header         = header,
 		iconBox        = iconBox,
 		iconGlyph      = iconGlyph,
+		iconScale      = iconScale,       -- nil when no glyph
 		eyebrow        = eyebrow,
 		title          = title,
 		body           = body,
@@ -786,6 +796,13 @@ local function showOnboardingTip(opts)
 	local entranceInfo = TweenInfo.new(0.55, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 	local exitInfo     = TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 	local dismissing   = false
+	-- Forward-declared so handle.dismiss (defined below) can reference
+	-- it; the real assignment happens further down once the icon-pulse
+	-- helper is in scope. Lua captures upvalues by name at closure
+	-- creation, so without the forward decl here dismiss would
+	-- resolve `stopPulse` against the global table (nil) instead of
+	-- against the later local.
+	local stopPulse
 
 	local function playEntrance()
 		TweenService:Create(refs.panel, entranceInfo,
@@ -797,6 +814,13 @@ local function showOnboardingTip(opts)
 	function handle.dismiss()
 		if dismissing then return end
 		dismissing = true
+		-- Stop the icon pulse loop so the glyph holds its rest pose
+		-- during the exit fade — without this it'd keep wobbling for
+		-- 0.25 s while the panel slides away. stopPulse is forward-
+		-- declared above so this upvalue reference resolves to the
+		-- later local instead of falling back to the global table.
+		if stopPulse then stopPulse() end
+
 		if not refs.panel or not refs.panel.Parent then
 			-- Already destroyed somehow (e.g. ScreenGui was nuked) —
 			-- still fire onDismiss so callers can clean their state.
@@ -856,12 +880,84 @@ local function showOnboardingTip(opts)
 		end
 	end
 
-	-- complete() will gain the flash + auto-dismiss path in Step 1F.
-	-- For now it's just shorthand for "set progress to goal" so any
-	-- caller wired up early sees the fill animate to 100%.
+	-- ── Icon pulse loop + completion flash (Step 1F) ──────────────────
+	-- Mockup keyframes:
+	--   @keyframes iconPulse {
+	--     0%, 100% { transform: scale(1); }
+	--     50%      { transform: scale(1.06) rotate(-3deg); }
+	--   }
+	--   .tip-icon .pulser{ animation: iconPulse 2.4s ease-in-out infinite; }
+	-- Roblox doesn't expose @keyframes; we emulate with a TweenInfo
+	-- whose RepeatCount = -1 + Reverses = true so it ping-pongs
+	-- forever between (1, 0°) and (1.06, -3°). 1.2 s each direction =
+	-- 2.4 s round trip, matching the mockup exactly.
+	local pulseTweens = {}
+	if refs.iconScale and refs.iconGlyph then
+		local pulseInfo = TweenInfo.new(
+			1.2, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true)
+		local scaleTw = TweenService:Create(refs.iconScale,  pulseInfo, { Scale    = 1.06 })
+		local rotTw   = TweenService:Create(refs.iconGlyph,  pulseInfo, { Rotation = -3   })
+		scaleTw:Play()
+		rotTw:Play()
+		pulseTweens[1] = scaleTw
+		pulseTweens[2] = rotTw
+	end
+
+	-- Assigns to the upvalue forward-declared near the entrance/exit
+	-- block above; using `local` here would shadow it and dismiss()
+	-- would silently see nil.
+	stopPulse = function()
+		for _, tw in ipairs(pulseTweens) do
+			pcall(function() tw:Cancel() end)
+		end
+		pulseTweens = {}
+	end
+
+	local completed = false   -- de-dup repeat complete() calls
+
 	function handle.complete()
+		if completed then return end
+		completed = true
+
+		-- Snap the bar full + flip the label green (matches setProgress
+		-- but tween is unconditional on first complete — reaching the
+		-- goal at the same moment as setProgress(goal) was last called
+		-- still earns the celebration tween).
 		if refs.goal then
 			handle.setProgress(refs.goal)
+		end
+
+		-- Replace the looping pulse with a single "pop" — scale up to
+		-- 1.20 / rotate 0 over 0.18 s then ease back to rest. Reads as
+		-- a celebration beat without a separate flash overlay.
+		stopPulse()
+		if refs.iconScale and refs.iconGlyph then
+			local up = TweenInfo.new(0.18, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+			local down = TweenInfo.new(0.22, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+			TweenService:Create(refs.iconGlyph, up, { Rotation = 0 }):Play()
+			local upScale = TweenService:Create(refs.iconScale, up, { Scale = 1.20 })
+			upScale:Play()
+			upScale.Completed:Once(function()
+				if refs.iconScale and refs.iconScale.Parent then
+					TweenService:Create(refs.iconScale, down, { Scale = 1 }):Play()
+				end
+			end)
+		end
+
+		if typeof(opts.onComplete) == "function" then
+			task.spawn(opts.onComplete)
+		end
+
+		-- Optional auto-dismiss after the celebration plays. Default
+		-- 1.4 s gives the tween + the bar fill time to register before
+		-- the panel slides away. Pass 0 / nil to keep the tip up.
+		local delaySec = tonumber(opts.autoDismissAfterComplete)
+		if delaySec and delaySec > 0 then
+			task.delay(delaySec, function()
+				if not dismissing then
+					handle.dismiss()
+				end
+			end)
 		end
 	end
 
