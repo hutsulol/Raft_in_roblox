@@ -27,6 +27,20 @@ local CHOP_TREES_GOAL = 3   -- mirror of CHOP_TREES_GOAL in
                             -- the initial render before the server's
                             -- first progress packet arrives.
 
+-- Delay before the tooltip first appears, measured from the point the
+-- player's character lands in the world. Gives the player a beat to
+-- orient themselves before a UI overlay slides in.
+local SHOW_DELAY_SECONDS = 5
+
+-- Resolves once the LocalPlayer's character has spawned at least once.
+-- Used to anchor SHOW_DELAY_SECONDS to a real "player appears" moment
+-- instead of the LocalScript's first tick (which can be seconds
+-- before the character even loads).
+local function waitForCharacter()
+	if Players.LocalPlayer.Character then return end
+	Players.LocalPlayer.CharacterAdded:Wait()
+end
+
 -- ─── Wait for the RemoteEvent + the tooltip widget API ────────────────
 local event = ReplicatedStorage:WaitForChild("OnboardingFlow", 30)
 if not event then
@@ -182,7 +196,21 @@ event.OnClientEvent:Connect(function(action, ...)
 		local flow = snap.chopTrees
 		if not flow then return end
 		if flow.completed or flow.dismissed then return end
-		startChopTreesTip(flow.progress or 0)
+
+		-- Defer the first show so the player has a few seconds to
+		-- orient themselves after spawning before a UI overlay slides
+		-- in. Anchored to the character's first appearance, not to
+		-- this LocalScript's startup, so the delay still feels like
+		-- "5 seconds after I land in the world" on slow loads.
+		-- Bail in the wait if the flow has been completed/dismissed
+		-- by harvest progress that arrived in the meantime, or if a
+		-- prior "state" already kicked off the show.
+		task.spawn(function()
+			waitForCharacter()
+			task.wait(SHOW_DELAY_SECONDS)
+			if activeHandles.chopTrees then return end
+			startChopTreesTip(flow.progress or 0)
+		end)
 
 	elseif action == "chopTrees:progress" then
 		local progress = ...

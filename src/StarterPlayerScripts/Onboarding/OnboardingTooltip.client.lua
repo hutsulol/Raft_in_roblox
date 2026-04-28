@@ -424,13 +424,13 @@ local activeHandle
 local function buildTooltipPanel(opts)
 	local gui = ensureScreenGui()
 
-	-- CanvasGroup as the panel root so the entrance / exit animations
-	-- can fade the whole tooltip via a single GroupTransparency knob
-	-- (no manual walk over every TextLabel / Frame / UIStroke). UIScale
-	-- handles the bounce-in scale so AutomaticSize.Y on the panel still
-	-- works — UIScale only multiplies the rendered size, not the
-	-- layout box.
-	local panel = Instance.new("CanvasGroup")
+	-- Plain Frame as the panel root. CanvasGroup + AutomaticSize.Y
+	-- doesn't shrink-wrap children — the render target sizes itself
+	-- to the parent and the panel ends up filling the screen — so we
+	-- fall back to a descendant-walk fade for entrance/exit instead
+	-- of a single GroupTransparency knob. UIScale still drives the
+	-- bounce since it only multiplies render size, not layout.
+	local panel = Instance.new("Frame")
 	panel.Name = "OnboardingTooltip"
 	panel.AnchorPoint = Vector2.new(0, 0)
 	panel.Position = UDim2.fromOffset(TOOLTIP_MARGIN_X, TOOLTIP_MARGIN_Y)
@@ -439,11 +439,6 @@ local function buildTooltipPanel(opts)
 	panel.BackgroundColor3 = COLOR_WOOD_BASE
 	panel.BorderSizePixel = 0
 	panel.ZIndex = PANEL_BASE_Z
-	-- Hidden until the entrance tween fades us in. GroupTransparency
-	-- starts at 1.0 (fully transparent for the whole subtree) so
-	-- nothing flashes on screen for a frame between buildTooltipPanel
-	-- finishing and the entrance tween kicking off.
-	panel.GroupTransparency = 1
 	panel.Parent = gui
 	corner(panel, RADIUS_LG)
 	stroke(panel, 3, COLOR_WOOD_DARK)
@@ -774,14 +769,21 @@ local function showOnboardingTip(opts)
 	local currentProgress = 0
 
 	-- ── Entrance / exit animation state ───────────────────────────────
-	-- Mockup keyframes (.tipIn / .tipOut) adapted for the upper-corner
-	-- anchor: the original "rise from below" becomes "drop in from
-	-- above", and the exit retreats back up the way the panel arrived.
+	-- Adapted from the mockup's .tipIn / .tipOut keyframes for the
+	-- upper-corner anchor. CanvasGroup's GroupTransparency would be
+	-- the cleanest way to fade the whole subtree, but it breaks
+	-- AutomaticSize.Y on the panel (the render-target sizes itself to
+	-- the parent and the panel ends up filling the screen). Instead,
+	-- we capture every fade-eligible property on the descendant tree
+	-- on entrance and tween each one back to its rest value — same
+	-- pattern LevelUpMenu.client.lua already uses for fade-out.
 	--   Entrance — 0.55 s Back/Out on Position (Y starts 28 px above
-	--              resting and overshoots past, settles to rest),
-	--              GroupTransparency 1 → 0, UIScale 0.96 → 1.0.
-	--   Exit     — 0.25 s Quad/In, Y back up to (rest − 20) while
-	--              GroupTransparency goes 0 → 1 and Scale 1.0 → 0.97.
+	--              resting and overshoots past, settles to rest);
+	--              UIScale 0.96 → 1.0; descendant transparencies
+	--              tween from 1 → original.
+	--   Exit     — 0.25 s Quad/In, Y back up to (rest − 20),
+	--              UIScale 1.0 → 0.97, descendant transparencies
+	--              tween from current → 1.
 	-- The dismissing flag prevents re-entry; a second dismiss() call
 	-- mid-exit is a no-op.
 	local restPosition       = refs.panel.Position
@@ -804,11 +806,80 @@ local function showOnboardingTip(opts)
 	-- against the later local.
 	local stopPulse
 
+	-- Capture every fade-eligible property under refs.panel, plus the
+	-- panel's own background, before the entrance kicks off. Skip nodes
+	-- whose rest transparency is already 1 (intentionally invisible —
+	-- e.g. the icon glyph container that just holds child shapes).
+	local fadeTargets = {}
+	local function captureNode(node)
+		if not node then return end
+		if node:IsA("Frame") then
+			if node.BackgroundTransparency < 1 then
+				table.insert(fadeTargets, {
+					inst = node, prop = "BackgroundTransparency",
+					rest = node.BackgroundTransparency,
+				})
+			end
+		elseif node:IsA("TextLabel") or node:IsA("TextButton") then
+			-- TextTransparency always fades. BackgroundTransparency
+			-- only when the element actually has a fill.
+			table.insert(fadeTargets, {
+				inst = node, prop = "TextTransparency",
+				rest = node.TextTransparency,
+			})
+			if node.BackgroundTransparency < 1 then
+				table.insert(fadeTargets, {
+					inst = node, prop = "BackgroundTransparency",
+					rest = node.BackgroundTransparency,
+				})
+			end
+		elseif node:IsA("ImageLabel") or node:IsA("ImageButton") then
+			table.insert(fadeTargets, {
+				inst = node, prop = "ImageTransparency",
+				rest = node.ImageTransparency,
+			})
+			if node.BackgroundTransparency < 1 then
+				table.insert(fadeTargets, {
+					inst = node, prop = "BackgroundTransparency",
+					rest = node.BackgroundTransparency,
+				})
+			end
+		elseif node:IsA("UIStroke") then
+			if node.Transparency < 1 then
+				table.insert(fadeTargets, {
+					inst = node, prop = "Transparency",
+					rest = node.Transparency,
+				})
+			end
+		end
+	end
+
+	captureNode(refs.panel)
+	for _, child in ipairs(refs.panel:GetDescendants()) do
+		captureNode(child)
+	end
+
+	-- Snap everything to fully invisible before showing — entrance
+	-- tween restores the rest values. Without this snap the panel
+	-- would flash at full opacity for one frame between this point
+	-- and the tween's first tick.
+	for _, t in ipairs(fadeTargets) do
+		if t.inst.Parent then
+			t.inst[t.prop] = 1
+		end
+	end
+
 	local function playEntrance()
 		TweenService:Create(refs.panel, entranceInfo,
-			{ Position = restPosition, GroupTransparency = 0 }):Play()
+			{ Position = restPosition }):Play()
 		TweenService:Create(refs.panelScale, entranceInfo,
 			{ Scale = 1.0 }):Play()
+		for _, t in ipairs(fadeTargets) do
+			if t.inst.Parent then
+				TweenService:Create(t.inst, entranceInfo,
+					{ [t.prop] = t.rest }):Play()
+			end
+		end
 	end
 
 	function handle.dismiss()
@@ -833,11 +904,17 @@ local function showOnboardingTip(opts)
 
 		local exitPos = restPosition + UDim2.fromOffset(0, EXIT_Y_OFFSET)
 		local posTween   = TweenService:Create(refs.panel, exitInfo,
-			{ Position = exitPos, GroupTransparency = 1 })
+			{ Position = exitPos })
 		local scaleTween = TweenService:Create(refs.panelScale, exitInfo,
 			{ Scale = 0.97 })
 		posTween:Play()
 		scaleTween:Play()
+		for _, t in ipairs(fadeTargets) do
+			if t.inst.Parent then
+				TweenService:Create(t.inst, exitInfo,
+					{ [t.prop] = 1 }):Play()
+			end
+		end
 
 		posTween.Completed:Once(function()
 			if refs.panel and refs.panel.Parent then
