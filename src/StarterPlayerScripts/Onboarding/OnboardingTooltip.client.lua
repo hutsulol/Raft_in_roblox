@@ -101,6 +101,278 @@ local function padding(parent, all)
 	return p
 end
 
+-- ─── Built-in icon glyphs (axe / log / drop / fish) ───────────────────
+-- Each builder draws its glyph as a set of Frames + UICorners centred
+-- in `parent`. Approximations of the SVG icons in the Claude Design
+-- mockup (Roblox doesn't draw arbitrary paths, so curved bits become
+-- rounded-corner rectangles and "diamonds" become Rotation = 45 Frames).
+-- All builders share a 38×38 design space mapped to a `sizePx`-sided
+-- container that's centred in the icon box. Returns the container
+-- Frame so the pulse animator in Step 1F can target a single node.
+
+local ICON_COL_AXE_WOOD       = Color3.fromRGB(164, 113,  72) -- handle
+local ICON_COL_AXE_METAL      = Color3.fromRGB(184, 184, 184)
+local ICON_COL_AXE_METAL_DARK = Color3.fromRGB(110, 110, 110)
+local ICON_COL_LOG_WOOD       = Color3.fromRGB(164, 113,  72) -- middle barrel
+local ICON_COL_LOG_DARK       = Color3.fromRGB(122,  79,  43) -- end caps
+local ICON_COL_LOG_RING       = Color3.fromRGB( 90,  56,  25) -- inner ring
+local ICON_COL_DROP_BLUE      = Color3.fromRGB( 74, 144, 200)
+local ICON_COL_DROP_HIGHLIGHT = Color3.fromRGB(207, 230, 245)
+local ICON_COL_FISH_BODY      = Color3.fromRGB(201, 122,  58)
+local ICON_COL_FISH_TAIL      = Color3.fromRGB(168,  90,  34)
+local ICON_COL_OUTLINE        = COLOR_WOOD_DARKEST
+
+local function makeIconContainer(parent, sizePx)
+	local c = Instance.new("Frame")
+	c.Name = "IconGlyph"
+	c.AnchorPoint = Vector2.new(0.5, 0.5)
+	c.Position = UDim2.fromScale(0.5, 0.5)
+	c.Size = UDim2.fromOffset(sizePx, sizePx)
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.ZIndex = (parent.ZIndex or 1) + 1
+	c.Parent = parent
+	return c
+end
+
+local function makeAxeIcon(parent, sizePx)
+	local c = makeIconContainer(parent, sizePx)
+	local s = sizePx
+	-- Handle: a thin wood-coloured strip rotated 22° so the axe has
+	-- the diagonal pose from the mockup. Anchored just below centre
+	-- so the head sits at the top-left when rotated.
+	local handle = Instance.new("Frame")
+	handle.AnchorPoint = Vector2.new(0.5, 0.5)
+	handle.Position = UDim2.new(0.55, 0, 0.55, 0)
+	handle.Size = UDim2.fromOffset(math.max(2, math.floor(s * 0.10)), math.floor(s * 0.78))
+	handle.BackgroundColor3 = ICON_COL_AXE_WOOD
+	handle.BorderSizePixel = 0
+	handle.Rotation = 22
+	handle.ZIndex = c.ZIndex
+	handle.Parent = c
+	corner(handle, 2)
+	stroke(handle, 1, ICON_COL_OUTLINE)
+
+	-- Blade: a wider grey rectangle rotated to suggest the axe head's
+	-- wedge silhouette. Two stacked rotations (the visible blade and
+	-- a thinner darker strip behind it) read as "axe" at small sizes
+	-- without needing real polygons.
+	local blade = Instance.new("Frame")
+	blade.AnchorPoint = Vector2.new(0.5, 0.5)
+	blade.Position = UDim2.new(0.32, 0, 0.32, 0)
+	blade.Size = UDim2.fromOffset(math.floor(s * 0.46), math.floor(s * 0.28))
+	blade.BackgroundColor3 = ICON_COL_AXE_METAL
+	blade.BorderSizePixel = 0
+	blade.Rotation = -18
+	blade.ZIndex = c.ZIndex + 1
+	blade.Parent = c
+	corner(blade, 3)
+	stroke(blade, 1, ICON_COL_OUTLINE)
+
+	-- Inner shadow line on the blade (dark stripe) so the head reads
+	-- as having a forged ridge rather than a flat slab.
+	local edge = Instance.new("Frame")
+	edge.AnchorPoint = Vector2.new(0.5, 0.5)
+	edge.Position = UDim2.new(0.32, 0, 0.32, 0)
+	edge.Size = UDim2.fromOffset(math.floor(s * 0.32), math.max(1, math.floor(s * 0.05)))
+	edge.BackgroundColor3 = ICON_COL_AXE_METAL_DARK
+	edge.BorderSizePixel = 0
+	edge.Rotation = -18
+	edge.ZIndex = c.ZIndex + 2
+	edge.Parent = c
+
+	return c
+end
+
+local function makeLogIcon(parent, sizePx)
+	local c = makeIconContainer(parent, sizePx)
+	local s = sizePx
+	-- Middle barrel of the log — light wood rectangle.
+	local barrel = Instance.new("Frame")
+	barrel.AnchorPoint = Vector2.new(0.5, 0.5)
+	barrel.Position = UDim2.new(0.5, 0, 0.5, 0)
+	barrel.Size = UDim2.fromOffset(math.floor(s * 0.55), math.floor(s * 0.50))
+	barrel.BackgroundColor3 = ICON_COL_LOG_WOOD
+	barrel.BorderSizePixel = 0
+	barrel.ZIndex = c.ZIndex
+	barrel.Parent = c
+	stroke(barrel, 1, ICON_COL_OUTLINE)
+
+	-- Left end cap: tall ellipse via 100% corner radius on a vertical
+	-- rectangle. Sits on the left edge of the barrel.
+	local left = Instance.new("Frame")
+	left.AnchorPoint = Vector2.new(1, 0.5)
+	left.Position = UDim2.new(0.5, math.floor(-s * 0.27), 0.5, 0)
+	left.Size = UDim2.fromOffset(math.floor(s * 0.32), math.floor(s * 0.50))
+	left.BackgroundColor3 = ICON_COL_LOG_DARK
+	left.BorderSizePixel = 0
+	left.ZIndex = c.ZIndex + 1
+	left.Parent = c
+	corner(left, 1)
+	-- Use scale-based corner so the radius always matches the height
+	-- and the cap reads as a half-ellipse instead of a rounded rect.
+	left:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(1, 0)
+	stroke(left, 1, ICON_COL_OUTLINE)
+
+	-- Right end cap (slightly smaller on the mockup so the log has a
+	-- bit of taper from the camera angle). Plus an even darker inner
+	-- "growth ring" centred inside it.
+	local right = Instance.new("Frame")
+	right.AnchorPoint = Vector2.new(0, 0.5)
+	right.Position = UDim2.new(0.5, math.floor(s * 0.27), 0.5, 0)
+	right.Size = UDim2.fromOffset(math.floor(s * 0.28), math.floor(s * 0.50))
+	right.BackgroundColor3 = ICON_COL_LOG_DARK
+	right.BorderSizePixel = 0
+	right.ZIndex = c.ZIndex + 1
+	right.Parent = c
+	corner(right, 1)
+	right:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(1, 0)
+	stroke(right, 1, ICON_COL_OUTLINE)
+
+	local ring = Instance.new("Frame")
+	ring.AnchorPoint = Vector2.new(0.5, 0.5)
+	ring.Position = UDim2.fromScale(0.5, 0.5)
+	ring.Size = UDim2.new(0.55, 0, 0.55, 0)
+	ring.BackgroundColor3 = ICON_COL_LOG_RING
+	ring.BorderSizePixel = 0
+	ring.ZIndex = c.ZIndex + 2
+	ring.Parent = right
+	corner(ring, 1)
+	ring:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(1, 0)
+
+	return c
+end
+
+local function makeDropIcon(parent, sizePx)
+	local c = makeIconContainer(parent, sizePx)
+	local s = sizePx
+	-- The teardrop shape is faked by a circle with a 45° rotated
+	-- square sitting on top — the square's lower half disappears
+	-- behind the circle, leaving a pointed top. Both share the same
+	-- blue fill so the seam is invisible.
+	local round = Instance.new("Frame")
+	round.AnchorPoint = Vector2.new(0.5, 0.5)
+	round.Position = UDim2.new(0.5, 0, 0.62, 0)
+	round.Size = UDim2.fromOffset(math.floor(s * 0.62), math.floor(s * 0.62))
+	round.BackgroundColor3 = ICON_COL_DROP_BLUE
+	round.BorderSizePixel = 0
+	round.ZIndex = c.ZIndex + 1
+	round.Parent = c
+	corner(round, 1)
+	round:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(1, 0)
+	stroke(round, 1, ICON_COL_OUTLINE)
+
+	local point = Instance.new("Frame")
+	point.AnchorPoint = Vector2.new(0.5, 0.5)
+	point.Position = UDim2.new(0.5, 0, 0.36, 0)
+	point.Size = UDim2.fromOffset(math.floor(s * 0.42), math.floor(s * 0.42))
+	point.BackgroundColor3 = ICON_COL_DROP_BLUE
+	point.BorderSizePixel = 0
+	point.Rotation = 45
+	point.ZIndex = c.ZIndex
+	point.Parent = c
+	stroke(point, 1, ICON_COL_OUTLINE)
+
+	-- Inner highlight crescent on the lower-left, suggesting reflected
+	-- light. Drawn as a small rotated bar.
+	local hl = Instance.new("Frame")
+	hl.AnchorPoint = Vector2.new(0.5, 0.5)
+	hl.Position = UDim2.new(0.36, 0, 0.74, 0)
+	hl.Size = UDim2.fromOffset(math.floor(s * 0.18), math.max(2, math.floor(s * 0.06)))
+	hl.BackgroundColor3 = ICON_COL_DROP_HIGHLIGHT
+	hl.BorderSizePixel = 0
+	hl.Rotation = -55
+	hl.ZIndex = c.ZIndex + 2
+	hl.Parent = c
+	corner(hl, 2)
+
+	return c
+end
+
+local function makeFishIcon(parent, sizePx)
+	local c = makeIconContainer(parent, sizePx)
+	local s = sizePx
+	-- Body: rounded oval orange. Big corner radius makes the rectangle
+	-- read as a fish body.
+	local body = Instance.new("Frame")
+	body.AnchorPoint = Vector2.new(0.5, 0.5)
+	body.Position = UDim2.new(0.55, 0, 0.5, 0)
+	body.Size = UDim2.fromOffset(math.floor(s * 0.62), math.floor(s * 0.40))
+	body.BackgroundColor3 = ICON_COL_FISH_BODY
+	body.BorderSizePixel = 0
+	body.ZIndex = c.ZIndex
+	body.Parent = c
+	corner(body, 1)
+	body:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(0.5, 0)
+	stroke(body, 1, ICON_COL_OUTLINE)
+
+	-- Tail: a 45°-rotated darker square at the body's left, half-
+	-- hidden behind it so the visible part forms a triangle.
+	local tail = Instance.new("Frame")
+	tail.AnchorPoint = Vector2.new(0.5, 0.5)
+	tail.Position = UDim2.new(0.22, 0, 0.5, 0)
+	tail.Size = UDim2.fromOffset(math.floor(s * 0.30), math.floor(s * 0.30))
+	tail.BackgroundColor3 = ICON_COL_FISH_TAIL
+	tail.BorderSizePixel = 0
+	tail.Rotation = 45
+	tail.ZIndex = c.ZIndex - 1
+	tail.Parent = c
+	stroke(tail, 1, ICON_COL_OUTLINE)
+
+	-- Eye: small dark dot near the front (right side of body).
+	local eye = Instance.new("Frame")
+	eye.AnchorPoint = Vector2.new(0.5, 0.5)
+	eye.Position = UDim2.new(0.74, 0, 0.46, 0)
+	eye.Size = UDim2.fromOffset(math.max(2, math.floor(s * 0.06)), math.max(2, math.floor(s * 0.06)))
+	eye.BackgroundColor3 = ICON_COL_OUTLINE
+	eye.BorderSizePixel = 0
+	eye.ZIndex = c.ZIndex + 1
+	eye.Parent = c
+	corner(eye, 1)
+	eye:FindFirstChildOfClass("UICorner").CornerRadius = UDim.new(1, 0)
+
+	return c
+end
+
+local ICON_BUILDERS = {
+	axe  = makeAxeIcon,
+	log  = makeLogIcon,
+	drop = makeDropIcon,
+	fish = makeFishIcon,
+}
+
+-- Paints the icon box with whichever option the caller specified.
+-- iconImage (rbxassetid string) wins over iconKind so a caller that
+-- ships a real asset gets an exact match instead of the geometric
+-- fallback. Returns the inner glyph node so the pulse animator (Step
+-- 1F) has a single Instance to tween.
+local function paintIconBox(iconBox, opts)
+	local pad = 8  -- inset so the glyph doesn't touch the icon-box border
+	if typeof(opts.iconImage) == "string" and opts.iconImage ~= "" then
+		local img = Instance.new("ImageLabel")
+		img.Name = "IconImage"
+		img.AnchorPoint = Vector2.new(0.5, 0.5)
+		img.Position = UDim2.fromScale(0.5, 0.5)
+		img.Size = UDim2.new(1, -pad * 2, 1, -pad * 2)
+		img.BackgroundTransparency = 1
+		img.BorderSizePixel = 0
+		img.Image = opts.iconImage
+		img.ScaleType = Enum.ScaleType.Fit
+		img.ImageColor3 = Color3.new(1, 1, 1)
+		img.ZIndex = (iconBox.ZIndex or 1) + 1
+		img.Parent = iconBox
+		return img
+	end
+
+	local builder = ICON_BUILDERS[opts.iconKind]
+	if builder then
+		local glyphSize = ICON_BOX_SIZE - pad * 2
+		return builder(iconBox, glyphSize)
+	end
+
+	return nil
+end
+
 -- ─── Singleton ScreenGui ──────────────────────────────────────────────
 -- Lazy-built on first show. High DisplayOrder so the tip sits above
 -- the rest of our UI (PhoneMenu uses 100; 200 keeps us comfortably on
@@ -204,9 +476,9 @@ local function buildTooltipPanel(opts)
 	header.ZIndex = HEADER_Z
 	header.Parent = panel
 
-	-- Icon box on the left. Step 1C fills it with a glyph (or an
-	-- ImageLabel if iconImage was passed). Step 1B leaves it empty so
-	-- callers can still see the layout is correct.
+	-- Icon box on the left. paintIconBox drops in either an ImageLabel
+	-- (when opts.iconImage is set) or a built-in axe/log/drop/fish
+	-- glyph drawn from Frames + UICorner.
 	local iconBox = Instance.new("Frame")
 	iconBox.Name = "IconBox"
 	iconBox.AnchorPoint = Vector2.new(0, 0.5)
@@ -218,6 +490,8 @@ local function buildTooltipPanel(opts)
 	iconBox.Parent = header
 	corner(iconBox, RADIUS_MD)
 	stroke(iconBox, 2, COLOR_WOOD_DARK)
+
+	local iconGlyph = paintIconBox(iconBox, opts)
 
 	-- Eyebrow + title stack to the right of the icon box.
 	local titles = Instance.new("Frame")
@@ -345,14 +619,15 @@ local function buildTooltipPanel(opts)
 	bodyText.Parent = body
 
 	return {
-		panel    = panel,
-		header   = header,
-		iconBox  = iconBox,
-		eyebrow  = eyebrow,
-		title    = title,
-		body     = body,
-		bodyText = bodyText,
-		closeBtn = closeBtn,
+		panel     = panel,
+		header    = header,
+		iconBox   = iconBox,
+		iconGlyph = iconGlyph,
+		eyebrow   = eyebrow,
+		title     = title,
+		body      = body,
+		bodyText  = bodyText,
+		closeBtn  = closeBtn,
 	}
 end
 
