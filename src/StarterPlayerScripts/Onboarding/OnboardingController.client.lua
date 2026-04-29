@@ -102,13 +102,12 @@ local function tryHighlightLog(resource)
 	if resource:FindFirstChild(LOG_HIGHLIGHT_NAME) then return end
 	local hl = Instance.new("Highlight")
 	hl.Name = LOG_HIGHLIGHT_NAME
-	hl.FillColor = LOG_HIGHLIGHT_FILL
-	hl.FillTransparency = 0.55
+	-- Edge-only treatment: full FillTransparency, opaque outline.
+	-- A filled highlight tinted the whole log green, which read as a
+	-- "this is a green item" indicator instead of a tactical glow.
+	hl.FillTransparency = 1
 	hl.OutlineColor = LOG_HIGHLIGHT_OUTLINE
 	hl.OutlineTransparency = 0
-	-- AlwaysOnTop so the player can spot the target log even when
-	-- it's bobbing past the raft's logs in the foreground — this is
-	-- a teaching highlight, not an immersion accent.
 	hl.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
 	hl.Adornee = resource
 	hl.Parent = resource
