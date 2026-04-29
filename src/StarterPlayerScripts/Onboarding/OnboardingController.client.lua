@@ -152,8 +152,8 @@ local function startChopTreesTip(initialProgress)
 	activeHandles.chopTrees = _G.ShowOnboardingTip({
 		id        = "chopTrees",
 		eyebrow   = "HINT",
-		title     = "Chop down trees",
-		body      = "Use your <b>axe</b> on a floating tree to gather <b>logs</b>.",
+		title     = "Get the first logs",
+		body      = "To break a log, click on it <b>5 times</b>.",
 		iconKind  = "axe",
 		goal      = CHOP_TREES_GOAL,
 		progress  = initialProgress or 0,

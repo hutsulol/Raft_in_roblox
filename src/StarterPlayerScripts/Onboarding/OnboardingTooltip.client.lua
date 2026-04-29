@@ -44,16 +44,24 @@ local COLOR_WOOD_MID     = Color3.fromRGB(138, 106,  68)
 local COLOR_WOOD_BASE    = Color3.fromRGB(176, 138,  92)
 local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
 local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
-local COLOR_GREEN        = Color3.fromRGB( 74, 124,  58)
-local COLOR_GREEN_LIGHT  = Color3.fromRGB(111, 168,  74)
-local COLOR_GREEN_DARK   = Color3.fromRGB( 61, 102,  48)
+-- Lighter than the mockup's #4A7C3A — the original gradient read as
+-- almost-black against the wood panel. Bumped each stop ~30-40 RGB
+-- points toward white so the fill pops as a clear positive signal.
+local COLOR_GREEN        = Color3.fromRGB(116, 176,  82)
+local COLOR_GREEN_LIGHT  = Color3.fromRGB(160, 220, 110)
+local COLOR_GREEN_DARK   = Color3.fromRGB( 92, 148,  64)
 
 local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
 
 local PANEL_WIDTH    = 320
 local MARGIN_X       = 16
-local MARGIN_Y       = 16
+-- 16-px gap measured from the bottom of Roblox's top-bar inset
+-- (IgnoreGuiInset=false on the ScreenGui below already bakes the
+-- 36-px inset in for us). Plus another 24 px so the tooltip sits
+-- visibly below the chat / menu / Roblox icons rather than tucking
+-- right against them.
+local MARGIN_Y       = 24
 local SLIDE_TIME     = 0.35
 local SLIDE_OFFSET_Y = 80   -- pre-entrance + post-exit Y delta
 
@@ -251,7 +259,11 @@ local function ensureGui()
 	screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "OnboardingTooltipGui"
 	screenGui.ResetOnSpawn = false
-	screenGui.IgnoreGuiInset = true
+	-- IgnoreGuiInset = false so the GUI starts BELOW Roblox's top-bar
+	-- (chat / menu / Roblox icon) instead of sliding under them. The
+	-- previous value (true) had the tooltip clipping behind those
+	-- buttons.
+	screenGui.IgnoreGuiInset = false
 	screenGui.DisplayOrder = 200
 	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	screenGui.Parent = playerGui
