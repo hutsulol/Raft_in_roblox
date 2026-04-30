@@ -62,6 +62,26 @@ addQuest({
 	permanent = true,
 })
 
+-- ─── Story quest #2 — Stranded Survivor (C3, placeholder) ──────────
+-- Second story arc, focused on raft expansion + survival mechanics.
+-- Final reward + balance numbers are provisional; the user can fine-
+-- tune after testing. Same permanent contract as story #1 — never
+-- re-rolls, never duplicates.
+addQuest({
+	id    = "strandedSurvivor",
+	kind  = "story",
+	title = "Stranded Survivor",
+	body  = "The sea won't feed itself. Build out the raft and stockpile.",
+	icon  = "rbxassetid://121862782555497",
+	objectives = {
+		{ eventType = "crafted:Workbench",  goal = 1,  label = "Craft a workbench" },
+		{ eventType = "crafted:WallPanel",  goal = 4,  label = "Build 4 wall panels" },
+		{ eventType = "resource:Log",       goal = 50, label = "Stockpile 50 logs" },
+	},
+	reward    = { kind = "item", name = "SurvivorChest", count = 1 },
+	permanent = true,
+})
+
 -- ─── Filtered views (helper queries used by QuestState in C6+) ───────
 -- Returned tables are fresh copies so callers can mutate freely.
 
