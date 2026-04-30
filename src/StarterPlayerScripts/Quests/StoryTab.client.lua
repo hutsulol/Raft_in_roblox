@@ -414,6 +414,25 @@ local function buildCard(parent, layoutOrder)
 	btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	btnStroke.Parent = trackBtn
 
+	-- ── Click dispatch (E8) ───────────────────────────────────────────
+	-- Same approach as the daily card: one connection that reads the
+	-- card's current Mode + QuestId attributes at click time so the
+	-- paint path can swap modes without us re-binding. Server is
+	-- the source of truth; we don't optimistically mutate.
+	trackBtn.Activated:Connect(function()
+		local id   = card:GetAttribute("QuestId")
+		local mode = card:GetAttribute("Mode")
+		if type(id) ~= "string" or id == "" then return end
+		if not questStateEvent then return end
+		if mode == "tracking" then
+			questStateEvent:FireServer("untrack", id)
+		elseif mode == "claim" then
+			questStateEvent:FireServer("claimReward", id)
+		else
+			questStateEvent:FireServer("track", id)
+		end
+	end)
+
 	local refs = {
 		card           = card,
 		iconImage      = iconImage,
