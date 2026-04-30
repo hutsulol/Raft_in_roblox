@@ -35,7 +35,11 @@ local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
 local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
 
 -- ─── Layout constants ────────────────────────────────────────────────
-local PANEL_W      = 540
+-- Panel is sized to fit four daily quest cards in a single horizontal
+-- row inside the Quests tab (Phase D target design). Content area =
+-- PANEL_W - TAB_RAIL_W - CONTENT_GAP = 578 px; QuestsTab puts 4×130-px
+-- cards with 10-px gaps + 12-px side padding into that band.
+local PANEL_W      = 720
 local PANEL_H      = 360
 local PANEL_RADIUS = 18
 local PANEL_PAD    = 14

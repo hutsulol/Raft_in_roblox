@@ -205,8 +205,6 @@ local function rollDailiesIfNeeded(player)
 			table.insert(pool, q.id)
 		end
 	end
-	print(string.format("[QuestState] rolling dailies for %s: pool size = %d (lastDailyDate=%s today=%s)",
-		player.Name, #pool, tostring(s.lastDailyDate), tostring(today)))
 
 	-- Shuffle (Fisher-Yates) so the same 4 don't cluster on
 	-- consecutive days, then take the first N.
@@ -246,8 +244,6 @@ local function rollDailiesIfNeeded(player)
 
 	s.lastDailyDate = today
 	markDirty(player)
-	print(string.format("[QuestState] daily roll done for %s: dailySelection = [%s]",
-		player.Name, table.concat(s.dailySelection, ", ")))
 end
 
 -- Story quests aren't part of the daily roll, but they DO need an
@@ -531,12 +527,17 @@ event.OnServerEvent:Connect(function(player, action, ...)
 	if typeof(action) ~= "string" then return end
 
 	if action == "getState" then
-		-- Self-heal: if the player's state is missing dailies (e.g.
-		-- catalog wasn't loaded yet at first PlayerAdded, or a stale
-		-- save came back empty), retry the roll before snapshotting.
-		-- The roll's own date guard makes this a no-op once rolled.
+		-- Self-heal: if the player's state never recorded a successful
+		-- roll for today (lastDailyDate stuck on a previous day, or 0
+		-- because the catalog-load race meant the first PlayerAdded
+		-- roll silently dropped), retry now. We DON'T re-roll just
+		-- because dailySelection is empty same-day — that's the legit
+		-- "claimed all 4 dailies, wait for tomorrow" state and we
+		-- don't want infinite quest farming.
 		local s = states[player]
-		if s and #s.dailySelection == 0 then
+		if s and s.lastDailyDate ~= os.date("*t").yday
+			and #s.dailySelection == 0
+		then
 			rollDailiesIfNeeded(player)
 		end
 		fireSnapshot(player)
@@ -615,6 +616,17 @@ event.OnServerEvent:Connect(function(player, action, ...)
 		end
 		if def.kind == "daily" then
 			s.active[questId] = nil
+			-- Drop the slot from today's selection too so the card
+			-- actually disappears for the rest of the day instead of
+			-- re-appearing with 0/N progress on the next snapshot.
+			-- The remaining 1-3 dailies stay visible; the slot is not
+			-- back-filled — players can grind out the others or wait
+			-- for tomorrow's roll.
+			for i = #s.dailySelection, 1, -1 do
+				if s.dailySelection[i] == questId then
+					table.remove(s.dailySelection, i)
+				end
+			end
 		end
 		markDirty(player)
 		saveState(player)

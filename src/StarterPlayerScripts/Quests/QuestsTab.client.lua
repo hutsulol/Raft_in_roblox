@@ -54,16 +54,20 @@ end
 -- RemoteEvent has been resolved.
 local questStateEvent
 
--- ─── Mount + scroll container (D1) ──────────────────────────────────
--- 4-column grid of quest cards (the daily picks). The grid is large
--- enough that all 4 cards fit in a row at the menu's current width;
--- ScrollingFrame.AutomaticCanvasSize lets the page grow if more
--- cards land in later phases (history, etc.).
+-- ─── Mount + horizontal row container ───────────────────────────────
+-- Four daily quest cards laid out in a single horizontal row across
+-- the content area. UIListLayout.Horizontal handles the spacing so
+-- removing a card (when the player claims one daily) collapses the
+-- remaining cards toward the left without leaving a gap. Card width
+-- + gap math is sized against the QuestMenu's content area:
+--   PANEL_W (720) - TAB_RAIL_W (130) - CONTENT_GAP (12) = 578
+--   578 - 2*QUESTS_TAB_PAD (24) - 3*CARD_GAP (30) = 524
+--   524 / 4 = 131 → CARD_W = 130 leaves a 4 px slack
 local QUESTS_TAB_PAD = 12
-local CARD_W         = 132
-local CARD_H         = 244   -- D6 bumped from 220 to fit reward row + button reserve
+local CARD_W         = 130
+local CARD_H         = 260   -- vertical UIListLayout inside; sized to fit
+                              -- icon + title + body + bar + reward + button
 local CARD_GAP       = 10
-local TRACK_BTN_H    = 28    -- bottom-anchored area D7 fills with the track button
 
 local function mount(parent)
 	local scroll = Instance.new("ScrollingFrame")
@@ -71,9 +75,8 @@ local function mount(parent)
 	scroll.Size = UDim2.fromScale(1, 1)
 	scroll.BackgroundTransparency = 1
 	scroll.BorderSizePixel = 0
-	scroll.ScrollBarThickness = 4
-	scroll.ScrollBarImageColor3 = Color3.fromRGB(91, 58, 34)
-	scroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	scroll.ScrollBarThickness = 0   -- 4 cards fit in one row; no scroll
+	scroll.AutomaticCanvasSize = Enum.AutomaticSize.None
 	scroll.CanvasSize = UDim2.new()
 	scroll.ZIndex = 6
 	scroll.Parent = parent
@@ -85,33 +88,34 @@ local function mount(parent)
 	pad.PaddingRight  = UDim.new(0, QUESTS_TAB_PAD)
 	pad.Parent = scroll
 
-	local grid = Instance.new("UIGridLayout")
-	grid.CellSize = UDim2.fromOffset(CARD_W, CARD_H)
-	grid.CellPadding = UDim2.fromOffset(CARD_GAP, CARD_GAP)
-	grid.HorizontalAlignment = Enum.HorizontalAlignment.Left
-	grid.VerticalAlignment = Enum.VerticalAlignment.Top
-	grid.SortOrder = Enum.SortOrder.LayoutOrder
-	grid.Parent = scroll
+	local row = Instance.new("UIListLayout")
+	row.FillDirection = Enum.FillDirection.Horizontal
+	row.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	row.VerticalAlignment = Enum.VerticalAlignment.Top
+	row.SortOrder = Enum.SortOrder.LayoutOrder
+	row.Padding = UDim.new(0, CARD_GAP)
+	row.Parent = scroll
 
 	return scroll
 end
 
--- ─── Single quest card (D2 → D7) ────────────────────────────────────
--- Returns the outer card Frame plus a refs table that later substeps
--- (D9 reactive paint) populate to update the card without rebuilding.
--- D2 (this commit) covers the outer paper-fill card chrome only;
--- D3-D7 layer in the icon, title, body, progress bar, reward, and
--- track button on top.
+-- ─── Single quest card ──────────────────────────────────────────────
+-- Returns the outer card Frame plus a refs table the reactive paint
+-- path updates. Layout uses a vertical UIListLayout so the rows
+-- (icon → title → body → progress → reward → button) stack with
+-- consistent gaps regardless of dynamic content (e.g. wrapped body
+-- text adding a line, progress bar showing/hiding the count label).
 local function buildCard(parent, layoutOrder)
 	local card = Instance.new("Frame")
 	card.Name = "QuestCard"
 	card.LayoutOrder = layoutOrder or 0
+	card.Size = UDim2.fromOffset(CARD_W, CARD_H)
 	card.BackgroundColor3 = COLOR_PAPER
 	card.BorderSizePixel = 0
 	card.ZIndex = 7
 	card.Parent = parent
-	-- Card attributes drive the click handler dispatch (D8). D9's paint
-	-- path overwrites these per snapshot:
+	-- Card attributes drive the click handler dispatch. The paint path
+	-- overwrites these per snapshot:
 	--   QuestId : "" | "<id>"
 	--   Mode    : "track" | "tracking" | "claim"
 	card:SetAttribute("QuestId", "")
@@ -134,61 +138,38 @@ local function buildCard(parent, layoutOrder)
 	cPad.PaddingRight  = UDim.new(0, 10)
 	cPad.Parent = card
 
-	-- ── Icon box (D3) ─────────────────────────────────────────────────
-	-- 80x80 square pinned to the top of the card. Slightly darker
-	-- paper fill than the card itself so the icon reads as elevated.
-	-- Quest icon is filled in by D9's paint path; for now D3 just
-	-- creates the empty box and the inner ImageLabel.
-	local ICON_BOX_SIZE = 80
-	local iconBox = Instance.new("Frame")
-	iconBox.Name = "IconBox"
-	iconBox.AnchorPoint = Vector2.new(0.5, 0)
-	iconBox.Position = UDim2.new(0.5, 0, 0, 0)
-	iconBox.Size = UDim2.fromOffset(ICON_BOX_SIZE, ICON_BOX_SIZE)
-	iconBox.BackgroundColor3 = COLOR_WOOD_BASE
-	iconBox.BackgroundTransparency = 0.45
-	iconBox.BorderSizePixel = 0
-	iconBox.ZIndex = card.ZIndex + 1
-	iconBox.Parent = card
-	local iCorner = Instance.new("UICorner")
-	iCorner.CornerRadius = UDim.new(0, 10)
-	iCorner.Parent = iconBox
-	local iStroke = Instance.new("UIStroke")
-	iStroke.Color = COLOR_WOOD_DARK
-	iStroke.Thickness = 1.5
-	iStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	iStroke.Parent = iconBox
+	local cLayout = Instance.new("UIListLayout")
+	cLayout.FillDirection = Enum.FillDirection.Vertical
+	cLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	cLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+	cLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	cLayout.Padding = UDim.new(0, 4)
+	cLayout.Parent = card
 
+	-- ── Icon (top, decorative) ────────────────────────────────────────
+	-- Compact 44×44 icon at the top of the card — no surrounding frame
+	-- since the catalog icons already have their own background.
 	local iconImage = Instance.new("ImageLabel")
 	iconImage.Name = "Icon"
-	iconImage.AnchorPoint = Vector2.new(0.5, 0.5)
-	iconImage.Position = UDim2.fromScale(0.5, 0.5)
-	iconImage.Size = UDim2.new(1, -12, 1, -12)
+	iconImage.LayoutOrder = 1
+	iconImage.Size = UDim2.fromOffset(44, 44)
 	iconImage.BackgroundTransparency = 1
 	iconImage.BorderSizePixel = 0
-	iconImage.Image = ""   -- D9 fills from snapshot.icon
 	iconImage.ScaleType = Enum.ScaleType.Fit
-	iconImage.ZIndex = iconBox.ZIndex + 1
-	iconImage.Parent = iconBox
+	iconImage.Image = ""
+	iconImage.ZIndex = card.ZIndex + 1
+	iconImage.Parent = card
 
-	-- ── Title + body (D4) ─────────────────────────────────────────────
-	-- Title sits right under the icon box (80 + 8 padding = 88). Bold
-	-- + wood-darkest so it punches against the paper fill. Body sits
-	-- under the title, wrapped to 2 lines max so cards stay uniform
-	-- height; D9's paint path overwrites .Text on both labels per
-	-- snapshot.
-	local TITLE_Y = 80 + 8
 	local title = Instance.new("TextLabel")
 	title.Name = "Title"
-	title.AnchorPoint = Vector2.new(0.5, 0)
-	title.Position = UDim2.new(0.5, 0, 0, TITLE_Y)
+	title.LayoutOrder = 2
 	title.Size = UDim2.new(1, 0, 0, 18)
 	title.BackgroundTransparency = 1
 	title.Font = Enum.Font.GothamBold
-	title.TextSize = 14
+	title.TextSize = 13
 	title.TextColor3 = COLOR_WOOD_DARKEST
 	title.TextXAlignment = Enum.TextXAlignment.Center
-	title.TextYAlignment = Enum.TextYAlignment.Top
+	title.TextYAlignment = Enum.TextYAlignment.Center
 	title.TextTruncate = Enum.TextTruncate.AtEnd
 	title.Text = ""
 	title.ZIndex = card.ZIndex + 1
@@ -196,12 +177,11 @@ local function buildCard(parent, layoutOrder)
 
 	local body = Instance.new("TextLabel")
 	body.Name = "Body"
-	body.AnchorPoint = Vector2.new(0.5, 0)
-	body.Position = UDim2.new(0.5, 0, 0, TITLE_Y + 20)
-	body.Size = UDim2.new(1, 0, 0, 30)
+	body.LayoutOrder = 3
+	body.Size = UDim2.new(1, 0, 0, 28)
 	body.BackgroundTransparency = 1
 	body.Font = Enum.Font.Gotham
-	body.TextSize = 11
+	body.TextSize = 10
 	body.TextColor3 = COLOR_WOOD_DARK
 	body.TextXAlignment = Enum.TextXAlignment.Center
 	body.TextYAlignment = Enum.TextYAlignment.Top
@@ -211,21 +191,14 @@ local function buildCard(parent, layoutOrder)
 	body.ZIndex = card.ZIndex + 1
 	body.Parent = card
 
-	-- ── Progress bar (D5) ─────────────────────────────────────────────
-	-- Pill bar that mirrors OnboardingTooltip's style: wood-dark track,
-	-- bright wood-base fill, fully rounded with UICorner using half the
-	-- bar height. Sits below the body block; D9's paint path scales
-	-- progressFill.Size.X.Scale and overwrites progressLabel.Text.
-	local PROGRESS_Y = TITLE_Y + 20 + 30 + 4   -- body bottom + 4
-	local PROGRESS_H = 8
-
+	-- ── Progress bar ──────────────────────────────────────────────────
+	local PROGRESS_H = 6
 	local progressTrack = Instance.new("Frame")
 	progressTrack.Name = "ProgressTrack"
-	progressTrack.AnchorPoint = Vector2.new(0.5, 0)
-	progressTrack.Position = UDim2.new(0.5, 0, 0, PROGRESS_Y)
-	progressTrack.Size = UDim2.new(1, 0, 0, PROGRESS_H)
+	progressTrack.LayoutOrder = 4
+	progressTrack.Size = UDim2.new(1, -8, 0, PROGRESS_H)
 	progressTrack.BackgroundColor3 = COLOR_WOOD_DARK
-	progressTrack.BackgroundTransparency = 0.35
+	progressTrack.BackgroundTransparency = 0.55
 	progressTrack.BorderSizePixel = 0
 	progressTrack.ZIndex = card.ZIndex + 1
 	progressTrack.Parent = card
@@ -237,8 +210,8 @@ local function buildCard(parent, layoutOrder)
 	progressFill.Name = "ProgressFill"
 	progressFill.AnchorPoint = Vector2.new(0, 0.5)
 	progressFill.Position = UDim2.fromScale(0, 0.5)
-	progressFill.Size = UDim2.fromScale(0, 1)   -- D9 paints Size.X.Scale
-	progressFill.BackgroundColor3 = COLOR_PAPER_LIGHT
+	progressFill.Size = UDim2.fromScale(0, 1)
+	progressFill.BackgroundColor3 = Color3.fromRGB(126, 175, 90)   -- pale green to match target
 	progressFill.BorderSizePixel = 0
 	progressFill.ZIndex = progressTrack.ZIndex + 1
 	progressFill.Parent = progressTrack
@@ -248,11 +221,10 @@ local function buildCard(parent, layoutOrder)
 
 	local progressLabel = Instance.new("TextLabel")
 	progressLabel.Name = "ProgressLabel"
-	progressLabel.AnchorPoint = Vector2.new(0.5, 0)
-	progressLabel.Position = UDim2.new(0.5, 0, 0, PROGRESS_Y + PROGRESS_H + 2)
-	progressLabel.Size = UDim2.new(1, 0, 0, 12)
+	progressLabel.LayoutOrder = 5
+	progressLabel.Size = UDim2.new(1, 0, 0, 11)
 	progressLabel.BackgroundTransparency = 1
-	progressLabel.Font = Enum.Font.GothamBold
+	progressLabel.Font = Enum.Font.GothamMedium
 	progressLabel.TextSize = 10
 	progressLabel.TextColor3 = COLOR_WOOD_DARK
 	progressLabel.TextXAlignment = Enum.TextXAlignment.Center
@@ -260,30 +232,27 @@ local function buildCard(parent, layoutOrder)
 	progressLabel.ZIndex = card.ZIndex + 1
 	progressLabel.Parent = card
 
-	-- ── Reward row (D6) ───────────────────────────────────────────────
-	-- Bottom-anchored. The track button (D7) reserves TRACK_BTN_H at
-	-- the very bottom; the reward row + divider stack just above it
-	-- with AnchorPoint Y=1 so the layout adapts cleanly even if the
-	-- card height changes later. Reward row is icon + count text:
-	-- D9's paint path sets rewardIcon.Image + rewardLabel.Text per
-	-- snapshot.reward.
-	local REWARD_H = 20
-	local divider = Instance.new("Frame")
-	divider.Name = "Divider"
-	divider.AnchorPoint = Vector2.new(0.5, 1)
-	divider.Position = UDim2.new(0.5, 0, 1, -(TRACK_BTN_H + 6 + REWARD_H + 4))
-	divider.Size = UDim2.new(1, 0, 0, 1)
-	divider.BackgroundColor3 = COLOR_WOOD_DARK
-	divider.BackgroundTransparency = 0.55
-	divider.BorderSizePixel = 0
-	divider.ZIndex = card.ZIndex + 1
-	divider.Parent = card
+	-- ── Reward (caption + icon + count) ───────────────────────────────
+	-- "Reward" caption above the icon+count row. Matches the target
+	-- design where each card calls out the reward as its own labelled
+	-- mini-section, not just an inline row.
+	local rewardCaption = Instance.new("TextLabel")
+	rewardCaption.Name = "RewardCaption"
+	rewardCaption.LayoutOrder = 6
+	rewardCaption.Size = UDim2.new(1, 0, 0, 12)
+	rewardCaption.BackgroundTransparency = 1
+	rewardCaption.Font = Enum.Font.Gotham
+	rewardCaption.TextSize = 10
+	rewardCaption.TextColor3 = COLOR_WOOD_MID
+	rewardCaption.TextXAlignment = Enum.TextXAlignment.Center
+	rewardCaption.Text = "Reward"
+	rewardCaption.ZIndex = card.ZIndex + 1
+	rewardCaption.Parent = card
 
 	local rewardRow = Instance.new("Frame")
 	rewardRow.Name = "RewardRow"
-	rewardRow.AnchorPoint = Vector2.new(0.5, 1)
-	rewardRow.Position = UDim2.new(0.5, 0, 1, -(TRACK_BTN_H + 6))
-	rewardRow.Size = UDim2.new(1, 0, 0, REWARD_H)
+	rewardRow.LayoutOrder = 7
+	rewardRow.Size = UDim2.new(1, 0, 0, 22)
 	rewardRow.BackgroundTransparency = 1
 	rewardRow.ZIndex = card.ZIndex + 1
 	rewardRow.Parent = card
@@ -299,10 +268,10 @@ local function buildCard(parent, layoutOrder)
 	local rewardIcon = Instance.new("ImageLabel")
 	rewardIcon.Name = "RewardIcon"
 	rewardIcon.LayoutOrder = 1
-	rewardIcon.Size = UDim2.fromOffset(REWARD_H, REWARD_H)
+	rewardIcon.Size = UDim2.fromOffset(20, 20)
 	rewardIcon.BackgroundTransparency = 1
 	rewardIcon.ScaleType = Enum.ScaleType.Fit
-	rewardIcon.Image = ""   -- D9 fills from snapshot.reward.icon
+	rewardIcon.Image = ""
 	rewardIcon.ZIndex = rewardRow.ZIndex + 1
 	rewardIcon.Parent = rewardRow
 
@@ -321,18 +290,16 @@ local function buildCard(parent, layoutOrder)
 	rewardLabel.ZIndex = rewardRow.ZIndex + 1
 	rewardLabel.Parent = rewardRow
 
-	-- ── Track button (D7) ─────────────────────────────────────────────
-	-- Full-width button pinned to the bottom of the card. Three states
-	-- the paint path (D9) cycles through:
-	--   • "Track"        — paper-light fill, default label
-	--   • "Tracking"     — wood-dark fill, paper text (active)
-	--   • "Claim Reward" — gold-ish wood-base fill, paper text (done)
-	-- D7 here only builds the button chrome + a single text label;
-	-- state painting + click handlers land in D8/D9.
+	-- ── Track button ──────────────────────────────────────────────────
+	-- Star + label per the target design. Three states the paint path
+	-- cycles through:
+	--   • Track        — paper-light fill (default)
+	--   • Tracking     — wood-dark fill, paper text (active)
+	--   • Claim Reward — wood-base fill, paper text (claimable)
+	local TRACK_BTN_H = 26
 	local trackBtn = Instance.new("TextButton")
 	trackBtn.Name = "TrackBtn"
-	trackBtn.AnchorPoint = Vector2.new(0.5, 1)
-	trackBtn.Position = UDim2.new(0.5, 0, 1, 0)
+	trackBtn.LayoutOrder = 8
 	trackBtn.Size = UDim2.new(1, 0, 0, TRACK_BTN_H)
 	trackBtn.AutoButtonColor = false
 	trackBtn.BackgroundColor3 = COLOR_PAPER_LIGHT
@@ -340,7 +307,7 @@ local function buildCard(parent, layoutOrder)
 	trackBtn.Font = Enum.Font.GothamBold
 	trackBtn.TextSize = 12
 	trackBtn.TextColor3 = COLOR_WOOD_DARKEST
-	trackBtn.Text = "Track"
+	trackBtn.Text = "★ Track"
 	trackBtn.ZIndex = card.ZIndex + 2
 	trackBtn.Parent = card
 	local btnCorner = Instance.new("UICorner")
@@ -352,14 +319,9 @@ local function buildCard(parent, layoutOrder)
 	btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	btnStroke.Parent = trackBtn
 
-	-- ── Click dispatch (D8) ───────────────────────────────────────────
-	-- Single click wired here; we read the card's current Mode + QuestId
-	-- attributes (set by D9's paint path) at click time so the same
-	-- button object can move between Track / Tracking / Claim states
-	-- without us re-binding the connection. The server is the source
-	-- of truth — every dispatch round-trips back as a 'state' push that
-	-- D9 paints, so we intentionally don't optimistically mutate the
-	-- card here.
+	-- Click dispatch — same connection drives all 3 modes; we read
+	-- the card's current Mode attribute at click time so the paint
+	-- path can swap modes without us re-binding.
 	trackBtn.Activated:Connect(function()
 		local id   = card:GetAttribute("QuestId")
 		local mode = card:GetAttribute("Mode")
@@ -374,46 +336,37 @@ local function buildCard(parent, layoutOrder)
 		end
 	end)
 
-	-- refs is the live handle the reactive paint path (D9) updates.
-	-- D3-D7 add nodes (iconImage, title, body, progressFill, label,
-	-- rewardLabel, trackBtn) into it.
 	local refs = {
-		card          = card,
-		iconBox       = iconBox,
-		iconImage     = iconImage,
-		title         = title,
-		body          = body,
-		progressTrack = progressTrack,
-		progressFill  = progressFill,
-		progressLabel = progressLabel,
-		divider       = divider,
-		rewardRow     = rewardRow,
-		rewardIcon    = rewardIcon,
-		rewardLabel   = rewardLabel,
-		trackBtn      = trackBtn,
-		trackBtnStroke= btnStroke,
+		card           = card,
+		iconImage      = iconImage,
+		title          = title,
+		body           = body,
+		progressTrack  = progressTrack,
+		progressFill   = progressFill,
+		progressLabel  = progressLabel,
+		rewardCaption  = rewardCaption,
+		rewardRow      = rewardRow,
+		rewardIcon     = rewardIcon,
+		rewardLabel    = rewardLabel,
+		trackBtn       = trackBtn,
+		trackBtnStroke = btnStroke,
 	}
 	return card, refs
 end
-
-print("[QuestsTab] script started")
 
 local mountPoint = waitForMountPoint(30)
 if not mountPoint then
 	warn("[QuestsTab] _G.QuestMenuContentPages.quests not available within 30 s; tab disabled")
 	return
 end
-print("[QuestsTab] mount point resolved:", mountPoint:GetFullName())
 
 questStateEvent = waitForQuestStateEvent(30)
 if not questStateEvent then
 	warn("[QuestsTab] QuestState RemoteEvent missing; tab disabled")
 	return
 end
-print("[QuestsTab] QuestState RemoteEvent resolved")
 
 local scrollFrame = mount(mountPoint)
-print("[QuestsTab] scroll frame mounted")
 
 -- ─── Empty state (D10) ──────────────────────────────────────────────
 -- Sits as a sibling of the scroll frame so the UIGridLayout inside
@@ -489,19 +442,19 @@ local function paintCard(refs, q)
 	-- the user-facing affordance is "Claim" first.
 	if q.rewardPending then
 		refs.card:SetAttribute("Mode", "claim")
-		refs.trackBtn.Text = "Claim Reward"
+		refs.trackBtn.Text = "★ Claim"
 		refs.trackBtn.BackgroundColor3 = COLOR_WOOD_BASE
 		refs.trackBtn.TextColor3       = COLOR_PAPER_LIGHT
 		refs.trackBtnStroke.Color      = COLOR_WOOD_DARKEST
 	elseif q.tracked then
 		refs.card:SetAttribute("Mode", "tracking")
-		refs.trackBtn.Text = "Tracking"
+		refs.trackBtn.Text = "★ Tracking"
 		refs.trackBtn.BackgroundColor3 = COLOR_WOOD_DARK
 		refs.trackBtn.TextColor3       = COLOR_PAPER_LIGHT
 		refs.trackBtnStroke.Color      = COLOR_WOOD_DARKEST
 	else
 		refs.card:SetAttribute("Mode", "track")
-		refs.trackBtn.Text = "Track"
+		refs.trackBtn.Text = "★ Track"
 		refs.trackBtn.BackgroundColor3 = COLOR_PAPER_LIGHT
 		refs.trackBtn.TextColor3       = COLOR_WOOD_DARKEST
 		refs.trackBtnStroke.Color      = COLOR_WOOD_DARK
@@ -541,20 +494,11 @@ local function repaint(payload)
 end
 
 questStateEvent.OnClientEvent:Connect(function(action, payload)
-	print(string.format("[QuestsTab] OnClientEvent action=%s type=%s",
-		tostring(action), type(payload)))
 	if action ~= "state" then return end
 	if type(payload) ~= "table" then return end
-	local total = #(payload.quests or {})
-	local dailies = 0
-	for _, q in ipairs(payload.quests or {}) do
-		if q.kind == "daily" then dailies = dailies + 1 end
-	end
-	print(string.format("[QuestsTab] state: %d total quests, %d daily", total, dailies))
 	repaint(payload)
 end)
 
 -- Request initial state on mount in case the server's PlayerAdded
 -- snapshot fired before this LocalScript was ready.
-print("[QuestsTab] firing getState to server")
 questStateEvent:FireServer("getState")
