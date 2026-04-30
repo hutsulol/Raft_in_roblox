@@ -466,12 +466,115 @@ end
 
 local scrollFrame = mount(mountPoint)
 
--- Subscribe to state pushes from the server. E9 implements the real
--- repaint; E2 just logs so the wiring is testable.
+-- ─── Reactive paint (E9) ────────────────────────────────────────────
+-- cardsById maps quest id → { card, refs } so each snapshot repaints
+-- in place. Per-objective rows are reused across pushes too: the
+-- paint loop calls refs.objRows[i] if present, otherwise builds a
+-- new row and stashes it. Rows past the current objective count are
+-- destroyed (rare — only fires if the catalog mutates), keeping the
+-- UI in sync without a full rebuild.
+local cardsById = {}
+
+local function paintCard(refs, q)
+	refs.iconImage.Image = q.icon or ""
+	refs.title.Text      = q.title or ""
+	refs.body.Text       = q.body or ""
+
+	-- Objectives — one row per entry; reuse existing rows where we can.
+	local objs = q.objectives or {}
+	for i, obj in ipairs(objs) do
+		local row = refs.objRows[i]
+		if not row then
+			row = buildObjectiveRow(refs.objList, i)
+			refs.objRows[i] = row
+		end
+		local prog = tonumber(obj.progress) or 0
+		local goal = tonumber(obj.goal) or 0
+		local pct = (goal > 0) and math.clamp(prog / goal, 0, 1) or 0
+		row.label.Text   = obj.label or obj.eventType or "Objective"
+		row.count.Text   = string.format("%d / %d", prog, goal)
+		row.barFill.Size = UDim2.new(pct, 0, 1, 0)
+		-- Once an objective is done, dim its label slightly so the
+		-- player can scan which steps remain at a glance.
+		if pct >= 1 then
+			row.label.TextColor3 = COLOR_WOOD_MID
+		else
+			row.label.TextColor3 = COLOR_WOOD_DARKEST
+		end
+	end
+	-- Trim any leftover rows from a previous repaint with more objectives.
+	for i = #objs + 1, #refs.objRows do
+		refs.objRows[i].row:Destroy()
+		refs.objRows[i] = nil
+	end
+
+	-- Reward — same icon-as-stand-in approach as the daily cards.
+	if q.reward and q.reward.count then
+		refs.rewardIcon.Image = q.icon or ""
+		refs.rewardLabel.Text = "x" .. tostring(q.reward.count)
+	else
+		refs.rewardIcon.Image = ""
+		refs.rewardLabel.Text = ""
+	end
+
+	refs.card:SetAttribute("QuestId", q.id or "")
+
+	-- Three-mode track button — same priority as daily: rewardPending
+	-- beats tracked beats default, because "Claim" is the action the
+	-- player should take next.
+	if q.rewardPending then
+		refs.card:SetAttribute("Mode", "claim")
+		refs.trackBtn.Text = "★ Claim"
+		refs.trackBtn.BackgroundColor3 = COLOR_WOOD_BASE
+		refs.trackBtn.TextColor3       = COLOR_PAPER_LIGHT
+		refs.trackBtnStroke.Color      = COLOR_WOOD_DARKEST
+	elseif q.tracked then
+		refs.card:SetAttribute("Mode", "tracking")
+		refs.trackBtn.Text = "★ Tracking"
+		refs.trackBtn.BackgroundColor3 = COLOR_WOOD_DARK
+		refs.trackBtn.TextColor3       = COLOR_PAPER_LIGHT
+		refs.trackBtnStroke.Color      = COLOR_WOOD_DARKEST
+	else
+		refs.card:SetAttribute("Mode", "track")
+		refs.trackBtn.Text = "★ Track"
+		refs.trackBtn.BackgroundColor3 = COLOR_PAPER_LIGHT
+		refs.trackBtn.TextColor3       = COLOR_WOOD_DARKEST
+		refs.trackBtnStroke.Color      = COLOR_WOOD_DARK
+	end
+end
+
+local function repaint(payload)
+	local incoming = {}
+	local order = 1
+	for _, q in ipairs(payload.quests or {}) do
+		if q.kind == "story" then
+			incoming[q.id] = true
+			local entry = cardsById[q.id]
+			if not entry then
+				local card, refs = buildCard(scrollFrame, order)
+				entry = { card = card, refs = refs }
+				cardsById[q.id] = entry
+			else
+				entry.card.LayoutOrder = order
+			end
+			paintCard(entry.refs, q)
+			order = order + 1
+		end
+	end
+	-- Sweep cards for stories that have flipped into permanentlyCompleted
+	-- (they drop out of the snapshot once finished).
+	for id, entry in pairs(cardsById) do
+		if not incoming[id] then
+			entry.card:Destroy()
+			cardsById[id] = nil
+		end
+	end
+end
+
 questStateEvent.OnClientEvent:Connect(function(action, payload)
 	if action ~= "state" then return end
 	if type(payload) ~= "table" then return end
-	-- Phase E9 will iterate payload.quests filtered by kind=="story".
+	repaint(payload)
 end)
 
 -- The Quests tab also fires getState on mount; we don't fire again
