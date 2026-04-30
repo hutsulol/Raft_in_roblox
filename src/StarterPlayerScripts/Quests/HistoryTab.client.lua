@@ -76,6 +76,32 @@ local function mount(parent)
 	return scroll
 end
 
+-- ─── Relative-time formatter (G3) ───────────────────────────────────
+-- Server stamps completedAt as os.time() seconds. Convert to a
+-- human-readable "x ago" string. Anything beyond a week falls back
+-- to a date so a year-old entry doesn't read "52 weeks ago".
+local function relativeTime(completedAt)
+	if type(completedAt) ~= "number" or completedAt <= 0 then
+		return ""
+	end
+	local now = os.time()
+	local secs = math.max(0, now - completedAt)
+	if secs < 60 then
+		return "just now"
+	elseif secs < 3600 then
+		local m = math.floor(secs / 60)
+		return m == 1 and "1 minute ago" or (m .. " minutes ago")
+	elseif secs < 86400 then
+		local h = math.floor(secs / 3600)
+		return h == 1 and "1 hour ago" or (h .. " hours ago")
+	elseif secs < 7 * 86400 then
+		local d = math.floor(secs / 86400)
+		return d == 1 and "yesterday" or (d .. " days ago")
+	else
+		return os.date("%b %d", completedAt)
+	end
+end
+
 -- ─── Single history row (G2) ────────────────────────────────────────
 -- Compact horizontal layout: icon on the left, title + relative
 -- timestamp stacked in the middle, reward on the right. Returned
