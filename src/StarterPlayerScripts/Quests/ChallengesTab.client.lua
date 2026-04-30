@@ -172,12 +172,62 @@ local function buildCard(parent, layoutOrder)
 	body.ZIndex = card.ZIndex + 1
 	body.Parent = card
 
-	-- F5-F7 layer progress / timer / footer onto refs.
+	-- ── Progress bar (F5) ─────────────────────────────────────────────
+	-- Sits at fixed Y below the header; goal/progress label is anchored
+	-- inside the bar's right edge so a long quest title above can't
+	-- collide with it.
+	local PROGRESS_Y = 60
+	local PROGRESS_H = 8
+	local progressTrack = Instance.new("Frame")
+	progressTrack.Name = "ProgressTrack"
+	progressTrack.AnchorPoint = Vector2.new(0, 0)
+	progressTrack.Position = UDim2.new(0, 0, 0, PROGRESS_Y)
+	progressTrack.Size = UDim2.new(1, -64, 0, PROGRESS_H)
+	progressTrack.BackgroundColor3 = COLOR_WOOD_DARK
+	progressTrack.BackgroundTransparency = 0.55
+	progressTrack.BorderSizePixel = 0
+	progressTrack.ZIndex = card.ZIndex + 1
+	progressTrack.Parent = card
+	local trackCorner = Instance.new("UICorner")
+	trackCorner.CornerRadius = UDim.new(0, math.floor(PROGRESS_H / 2))
+	trackCorner.Parent = progressTrack
+
+	local progressFill = Instance.new("Frame")
+	progressFill.Name = "ProgressFill"
+	progressFill.AnchorPoint = Vector2.new(0, 0.5)
+	progressFill.Position = UDim2.fromScale(0, 0.5)
+	progressFill.Size = UDim2.fromScale(0, 1)
+	progressFill.BackgroundColor3 = COLOR_PROGRESS
+	progressFill.BorderSizePixel = 0
+	progressFill.ZIndex = progressTrack.ZIndex + 1
+	progressFill.Parent = progressTrack
+	local fillCorner = Instance.new("UICorner")
+	fillCorner.CornerRadius = UDim.new(0, math.floor(PROGRESS_H / 2))
+	fillCorner.Parent = progressFill
+
+	local progressLabel = Instance.new("TextLabel")
+	progressLabel.Name = "ProgressLabel"
+	progressLabel.AnchorPoint = Vector2.new(0, 0)
+	progressLabel.Position = UDim2.new(0, 0, 0, PROGRESS_Y + PROGRESS_H + 2)
+	progressLabel.Size = UDim2.new(1, -64, 0, 12)
+	progressLabel.BackgroundTransparency = 1
+	progressLabel.Font = Enum.Font.GothamMedium
+	progressLabel.TextSize = 11
+	progressLabel.TextColor3 = COLOR_WOOD_DARK
+	progressLabel.TextXAlignment = Enum.TextXAlignment.Right
+	progressLabel.Text = ""
+	progressLabel.ZIndex = card.ZIndex + 1
+	progressLabel.Parent = card
+
+	-- F6-F7 layer timer / footer onto refs.
 	local refs = {
-		card      = card,
-		iconImage = iconImage,
-		title     = title,
-		body      = body,
+		card          = card,
+		iconImage     = iconImage,
+		title         = title,
+		body          = body,
+		progressTrack = progressTrack,
+		progressFill  = progressFill,
+		progressLabel = progressLabel,
 	}
 	return card, refs
 end
