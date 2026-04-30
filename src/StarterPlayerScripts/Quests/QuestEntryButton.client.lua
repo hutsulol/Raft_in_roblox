@@ -150,3 +150,33 @@ end)
 button.MouseLeave:Connect(function()
 	setHover(false)
 end)
+
+-- A6: pressed state. Scale to 0.96 + nudge the button 1 px down so
+-- it reads as physically depressed (the same trick the mockup's
+-- .btn:active uses with translateY(2px)). MouseButton1Up restores
+-- the resting state — including a stale press-leave fallback for
+-- the case where the mouse leaves the button while held down.
+local restingPosition = button.Position
+local pressedPosition = restingPosition + UDim2.fromOffset(0, 1)
+local PRESS_INFO = TweenInfo.new(0.06, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local function setPressed(isPressed)
+	TweenService:Create(btnScale, PRESS_INFO, {
+		Scale = isPressed and 0.96 or 1.03, -- 1.03 because we're still inside the hover
+	}):Play()
+	TweenService:Create(button, PRESS_INFO, {
+		Position = isPressed and pressedPosition or restingPosition,
+	}):Play()
+end
+
+button.MouseButton1Down:Connect(function()
+	setPressed(true)
+end)
+button.MouseButton1Up:Connect(function()
+	setPressed(false)
+end)
+-- If the player drags off the button while still holding the mouse
+-- down, MouseButton1Up never fires here — MouseLeave does. Reset.
+button.MouseLeave:Connect(function()
+	setPressed(false)
+end)
