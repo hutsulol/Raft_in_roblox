@@ -100,6 +100,112 @@ cPad.PaddingLeft   = UDim.new(0, 10)
 cPad.PaddingRight  = UDim.new(0, 10)
 cPad.Parent = card
 
+-- ─── Card content (H3) ──────────────────────────────────────────────
+-- Top row: icon (left) + title (center) + tiny timer label (right,
+-- only visible when tracking a challenge).
+-- Bottom row: objective label + progress bar + N/M.
+local iconImage = Instance.new("ImageLabel")
+iconImage.Name = "Icon"
+iconImage.AnchorPoint = Vector2.new(0, 0)
+iconImage.Position = UDim2.new(0, 0, 0, 0)
+iconImage.Size = UDim2.fromOffset(36, 36)
+iconImage.BackgroundTransparency = 1
+iconImage.ScaleType = Enum.ScaleType.Fit
+iconImage.Image = ""
+iconImage.ZIndex = card.ZIndex + 1
+iconImage.Parent = card
+
+local title = Instance.new("TextLabel")
+title.Name = "Title"
+title.AnchorPoint = Vector2.new(0, 0)
+title.Position = UDim2.new(0, 44, 0, 0)
+title.Size = UDim2.new(1, -44 - 60, 0, 18)
+title.BackgroundTransparency = 1
+title.Font = Enum.Font.GothamBold
+title.TextSize = 14
+title.TextColor3 = COLOR_WOOD_DARKEST
+title.TextXAlignment = Enum.TextXAlignment.Left
+title.TextYAlignment = Enum.TextYAlignment.Center
+title.TextTruncate = Enum.TextTruncate.AtEnd
+title.Text = ""
+title.ZIndex = card.ZIndex + 1
+title.Parent = card
+
+local objective = Instance.new("TextLabel")
+objective.Name = "Objective"
+objective.AnchorPoint = Vector2.new(0, 0)
+objective.Position = UDim2.new(0, 44, 0, 18)
+objective.Size = UDim2.new(1, -44 - 60, 0, 16)
+objective.BackgroundTransparency = 1
+objective.Font = Enum.Font.Gotham
+objective.TextSize = 11
+objective.TextColor3 = COLOR_WOOD_MID
+objective.TextXAlignment = Enum.TextXAlignment.Left
+objective.TextYAlignment = Enum.TextYAlignment.Center
+objective.TextTruncate = Enum.TextTruncate.AtEnd
+objective.Text = ""
+objective.ZIndex = card.ZIndex + 1
+objective.Parent = card
+
+local timerLabel = Instance.new("TextLabel")
+timerLabel.Name = "TimerLabel"
+timerLabel.AnchorPoint = Vector2.new(1, 0)
+timerLabel.Position = UDim2.new(1, 0, 0, 2)
+timerLabel.Size = UDim2.fromOffset(60, 18)
+timerLabel.BackgroundTransparency = 1
+timerLabel.Font = Enum.Font.GothamBold
+timerLabel.TextSize = 14
+timerLabel.TextColor3 = COLOR_TIMER
+timerLabel.TextXAlignment = Enum.TextXAlignment.Right
+timerLabel.TextYAlignment = Enum.TextYAlignment.Center
+timerLabel.Text = ""
+timerLabel.Visible = false
+timerLabel.ZIndex = card.ZIndex + 1
+timerLabel.Parent = card
+
+local PROGRESS_H = 8
+local progressTrack = Instance.new("Frame")
+progressTrack.Name = "ProgressTrack"
+progressTrack.AnchorPoint = Vector2.new(0, 1)
+progressTrack.Position = UDim2.new(0, 0, 1, -16)
+progressTrack.Size = UDim2.new(1, 0, 0, PROGRESS_H)
+progressTrack.BackgroundColor3 = COLOR_WOOD_DARK
+progressTrack.BackgroundTransparency = 0.55
+progressTrack.BorderSizePixel = 0
+progressTrack.ZIndex = card.ZIndex + 1
+progressTrack.Parent = card
+local trackCorner = Instance.new("UICorner")
+trackCorner.CornerRadius = UDim.new(0, math.floor(PROGRESS_H / 2))
+trackCorner.Parent = progressTrack
+
+local progressFill = Instance.new("Frame")
+progressFill.Name = "ProgressFill"
+progressFill.AnchorPoint = Vector2.new(0, 0.5)
+progressFill.Position = UDim2.fromScale(0, 0.5)
+progressFill.Size = UDim2.fromScale(0, 1)
+progressFill.BackgroundColor3 = COLOR_PROGRESS
+progressFill.BorderSizePixel = 0
+progressFill.ZIndex = progressTrack.ZIndex + 1
+progressFill.Parent = progressTrack
+local fillCorner = Instance.new("UICorner")
+fillCorner.CornerRadius = UDim.new(0, math.floor(PROGRESS_H / 2))
+fillCorner.Parent = progressFill
+
+local progressLabel = Instance.new("TextLabel")
+progressLabel.Name = "ProgressLabel"
+progressLabel.AnchorPoint = Vector2.new(1, 1)
+progressLabel.Position = UDim2.new(1, 0, 1, 0)
+progressLabel.Size = UDim2.new(1, 0, 0, 12)
+progressLabel.BackgroundTransparency = 1
+progressLabel.Font = Enum.Font.GothamMedium
+progressLabel.TextSize = 11
+progressLabel.TextColor3 = COLOR_WOOD_DARK
+progressLabel.TextXAlignment = Enum.TextXAlignment.Right
+progressLabel.TextYAlignment = Enum.TextYAlignment.Bottom
+progressLabel.Text = ""
+progressLabel.ZIndex = card.ZIndex + 1
+progressLabel.Parent = card
+
 local questStateEvent = waitForQuestStateEvent(30)
 if not questStateEvent then
 	warn("[TrackerCard] QuestState RemoteEvent missing; tracker disabled")
