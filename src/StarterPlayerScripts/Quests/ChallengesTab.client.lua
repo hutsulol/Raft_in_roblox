@@ -124,9 +124,60 @@ local function buildCard(parent, layoutOrder)
 	cPad.PaddingRight  = UDim.new(0, 12)
 	cPad.Parent = card
 
-	-- F4-F7 layer header / progress / timer / footer onto refs.
+	-- ── Header (F4) ───────────────────────────────────────────────────
+	-- Icon on the left, title + body stacked to the right. Reserves
+	-- 80 px on the right edge for the timer (F6) so a long title
+	-- can't overlap the countdown.
+	local iconImage = Instance.new("ImageLabel")
+	iconImage.Name = "Icon"
+	iconImage.AnchorPoint = Vector2.new(0, 0)
+	iconImage.Position = UDim2.new(0, 0, 0, 0)
+	iconImage.Size = UDim2.fromOffset(54, 54)
+	iconImage.BackgroundTransparency = 1
+	iconImage.BorderSizePixel = 0
+	iconImage.ScaleType = Enum.ScaleType.Fit
+	iconImage.Image = ""
+	iconImage.ZIndex = card.ZIndex + 1
+	iconImage.Parent = card
+
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.AnchorPoint = Vector2.new(0, 0)
+	title.Position = UDim2.new(0, 64, 0, 2)
+	title.Size = UDim2.new(1, -64 - 80, 0, 22)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 15
+	title.TextColor3 = COLOR_WOOD_DARKEST
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextYAlignment = Enum.TextYAlignment.Center
+	title.TextTruncate = Enum.TextTruncate.AtEnd
+	title.Text = ""
+	title.ZIndex = card.ZIndex + 1
+	title.Parent = card
+
+	local body = Instance.new("TextLabel")
+	body.Name = "Body"
+	body.AnchorPoint = Vector2.new(0, 0)
+	body.Position = UDim2.new(0, 64, 0, 26)
+	body.Size = UDim2.new(1, -64 - 80, 0, 28)
+	body.BackgroundTransparency = 1
+	body.Font = Enum.Font.Gotham
+	body.TextSize = 11
+	body.TextColor3 = COLOR_WOOD_DARK
+	body.TextXAlignment = Enum.TextXAlignment.Left
+	body.TextYAlignment = Enum.TextYAlignment.Top
+	body.TextWrapped = true
+	body.Text = ""
+	body.ZIndex = card.ZIndex + 1
+	body.Parent = card
+
+	-- F5-F7 layer progress / timer / footer onto refs.
 	local refs = {
-		card = card,
+		card      = card,
+		iconImage = iconImage,
+		title     = title,
+		body      = body,
 	}
 	return card, refs
 end
