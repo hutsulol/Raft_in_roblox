@@ -217,9 +217,11 @@ local function isOverlayOpen()
 	-- Phone menu hides us because it's a full-screen overlay with
 	-- its own quest log inside; quest menu hides us because it's
 	-- the destination this button leads to (no point in showing
-	-- the entry once the menu is open). Both publish their
-	-- ScreenGui to _G so we can listen on the same handshake.
-	for _, key in ipairs({ "PhoneScreenGui", "QuestMenuScreenGui" }) do
+	-- the entry once the menu is open); the building UI hides us
+	-- because its category strip lives at the bottom-left and the
+	-- entry would overlap it (T9). Each publishes its ScreenGui to
+	-- _G so we can listen on the same handshake.
+	for _, key in ipairs({ "PhoneScreenGui", "QuestMenuScreenGui", "BuildingScreenGui" }) do
 		local gui = _G[key]
 		if gui and gui:IsA("ScreenGui") and gui.Enabled then
 			return true
