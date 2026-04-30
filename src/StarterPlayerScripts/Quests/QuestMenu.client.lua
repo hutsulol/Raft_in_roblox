@@ -83,6 +83,7 @@ local CLOSE_BTN_RADIUS = 8
 -- right-side content swap (B6) and the active-tab tracking (B9).
 local TABS = {
 	{ id = "quests",     label = "Quests"     },
+	{ id = "story",      label = "Story"      },
 	{ id = "history",    label = "History"    },
 	{ id = "challenges", label = "Challenges" },
 }
