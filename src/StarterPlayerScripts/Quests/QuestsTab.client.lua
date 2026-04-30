@@ -409,6 +409,34 @@ end
 
 local scrollFrame = mount(mountPoint)
 
+-- ─── Empty state (D10) ──────────────────────────────────────────────
+-- Sits as a sibling of the scroll frame so the UIGridLayout inside
+-- the scroll frame doesn't try to lay it out as a card. Hidden by
+-- default; D9's repaint flips Visible based on whether any daily
+-- cards remain after the snapshot has been processed. Catches three
+-- defensive cases:
+--   1. Daily roll legitimately returned 0 (every daily is in the
+--      player's permanentlyCompleted set — possible after long-term
+--      progression once single-use crafting gates are exhausted).
+--   2. The catalog never loaded server-side, so the snapshot is empty.
+--   3. First-frame race where the snapshot hasn't arrived yet.
+local emptyState = Instance.new("TextLabel")
+emptyState.Name = "EmptyState"
+emptyState.AnchorPoint = Vector2.new(0.5, 0.5)
+emptyState.Position = UDim2.fromScale(0.5, 0.5)
+emptyState.Size = UDim2.new(1, -40, 0, 40)
+emptyState.BackgroundTransparency = 1
+emptyState.Font = Enum.Font.GothamMedium
+emptyState.TextSize = 14
+emptyState.TextColor3 = COLOR_WOOD_DARK
+emptyState.TextWrapped = true
+emptyState.TextXAlignment = Enum.TextXAlignment.Center
+emptyState.TextYAlignment = Enum.TextYAlignment.Center
+emptyState.Text = "No daily quests right now.\nCheck back tomorrow."
+emptyState.Visible = false
+emptyState.ZIndex = 6
+emptyState.Parent = mountPoint
+
 -- ─── Reactive paint (D9) ────────────────────────────────────────────
 -- cardsById keeps live card refs keyed by quest id so each snapshot
 -- repaints in place — no full rebuild, no flicker, no lost button-
@@ -500,6 +528,10 @@ local function repaint(payload)
 			cardsById[id] = nil
 		end
 	end
+
+	-- D10: flip the empty-state label after the sweep so it only
+	-- shows when there are no live cards.
+	emptyState.Visible = (next(cardsById) == nil)
 end
 
 questStateEvent.OnClientEvent:Connect(function(action, payload)
