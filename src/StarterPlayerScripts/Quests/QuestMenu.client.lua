@@ -69,6 +69,42 @@ local screenGui
 local panel        -- the wood panel root (built in B2)
 local tabRail      -- container for the left-side tab buttons (B3)
 local tabHandles   -- [id] = { tile = TextButton } populated by B3
+local activeTabId  -- which tab is currently selected (default = first
+                   -- entry in TABS, applied by buildTabRail)
+
+-- ─── Tab visual states (B4) ─────────────────────────────────────────
+-- Active tab: paper-light fill, wood-darkest text — reads as a
+-- "page" tab pinned to the rail. Inactive tabs: fully transparent
+-- background, paper-light text — they're labels, not buttons,
+-- visually. Hover on inactive: paper-fill at 0.6 transparency so the
+-- player gets feedback without it looking like a second active tab.
+local function paintTab(id)
+	local h = tabHandles[id]
+	if not h or not h.tile then return end
+	local tile = h.tile
+	if id == activeTabId then
+		tile.BackgroundTransparency = 0
+		tile.BackgroundColor3 = COLOR_PAPER_LIGHT
+		tile.TextColor3 = COLOR_WOOD_DARKEST
+	else
+		tile.BackgroundTransparency = 1
+		tile.TextColor3 = COLOR_PAPER_LIGHT
+	end
+end
+
+local function repaintAllTabs()
+	if not tabHandles then return end
+	for id in pairs(tabHandles) do
+		paintTab(id)
+	end
+end
+
+local function setActiveTab(id)
+	if not tabHandles or not tabHandles[id] then return end
+	if activeTabId == id then return end
+	activeTabId = id
+	repaintAllTabs()
+end
 
 -- ─── Tab rail (B3) ───────────────────────────────────────────────────
 -- Vertical strip on the left side of the panel content. Each tab is a
@@ -115,12 +151,27 @@ local function buildTabRail(parent)
 
 		tabHandles[tab.id] = { tile = tile }
 
-		-- B3 wiring: log the click so the rail is testable. The real
-		-- "switch active tab + swap content" handler installs in B9.
 		tile.MouseButton1Click:Connect(function()
-			print(string.format("[QuestMenu] Tab clicked: %s", tab.id))
+			setActiveTab(tab.id)
+		end)
+
+		-- Inactive-tab hover feedback: faint paper wash so the player
+		-- knows the tab is interactive without it looking like a
+		-- second active tab. paintTab() snaps it back on MouseLeave.
+		tile.MouseEnter:Connect(function()
+			if tab.id == activeTabId then return end
+			tile.BackgroundTransparency = 0.6
+			tile.BackgroundColor3 = COLOR_PAPER_LIGHT
+		end)
+		tile.MouseLeave:Connect(function()
+			paintTab(tab.id)
 		end)
 	end
+
+	-- Seed the default active tab. paintTab requires tabHandles[id]
+	-- to exist, which it now does.
+	activeTabId = TABS[1].id
+	repaintAllTabs()
 
 	return tabRail
 end
