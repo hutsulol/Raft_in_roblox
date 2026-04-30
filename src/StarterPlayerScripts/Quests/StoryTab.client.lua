@@ -89,6 +89,102 @@ local function mount(parent)
 	return scroll
 end
 
+-- ─── Single objective row (E6) ──────────────────────────────────────
+-- One row per objective inside a story card. Layout reads "label on
+-- the left, N/M on the right, thin progress bar below the row".
+-- Returned refs let E9's paint path update progress without rebuilding
+-- the row.
+local OBJ_ROW_H    = 32
+local OBJ_BAR_H    = 4
+local function buildObjectiveRow(parent, layoutOrder)
+	local row = Instance.new("Frame")
+	row.Name = "ObjectiveRow"
+	row.LayoutOrder = layoutOrder or 0
+	row.Size = UDim2.new(1, 0, 0, OBJ_ROW_H)
+	row.BackgroundColor3 = COLOR_PAPER_LIGHT
+	row.BackgroundTransparency = 0.35
+	row.BorderSizePixel = 0
+	row.ZIndex = 8
+	row.Parent = parent
+
+	local rCorner = Instance.new("UICorner")
+	rCorner.CornerRadius = UDim.new(0, 6)
+	rCorner.Parent = row
+
+	local rPad = Instance.new("UIPadding")
+	rPad.PaddingTop    = UDim.new(0, 4)
+	rPad.PaddingBottom = UDim.new(0, 4)
+	rPad.PaddingLeft   = UDim.new(0, 8)
+	rPad.PaddingRight  = UDim.new(0, 8)
+	rPad.Parent = row
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.AnchorPoint = Vector2.new(0, 0)
+	label.Position = UDim2.new(0, 0, 0, 0)
+	label.Size = UDim2.new(1, -50, 0, 14)
+	label.BackgroundTransparency = 1
+	label.Font = Enum.Font.GothamMedium
+	label.TextSize = 12
+	label.TextColor3 = COLOR_WOOD_DARKEST
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.TextTruncate = Enum.TextTruncate.AtEnd
+	label.Text = ""
+	label.ZIndex = row.ZIndex + 1
+	label.Parent = row
+
+	local count = Instance.new("TextLabel")
+	count.Name = "Count"
+	count.AnchorPoint = Vector2.new(1, 0)
+	count.Position = UDim2.new(1, 0, 0, 0)
+	count.Size = UDim2.new(0, 50, 0, 14)
+	count.BackgroundTransparency = 1
+	count.Font = Enum.Font.GothamBold
+	count.TextSize = 12
+	count.TextColor3 = COLOR_WOOD_DARK
+	count.TextXAlignment = Enum.TextXAlignment.Right
+	count.TextYAlignment = Enum.TextYAlignment.Center
+	count.Text = ""
+	count.ZIndex = row.ZIndex + 1
+	count.Parent = row
+
+	-- Progress bar pinned to the bottom of the row.
+	local barTrack = Instance.new("Frame")
+	barTrack.Name = "BarTrack"
+	barTrack.AnchorPoint = Vector2.new(0, 1)
+	barTrack.Position = UDim2.new(0, 0, 1, 0)
+	barTrack.Size = UDim2.new(1, 0, 0, OBJ_BAR_H)
+	barTrack.BackgroundColor3 = COLOR_WOOD_DARK
+	barTrack.BackgroundTransparency = 0.6
+	barTrack.BorderSizePixel = 0
+	barTrack.ZIndex = row.ZIndex + 1
+	barTrack.Parent = row
+	local btCorner = Instance.new("UICorner")
+	btCorner.CornerRadius = UDim.new(0, math.floor(OBJ_BAR_H / 2))
+	btCorner.Parent = barTrack
+
+	local barFill = Instance.new("Frame")
+	barFill.Name = "BarFill"
+	barFill.AnchorPoint = Vector2.new(0, 0.5)
+	barFill.Position = UDim2.fromScale(0, 0.5)
+	barFill.Size = UDim2.fromScale(0, 1)   -- E9 paints Size.X.Scale
+	barFill.BackgroundColor3 = COLOR_PROGRESS
+	barFill.BorderSizePixel = 0
+	barFill.ZIndex = barTrack.ZIndex + 1
+	barFill.Parent = barTrack
+	local bfCorner = Instance.new("UICorner")
+	bfCorner.CornerRadius = UDim.new(0, math.floor(OBJ_BAR_H / 2))
+	bfCorner.Parent = barFill
+
+	return {
+		row     = row,
+		label   = label,
+		count   = count,
+		barFill = barFill,
+	}
+end
+
 -- ─── Story card chrome (E3) ─────────────────────────────────────────
 -- Full-width card that stacks vertically inside the scroll. Each
 -- card holds a header row, an objectives checklist, and a reward+button
