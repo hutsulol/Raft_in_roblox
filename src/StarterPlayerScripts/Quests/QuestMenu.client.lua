@@ -688,15 +688,22 @@ _G.CloseQuestMenu = closeQuestMenu
 -- ensureScreenGui() runs, so listeners that check on script init may
 -- find it nil — they should poll until it appears, the same way the
 -- entry button polls _G.PhoneScreenGui.
-local function publishScreenGui()
+local function publishMenuRefs()
 	if screenGui then
 		_G.QuestMenuScreenGui = screenGui
+	end
+	if contentPages then
+		-- Per-tab content frames keyed by tab id. Phase D / E / F / G
+		-- mount their cards / lists into these without QuestMenu having
+		-- to know about them. The reference stays stable across menu
+		-- open/close (we only toggle screenGui.Enabled, not destroy).
+		_G.QuestMenuContentPages = contentPages
 	end
 end
 -- Build + publish on script init so listeners don't have to wait
 -- for the player's first openQuestMenu() click.
 ensureScreenGui()
-publishScreenGui()
+publishMenuRefs()
 
 -- ─── ESC key + entry-button toggle ───────────────────────────────────
 -- Pressing ESC while the menu is open closes it (gameProcessed-aware
