@@ -89,6 +89,61 @@ local function mount(parent)
 	return scroll
 end
 
+-- ─── Story card chrome (E3) ─────────────────────────────────────────
+-- Full-width card that stacks vertically inside the scroll. Each
+-- card holds a header row, an objectives checklist, and a reward+button
+-- footer (added in E4-E7). Card height adjusts to its content via
+-- AutomaticSize.Y so a 4-objective story takes more vertical space
+-- than a 3-objective one without stretching.
+local function buildCard(parent, layoutOrder)
+	local card = Instance.new("Frame")
+	card.Name = "StoryCard"
+	card.LayoutOrder = layoutOrder or 0
+	card.Size = UDim2.new(1, 0, 0, 0)   -- height auto-sized below
+	card.AutomaticSize = Enum.AutomaticSize.Y
+	card.BackgroundColor3 = COLOR_PAPER
+	card.BorderSizePixel = 0
+	card.ZIndex = 7
+	card.Parent = parent
+	-- Card attributes drive the click handler dispatch (E8). E9's paint
+	-- path overwrites these per snapshot:
+	--   QuestId : "" | "<id>"
+	--   Mode    : "track" | "tracking" | "claim"
+	card:SetAttribute("QuestId", "")
+	card:SetAttribute("Mode", "track")
+
+	local cCorner = Instance.new("UICorner")
+	cCorner.CornerRadius = UDim.new(0, CARD_RADIUS)
+	cCorner.Parent = card
+
+	local cStroke = Instance.new("UIStroke")
+	cStroke.Color = COLOR_WOOD_DARK
+	cStroke.Thickness = 2
+	cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	cStroke.Parent = card
+
+	local cPad = Instance.new("UIPadding")
+	cPad.PaddingTop    = UDim.new(0, 12)
+	cPad.PaddingBottom = UDim.new(0, 12)
+	cPad.PaddingLeft   = UDim.new(0, 14)
+	cPad.PaddingRight  = UDim.new(0, 14)
+	cPad.Parent = card
+
+	local cLayout = Instance.new("UIListLayout")
+	cLayout.FillDirection = Enum.FillDirection.Vertical
+	cLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	cLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+	cLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	cLayout.Padding = UDim.new(0, 10)
+	cLayout.Parent = card
+
+	-- E4-E7 layer header / objectives / footer onto refs.
+	local refs = {
+		card = card,
+	}
+	return card, refs
+end
+
 local mountPoint = waitForMountPoint(30)
 if not mountPoint then
 	warn("[StoryTab] _G.QuestMenuContentPages.story not available within 30 s; tab disabled")
