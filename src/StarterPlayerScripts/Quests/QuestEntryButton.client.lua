@@ -241,3 +241,18 @@ _G.SetQuestBadgeCount = function(n)
 		badgeLabel.Text = "9+"
 	end
 end
+
+-- ─── Click: open the quest menu (A8) ────────────────────────────────
+-- Phase B installs _G.OpenQuestMenu; until then we warn-stub so the
+-- click is wired up + reviewable in advance and the integration is a
+-- one-liner when the menu lands. The keybind in A10 routes through
+-- the same opener for parity.
+local function openQuestMenu()
+	if typeof(_G.OpenQuestMenu) == "function" then
+		_G.OpenQuestMenu()
+	else
+		warn("[QuestEntryButton] _G.OpenQuestMenu is not yet defined — Phase B lands the menu")
+	end
+end
+
+button.MouseButton1Click:Connect(openQuestMenu)
