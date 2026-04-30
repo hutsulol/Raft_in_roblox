@@ -173,16 +173,17 @@ local function buildCard(parent, layoutOrder)
 	body.Parent = card
 
 	-- ── Progress bar (F5) ─────────────────────────────────────────────
-	-- Sits at fixed Y below the header; goal/progress label is anchored
-	-- inside the bar's right edge so a long quest title above can't
-	-- collide with it.
-	local PROGRESS_Y = 60
+	-- Sits below the header. Reserves 140 px on the right for the
+	-- action button (T8) so the bar visually ends well before the
+	-- button starts — no more overlap.
+	local PROGRESS_Y = 64
 	local PROGRESS_H = 8
+	local ACTION_RESERVE = 140   -- button (120) + 20 px gap
 	local progressTrack = Instance.new("Frame")
 	progressTrack.Name = "ProgressTrack"
 	progressTrack.AnchorPoint = Vector2.new(0, 0)
 	progressTrack.Position = UDim2.new(0, 0, 0, PROGRESS_Y)
-	progressTrack.Size = UDim2.new(1, -64, 0, PROGRESS_H)
+	progressTrack.Size = UDim2.new(1, -ACTION_RESERVE, 0, PROGRESS_H)
 	progressTrack.BackgroundColor3 = COLOR_WOOD_DARK
 	progressTrack.BackgroundTransparency = 0.55
 	progressTrack.BorderSizePixel = 0
@@ -209,7 +210,7 @@ local function buildCard(parent, layoutOrder)
 	progressLabel.Name = "ProgressLabel"
 	progressLabel.AnchorPoint = Vector2.new(0, 0)
 	progressLabel.Position = UDim2.new(0, 0, 0, PROGRESS_Y + PROGRESS_H + 2)
-	progressLabel.Size = UDim2.new(1, -64, 0, 12)
+	progressLabel.Size = UDim2.new(1, -ACTION_RESERVE, 0, 12)
 	progressLabel.BackgroundTransparency = 1
 	progressLabel.Font = Enum.Font.GothamMedium
 	progressLabel.TextSize = 11
