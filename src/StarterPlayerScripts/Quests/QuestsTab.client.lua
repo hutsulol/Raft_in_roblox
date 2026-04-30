@@ -158,6 +158,46 @@ local function buildCard(parent, layoutOrder)
 	iconImage.ZIndex = iconBox.ZIndex + 1
 	iconImage.Parent = iconBox
 
+	-- ── Title + body (D4) ─────────────────────────────────────────────
+	-- Title sits right under the icon box (80 + 8 padding = 88). Bold
+	-- + wood-darkest so it punches against the paper fill. Body sits
+	-- under the title, wrapped to 2 lines max so cards stay uniform
+	-- height; D9's paint path overwrites .Text on both labels per
+	-- snapshot.
+	local TITLE_Y = 80 + 8
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.AnchorPoint = Vector2.new(0.5, 0)
+	title.Position = UDim2.new(0.5, 0, 0, TITLE_Y)
+	title.Size = UDim2.new(1, 0, 0, 18)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 14
+	title.TextColor3 = COLOR_WOOD_DARKEST
+	title.TextXAlignment = Enum.TextXAlignment.Center
+	title.TextYAlignment = Enum.TextYAlignment.Top
+	title.TextTruncate = Enum.TextTruncate.AtEnd
+	title.Text = ""
+	title.ZIndex = card.ZIndex + 1
+	title.Parent = card
+
+	local body = Instance.new("TextLabel")
+	body.Name = "Body"
+	body.AnchorPoint = Vector2.new(0.5, 0)
+	body.Position = UDim2.new(0.5, 0, 0, TITLE_Y + 20)
+	body.Size = UDim2.new(1, 0, 0, 30)
+	body.BackgroundTransparency = 1
+	body.Font = Enum.Font.Gotham
+	body.TextSize = 11
+	body.TextColor3 = COLOR_WOOD_DARK
+	body.TextXAlignment = Enum.TextXAlignment.Center
+	body.TextYAlignment = Enum.TextYAlignment.Top
+	body.TextWrapped = true
+	body.TextTruncate = Enum.TextTruncate.AtEnd
+	body.Text = ""
+	body.ZIndex = card.ZIndex + 1
+	body.Parent = card
+
 	-- refs is the live handle the reactive paint path (D9) updates.
 	-- D3-D7 add nodes (iconImage, title, body, progressFill, label,
 	-- rewardLabel, trackBtn) into it.
@@ -165,6 +205,8 @@ local function buildCard(parent, layoutOrder)
 		card      = card,
 		iconBox   = iconBox,
 		iconImage = iconImage,
+		title     = title,
+		body      = body,
 	}
 	return card, refs
 end
