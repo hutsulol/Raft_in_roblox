@@ -611,6 +611,11 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 			weldToRaft(newWall, raft)
 		end)
 
+		-- Quest hook (Phase I): credit "Build N wall panels" objectives.
+		if typeof(_G.OnQuestEvent) == "function" then
+			pcall(_G.OnQuestEvent, player, "crafted:WallPanel", 1)
+		end
+
 	elseif buildType == "wall_arch" then
 		if not wallArchTemplate then return end
 		local cx1, cz1, cx2, cz2 = ...
