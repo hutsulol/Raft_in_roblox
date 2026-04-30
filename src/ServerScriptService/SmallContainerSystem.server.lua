@@ -127,6 +127,9 @@ local function swapContainerModel(container)
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = part
 				part.Anchored = false
+				-- Massless so the container model swap doesn't change
+				-- the raft assembly's mass + trigger a buoyancy bounce.
+				part.Massless = true
 			end
 		end
 	end
@@ -316,6 +319,9 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	for _, part in container:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
+			-- Massless: keep the welded container from disturbing the
+			-- raft's buoyancy equilibrium (T12).
+			part.Massless = true
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart

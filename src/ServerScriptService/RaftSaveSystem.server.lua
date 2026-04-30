@@ -435,7 +435,19 @@ local function rebuildRaft(player, saveData)
 		return (raftCF * CFrame.new(localOffset)).Position
 	end
 
+	-- Items that should not contribute mass to the raft assembly.
+	-- Same list as the per-system Massless fix in T12 — keeps the
+	-- raft's buoyancy stable when the save file is replayed. Raft
+	-- tiles and walls are NOT in here: they're load-bearing parts
+	-- that the buoyancy is balanced against.
+	local MASSLESS_NAMES = {
+		WorkBench = true, Purifier = true, Destitalor = true,
+		Furnace = true, Garden = true, bush = true,
+		SmallContainer = true, PlasticContainer = true,
+	}
+
 	local function weldAndUnanchor(clone)
+		local makeMassless = MASSLESS_NAMES[clone.Name] == true
 		if clone:IsA("Model") then
 			for _, part in clone:GetDescendants() do
 				if part:IsA("BasePart") then
@@ -446,7 +458,12 @@ local function rebuildRaft(player, saveData)
 				end
 			end
 			for _, part in clone:GetDescendants() do
-				if part:IsA("BasePart") then part.Anchored = false end
+				if part:IsA("BasePart") then
+					part.Anchored = false
+					if makeMassless then
+						part.Massless = true
+					end
+				end
 			end
 		else
 			local weld = Instance.new("WeldConstraint")
@@ -454,6 +471,9 @@ local function rebuildRaft(player, saveData)
 			weld.Part1 = clone
 			weld.Parent = clone
 			clone.Anchored = false
+			if makeMassless then
+				clone.Massless = true
+			end
 		end
 	end
 

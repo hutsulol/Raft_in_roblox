@@ -51,6 +51,8 @@ local function weldToRaft(model, raft)
 	for _, part in model:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
+			-- Massless: placed bricks don't disturb the raft buoyancy (T12).
+			part.Massless = true
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart

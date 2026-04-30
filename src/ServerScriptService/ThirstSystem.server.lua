@@ -183,7 +183,10 @@ local function swapPurifierModel(purifier)
 		purifier:PivotTo(savedCF)
 	end
 
-	-- Weld to raft, then unanchor
+	-- Weld to raft, then unanchor. Massless = true so the model swap
+	-- doesn't transiently change the raft's mass — the swap recreates
+	-- the purifier parts every time water is filled / completes, and
+	-- without Massless each swap kicks the raft into a vertical bob.
 	local raft = workspace:FindFirstChild("Raft")
 	if raft and raft.PrimaryPart then
 		for _, part in purifier:GetDescendants() do
@@ -193,6 +196,7 @@ local function swapPurifierModel(purifier)
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = part
 				part.Anchored = false
+				part.Massless = true
 			end
 		end
 	end
@@ -369,10 +373,12 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		purifier:PivotTo(worldCF)
 		purifier.Parent = raft
 
-		-- Weld to raft
+		-- Weld to raft. Massless = true so the placed purifier doesn't
+		-- destabilise the raft's buoyancy (see workbench note above).
 		for _, part in purifier:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.Anchored = false
+				part.Massless = true
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
 				weld.Part1 = raft.PrimaryPart
@@ -413,6 +419,12 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		for _, part in workbench:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.Anchored = false
+				-- Massless = true so welding the workbench in doesn't
+				-- change the raft assembly's mass + buoyancy equilibrium,
+				-- which otherwise kicks off a vertical oscillation that
+				-- only stops once another mass-bearing part (raft tile)
+				-- gets placed and re-equilibrates the assembly.
+				part.Massless = true
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
 				weld.Part1 = raft.PrimaryPart

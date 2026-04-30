@@ -345,10 +345,12 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			pcall(_G.OnQuestEvent, player, "planted:BerryBush", 1)
 		end
 
-		-- Weld to raft
+		-- Weld to raft. Massless = true so planting a bush doesn't kick
+		-- the raft's buoyancy out of equilibrium (T12).
 		for _, part in bush:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.Anchored = false
+				part.Massless = true
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
 				weld.Part1 = raft.PrimaryPart

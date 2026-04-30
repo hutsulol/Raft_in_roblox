@@ -206,6 +206,8 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	for _, part in container:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
+			-- Massless: don't perturb the raft buoyancy (T12).
+			part.Massless = true
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart
