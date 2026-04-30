@@ -312,17 +312,123 @@ local function buildCard(parent, layoutOrder)
 	objLayout.Padding = UDim.new(0, 6)
 	objLayout.Parent = objList
 
-	-- E6-E7 layer per-objective rows / footer onto refs.
+	-- ── Footer: reward row + track button (E7) ────────────────────────
+	-- Reward block on the left ("Reward" caption + icon + count text),
+	-- track button on the right at fixed width. The button cycles
+	-- through Track / Tracking / Claim Reward states the same way the
+	-- daily cards do; E8 wires the click and E9 paints the visuals.
+	local FOOTER_H = 36
+	local footer = Instance.new("Frame")
+	footer.Name = "Footer"
+	footer.LayoutOrder = 3
+	footer.Size = UDim2.new(1, 0, 0, FOOTER_H)
+	footer.BackgroundTransparency = 1
+	footer.ZIndex = card.ZIndex + 1
+	footer.Parent = card
+
+	local rewardBlock = Instance.new("Frame")
+	rewardBlock.Name = "Reward"
+	rewardBlock.AnchorPoint = Vector2.new(0, 0.5)
+	rewardBlock.Position = UDim2.new(0, 0, 0.5, 0)
+	rewardBlock.Size = UDim2.new(1, -140, 1, 0)   -- leaves 140 px for the button
+	rewardBlock.BackgroundTransparency = 1
+	rewardBlock.ZIndex = footer.ZIndex + 1
+	rewardBlock.Parent = footer
+
+	local rewardCaption = Instance.new("TextLabel")
+	rewardCaption.Name = "RewardCaption"
+	rewardCaption.AnchorPoint = Vector2.new(0, 0)
+	rewardCaption.Position = UDim2.new(0, 0, 0, 0)
+	rewardCaption.Size = UDim2.new(1, 0, 0, 12)
+	rewardCaption.BackgroundTransparency = 1
+	rewardCaption.Font = Enum.Font.Gotham
+	rewardCaption.TextSize = 11
+	rewardCaption.TextColor3 = COLOR_WOOD_MID
+	rewardCaption.TextXAlignment = Enum.TextXAlignment.Left
+	rewardCaption.Text = "Reward"
+	rewardCaption.ZIndex = rewardBlock.ZIndex + 1
+	rewardCaption.Parent = rewardBlock
+
+	local rewardRow = Instance.new("Frame")
+	rewardRow.Name = "RewardRow"
+	rewardRow.AnchorPoint = Vector2.new(0, 1)
+	rewardRow.Position = UDim2.new(0, 0, 1, 0)
+	rewardRow.Size = UDim2.new(1, 0, 0, 22)
+	rewardRow.BackgroundTransparency = 1
+	rewardRow.ZIndex = rewardBlock.ZIndex + 1
+	rewardRow.Parent = rewardBlock
+
+	local rwLayout = Instance.new("UIListLayout")
+	rwLayout.FillDirection = Enum.FillDirection.Horizontal
+	rwLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	rwLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	rwLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	rwLayout.Padding = UDim.new(0, 6)
+	rwLayout.Parent = rewardRow
+
+	local rewardIcon = Instance.new("ImageLabel")
+	rewardIcon.Name = "RewardIcon"
+	rewardIcon.LayoutOrder = 1
+	rewardIcon.Size = UDim2.fromOffset(22, 22)
+	rewardIcon.BackgroundTransparency = 1
+	rewardIcon.ScaleType = Enum.ScaleType.Fit
+	rewardIcon.Image = ""
+	rewardIcon.ZIndex = rewardRow.ZIndex + 1
+	rewardIcon.Parent = rewardRow
+
+	local rewardLabel = Instance.new("TextLabel")
+	rewardLabel.Name = "RewardLabel"
+	rewardLabel.LayoutOrder = 2
+	rewardLabel.Size = UDim2.new(0, 0, 1, 0)
+	rewardLabel.AutomaticSize = Enum.AutomaticSize.X
+	rewardLabel.BackgroundTransparency = 1
+	rewardLabel.Font = Enum.Font.GothamBold
+	rewardLabel.TextSize = 14
+	rewardLabel.TextColor3 = COLOR_WOOD_DARKEST
+	rewardLabel.TextXAlignment = Enum.TextXAlignment.Left
+	rewardLabel.TextYAlignment = Enum.TextYAlignment.Center
+	rewardLabel.Text = ""
+	rewardLabel.ZIndex = rewardRow.ZIndex + 1
+	rewardLabel.Parent = rewardRow
+
+	local trackBtn = Instance.new("TextButton")
+	trackBtn.Name = "TrackBtn"
+	trackBtn.AnchorPoint = Vector2.new(1, 0.5)
+	trackBtn.Position = UDim2.new(1, 0, 0.5, 0)
+	trackBtn.Size = UDim2.fromOffset(130, FOOTER_H)
+	trackBtn.AutoButtonColor = false
+	trackBtn.BackgroundColor3 = COLOR_PAPER_LIGHT
+	trackBtn.BorderSizePixel = 0
+	trackBtn.Font = Enum.Font.GothamBold
+	trackBtn.TextSize = 14
+	trackBtn.TextColor3 = COLOR_WOOD_DARKEST
+	trackBtn.Text = "★ Track"
+	trackBtn.ZIndex = footer.ZIndex + 2
+	trackBtn.Parent = footer
+	local btnCorner = Instance.new("UICorner")
+	btnCorner.CornerRadius = UDim.new(0, 8)
+	btnCorner.Parent = trackBtn
+	local btnStroke = Instance.new("UIStroke")
+	btnStroke.Color = COLOR_WOOD_DARK
+	btnStroke.Thickness = 1.5
+	btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	btnStroke.Parent = trackBtn
+
 	local refs = {
-		card      = card,
-		iconImage = iconImage,
-		title     = title,
-		body      = body,
-		objList   = objList,
+		card           = card,
+		iconImage      = iconImage,
+		title          = title,
+		body           = body,
+		objList        = objList,
 		-- Per-objective rows live here, keyed by objective index. E9's
 		-- paint path adds + reuses them per snapshot to avoid rebuilding
 		-- the row Frame on every push.
-		objRows   = {},
+		objRows        = {},
+		rewardCaption  = rewardCaption,
+		rewardIcon     = rewardIcon,
+		rewardLabel    = rewardLabel,
+		trackBtn       = trackBtn,
+		trackBtnStroke = btnStroke,
 	}
 	return card, refs
 end
