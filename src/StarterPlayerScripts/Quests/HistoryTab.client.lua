@@ -209,9 +209,42 @@ end
 
 local scrollFrame = mount(mountPoint)
 
--- Subscribe to state pushes; G4 lands the real repaint.
+-- ─── Reactive paint (G4) ────────────────────────────────────────────
+-- History is a positional list (newest first), not keyed by id —
+-- the same quest id can recur if the player completes a daily on
+-- multiple days. We reuse rows by index so a refreshed snapshot
+-- repaints in place: rows that already exist get new text/icon,
+-- extra rows get built once, leftover rows get destroyed.
+local rowsByIndex = {}
+
+local function repaint(payload)
+	local hist = payload.historyLog or {}
+	for i, entry in ipairs(hist) do
+		local row = rowsByIndex[i]
+		if not row then
+			row = buildRow(scrollFrame, i)
+			rowsByIndex[i] = row
+		else
+			row.row.LayoutOrder = i
+		end
+		row.iconImage.Image = entry.icon or ""
+		row.title.Text      = entry.title or entry.id or "Quest"
+		row.timestamp.Text  = relativeTime(entry.completedAt)
+		if entry.reward and entry.reward.count then
+			row.reward.Text = "+" .. tostring(entry.reward.count)
+		else
+			row.reward.Text = ""
+		end
+	end
+	-- Drop any rows past the current history length.
+	for i = #hist + 1, #rowsByIndex do
+		rowsByIndex[i].row:Destroy()
+		rowsByIndex[i] = nil
+	end
+end
+
 questStateEvent.OnClientEvent:Connect(function(action, payload)
 	if action ~= "state" then return end
 	if type(payload) ~= "table" then return end
-	-- Phase G4 will iterate payload.historyLog and paint rows.
+	repaint(payload)
 end)
