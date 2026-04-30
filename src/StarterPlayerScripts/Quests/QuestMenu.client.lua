@@ -59,6 +59,16 @@ local TAB_LIST_TOP = 56
 local CONTENT_GAP   = 12
 local CONTENT_RADIUS = 12
 
+-- Header (top-left of the panel content). Scroll/parchment glyph
+-- followed by the "QUESTS" label. Same on every tab — only the right
+-- pane swaps content. Reuses the supplied quest icon asset shrunk
+-- down so the menu shell has a consistent visual language with the
+-- entry button.
+local HEADER_HEIGHT     = 36
+local HEADER_GLYPH_SIZE = 30
+local HEADER_GLYPH_GAP  = 8
+local QUEST_ICON_ASSET  = "rbxassetid://121862782555497"
+
 -- ─── Tab catalog ─────────────────────────────────────────────────────
 -- Order = vertical order in the rail. id is used as the key for the
 -- right-side content swap (B6) and the active-tab tracking (B9).
@@ -256,6 +266,53 @@ local function buildContentRoot(parent)
 	return contentRoot
 end
 
+-- ─── QUESTS header (B7) ─────────────────────────────────────────────
+-- Top-left of the panel content: scroll/parchment glyph (the supplied
+-- quest icon asset, shrunk) + "QUESTS" label. Same on every tab.
+-- Lives inside the tab rail's column so the label sits flush above
+-- the first tab; the dot indicator aligns with the QUESTS column.
+local function buildHeader(parent)
+	local header = Instance.new("Frame")
+	header.Name = "Header"
+	header.AnchorPoint = Vector2.new(0, 0)
+	header.Position = UDim2.fromOffset(0, 0)
+	header.Size = UDim2.new(0, TAB_RAIL_W, 0, HEADER_HEIGHT)
+	header.BackgroundTransparency = 1
+	header.BorderSizePixel = 0
+	header.ZIndex = 5
+	header.Parent = parent
+
+	local glyph = Instance.new("ImageLabel")
+	glyph.Name = "Glyph"
+	glyph.AnchorPoint = Vector2.new(0, 0.5)
+	glyph.Position = UDim2.new(0, 0, 0.5, 0)
+	glyph.Size = UDim2.fromOffset(HEADER_GLYPH_SIZE, HEADER_GLYPH_SIZE)
+	glyph.BackgroundTransparency = 1
+	glyph.BorderSizePixel = 0
+	glyph.Image = QUEST_ICON_ASSET
+	glyph.ScaleType = Enum.ScaleType.Fit
+	glyph.ZIndex = 6
+	glyph.Parent = header
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.AnchorPoint = Vector2.new(0, 0.5)
+	label.Position = UDim2.new(0, HEADER_GLYPH_SIZE + HEADER_GLYPH_GAP, 0.5, 0)
+	label.Size = UDim2.new(1, -(HEADER_GLYPH_SIZE + HEADER_GLYPH_GAP), 1, 0)
+	label.BackgroundTransparency = 1
+	label.BorderSizePixel = 0
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 18
+	label.TextColor3 = COLOR_PAPER_LIGHT
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Text = "QUESTS"
+	label.ZIndex = 6
+	label.Parent = header
+
+	return header
+end
+
 local function buildPanel(parent)
 	-- Outer wood panel: same recipe as the onboarding tooltip's
 	-- panel — wood-base fill, 3 px wood-dark border, inner 1 px
@@ -310,6 +367,7 @@ local function buildPanel(parent)
 	hStroke.Transparency = 0.82
 	hStroke.Parent = highlight
 
+	buildHeader(panel)
 	buildTabRail(panel)
 	buildContentRoot(panel)
 
