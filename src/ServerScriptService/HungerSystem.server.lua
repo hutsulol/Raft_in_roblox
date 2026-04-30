@@ -340,6 +340,11 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		bush:PivotTo(CFrame.new(gardenCF.Position.X, topY, gardenCF.Position.Z) * CFrame.Angles(0, restYaw, 0) * bushTemplateRot)
 		bush.Parent = target -- parent bush to the garden bed
 
+		-- Quest hook (Phase I): credit "Plant N berry bushes" objectives.
+		if typeof(_G.OnQuestEvent) == "function" then
+			pcall(_G.OnQuestEvent, player, "planted:BerryBush", 1)
+		end
+
 		-- Weld to raft
 		for _, part in bush:GetDescendants() do
 			if part:IsA("BasePart") then
