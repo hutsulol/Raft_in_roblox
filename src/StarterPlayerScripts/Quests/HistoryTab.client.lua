@@ -209,6 +209,27 @@ end
 
 local scrollFrame = mount(mountPoint)
 
+-- ─── Empty state (G5) ───────────────────────────────────────────────
+-- Sibling of the scroll so the UIListLayout doesn't lay it out as a
+-- row. Visible when historyLog is empty — a fresh save, or a player
+-- who's never claimed a reward.
+local emptyState = Instance.new("TextLabel")
+emptyState.Name = "EmptyState"
+emptyState.AnchorPoint = Vector2.new(0.5, 0.5)
+emptyState.Position = UDim2.fromScale(0.5, 0.5)
+emptyState.Size = UDim2.new(1, -40, 0, 40)
+emptyState.BackgroundTransparency = 1
+emptyState.Font = Enum.Font.GothamMedium
+emptyState.TextSize = 14
+emptyState.TextColor3 = COLOR_WOOD_DARK
+emptyState.TextWrapped = true
+emptyState.TextXAlignment = Enum.TextXAlignment.Center
+emptyState.TextYAlignment = Enum.TextYAlignment.Center
+emptyState.Text = "No quests claimed yet.\nFinished quests show up here."
+emptyState.Visible = false
+emptyState.ZIndex = 6
+emptyState.Parent = mountPoint
+
 -- ─── Reactive paint (G4) ────────────────────────────────────────────
 -- History is a positional list (newest first), not keyed by id —
 -- the same quest id can recur if the player completes a daily on
@@ -241,6 +262,8 @@ local function repaint(payload)
 		rowsByIndex[i].row:Destroy()
 		rowsByIndex[i] = nil
 	end
+
+	emptyState.Visible = (#hist == 0)
 end
 
 questStateEvent.OnClientEvent:Connect(function(action, payload)
