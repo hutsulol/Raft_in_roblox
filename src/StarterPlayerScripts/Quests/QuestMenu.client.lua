@@ -73,22 +73,29 @@ local activeTabId  -- which tab is currently selected (default = first
                    -- entry in TABS, applied by buildTabRail)
 
 -- ─── Tab visual states (B4) ─────────────────────────────────────────
--- Active tab: paper-light fill, wood-darkest text — reads as a
--- "page" tab pinned to the rail. Inactive tabs: fully transparent
--- background, paper-light text — they're labels, not buttons,
--- visually. Hover on inactive: paper-fill at 0.6 transparency so the
--- player gets feedback without it looking like a second active tab.
+-- Active tab: paper-light fill, wood-darkest text + a small wood-dark
+-- dot to the left of the label. Reads as a "page" tab pinned to the
+-- rail. Inactive tabs: fully transparent background, paper-light
+-- text, no dot. Hover on inactive: paper-fill at 0.6 transparency
+-- (handled at the click site) so the player gets feedback without it
+-- looking like a second active tab.
+local TAB_DOT_SIZE   = 6
+local TAB_DOT_INSET  = 12   -- distance from the tab's left edge to the dot's centre
+
 local function paintTab(id)
 	local h = tabHandles[id]
 	if not h or not h.tile then return end
 	local tile = h.tile
+	local dot  = h.dot
 	if id == activeTabId then
 		tile.BackgroundTransparency = 0
 		tile.BackgroundColor3 = COLOR_PAPER_LIGHT
 		tile.TextColor3 = COLOR_WOOD_DARKEST
+		if dot then dot.Visible = true end
 	else
 		tile.BackgroundTransparency = 1
 		tile.TextColor3 = COLOR_PAPER_LIGHT
+		if dot then dot.Visible = false end
 	end
 end
 
@@ -149,7 +156,24 @@ local function buildTabRail(parent)
 		tCorner.CornerRadius = UDim.new(0, TAB_RADIUS)
 		tCorner.Parent = tile
 
-		tabHandles[tab.id] = { tile = tile }
+		-- Active-tab dot indicator. Lives inside the tile so it gets
+		-- the rail's transparent background when the tab isn't
+		-- active; paintTab toggles its Visible flag.
+		local dot = Instance.new("Frame")
+		dot.Name = "ActiveDot"
+		dot.AnchorPoint = Vector2.new(0.5, 0.5)
+		dot.Position = UDim2.new(0, TAB_DOT_INSET, 0.5, 0)
+		dot.Size = UDim2.fromOffset(TAB_DOT_SIZE, TAB_DOT_SIZE)
+		dot.BackgroundColor3 = COLOR_WOOD_DARK
+		dot.BorderSizePixel = 0
+		dot.Visible = false
+		dot.ZIndex = tile.ZIndex + 1
+		dot.Parent = tile
+		local dotCorner = Instance.new("UICorner")
+		dotCorner.CornerRadius = UDim.new(1, 0)
+		dotCorner.Parent = dot
+
+		tabHandles[tab.id] = { tile = tile, dot = dot }
 
 		tile.MouseButton1Click:Connect(function()
 			setActiveTab(tab.id)
