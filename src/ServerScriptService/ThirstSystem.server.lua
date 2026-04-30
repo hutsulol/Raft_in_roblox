@@ -115,9 +115,27 @@ local function swapPurifierModel(purifier)
 		return
 	end
 
-	-- Save the current world CFrame from an actual part (more reliable than GetPivot)
-	local savedCF = nil
+	-- Snapshot raft velocity + capture the purifier's raft-relative pose
+	-- BEFORE we touch anything. T13's snapshot/restore was running too
+	-- late — the destroy + clone steps span a couple of physics frames
+	-- during which the raft drifts, so saving the world CFrame and then
+	-- PivotTo()'ing back to it leaves the new parts at a stale position
+	-- relative to the (now-moved) raft. Welds then lock that offset in
+	-- and Roblox's solver corrects with a jolt → the bouncing.
+	local raft = workspace:FindFirstChild("Raft")
+	local raftPrimary = raft and raft.PrimaryPart or nil
+	local linVel, angVel
+	if raftPrimary then
+		linVel = raftPrimary.AssemblyLinearVelocity
+		angVel = raftPrimary.AssemblyAngularVelocity
+	end
+
+	-- Save the current pose AS A RAFT-LOCAL CFrame so we can restore it
+	-- against whatever the raft's pose is at the end of the swap, not
+	-- where the raft was at the start.
+	local savedRelCF = nil
 	local primaryPart = purifier.PrimaryPart
+	local savedCF = nil
 	if primaryPart then
 		savedCF = primaryPart.CFrame
 	else
@@ -127,6 +145,9 @@ local function swapPurifierModel(purifier)
 		else
 			savedCF = purifier:GetPivot()
 		end
+	end
+	if raftPrimary and savedCF then
+		savedRelCF = raftPrimary.CFrame:ToObjectSpace(savedCF)
 	end
 
 	-- Save attributes
@@ -171,39 +192,31 @@ local function swapPurifierModel(purifier)
 		end
 	end
 
-	-- Get the template's PrimaryPart CFrame to compute the offset
-	-- Then position so purifier.PrimaryPart ends up at savedCF
-	if purifier.PrimaryPart and savedCF then
-		-- Use PivotTo which accounts for the model's pivot/PrimaryPart
-		local templatePivot = template:GetPivot()
-		local templatePrimaryCF = template.PrimaryPart and template.PrimaryPart.CFrame or templatePivot
-		-- Simply PivotTo the saved CFrame
-		purifier:PivotTo(savedCF)
+	-- Position relative to the raft's CURRENT pose, not the stale one.
+	-- This way the new parts always land at the right spot on the raft
+	-- regardless of how far the raft drifted between destroy + clone.
+	if purifier.PrimaryPart and savedRelCF and raftPrimary then
+		purifier:PivotTo(raftPrimary.CFrame * savedRelCF)
 	elseif savedCF then
 		purifier:PivotTo(savedCF)
 	end
 
-	-- Weld to raft, then unanchor. The model-swap path runs every
-	-- time water is filled / purification completes, so each swap is
-	-- effectively another placement. Wrap the welds in a velocity
-	-- snapshot/restore so re-attaching the new model parts doesn't
-	-- bleed momentum out of the raft assembly and bob it vertically.
-	local raft = workspace:FindFirstChild("Raft")
-	if raft and raft.PrimaryPart then
-		local primary = raft.PrimaryPart
-		local linVel = primary.AssemblyLinearVelocity
-		local angVel = primary.AssemblyAngularVelocity
+	-- Weld + unanchor.
+	if raftPrimary then
 		for _, part in purifier:GetDescendants() do
 			if part:IsA("BasePart") then
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
-				weld.Part1 = raft.PrimaryPart
+				weld.Part1 = raftPrimary
 				weld.Parent = part
 				part.Anchored = false
 			end
 		end
-		primary.AssemblyLinearVelocity  = linVel
-		primary.AssemblyAngularVelocity = angVel
+		-- Restore the raft's velocity from the pre-destroy snapshot so
+		-- nothing the swap did (destroy / clone / weld) bleeds momentum
+		-- out of the assembly.
+		raftPrimary.AssemblyLinearVelocity  = linVel
+		raftPrimary.AssemblyAngularVelocity = angVel
 	end
 
 	-- Restore attributes

@@ -81,12 +81,30 @@ local function swapContainerModel(container)
 		return
 	end
 
+	-- Snapshot raft velocity + capture container pose AS RAFT-RELATIVE
+	-- before any destroy/clone work (T14). The destroy + clone steps span
+	-- a couple of physics frames during which the raft drifts; saving a
+	-- world CFrame and PivotTo'ing it back later places the new parts
+	-- against a stale raft pose, then the welds lock that drift in and
+	-- the solver kicks the assembly to compensate → bouncing.
+	local raft = workspace:FindFirstChild("Raft")
+	local raftPrimary = raft and raft.PrimaryPart or nil
+	local linVel, angVel
+	if raftPrimary then
+		linVel = raftPrimary.AssemblyLinearVelocity
+		angVel = raftPrimary.AssemblyAngularVelocity
+	end
+
 	local savedCF = container.PrimaryPart and container.PrimaryPart.CFrame
 	if not savedCF then
 		local first = container:FindFirstChildWhichIsA("BasePart", true)
 		savedCF = first and first.CFrame
 	end
 	if not savedCF then return end
+	local savedRelCF
+	if raftPrimary then
+		savedRelCF = raftPrimary.CFrame:ToObjectSpace(savedCF)
+	end
 
 	-- Preserve StoredTools across model swaps; only destroy the visual
 	-- children (BaseParts, meshes, etc) the template will replace.
@@ -115,27 +133,26 @@ local function swapContainerModel(container)
 		end
 	end
 
-	container:PivotTo(savedCF)
+	-- Reposition against the raft's CURRENT pose, not the stale one.
+	if savedRelCF and raftPrimary then
+		container:PivotTo(raftPrimary.CFrame * savedRelCF)
+	else
+		container:PivotTo(savedCF)
+	end
 
-	local raft = workspace:FindFirstChild("Raft")
 	local storage = container:FindFirstChild("StoredTools")
-	if raft and raft.PrimaryPart then
-		-- Snapshot raft velocity around the model swap so re-welding
-		-- the new container parts doesn't kick the raft into a bob (T13).
-		local primary = raft.PrimaryPart
-		local linVel = primary.AssemblyLinearVelocity
-		local angVel = primary.AssemblyAngularVelocity
+	if raftPrimary then
 		for _, part in container:GetDescendants() do
 			if part:IsA("BasePart") and not (storage and part:IsDescendantOf(storage)) then
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
-				weld.Part1 = raft.PrimaryPart
+				weld.Part1 = raftPrimary
 				weld.Parent = part
 				part.Anchored = false
 			end
 		end
-		primary.AssemblyLinearVelocity  = linVel
-		primary.AssemblyAngularVelocity = angVel
+		raftPrimary.AssemblyLinearVelocity  = linVel
+		raftPrimary.AssemblyAngularVelocity = angVel
 	end
 
 	container:SetAttribute("ModelName", modelName)
