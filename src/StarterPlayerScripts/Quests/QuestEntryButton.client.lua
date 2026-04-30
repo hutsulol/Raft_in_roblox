@@ -213,36 +213,53 @@ button.MouseButton1Click:Connect(openQuestMenu)
 -- changed event so we sync within a frame of the phone state.
 local RunService = game:GetService("RunService")
 
-local function isPhoneOpen()
-	local phoneGui = _G.PhoneScreenGui
-	return phoneGui ~= nil and phoneGui:IsA("ScreenGui") and phoneGui.Enabled
+local function isOverlayOpen()
+	-- Phone menu hides us because it's a full-screen overlay with
+	-- its own quest log inside; quest menu hides us because it's
+	-- the destination this button leads to (no point in showing
+	-- the entry once the menu is open). Both publish their
+	-- ScreenGui to _G so we can listen on the same handshake.
+	for _, key in ipairs({ "PhoneScreenGui", "QuestMenuScreenGui" }) do
+		local gui = _G[key]
+		if gui and gui:IsA("ScreenGui") and gui.Enabled then
+			return true
+		end
+	end
+	return false
 end
 
 local function syncVisibility()
-	screenGui.Enabled = not isPhoneOpen()
+	screenGui.Enabled = not isOverlayOpen()
 end
 
--- The PhoneScreenGui reference may not exist yet when this script
--- first runs (PhoneMenu builds it lazily on first open). Poll briefly
--- until it appears, then bind to its Enabled-changed signal so we
--- react immediately on later open/close events without polling.
-task.spawn(function()
-	local deadline = os.clock() + 30
-	while os.clock() < deadline do
-		local phoneGui = _G.PhoneScreenGui
-		if phoneGui and phoneGui:IsA("ScreenGui") then
-			phoneGui:GetPropertyChangedSignal("Enabled"):Connect(syncVisibility)
-			syncVisibility()
-			return
+-- Both PhoneScreenGui (PhoneMenu builds it lazily on first open) and
+-- QuestMenuScreenGui (QuestMenu builds it lazily too) may not exist
+-- yet when this script first runs. Poll briefly until each appears,
+-- then bind to its Enabled-changed signal so we react immediately
+-- without further polling.
+local function bindGuiHandshake(globalKey)
+	task.spawn(function()
+		local deadline = os.clock() + 30
+		while os.clock() < deadline do
+			local gui = _G[globalKey]
+			if gui and gui:IsA("ScreenGui") then
+				gui:GetPropertyChangedSignal("Enabled"):Connect(syncVisibility)
+				syncVisibility()
+				return
+			end
+			task.wait(0.5)
 		end
-		task.wait(0.5)
-	end
-	-- If the phone never appeared (e.g. game without PhoneMenu),
-	-- leave the button always-visible. Heartbeat fallback also
-	-- catches the case where _G.PhoneScreenGui swaps reference at
-	-- runtime (re-spawn / re-build).
-	RunService.Heartbeat:Connect(syncVisibility)
-end)
+	end)
+end
+
+bindGuiHandshake("PhoneScreenGui")
+bindGuiHandshake("QuestMenuScreenGui")
+
+-- Heartbeat fallback catches the case where _G.PhoneScreenGui /
+-- QuestMenuScreenGui swap reference at runtime (re-spawn, hot
+-- reload, etc.) or where the polling deadline expires before the
+-- gui has been built (game shipped without one of the menus).
+RunService.Heartbeat:Connect(syncVisibility)
 
 syncVisibility()
 

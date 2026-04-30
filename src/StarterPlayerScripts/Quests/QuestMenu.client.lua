@@ -510,6 +510,33 @@ local function buildPanel(parent)
 	return panel
 end
 
+-- ─── Backdrop click-catcher (B10) ────────────────────────────────────
+-- Full-screen TextButton sits behind the panel so the player can
+-- click anywhere outside the panel to dismiss the menu. Doubles as
+-- a soft dim layer.
+local backdrop
+
+local function buildBackdrop(parent)
+	backdrop = Instance.new("TextButton")
+	backdrop.Name = "Backdrop"
+	backdrop.Size = UDim2.fromScale(1, 1)
+	backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	backdrop.BackgroundTransparency = 0.55
+	backdrop.BorderSizePixel = 0
+	backdrop.AutoButtonColor = false
+	backdrop.Text = ""
+	backdrop.ZIndex = 1
+	backdrop.Parent = parent
+
+	backdrop.MouseButton1Click:Connect(function()
+		if typeof(_G.CloseQuestMenu) == "function" then
+			_G.CloseQuestMenu()
+		end
+	end)
+
+	return backdrop
+end
+
 local function ensureScreenGui()
 	if screenGui and screenGui.Parent then return screenGui end
 	screenGui = Instance.new("ScreenGui")
@@ -521,19 +548,163 @@ local function ensureScreenGui()
 	screenGui.Enabled = false   -- shown only after openQuestMenu()
 	screenGui.Parent = playerGui
 
+	buildBackdrop(screenGui)
 	buildPanel(screenGui)
 	return screenGui
 end
 
+-- ─── Open / close animations (B10) ──────────────────────────────────
+-- Mirrors the OnboardingTooltip's approach: capture every fade-able
+-- property under the panel + tween from invisible (1) to rest on
+-- open, and back to invisible on close. Plus a UIScale bounce on the
+-- panel root so the menu pops into view rather than hard-popping.
+local OPEN_INFO  = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local CLOSE_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+local panelScale         -- UIScale on the panel for the open/close bounce
+local fadeTargets        -- list of { inst, prop, rest } captured on first build
+local backdropFadeTarget -- the backdrop's BackgroundTransparency rest = 0.55
+local isOpen = false
+
+local function captureFadeTargets()
+	fadeTargets = {}
+	local function visit(node)
+		if not node then return end
+		if node:IsA("Frame") and node.BackgroundTransparency < 1 then
+			table.insert(fadeTargets, {
+				inst = node, prop = "BackgroundTransparency",
+				rest = node.BackgroundTransparency,
+			})
+		elseif node:IsA("TextLabel") or node:IsA("TextButton") then
+			table.insert(fadeTargets, {
+				inst = node, prop = "TextTransparency",
+				rest = node.TextTransparency,
+			})
+			if node.BackgroundTransparency < 1 then
+				table.insert(fadeTargets, {
+					inst = node, prop = "BackgroundTransparency",
+					rest = node.BackgroundTransparency,
+				})
+			end
+		elseif node:IsA("ImageLabel") or node:IsA("ImageButton") then
+			table.insert(fadeTargets, {
+				inst = node, prop = "ImageTransparency",
+				rest = node.ImageTransparency,
+			})
+			if node.BackgroundTransparency < 1 then
+				table.insert(fadeTargets, {
+					inst = node, prop = "BackgroundTransparency",
+					rest = node.BackgroundTransparency,
+				})
+			end
+		elseif node:IsA("UIStroke") and node.Transparency < 1 then
+			table.insert(fadeTargets, {
+				inst = node, prop = "Transparency",
+				rest = node.Transparency,
+			})
+		end
+	end
+	visit(panel)
+	for _, child in ipairs(panel:GetDescendants()) do
+		visit(child)
+	end
+end
+
+local function setFadeAll(value)
+	if not fadeTargets then return end
+	for _, t in ipairs(fadeTargets) do
+		if t.inst.Parent then t.inst[t.prop] = value end
+	end
+end
+
 local function openQuestMenu()
 	local gui = ensureScreenGui()
+	if isOpen then return end
+	isOpen = true
+
+	-- One-time setup the first time we open: UIScale, fadeTargets,
+	-- backdrop fade target. Done lazily so a player who never opens
+	-- the menu doesn't pay for the descendant walk.
+	if not panelScale then
+		panelScale = Instance.new("UIScale")
+		panelScale.Scale = 1
+		panelScale.Parent = panel
+		captureFadeTargets()
+		backdropFadeTarget = backdrop and backdrop.BackgroundTransparency or 0.55
+	end
+
+	-- Snap to invisible / pre-bounce state, then tween to rest.
 	gui.Enabled = true
+	setFadeAll(1)
+	if backdrop then backdrop.BackgroundTransparency = 1 end
+	panelScale.Scale = 0.94
+
+	for _, t in ipairs(fadeTargets) do
+		if t.inst.Parent then
+			TweenService:Create(t.inst, OPEN_INFO,
+				{ [t.prop] = t.rest }):Play()
+		end
+	end
+	if backdrop then
+		TweenService:Create(backdrop, OPEN_INFO,
+			{ BackgroundTransparency = backdropFadeTarget }):Play()
+	end
+	TweenService:Create(panelScale, OPEN_INFO, { Scale = 1.0 }):Play()
 end
 
 local function closeQuestMenu()
-	if not screenGui then return end
-	screenGui.Enabled = false
+	if not screenGui or not isOpen then return end
+	isOpen = false
+
+	for _, t in ipairs(fadeTargets or {}) do
+		if t.inst.Parent then
+			TweenService:Create(t.inst, CLOSE_INFO,
+				{ [t.prop] = 1 }):Play()
+		end
+	end
+	if backdrop then
+		TweenService:Create(backdrop, CLOSE_INFO,
+			{ BackgroundTransparency = 1 }):Play()
+	end
+	if panelScale then
+		TweenService:Create(panelScale, CLOSE_INFO, { Scale = 0.96 }):Play()
+	end
+
+	-- Hide the GUI after the fade completes so input can pass through
+	-- again. Re-check isOpen so a re-open mid-fade doesn't leave us
+	-- with a hidden screenGui mid-tween.
+	task.delay(CLOSE_INFO.Time + 0.02, function()
+		if not isOpen and screenGui then
+			screenGui.Enabled = false
+		end
+	end)
 end
 
 _G.OpenQuestMenu  = openQuestMenu
 _G.CloseQuestMenu = closeQuestMenu
+
+-- Publish the screenGui so other client UIs (e.g. the QuestEntryButton)
+-- can hide while the menu is open. The reference is set lazily after
+-- ensureScreenGui() runs, so listeners that check on script init may
+-- find it nil — they should poll until it appears, the same way the
+-- entry button polls _G.PhoneScreenGui.
+local function publishScreenGui()
+	if screenGui then
+		_G.QuestMenuScreenGui = screenGui
+	end
+end
+-- Build + publish on script init so listeners don't have to wait
+-- for the player's first openQuestMenu() click.
+ensureScreenGui()
+publishScreenGui()
+
+-- ─── ESC key + entry-button toggle ───────────────────────────────────
+-- Pressing ESC while the menu is open closes it (gameProcessed-aware
+-- so chat / text-input ESCs don't trip the path).
+local UserInputService = game:GetService("UserInputService")
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.Escape and isOpen then
+		closeQuestMenu()
+	end
+end)
