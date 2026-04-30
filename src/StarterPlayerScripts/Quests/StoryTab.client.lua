@@ -193,12 +193,40 @@ local function buildCard(parent, layoutOrder)
 	body.ZIndex = header.ZIndex + 1
 	body.Parent = header
 
-	-- E5-E7 layer objectives / footer onto refs.
+	-- ── Objectives list container (E5) ────────────────────────────────
+	-- Holds one Frame per objective (built in E6). UIListLayout stacks
+	-- them vertically; AutomaticSize.Y lets the container grow with
+	-- the row count so a 4-objective story takes more vertical room
+	-- than a 3-objective one. The list itself doesn't get a background
+	-- — each row will have its own subtle paper-light fill.
+	local objList = Instance.new("Frame")
+	objList.Name = "Objectives"
+	objList.LayoutOrder = 2
+	objList.Size = UDim2.new(1, 0, 0, 0)
+	objList.AutomaticSize = Enum.AutomaticSize.Y
+	objList.BackgroundTransparency = 1
+	objList.ZIndex = card.ZIndex + 1
+	objList.Parent = card
+
+	local objLayout = Instance.new("UIListLayout")
+	objLayout.FillDirection = Enum.FillDirection.Vertical
+	objLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	objLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+	objLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	objLayout.Padding = UDim.new(0, 6)
+	objLayout.Parent = objList
+
+	-- E6-E7 layer per-objective rows / footer onto refs.
 	local refs = {
 		card      = card,
 		iconImage = iconImage,
 		title     = title,
 		body      = body,
+		objList   = objList,
+		-- Per-objective rows live here, keyed by objective index. E9's
+		-- paint path adds + reuses them per snapshot to avoid rebuilding
+		-- the row Frame on every push.
+		objRows   = {},
 	}
 	return card, refs
 end
