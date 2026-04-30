@@ -425,11 +425,54 @@ if not event then
 	event.Parent = ReplicatedStorage
 end
 
+-- ─── Challenge expiry sweep (F1) ────────────────────────────────────
+-- Called before each snapshot so the client never sees a stale
+-- "still running" challenge whose timer has actually run out. If the
+-- elapsed time exceeds durationSec AND the goal isn't hit, we reset
+-- the entry (clear startedAt, zero progress, drop tracked) so the
+-- card flips back to its "Start" state. Completed challenges leave
+-- startedAt set so the player can claim — the daily-roll handler
+-- below cleans them up on the next day.
+local function sweepExpiredChallenges(player)
+	local s = states[player]
+	if not s then return end
+	local catalog = _G.QuestCatalog
+	if not catalog then return end
+
+	local now = os.time()
+	for id, entry in pairs(s.active) do
+		local def = catalog.get(id)
+		if def and def.kind == "challenge" and entry.startedAt then
+			local elapsed = now - entry.startedAt
+			if elapsed > (def.durationSec or 0) then
+				-- Did the player hit every goal before the timer expired?
+				local allDone = true
+				for i, obj in ipairs(def.objectives) do
+					if (entry.progress[i] or 0) < obj.goal then
+						allDone = false
+						break
+					end
+				end
+				if not allDone and not s.pendingRewards[id] then
+					-- Expired without a win → reset for retry.
+					entry.startedAt = nil
+					entry.tracked   = false
+					for i = 1, #def.objectives do
+						entry.progress[i] = 0
+					end
+					markDirty(player)
+				end
+			end
+		end
+	end
+end
+
 -- Build a defensive snapshot the client can render directly. Each
 -- visible-to-player quest goes in once, with display fields baked
 -- in alongside the player's progress so the menu has everything
 -- needed to paint a card without follow-up server calls.
 local function buildSnapshot(player)
+	sweepExpiredChallenges(player)
 	local s = states[player] or loadState(player)
 	local catalog = _G.QuestCatalog
 	if not catalog then
