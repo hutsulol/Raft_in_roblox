@@ -614,6 +614,13 @@ event.OnServerEvent:Connect(function(player, action, ...)
 		then
 			rollDailiesIfNeeded(player)
 		end
+		-- Same self-heal for story quests: if the catalog-load race
+		-- meant the first ensureStoryActiveEntries silently skipped,
+		-- the story entries never got seeded, and gameplay hooks
+		-- like crafted:WorkBench / crafted:WallPanel had nothing to
+		-- credit progress against. Calling it again here is a no-op
+		-- once the entries already exist (T11).
+		ensureStoryActiveEntries(player)
 		fireSnapshot(player)
 
 	elseif action == "track" then
