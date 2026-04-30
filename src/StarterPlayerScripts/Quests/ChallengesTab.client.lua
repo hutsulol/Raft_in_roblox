@@ -394,10 +394,125 @@ end
 
 local scrollFrame = mount(mountPoint)
 
--- Subscribe to state pushes from the server. F9 implements the real
--- repaint; F2 just leaves the wiring testable.
+-- ─── Reactive paint (F9) ────────────────────────────────────────────
+-- Stash the latest challenge snapshot per quest id so the live
+-- countdown loop (F10) can advance the timer locally between server
+-- pushes without waiting for another snapshot.
+local cardsById = {}     -- [questId] = { card, refs, q (last snapshot) }
+
+local function fmtSeconds(secs)
+	secs = math.max(0, math.floor(secs + 0.5))
+	local m = math.floor(secs / 60)
+	local s = secs % 60
+	return string.format("%d:%02d", m, s)
+end
+
+local function paintMode(refs, mode)
+	if mode == "claim" then
+		refs.card:SetAttribute("Mode", "claim")
+		refs.actionBtn.Text = "★ Claim"
+		refs.actionBtn.BackgroundColor3 = COLOR_WOOD_BASE
+		refs.actionBtn.TextColor3       = COLOR_PAPER_LIGHT
+		refs.actionBtnStroke.Color      = COLOR_WOOD_DARKEST
+	elseif mode == "tracking" then
+		refs.card:SetAttribute("Mode", "tracking")
+		refs.actionBtn.Text = "● Tracking"
+		refs.actionBtn.BackgroundColor3 = COLOR_WOOD_DARK
+		refs.actionBtn.TextColor3       = COLOR_PAPER_LIGHT
+		refs.actionBtnStroke.Color      = COLOR_WOOD_DARKEST
+	else   -- "start"
+		refs.card:SetAttribute("Mode", "start")
+		refs.actionBtn.Text = "▶ Start"
+		refs.actionBtn.BackgroundColor3 = COLOR_PAPER_LIGHT
+		refs.actionBtn.TextColor3       = COLOR_WOOD_DARKEST
+		refs.actionBtnStroke.Color      = COLOR_WOOD_DARK
+	end
+end
+
+local function paintCard(refs, q)
+	refs.iconImage.Image = q.icon or ""
+	refs.title.Text      = q.title or ""
+	refs.body.Text       = q.body or ""
+
+	local prog, goal = 0, 0
+	for _, obj in ipairs(q.objectives or {}) do
+		prog = prog + (tonumber(obj.progress) or 0)
+		goal = goal + (tonumber(obj.goal) or 0)
+	end
+	local pct = (goal > 0) and math.clamp(prog / goal, 0, 1) or 0
+	refs.progressFill.Size  = UDim2.new(pct, 0, 1, 0)
+	refs.progressLabel.Text = string.format("%d / %d", prog, goal)
+
+	if q.reward and q.reward.count then
+		refs.rewardIcon.Image = q.icon or ""
+		refs.rewardLabel.Text = "x" .. tostring(q.reward.count)
+	else
+		refs.rewardIcon.Image = ""
+		refs.rewardLabel.Text = ""
+	end
+
+	refs.card:SetAttribute("QuestId", q.id or "")
+
+	-- Mode + timer wiring. Three states the player sees:
+	--   • Idle (no startedAt): button = Start, timer shows duration
+	--   • Running (startedAt set, secondsRemaining > 0, not claimable):
+	--     button = Tracking, timer counts down (F10 advances it live)
+	--   • Done (rewardPending): button = Claim, timer shows "Done!"
+	if q.rewardPending then
+		paintMode(refs, "claim")
+		refs.timerLabel.Text       = "Done!"
+		refs.timerLabel.TextColor3 = COLOR_WOOD_DARKEST
+	elseif q.startedAt then
+		paintMode(refs, "tracking")
+		local remaining = q.secondsRemaining or q.durationSec or 0
+		refs.timerLabel.Text       = fmtSeconds(remaining)
+		refs.timerLabel.TextColor3 = COLOR_TIMER
+	else
+		paintMode(refs, "start")
+		refs.timerLabel.Text       = fmtSeconds(q.durationSec or 0)
+		refs.timerLabel.TextColor3 = COLOR_WOOD_DARKEST
+	end
+end
+
+local function repaint(payload)
+	local incoming = {}
+	local order = 1
+	for _, q in ipairs(payload.quests or {}) do
+		if q.kind == "challenge" then
+			incoming[q.id] = true
+			local entry = cardsById[q.id]
+			if not entry then
+				local card, refs = buildCard(scrollFrame, order)
+				entry = { card = card, refs = refs }
+				cardsById[q.id] = entry
+			else
+				entry.card.LayoutOrder = order
+			end
+			-- Stash the snapshot so the heartbeat tick (F10) can
+			-- advance the visible timer between server pushes.
+			entry.q = q
+			-- Pre-compute a client-side absolute deadline so the
+			-- live tick subtracts from os.clock() instead of os.time()
+			-- and we don't drift on long-running sessions.
+			if q.startedAt and q.secondsRemaining then
+				entry.deadline = os.clock() + q.secondsRemaining
+			else
+				entry.deadline = nil
+			end
+			paintCard(entry.refs, q)
+			order = order + 1
+		end
+	end
+	for id, entry in pairs(cardsById) do
+		if not incoming[id] then
+			entry.card:Destroy()
+			cardsById[id] = nil
+		end
+	end
+end
+
 questStateEvent.OnClientEvent:Connect(function(action, payload)
 	if action ~= "state" then return end
 	if type(payload) ~= "table" then return end
-	-- Phase F9 will iterate payload.quests filtered by kind=="challenge".
+	repaint(payload)
 end)
