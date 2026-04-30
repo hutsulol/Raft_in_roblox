@@ -298,3 +298,63 @@ task.spawn(function()
 end)
 
 syncVisibility()
+
+-- ─── Hover tooltip + J hotkey (A10) ─────────────────────────────────
+-- Small "Quests (J)" label that pops next to the button on hover so
+-- new players know what the icon does + that there's a keyboard
+-- shortcut. The J key opens the menu via the same opener used by
+-- click — gameProcessed-aware so typing 'j' in chat doesn't trip it.
+local UserInputService = game:GetService("UserInputService")
+
+local TOOLTIP_LABEL_TEXT = "Quests (J)"
+local TOOLTIP_GAP_X      = 10  -- distance from the button's right edge
+
+local labelGui = Instance.new("Frame")
+labelGui.Name = "HoverLabel"
+labelGui.AnchorPoint = Vector2.new(0, 0.5)
+labelGui.Position = UDim2.new(1, TOOLTIP_GAP_X, 0.5, 0)
+labelGui.AutomaticSize = Enum.AutomaticSize.XY
+labelGui.BackgroundColor3 = COLOR_WOOD_DARKEST
+labelGui.BackgroundTransparency = 0.15
+labelGui.BorderSizePixel = 0
+labelGui.Visible = false
+labelGui.ZIndex = 4
+labelGui.Parent = button
+local lblCorner = Instance.new("UICorner")
+lblCorner.CornerRadius = UDim.new(0, 6)
+lblCorner.Parent = labelGui
+local lblPad = Instance.new("UIPadding")
+lblPad.PaddingTop    = UDim.new(0, 4)
+lblPad.PaddingBottom = UDim.new(0, 4)
+lblPad.PaddingLeft   = UDim.new(0, 8)
+lblPad.PaddingRight  = UDim.new(0, 8)
+lblPad.Parent = labelGui
+
+local labelText = Instance.new("TextLabel")
+labelText.BackgroundTransparency = 1
+labelText.BorderSizePixel = 0
+labelText.AutomaticSize = Enum.AutomaticSize.XY
+labelText.Font = Enum.Font.GothamBold
+labelText.TextSize = 12
+labelText.TextColor3 = COLOR_PAPER_LIGHT
+labelText.Text = TOOLTIP_LABEL_TEXT
+labelText.ZIndex = 5
+labelText.Parent = labelGui
+
+button.MouseEnter:Connect(function()
+	labelGui.Visible = true
+end)
+button.MouseLeave:Connect(function()
+	labelGui.Visible = false
+end)
+
+-- J keybind. Skip when the input was already consumed (chat, text
+-- box) and when the entry button is hidden — typically because the
+-- phone menu has its own menu open and J shouldn't ALSO open the
+-- quest UI on top.
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode ~= Enum.KeyCode.J then return end
+	if not screenGui.Enabled then return end
+	openQuestMenu()
+end)
