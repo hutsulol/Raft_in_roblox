@@ -55,8 +55,9 @@ end
 -- cards land in later phases (history, etc.).
 local QUESTS_TAB_PAD = 12
 local CARD_W         = 132
-local CARD_H         = 220
+local CARD_H         = 244   -- D6 bumped from 220 to fit reward row + button reserve
 local CARD_GAP       = 10
+local TRACK_BTN_H    = 28    -- bottom-anchored area D7 fills with the track button
 
 local function mount(parent)
 	local scroll = Instance.new("ScrollingFrame")
@@ -247,6 +248,67 @@ local function buildCard(parent, layoutOrder)
 	progressLabel.ZIndex = card.ZIndex + 1
 	progressLabel.Parent = card
 
+	-- ── Reward row (D6) ───────────────────────────────────────────────
+	-- Bottom-anchored. The track button (D7) reserves TRACK_BTN_H at
+	-- the very bottom; the reward row + divider stack just above it
+	-- with AnchorPoint Y=1 so the layout adapts cleanly even if the
+	-- card height changes later. Reward row is icon + count text:
+	-- D9's paint path sets rewardIcon.Image + rewardLabel.Text per
+	-- snapshot.reward.
+	local REWARD_H = 20
+	local divider = Instance.new("Frame")
+	divider.Name = "Divider"
+	divider.AnchorPoint = Vector2.new(0.5, 1)
+	divider.Position = UDim2.new(0.5, 0, 1, -(TRACK_BTN_H + 6 + REWARD_H + 4))
+	divider.Size = UDim2.new(1, 0, 0, 1)
+	divider.BackgroundColor3 = COLOR_WOOD_DARK
+	divider.BackgroundTransparency = 0.55
+	divider.BorderSizePixel = 0
+	divider.ZIndex = card.ZIndex + 1
+	divider.Parent = card
+
+	local rewardRow = Instance.new("Frame")
+	rewardRow.Name = "RewardRow"
+	rewardRow.AnchorPoint = Vector2.new(0.5, 1)
+	rewardRow.Position = UDim2.new(0.5, 0, 1, -(TRACK_BTN_H + 6))
+	rewardRow.Size = UDim2.new(1, 0, 0, REWARD_H)
+	rewardRow.BackgroundTransparency = 1
+	rewardRow.ZIndex = card.ZIndex + 1
+	rewardRow.Parent = card
+
+	local rwLayout = Instance.new("UIListLayout")
+	rwLayout.FillDirection = Enum.FillDirection.Horizontal
+	rwLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	rwLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	rwLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	rwLayout.Padding = UDim.new(0, 4)
+	rwLayout.Parent = rewardRow
+
+	local rewardIcon = Instance.new("ImageLabel")
+	rewardIcon.Name = "RewardIcon"
+	rewardIcon.LayoutOrder = 1
+	rewardIcon.Size = UDim2.fromOffset(REWARD_H, REWARD_H)
+	rewardIcon.BackgroundTransparency = 1
+	rewardIcon.ScaleType = Enum.ScaleType.Fit
+	rewardIcon.Image = ""   -- D9 fills from snapshot.reward.icon
+	rewardIcon.ZIndex = rewardRow.ZIndex + 1
+	rewardIcon.Parent = rewardRow
+
+	local rewardLabel = Instance.new("TextLabel")
+	rewardLabel.Name = "RewardLabel"
+	rewardLabel.LayoutOrder = 2
+	rewardLabel.Size = UDim2.new(0, 0, 1, 0)
+	rewardLabel.AutomaticSize = Enum.AutomaticSize.X
+	rewardLabel.BackgroundTransparency = 1
+	rewardLabel.Font = Enum.Font.GothamBold
+	rewardLabel.TextSize = 12
+	rewardLabel.TextColor3 = COLOR_WOOD_DARKEST
+	rewardLabel.TextXAlignment = Enum.TextXAlignment.Left
+	rewardLabel.TextYAlignment = Enum.TextYAlignment.Center
+	rewardLabel.Text = ""
+	rewardLabel.ZIndex = rewardRow.ZIndex + 1
+	rewardLabel.Parent = rewardRow
+
 	-- refs is the live handle the reactive paint path (D9) updates.
 	-- D3-D7 add nodes (iconImage, title, body, progressFill, label,
 	-- rewardLabel, trackBtn) into it.
@@ -259,6 +321,10 @@ local function buildCard(parent, layoutOrder)
 		progressTrack = progressTrack,
 		progressFill  = progressFill,
 		progressLabel = progressLabel,
+		divider       = divider,
+		rewardRow     = rewardRow,
+		rewardIcon    = rewardIcon,
+		rewardLabel   = rewardLabel,
 	}
 	return card, refs
 end
