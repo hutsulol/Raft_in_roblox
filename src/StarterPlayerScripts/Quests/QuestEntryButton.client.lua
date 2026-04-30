@@ -180,3 +180,64 @@ end)
 button.MouseLeave:Connect(function()
 	setPressed(false)
 end)
+
+-- ─── Notification badge (A7) ────────────────────────────────────────
+-- Red dot in the top-right of the button, with an optional count
+-- label inside it for >1 claimable rewards. Driven by the global
+-- _G.SetQuestBadgeCount(n) setter so the Phase C server flow can
+-- bump it without reaching into this file. n=0 hides the badge.
+local BADGE_SIZE  = 18
+local BADGE_INSET = 4
+local COLOR_BADGE_FILL    = Color3.fromRGB(220,  72,  62)
+local COLOR_BADGE_OUTLINE = Color3.fromRGB(140,  36,  30)
+
+local badge = Instance.new("Frame")
+badge.Name = "Badge"
+badge.AnchorPoint = Vector2.new(1, 0)
+badge.Position = UDim2.new(1, BADGE_INSET, 0, -BADGE_INSET)
+badge.Size = UDim2.fromOffset(BADGE_SIZE, BADGE_SIZE)
+badge.BackgroundColor3 = COLOR_BADGE_FILL
+badge.BorderSizePixel = 0
+badge.Visible = false
+badge.ZIndex = 5
+badge.Parent = button
+local badgeCorner = Instance.new("UICorner")
+badgeCorner.CornerRadius = UDim.new(1, 0)
+badgeCorner.Parent = badge
+local badgeStroke = Instance.new("UIStroke")
+badgeStroke.Color = COLOR_BADGE_OUTLINE
+badgeStroke.Thickness = 1.5
+badgeStroke.Parent = badge
+
+local badgeLabel = Instance.new("TextLabel")
+badgeLabel.Name = "Count"
+badgeLabel.Size = UDim2.fromScale(1, 1)
+badgeLabel.BackgroundTransparency = 1
+badgeLabel.BorderSizePixel = 0
+badgeLabel.Font = Enum.Font.GothamBold
+badgeLabel.TextSize = 11
+badgeLabel.TextColor3 = Color3.fromRGB(255, 245, 230)
+badgeLabel.TextXAlignment = Enum.TextXAlignment.Center
+badgeLabel.TextYAlignment = Enum.TextYAlignment.Center
+badgeLabel.Text = ""
+badgeLabel.ZIndex = 6
+badgeLabel.Parent = badge
+
+-- Public API: callers update the badge by count. 0 = hide. 1 = empty
+-- red dot (no number). 2..9 = digit. 10+ = "9+".
+_G.SetQuestBadgeCount = function(n)
+	n = tonumber(n) or 0
+	if n <= 0 then
+		badge.Visible = false
+		badgeLabel.Text = ""
+		return
+	end
+	badge.Visible = true
+	if n <= 1 then
+		badgeLabel.Text = ""
+	elseif n < 10 then
+		badgeLabel.Text = tostring(n)
+	else
+		badgeLabel.Text = "9+"
+	end
+end
