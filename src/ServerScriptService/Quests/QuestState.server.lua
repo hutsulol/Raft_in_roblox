@@ -162,7 +162,7 @@ end
 -- Story + challenge entries are unaffected — story is permanent, and
 -- challenges are explicitly Started/Expired by the player so they
 -- never spend a "daily slot".
-local DAILIES_PER_DAY = 4
+local DAILIES_PER_DAY = 3
 -- The catalog lives on _G.QuestCatalog (set by QuestCatalog.server.lua,
 -- a sibling .server.lua so they should parse before this script for
 -- alphabetical-folder-order reasons). Wait briefly + warn-fallback for

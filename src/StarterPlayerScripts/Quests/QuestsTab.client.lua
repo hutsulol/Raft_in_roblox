@@ -55,18 +55,17 @@ end
 local questStateEvent
 
 -- ─── Mount + horizontal row container ───────────────────────────────
--- Four daily quest cards laid out in a single horizontal row across
--- the content area. UIListLayout.Horizontal handles the spacing so
--- removing a card (when the player claims one daily) collapses the
--- remaining cards toward the left without leaving a gap. Card width
--- + gap math is sized against the QuestMenu's content area:
---   PANEL_W (720) - TAB_RAIL_W (130) - CONTENT_GAP (12) = 578
---   578 - 2*QUESTS_TAB_PAD (24) - 3*CARD_GAP (30) = 524
---   524 / 4 = 131 → CARD_W = 130 leaves a 4 px slack
+-- Three daily quest cards in a single horizontal row across the
+-- content area, each filling the full vertical height. UIListLayout
+-- horizontal handles the spacing so claiming one daily collapses
+-- the remaining cards toward the left. Sizing math against the
+-- QuestMenu's content area:
+--   panel inner       = PANEL_W - 2*PANEL_PAD = 720 - 28 = 692
+--   contentRoot inner = 692 - (TAB_RAIL_W + CONTENT_GAP) = 692 - 142 = 550
+--   scroll usable     = 550 - 2*QUESTS_TAB_PAD = 550 - 24 = 526
+--   width per card    = (526 - 2*CARD_GAP) / 3 = (526 - 20) / 3 ≈ 168
 local QUESTS_TAB_PAD = 12
-local CARD_W         = 130
-local CARD_H         = 260   -- vertical UIListLayout inside; sized to fit
-                              -- icon + title + body + bar + reward + button
+local CARD_W         = 168
 local CARD_GAP       = 10
 
 local function mount(parent)
@@ -109,7 +108,9 @@ local function buildCard(parent, layoutOrder)
 	local card = Instance.new("Frame")
 	card.Name = "QuestCard"
 	card.LayoutOrder = layoutOrder or 0
-	card.Size = UDim2.fromOffset(CARD_W, CARD_H)
+	-- Width fixed; height fills the scroll's usable area (UIPadding
+	-- already excluded). Card content stretches to match.
+	card.Size = UDim2.new(0, CARD_W, 1, 0)
 	card.BackgroundColor3 = COLOR_PAPER
 	card.BorderSizePixel = 0
 	card.ZIndex = 7
@@ -143,16 +144,16 @@ local function buildCard(parent, layoutOrder)
 	cLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	cLayout.VerticalAlignment = Enum.VerticalAlignment.Top
 	cLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	cLayout.Padding = UDim.new(0, 4)
+	cLayout.Padding = UDim.new(0, 6)
 	cLayout.Parent = card
 
 	-- ── Icon (top, decorative) ────────────────────────────────────────
-	-- Compact 44×44 icon at the top of the card — no surrounding frame
-	-- since the catalog icons already have their own background.
+	-- 80×80 prominent icon at the top of the card — large enough to
+	-- read at a glance against the wider 168-px card.
 	local iconImage = Instance.new("ImageLabel")
 	iconImage.Name = "Icon"
 	iconImage.LayoutOrder = 1
-	iconImage.Size = UDim2.fromOffset(44, 44)
+	iconImage.Size = UDim2.fromOffset(80, 80)
 	iconImage.BackgroundTransparency = 1
 	iconImage.BorderSizePixel = 0
 	iconImage.ScaleType = Enum.ScaleType.Fit
@@ -163,10 +164,10 @@ local function buildCard(parent, layoutOrder)
 	local title = Instance.new("TextLabel")
 	title.Name = "Title"
 	title.LayoutOrder = 2
-	title.Size = UDim2.new(1, 0, 0, 18)
+	title.Size = UDim2.new(1, 0, 0, 22)
 	title.BackgroundTransparency = 1
 	title.Font = Enum.Font.GothamBold
-	title.TextSize = 13
+	title.TextSize = 15
 	title.TextColor3 = COLOR_WOOD_DARKEST
 	title.TextXAlignment = Enum.TextXAlignment.Center
 	title.TextYAlignment = Enum.TextYAlignment.Center
@@ -178,10 +179,10 @@ local function buildCard(parent, layoutOrder)
 	local body = Instance.new("TextLabel")
 	body.Name = "Body"
 	body.LayoutOrder = 3
-	body.Size = UDim2.new(1, 0, 0, 28)
+	body.Size = UDim2.new(1, 0, 0, 44)
 	body.BackgroundTransparency = 1
 	body.Font = Enum.Font.Gotham
-	body.TextSize = 10
+	body.TextSize = 11
 	body.TextColor3 = COLOR_WOOD_DARK
 	body.TextXAlignment = Enum.TextXAlignment.Center
 	body.TextYAlignment = Enum.TextYAlignment.Top
@@ -192,11 +193,11 @@ local function buildCard(parent, layoutOrder)
 	body.Parent = card
 
 	-- ── Progress bar ──────────────────────────────────────────────────
-	local PROGRESS_H = 6
+	local PROGRESS_H = 8
 	local progressTrack = Instance.new("Frame")
 	progressTrack.Name = "ProgressTrack"
 	progressTrack.LayoutOrder = 4
-	progressTrack.Size = UDim2.new(1, -8, 0, PROGRESS_H)
+	progressTrack.Size = UDim2.new(1, -10, 0, PROGRESS_H)
 	progressTrack.BackgroundColor3 = COLOR_WOOD_DARK
 	progressTrack.BackgroundTransparency = 0.55
 	progressTrack.BorderSizePixel = 0
@@ -222,10 +223,10 @@ local function buildCard(parent, layoutOrder)
 	local progressLabel = Instance.new("TextLabel")
 	progressLabel.Name = "ProgressLabel"
 	progressLabel.LayoutOrder = 5
-	progressLabel.Size = UDim2.new(1, 0, 0, 11)
+	progressLabel.Size = UDim2.new(1, 0, 0, 14)
 	progressLabel.BackgroundTransparency = 1
 	progressLabel.Font = Enum.Font.GothamMedium
-	progressLabel.TextSize = 10
+	progressLabel.TextSize = 11
 	progressLabel.TextColor3 = COLOR_WOOD_DARK
 	progressLabel.TextXAlignment = Enum.TextXAlignment.Center
 	progressLabel.Text = ""
@@ -239,10 +240,10 @@ local function buildCard(parent, layoutOrder)
 	local rewardCaption = Instance.new("TextLabel")
 	rewardCaption.Name = "RewardCaption"
 	rewardCaption.LayoutOrder = 6
-	rewardCaption.Size = UDim2.new(1, 0, 0, 12)
+	rewardCaption.Size = UDim2.new(1, 0, 0, 14)
 	rewardCaption.BackgroundTransparency = 1
 	rewardCaption.Font = Enum.Font.Gotham
-	rewardCaption.TextSize = 10
+	rewardCaption.TextSize = 11
 	rewardCaption.TextColor3 = COLOR_WOOD_MID
 	rewardCaption.TextXAlignment = Enum.TextXAlignment.Center
 	rewardCaption.Text = "Reward"
@@ -252,7 +253,7 @@ local function buildCard(parent, layoutOrder)
 	local rewardRow = Instance.new("Frame")
 	rewardRow.Name = "RewardRow"
 	rewardRow.LayoutOrder = 7
-	rewardRow.Size = UDim2.new(1, 0, 0, 22)
+	rewardRow.Size = UDim2.new(1, 0, 0, 28)
 	rewardRow.BackgroundTransparency = 1
 	rewardRow.ZIndex = card.ZIndex + 1
 	rewardRow.Parent = card
@@ -262,13 +263,13 @@ local function buildCard(parent, layoutOrder)
 	rwLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
 	rwLayout.VerticalAlignment = Enum.VerticalAlignment.Center
 	rwLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	rwLayout.Padding = UDim.new(0, 4)
+	rwLayout.Padding = UDim.new(0, 6)
 	rwLayout.Parent = rewardRow
 
 	local rewardIcon = Instance.new("ImageLabel")
 	rewardIcon.Name = "RewardIcon"
 	rewardIcon.LayoutOrder = 1
-	rewardIcon.Size = UDim2.fromOffset(20, 20)
+	rewardIcon.Size = UDim2.fromOffset(26, 26)
 	rewardIcon.BackgroundTransparency = 1
 	rewardIcon.ScaleType = Enum.ScaleType.Fit
 	rewardIcon.Image = ""
@@ -282,7 +283,7 @@ local function buildCard(parent, layoutOrder)
 	rewardLabel.AutomaticSize = Enum.AutomaticSize.X
 	rewardLabel.BackgroundTransparency = 1
 	rewardLabel.Font = Enum.Font.GothamBold
-	rewardLabel.TextSize = 12
+	rewardLabel.TextSize = 14
 	rewardLabel.TextColor3 = COLOR_WOOD_DARKEST
 	rewardLabel.TextXAlignment = Enum.TextXAlignment.Left
 	rewardLabel.TextYAlignment = Enum.TextYAlignment.Center
@@ -296,7 +297,7 @@ local function buildCard(parent, layoutOrder)
 	--   • Track        — paper-light fill (default)
 	--   • Tracking     — wood-dark fill, paper text (active)
 	--   • Claim Reward — wood-base fill, paper text (claimable)
-	local TRACK_BTN_H = 26
+	local TRACK_BTN_H = 34
 	local trackBtn = Instance.new("TextButton")
 	trackBtn.Name = "TrackBtn"
 	trackBtn.LayoutOrder = 8
@@ -305,7 +306,7 @@ local function buildCard(parent, layoutOrder)
 	trackBtn.BackgroundColor3 = COLOR_PAPER_LIGHT
 	trackBtn.BorderSizePixel = 0
 	trackBtn.Font = Enum.Font.GothamBold
-	trackBtn.TextSize = 12
+	trackBtn.TextSize = 14
 	trackBtn.TextColor3 = COLOR_WOOD_DARKEST
 	trackBtn.Text = "★ Track"
 	trackBtn.ZIndex = card.ZIndex + 2
