@@ -409,14 +409,103 @@ end
 
 local scrollFrame = mount(mountPoint)
 
--- Subscribe to state pushes from the server. D9 implements the real
--- repaint; D1 just logs so the wiring is testable.
+-- ─── Reactive paint (D9) ────────────────────────────────────────────
+-- cardsById keeps live card refs keyed by quest id so each snapshot
+-- repaints in place — no full rebuild, no flicker, no lost button-
+-- press connections. Cards whose id disappears from a snapshot get
+-- :Destroy()-ed; cards that appear for the first time are built once
+-- via buildCard and then painted.
+local cardsById = {}
+
+local function paintCard(refs, q)
+	refs.iconImage.Image = q.icon or ""
+	refs.title.Text      = q.title or ""
+	refs.body.Text       = q.body or ""
+
+	-- Daily quests are single-objective by design (per QuestCatalog C4).
+	-- We sum across objectives anyway so the same paint path can later
+	-- handle multi-objective story quests if Phase E reuses it.
+	local prog, goal = 0, 0
+	for _, obj in ipairs(q.objectives or {}) do
+		prog = prog + (tonumber(obj.progress) or 0)
+		goal = goal + (tonumber(obj.goal) or 0)
+	end
+	local pct = (goal > 0) and math.clamp(prog / goal, 0, 1) or 0
+	refs.progressFill.Size  = UDim2.new(pct, 0, 1, 0)
+	refs.progressLabel.Text = string.format("%d / %d", prog, goal)
+
+	-- Reward row. Without a resource→icon registry on the client we
+	-- reuse the quest icon as a stand-in; it still reads as "this is
+	-- the reward associated with this quest" because the card layout
+	-- groups it under the divider with the count text.
+	if q.reward and q.reward.count then
+		refs.rewardIcon.Image  = q.icon or ""
+		refs.rewardLabel.Text  = "x" .. tostring(q.reward.count)
+	else
+		refs.rewardIcon.Image  = ""
+		refs.rewardLabel.Text  = ""
+	end
+
+	refs.card:SetAttribute("QuestId", q.id or "")
+
+	-- Three-mode track button. Attribute set first so the click
+	-- handler reads the current mode even if the visual paint races
+	-- a click. rewardPending takes priority over tracked because a
+	-- quest can be both (objectives done + still flagged tracked) —
+	-- the user-facing affordance is "Claim" first.
+	if q.rewardPending then
+		refs.card:SetAttribute("Mode", "claim")
+		refs.trackBtn.Text = "Claim Reward"
+		refs.trackBtn.BackgroundColor3 = COLOR_WOOD_BASE
+		refs.trackBtn.TextColor3       = COLOR_PAPER_LIGHT
+		refs.trackBtnStroke.Color      = COLOR_WOOD_DARKEST
+	elseif q.tracked then
+		refs.card:SetAttribute("Mode", "tracking")
+		refs.trackBtn.Text = "Tracking"
+		refs.trackBtn.BackgroundColor3 = COLOR_WOOD_DARK
+		refs.trackBtn.TextColor3       = COLOR_PAPER_LIGHT
+		refs.trackBtnStroke.Color      = COLOR_WOOD_DARKEST
+	else
+		refs.card:SetAttribute("Mode", "track")
+		refs.trackBtn.Text = "Track"
+		refs.trackBtn.BackgroundColor3 = COLOR_PAPER_LIGHT
+		refs.trackBtn.TextColor3       = COLOR_WOOD_DARKEST
+		refs.trackBtnStroke.Color      = COLOR_WOOD_DARK
+	end
+end
+
+local function repaint(payload)
+	local incoming = {}
+	local order = 1
+	for _, q in ipairs(payload.quests or {}) do
+		if q.kind == "daily" then
+			incoming[q.id] = true
+			local entry = cardsById[q.id]
+			if not entry then
+				local card, refs = buildCard(scrollFrame, order)
+				entry = { card = card, refs = refs }
+				cardsById[q.id] = entry
+			else
+				entry.card.LayoutOrder = order
+			end
+			paintCard(entry.refs, q)
+			order = order + 1
+		end
+	end
+	-- Sweep any card whose quest dropped out of the snapshot (daily
+	-- roll swap, story quest finishing into permanentlyCompleted).
+	for id, entry in pairs(cardsById) do
+		if not incoming[id] then
+			entry.card:Destroy()
+			cardsById[id] = nil
+		end
+	end
+end
+
 questStateEvent.OnClientEvent:Connect(function(action, payload)
 	if action ~= "state" then return end
 	if type(payload) ~= "table" then return end
-	-- Phase D9 will iterate payload.quests and build cards here.
-	print(string.format("[QuestsTab] state received with %d quests",
-		#((payload.quests) or {})))
+	repaint(payload)
 end)
 
 -- Request initial state on mount in case the server's PlayerAdded
