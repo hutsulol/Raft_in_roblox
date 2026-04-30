@@ -307,6 +307,86 @@ game:BindToClose(function()
 	end
 end)
 
+-- ─── Generic event hook (C8) ────────────────────────────────────────
+-- _G.OnQuestEvent(player, eventType, count) is the single entry point
+-- for every gameplay system that wants to credit quest progress.
+-- Each gameplay subsystem fires its own eventType string:
+--   "resource:Log", "resource:Plastic", "resource:Stone", "resource:Leaves"
+--   "pirate:kill", "pirate:bloodTaken"
+--   "merc:hired", "dna:analyzed"
+--   "crafted:Workbench", "crafted:WallPanel"
+--   "planted:BerryBush"
+-- The catalog declares which eventType each objective listens to;
+-- this hook walks the player's active entries and bumps any matching
+-- objective slot, marking permanentlyCompleted on quests that flip
+-- all objectives to goal.
+local function onQuestEvent(player, eventType, count)
+	if not player or typeof(eventType) ~= "string" or eventType == "" then return end
+	count = (type(count) == "number" and count > 0) and count or 1
+
+	local s = states[player]
+	if not s then return end
+	local catalog = _G.QuestCatalog
+	if not catalog then return end
+
+	local stateChanged = false
+
+	for questId, entry in pairs(s.active) do
+		local def = catalog.get(questId)
+		if def and not s.permanentlyCompleted[questId] then
+			local allDone = true
+			local touched = false
+			for objIdx, obj in ipairs(def.objectives) do
+				local current = entry.progress[objIdx] or 0
+				if obj.eventType == eventType and current < obj.goal then
+					-- Challenge expiry guard — if this is a timed
+					-- quest and the timer has already elapsed,
+					-- silently drop the increment (the player just
+					-- ran out of time on a kill / chop swing). The
+					-- expiry sweep elsewhere clears the entry; we
+					-- just don't credit progress past it here.
+					if def.kind == "challenge" and entry.startedAt
+						and (os.time() - entry.startedAt) > (def.durationSec or 0)
+					then
+						-- expired
+					else
+						local new = math.min(obj.goal, current + count)
+						if new ~= current then
+							entry.progress[objIdx] = new
+							touched = true
+						end
+					end
+				end
+				if (entry.progress[objIdx] or 0) < obj.goal then
+					allDone = false
+				end
+			end
+
+			if touched then
+				stateChanged = true
+				if allDone then
+					-- Mark the reward as claimable. Permanent quests
+					-- (story + single-use dailies like the workbench
+					-- gate) also flip permanentlyCompleted so the
+					-- daily roll never reissues them. Non-permanent
+					-- dailies stay claimable until the next roll
+					-- swaps them out anyway.
+					s.pendingRewards[questId] = true
+					if def.permanent then
+						s.permanentlyCompleted[questId] = true
+					end
+				end
+			end
+		end
+	end
+
+	if stateChanged then
+		markDirty(player)
+	end
+end
+
+_G.OnQuestEvent = onQuestEvent
+
 -- ─── Read-only globals ───────────────────────────────────────────────
 -- Other server scripts can read state via these accessors. Mutations
 -- always go through helpers (added in C7-C9) so the dirty flag stays
