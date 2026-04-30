@@ -84,8 +84,8 @@ local CLOSE_BTN_RADIUS = 8
 local TABS = {
 	{ id = "quests",     label = "Quests"     },
 	{ id = "story",      label = "Story"      },
-	{ id = "history",    label = "History"    },
 	{ id = "challenges", label = "Challenges" },
+	{ id = "history",    label = "History"    },
 }
 
 -- Lazy build: the ScreenGui isn't created until the menu is first
