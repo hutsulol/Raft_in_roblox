@@ -397,6 +397,12 @@ local function onQuestEvent(player, eventType, count)
 					if def.permanent then
 						s.permanentlyCompleted[questId] = true
 					end
+					-- Auto-untrack on completion (T10) so the corner
+					-- tracker card slides out cleanly. The menu's
+					-- card flips to "Claim Reward" off rewardPending,
+					-- which doesn't depend on tracked, so claiming
+					-- still works from any tab.
+					entry.tracked = false
 				end
 			end
 		end
