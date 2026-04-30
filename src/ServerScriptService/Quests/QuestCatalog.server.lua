@@ -41,6 +41,27 @@ local function addQuest(entry)
 	catalog[entry.id] = entry
 end
 
+-- ─── Story quest #1 — Lost in the Woods (C2) ───────────────────────
+-- The user's reference design ("Lost in the Woods") for the Story
+-- tab: 4 multi-step objectives covering early-game progression
+-- through pirate combat + DNA research, then a single big reward.
+-- Permanent so it never re-rolls or shows up twice.
+addQuest({
+	id    = "lostInTheWoods",
+	kind  = "story",
+	title = "Lost in the Woods",
+	body  = "The path is blocked. Clear the way and find your way forward.",
+	icon  = "rbxassetid://121862782555497",
+	objectives = {
+		{ eventType = "merc:hired",        goal = 1, label = "Hire 1 mercenary" },
+		{ eventType = "pirate:kill",       goal = 3, label = "Defeat 3 hostile pirates" },
+		{ eventType = "pirate:bloodTaken", goal = 5, label = "Collect 5 blood samples" },
+		{ eventType = "dna:analyzed",      goal = 1, label = "Analyse a mercenary's DNA" },
+	},
+	reward    = { kind = "item", name = "WoodcutterChest", count = 1 },
+	permanent = true,
+})
+
 -- ─── Filtered views (helper queries used by QuestState in C6+) ───────
 -- Returned tables are fresh copies so callers can mutate freely.
 
