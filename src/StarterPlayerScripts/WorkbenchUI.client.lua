@@ -39,6 +39,24 @@ local selectedCategory = "All"
 local craftAmount = 1
 local isOpen = false
 
+local THEME = {
+	panel = Color3.fromRGB(191, 153, 108),
+	panelDark = Color3.fromRGB(168, 131, 92),
+	panelLight = Color3.fromRGB(214, 183, 141),
+	card = Color3.fromRGB(207, 172, 128),
+	text = Color3.fromRGB(64, 45, 30),
+	accent = Color3.fromRGB(132, 93, 56),
+	danger = Color3.fromRGB(188, 73, 73),
+	ok = Color3.fromRGB(66, 150, 74),
+}
+
+local function computeUIScale()
+	local cam = workspace.CurrentCamera
+	local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
+	local s = math.min(vp.X / 1280, vp.Y / 720)
+	return math.clamp(s, 0.7, 1)
+end
+
 local function affordableTimes(recipe)
 	local maxCount = math.huge
 	for item, amount in recipe.costs do
@@ -88,7 +106,7 @@ local function buildCostLine(parent, item, need, have)
 	text.TextScaled = true
 	text.Font = Enum.Font.GothamBold
 	text.Text = string.format("%s %d/%d", item, math.min(have, need), need)
-	text.TextColor3 = have >= need and Color3.fromRGB(36, 145, 66) or Color3.fromRGB(196, 64, 64)
+	text.TextColor3 = have >= need and THEME.ok or THEME.danger
 	text.Parent = row
 end
 
@@ -108,7 +126,7 @@ local function refreshDetails()
 	end
 
 	local canCraft = maxCraft > 0
-	craftButton.BackgroundColor3 = canCraft and Color3.fromRGB(144, 97, 58) or Color3.fromRGB(150, 150, 150)
+	craftButton.BackgroundColor3 = canCraft and THEME.accent or Color3.fromRGB(150, 150, 150)
 	craftButton.AutoButtonColor = canCraft
 	craftButton.Text = canCraft and ("Craft x" .. craftAmount) or "Not enough resources"
 end
@@ -119,7 +137,7 @@ local function refreshGrid()
 	for _, recipe in ipairs(filteredRecipes()) do
 		local btn = Instance.new("TextButton")
 		btn.Size = UDim2.new(0, 136, 0, 172)
-		btn.BackgroundColor3 = Color3.fromRGB(233, 214, 183)
+		btn.BackgroundColor3 = THEME.card
 		btn.Text = ""
 		btn.Parent = recipesGrid
 		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
@@ -138,7 +156,7 @@ local function refreshGrid()
 		name.TextWrapped = true
 		name.TextScaled = true
 		name.Font = Enum.Font.Gotham
-		name.TextColor3 = Color3.fromRGB(63, 49, 38)
+		name.TextColor3 = THEME.text
 		name.Text = recipe.displayName
 		name.Parent = btn
 
@@ -149,7 +167,7 @@ local function refreshGrid()
 		cost.BackgroundTransparency = 1
 		cost.TextScaled = true
 		cost.Font = Enum.Font.GothamBold
-		cost.TextColor3 = affordable and Color3.fromRGB(48, 167, 69) or Color3.fromRGB(200, 78, 78)
+		cost.TextColor3 = affordable and THEME.ok or THEME.danger
 		local firstItem, firstAmt = next(recipe.costs)
 		cost.Text = string.format("%d %s", firstAmt, firstItem)
 		cost.Parent = btn
@@ -175,14 +193,17 @@ local function buildUI()
 	screenGui.Name = "WorkbenchGui"
 	screenGui.ResetOnSpawn = false
 	screenGui.Parent = playerGui
+	local uiScale = Instance.new("UIScale")
+	uiScale.Scale = computeUIScale()
+	uiScale.Parent = screenGui
 
 	local main = Instance.new("Frame")
-	main.Size = UDim2.new(0, 940, 0, 580)
-	main.Position = UDim2.new(0.5, -470, 0.5, -290)
-	main.BackgroundColor3 = Color3.fromRGB(244, 226, 198)
+	main.Size = UDim2.new(0, 820, 0, 500)
+	main.Position = UDim2.new(0.5, -410, 0.5, -250)
+	main.BackgroundColor3 = THEME.panelLight
 	main.Parent = screenGui
 	Instance.new("UICorner", main).CornerRadius = UDim.new(0, 16)
-	Instance.new("UIStroke", main).Color = Color3.fromRGB(186, 145, 101)
+	Instance.new("UIStroke", main).Color = THEME.accent
 
 	local top = Instance.new("Frame", main)
 	top.Size = UDim2.new(1, -24, 0, 42)
@@ -208,7 +229,7 @@ local function buildUI()
 	closeBtn.Text = "✕"
 	closeBtn.TextScaled = true
 	closeBtn.Font = Enum.Font.GothamBold
-	closeBtn.BackgroundColor3 = Color3.fromRGB(149, 108, 72)
+	closeBtn.BackgroundColor3 = THEME.accent
 	closeBtn.TextColor3 = Color3.new(1, 1, 1)
 	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 10)
 	closeBtn.MouseButton1Click:Connect(closeUI)
@@ -216,7 +237,7 @@ local function buildUI()
 	local left = Instance.new("Frame", main)
 	left.Size = UDim2.new(0, 170, 1, -78)
 	left.Position = UDim2.new(0, 14, 0, 62)
-	left.BackgroundColor3 = Color3.fromRGB(235, 217, 188)
+	left.BackgroundColor3 = THEME.panel
 	Instance.new("UICorner", left).CornerRadius = UDim.new(0, 10)
 
 	local list = Instance.new("UIListLayout", left)
@@ -227,9 +248,10 @@ local function buildUI()
 		b.Position = UDim2.new(0, 6, 0, 0)
 		b.Text = c
 		b.Font = Enum.Font.GothamBold
-		b.TextScaled = true
-		b.BackgroundColor3 = Color3.fromRGB(240, 224, 198)
-		b.TextColor3 = Color3.fromRGB(79, 58, 41)
+		b.TextScaled = false
+		b.TextSize = 30
+		b.BackgroundColor3 = THEME.panelLight
+		b.TextColor3 = THEME.text
 		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 9)
 		b.MouseButton1Click:Connect(function()
 			selectedCategory = c
@@ -241,17 +263,18 @@ local function buildUI()
 	searchBox.PlaceholderText = "Search..."
 	searchBox.Text = ""
 	searchBox.Size = UDim2.new(1, -12, 0, 42)
-	searchBox.TextScaled = true
+	searchBox.TextScaled = false
+	searchBox.TextSize = 28
 	searchBox.Font = Enum.Font.Gotham
-	searchBox.BackgroundColor3 = Color3.fromRGB(249, 239, 218)
-	searchBox.TextColor3 = Color3.fromRGB(62, 48, 39)
+	searchBox.BackgroundColor3 = THEME.panelLight
+	searchBox.TextColor3 = THEME.text
 	Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 8)
 	searchBox:GetPropertyChangedSignal("Text"):Connect(refreshGrid)
 
 	local center = Instance.new("Frame", main)
 	center.Size = UDim2.new(0, 470, 1, -78)
 	center.Position = UDim2.new(0, 194, 0, 62)
-	center.BackgroundColor3 = Color3.fromRGB(238, 222, 194)
+	center.BackgroundColor3 = THEME.panel
 	Instance.new("UICorner", center).CornerRadius = UDim.new(0, 10)
 
 	recipesGrid = Instance.new("Frame", center)
@@ -266,7 +289,7 @@ local function buildUI()
 	local right = Instance.new("Frame", main)
 	right.Size = UDim2.new(0, 248, 1, -78)
 	right.Position = UDim2.new(1, -262, 0, 62)
-	right.BackgroundColor3 = Color3.fromRGB(235, 217, 188)
+	right.BackgroundColor3 = THEME.panel
 	Instance.new("UICorner", right).CornerRadius = UDim.new(0, 10)
 	detailsPanel = right
 
@@ -277,7 +300,7 @@ local function buildUI()
 	title.BackgroundTransparency = 1
 	title.TextScaled = true
 	title.Font = Enum.Font.GothamBold
-	title.TextColor3 = Color3.fromRGB(72, 54, 38)
+	title.TextColor3 = THEME.text
 
 	local dIcon = Instance.new("ImageLabel", right)
 	dIcon.Name = "Icon"
@@ -295,7 +318,7 @@ local function buildUI()
 	dDesc.TextXAlignment = Enum.TextXAlignment.Left
 	dDesc.Font = Enum.Font.Gotham
 	dDesc.TextScaled = true
-	dDesc.TextColor3 = Color3.fromRGB(92, 71, 51)
+	dDesc.TextColor3 = THEME.text
 
 	local costs = Instance.new("Frame", right)
 	costs.Name = "Costs"
@@ -311,16 +334,16 @@ local function buildUI()
 	minus.Text = "-"
 	minus.TextScaled = true
 	minus.Font = Enum.Font.GothamBold
-	minus.BackgroundColor3 = Color3.fromRGB(226, 204, 168)
+	minus.BackgroundColor3 = THEME.panelLight
 	Instance.new("UICorner", minus).CornerRadius = UDim.new(0, 8)
 
 	qtyLabel = Instance.new("TextLabel", right)
 	qtyLabel.Size = UDim2.new(0, 96, 0, 40)
 	qtyLabel.Position = UDim2.new(0, 62, 1, -96)
-	qtyLabel.BackgroundColor3 = Color3.fromRGB(240, 221, 189)
+	qtyLabel.BackgroundColor3 = THEME.panelLight
 	qtyLabel.TextScaled = true
 	qtyLabel.Font = Enum.Font.GothamBold
-	qtyLabel.TextColor3 = Color3.fromRGB(82, 60, 44)
+	qtyLabel.TextColor3 = THEME.text
 	Instance.new("UICorner", qtyLabel).CornerRadius = UDim.new(0, 8)
 
 	local plus = Instance.new("TextButton", right)
@@ -329,7 +352,7 @@ local function buildUI()
 	plus.Text = "+"
 	plus.TextScaled = true
 	plus.Font = Enum.Font.GothamBold
-	plus.BackgroundColor3 = Color3.fromRGB(226, 204, 168)
+	plus.BackgroundColor3 = THEME.panelLight
 	Instance.new("UICorner", plus).CornerRadius = UDim.new(0, 8)
 
 	craftButton = Instance.new("TextButton", right)
@@ -383,3 +406,14 @@ UserInputService.InputBegan:Connect(function(input, gp)
 		closeUI()
 	end
 end)
+
+local function refreshScale()
+	if not screenGui then return end
+	local s = computeUIScale()
+	local uiScale = screenGui:FindFirstChildOfClass("UIScale")
+	if uiScale then uiScale.Scale = s end
+end
+
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(refreshScale)
+local cam = workspace.CurrentCamera
+if cam then cam:GetPropertyChangedSignal("ViewportSize"):Connect(refreshScale) end
