@@ -394,6 +394,27 @@ end
 
 local scrollFrame = mount(mountPoint)
 
+-- ─── Empty state (F10) ──────────────────────────────────────────────
+-- Sibling of the scroll so the UIListLayout doesn't treat it as a
+-- card. Visible when no challenges live in the snapshot — only fires
+-- if the catalog server-side returns nothing or fails to load.
+local emptyState = Instance.new("TextLabel")
+emptyState.Name = "EmptyState"
+emptyState.AnchorPoint = Vector2.new(0.5, 0.5)
+emptyState.Position = UDim2.fromScale(0.5, 0.5)
+emptyState.Size = UDim2.new(1, -40, 0, 40)
+emptyState.BackgroundTransparency = 1
+emptyState.Font = Enum.Font.GothamMedium
+emptyState.TextSize = 14
+emptyState.TextColor3 = COLOR_WOOD_DARK
+emptyState.TextWrapped = true
+emptyState.TextXAlignment = Enum.TextXAlignment.Center
+emptyState.TextYAlignment = Enum.TextYAlignment.Center
+emptyState.Text = "No challenges available right now."
+emptyState.Visible = false
+emptyState.ZIndex = 6
+emptyState.Parent = mountPoint
+
 -- ─── Reactive paint (F9) ────────────────────────────────────────────
 -- Stash the latest challenge snapshot per quest id so the live
 -- countdown loop (F10) can advance the timer locally between server
@@ -509,10 +530,46 @@ local function repaint(payload)
 			cardsById[id] = nil
 		end
 	end
+
+	emptyState.Visible = (next(cardsById) == nil)
 end
 
 questStateEvent.OnClientEvent:Connect(function(action, payload)
 	if action ~= "state" then return end
 	if type(payload) ~= "table" then return end
 	repaint(payload)
+end)
+
+-- ─── Live countdown loop ────────────────────────────────────────────
+-- Re-renders the timer label off the cached deadline every frame
+-- (cheap — a 4-card Heartbeat at 60Hz is ~240 string formats/sec).
+-- When a running challenge hits 0 we ping the server with getState
+-- so its expiry sweep snaps the card back to "Start". A small
+-- debounce (justExpired) keeps us from spamming the RemoteEvent
+-- while waiting for the server's snapshot to arrive.
+local justExpired = {}
+RunService.Heartbeat:Connect(function()
+	local now = os.clock()
+	for id, entry in pairs(cardsById) do
+		local q = entry.q
+		if q and q.startedAt and not q.rewardPending and entry.deadline then
+			local remaining = entry.deadline - now
+			if remaining <= 0 then
+				entry.refs.timerLabel.Text = "0:00"
+				if not justExpired[id] then
+					justExpired[id] = true
+					-- Server's expiry sweep flips startedAt → nil on
+					-- the next snapshot; we just nudge it.
+					if questStateEvent then
+						questStateEvent:FireServer("getState")
+					end
+				end
+			else
+				entry.refs.timerLabel.Text = fmtSeconds(remaining)
+				justExpired[id] = nil
+			end
+		else
+			justExpired[id] = nil
+		end
+	end
 end)
