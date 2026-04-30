@@ -345,18 +345,24 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			pcall(_G.OnQuestEvent, player, "planted:BerryBush", 1)
 		end
 
-		-- Weld to raft. Massless = true so planting a bush doesn't kick
-		-- the raft's buoyancy out of equilibrium (T12).
+		-- Velocity snapshot/restore around the welds so planting the
+		-- bush doesn't kick the raft into a vertical bob (T13).
+		local primary = raft.PrimaryPart
+		local linVel = primary.AssemblyLinearVelocity
+		local angVel = primary.AssemblyAngularVelocity
+
 		for _, part in bush:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.Anchored = false
-				part.Massless = true
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = part
 			end
 		end
+
+		primary.AssemblyLinearVelocity  = linVel
+		primary.AssemblyAngularVelocity = angVel
 
 		-- Setup click detector for grape picking
 		setupBushClickDetector(bush)

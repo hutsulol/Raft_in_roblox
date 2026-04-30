@@ -182,18 +182,24 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	furnace:PivotTo(worldCF)
 	furnace.Parent = raft
 
-	-- Weld to raft. Massless = true so the placed furnace doesn't
-	-- perturb the raft's buoyancy equilibrium (T12).
+	-- Velocity snapshot/restore around the welds so placing the
+	-- furnace doesn't bob the raft (T13).
+	local primary = raft.PrimaryPart
+	local linVel = primary.AssemblyLinearVelocity
+	local angVel = primary.AssemblyAngularVelocity
+
 	for _, part in furnace:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
-			part.Massless = true
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart
 			weld.Parent = part
 		end
 	end
+
+	primary.AssemblyLinearVelocity  = linVel
+	primary.AssemblyAngularVelocity = angVel
 
 	-- Setup interaction
 	setupFurnacePrompt(furnace)

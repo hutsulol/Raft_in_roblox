@@ -183,12 +183,16 @@ local function swapPurifierModel(purifier)
 		purifier:PivotTo(savedCF)
 	end
 
-	-- Weld to raft, then unanchor. Massless = true so the model swap
-	-- doesn't transiently change the raft's mass — the swap recreates
-	-- the purifier parts every time water is filled / completes, and
-	-- without Massless each swap kicks the raft into a vertical bob.
+	-- Weld to raft, then unanchor. The model-swap path runs every
+	-- time water is filled / purification completes, so each swap is
+	-- effectively another placement. Wrap the welds in a velocity
+	-- snapshot/restore so re-attaching the new model parts doesn't
+	-- bleed momentum out of the raft assembly and bob it vertically.
 	local raft = workspace:FindFirstChild("Raft")
 	if raft and raft.PrimaryPart then
+		local primary = raft.PrimaryPart
+		local linVel = primary.AssemblyLinearVelocity
+		local angVel = primary.AssemblyAngularVelocity
 		for _, part in purifier:GetDescendants() do
 			if part:IsA("BasePart") then
 				local weld = Instance.new("WeldConstraint")
@@ -196,9 +200,10 @@ local function swapPurifierModel(purifier)
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = part
 				part.Anchored = false
-				part.Massless = true
 			end
 		end
+		primary.AssemblyLinearVelocity  = linVel
+		primary.AssemblyAngularVelocity = angVel
 	end
 
 	-- Restore attributes
@@ -373,18 +378,25 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		purifier:PivotTo(worldCF)
 		purifier.Parent = raft
 
-		-- Weld to raft. Massless = true so the placed purifier doesn't
-		-- destabilise the raft's buoyancy (see workbench note above).
+		-- Same velocity-preservation pattern as the workbench branch
+		-- above so placing the purifier doesn't kick the raft's vertical
+		-- buoyancy out of equilibrium.
+		local primary = raft.PrimaryPart
+		local linVel = primary.AssemblyLinearVelocity
+		local angVel = primary.AssemblyAngularVelocity
+
 		for _, part in purifier:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.Anchored = false
-				part.Massless = true
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = part
 			end
 		end
+
+		primary.AssemblyLinearVelocity  = linVel
+		primary.AssemblyAngularVelocity = angVel
 
 		-- Remove tool from player
 		tool:Destroy()
@@ -415,22 +427,30 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		workbench:PivotTo(worldCF)
 		workbench.Parent = raft
 
+		-- Snapshot raft velocity before the weld so adding the workbench
+		-- doesn't perturb the raft's motion. Welding a new mass-bearing
+		-- part into a moving assembly causes Roblox to equilibrate
+		-- momentum (V_new = M*V/(M+m)), which leaves the buoyancy
+		-- spring with a velocity error and kicks off a vertical bob
+		-- that takes ~10 s to damp out. Mirrors BuildingSystem's
+		-- placeWithVelocityPreserved.
+		local primary = raft.PrimaryPart
+		local linVel = primary.AssemblyLinearVelocity
+		local angVel = primary.AssemblyAngularVelocity
+
 		-- Weld to raft
 		for _, part in workbench:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.Anchored = false
-				-- Massless = true so welding the workbench in doesn't
-				-- change the raft assembly's mass + buoyancy equilibrium,
-				-- which otherwise kicks off a vertical oscillation that
-				-- only stops once another mass-bearing part (raft tile)
-				-- gets placed and re-equilibrates the assembly.
-				part.Massless = true
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = part
 			end
 		end
+
+		primary.AssemblyLinearVelocity  = linVel
+		primary.AssemblyAngularVelocity = angVel
 
 		-- Add ProximityPrompt if not already present
 		local hasPrompt = workbench:FindFirstChildWhichIsA("ProximityPrompt", true)

@@ -435,24 +435,19 @@ local function rebuildRaft(player, saveData)
 		return (raftCF * CFrame.new(localOffset)).Position
 	end
 
-	-- Items that should not contribute mass to the raft assembly.
-	-- Same list as the per-system Massless fix in T12 — keeps the
-	-- raft's buoyancy stable when the save file is replayed. Raft
-	-- tiles and walls are NOT in here: they're load-bearing parts
-	-- that the buoyancy is balanced against.
-	local MASSLESS_NAMES = {
-		WorkBench = true, Purifier = true, Destitalor = true,
-		Furnace = true, Garden = true, bush = true,
-		SmallContainer = true, PlasticContainer = true,
-	}
+	-- Save load reuses placeWithVelocityPreserved-style snapshot/restore
+	-- (T13) per item so re-welding a saved item on respawn doesn't
+	-- bleed momentum out of the raft assembly.
+	local primary = raft.PrimaryPart
 
 	local function weldAndUnanchor(clone)
-		local makeMassless = MASSLESS_NAMES[clone.Name] == true
+		local linVel = primary.AssemblyLinearVelocity
+		local angVel = primary.AssemblyAngularVelocity
 		if clone:IsA("Model") then
 			for _, part in clone:GetDescendants() do
 				if part:IsA("BasePart") then
 					local weld = Instance.new("WeldConstraint")
-					weld.Part0 = raft.PrimaryPart
+					weld.Part0 = primary
 					weld.Part1 = part
 					weld.Parent = part
 				end
@@ -460,21 +455,17 @@ local function rebuildRaft(player, saveData)
 			for _, part in clone:GetDescendants() do
 				if part:IsA("BasePart") then
 					part.Anchored = false
-					if makeMassless then
-						part.Massless = true
-					end
 				end
 			end
 		else
 			local weld = Instance.new("WeldConstraint")
-			weld.Part0 = raft.PrimaryPart
+			weld.Part0 = primary
 			weld.Part1 = clone
 			weld.Parent = clone
 			clone.Anchored = false
-			if makeMassless then
-				clone.Massless = true
-			end
 		end
+		primary.AssemblyLinearVelocity  = linVel
+		primary.AssemblyAngularVelocity = angVel
 	end
 
 	-- Place floors (skip origin 0,0 which already exists)

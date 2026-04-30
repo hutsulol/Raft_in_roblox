@@ -48,17 +48,22 @@ end
 
 local function weldToRaft(model, raft)
 	if not raft or not raft.PrimaryPart then return end
+	-- Velocity snapshot/restore so placing bricks doesn't kick the
+	-- raft's buoyancy spring (T13).
+	local primary = raft.PrimaryPart
+	local linVel = primary.AssemblyLinearVelocity
+	local angVel = primary.AssemblyAngularVelocity
 	for _, part in model:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
-			-- Massless: placed bricks don't disturb the raft buoyancy (T12).
-			part.Massless = true
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart
 			weld.Parent = part
 		end
 	end
+	primary.AssemblyLinearVelocity  = linVel
+	primary.AssemblyAngularVelocity = angVel
 end
 
 local function stripScripts(model)

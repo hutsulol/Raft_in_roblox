@@ -120,6 +120,11 @@ local function swapContainerModel(container)
 	local raft = workspace:FindFirstChild("Raft")
 	local storage = container:FindFirstChild("StoredTools")
 	if raft and raft.PrimaryPart then
+		-- Snapshot raft velocity around the model swap so re-welding
+		-- the new container parts doesn't kick the raft into a bob (T13).
+		local primary = raft.PrimaryPart
+		local linVel = primary.AssemblyLinearVelocity
+		local angVel = primary.AssemblyAngularVelocity
 		for _, part in container:GetDescendants() do
 			if part:IsA("BasePart") and not (storage and part:IsDescendantOf(storage)) then
 				local weld = Instance.new("WeldConstraint")
@@ -127,11 +132,10 @@ local function swapContainerModel(container)
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = part
 				part.Anchored = false
-				-- Massless so the container model swap doesn't change
-				-- the raft assembly's mass + trigger a buoyancy bounce.
-				part.Massless = true
 			end
 		end
+		primary.AssemblyLinearVelocity  = linVel
+		primary.AssemblyAngularVelocity = angVel
 	end
 
 	container:SetAttribute("ModelName", modelName)
@@ -316,18 +320,23 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	container:PivotTo(worldCF)
 	container.Parent = raft
 
+	-- Velocity snapshot/restore around the placement weld (T13).
+	local primary = raft.PrimaryPart
+	local linVel = primary.AssemblyLinearVelocity
+	local angVel = primary.AssemblyAngularVelocity
+
 	for _, part in container:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
-			-- Massless: keep the welded container from disturbing the
-			-- raft's buoyancy equilibrium (T12).
-			part.Massless = true
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart
 			weld.Parent = part
 		end
 	end
+
+	primary.AssemblyLinearVelocity  = linVel
+	primary.AssemblyAngularVelocity = angVel
 
 	container:SetAttribute("ModelName", "Container_empty")
 	setupContainerPrompt(container)
