@@ -48,6 +48,12 @@ local function waitForQuestStateEvent(timeoutSec)
 	return nil
 end
 
+-- ─── Outbound dispatch (D8) ─────────────────────────────────────────
+-- Forward-declared here so buildCard's click handler can capture it
+-- as an upvalue. Real assignment happens further down once the
+-- RemoteEvent has been resolved.
+local questStateEvent
+
 -- ─── Mount + scroll container (D1) ──────────────────────────────────
 -- 4-column grid of quest cards (the daily picks). The grid is large
 -- enough that all 4 cards fit in a row at the menu's current width;
@@ -104,6 +110,12 @@ local function buildCard(parent, layoutOrder)
 	card.BorderSizePixel = 0
 	card.ZIndex = 7
 	card.Parent = parent
+	-- Card attributes drive the click handler dispatch (D8). D9's paint
+	-- path overwrites these per snapshot:
+	--   QuestId : "" | "<id>"
+	--   Mode    : "track" | "tracking" | "claim"
+	card:SetAttribute("QuestId", "")
+	card:SetAttribute("Mode", "track")
 
 	local cCorner = Instance.new("UICorner")
 	cCorner.CornerRadius = UDim.new(0, CARD_RADIUS)
@@ -340,6 +352,28 @@ local function buildCard(parent, layoutOrder)
 	btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	btnStroke.Parent = trackBtn
 
+	-- ── Click dispatch (D8) ───────────────────────────────────────────
+	-- Single click wired here; we read the card's current Mode + QuestId
+	-- attributes (set by D9's paint path) at click time so the same
+	-- button object can move between Track / Tracking / Claim states
+	-- without us re-binding the connection. The server is the source
+	-- of truth — every dispatch round-trips back as a 'state' push that
+	-- D9 paints, so we intentionally don't optimistically mutate the
+	-- card here.
+	trackBtn.Activated:Connect(function()
+		local id   = card:GetAttribute("QuestId")
+		local mode = card:GetAttribute("Mode")
+		if type(id) ~= "string" or id == "" then return end
+		if not questStateEvent then return end
+		if mode == "tracking" then
+			questStateEvent:FireServer("untrack", id)
+		elseif mode == "claim" then
+			questStateEvent:FireServer("claimReward", id)
+		else
+			questStateEvent:FireServer("track", id)
+		end
+	end)
+
 	-- refs is the live handle the reactive paint path (D9) updates.
 	-- D3-D7 add nodes (iconImage, title, body, progressFill, label,
 	-- rewardLabel, trackBtn) into it.
@@ -367,7 +401,7 @@ if not mountPoint then
 	warn("[QuestsTab] _G.QuestMenuContentPages.quests not available within 30 s; tab disabled")
 	return
 end
-local questStateEvent = waitForQuestStateEvent(30)
+questStateEvent = waitForQuestStateEvent(30)
 if not questStateEvent then
 	warn("[QuestsTab] QuestState RemoteEvent missing; tab disabled")
 	return
