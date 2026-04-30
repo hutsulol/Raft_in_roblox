@@ -137,9 +137,68 @@ local function buildCard(parent, layoutOrder)
 	cLayout.Padding = UDim.new(0, 10)
 	cLayout.Parent = card
 
-	-- E4-E7 layer header / objectives / footer onto refs.
+	-- ── Header row (E4) ───────────────────────────────────────────────
+	-- Icon on the left, title + body stacked on the right. Layout sits
+	-- above the objectives list so the story reads "this is the quest,
+	-- here's what to do" top-down.
+	local header = Instance.new("Frame")
+	header.Name = "Header"
+	header.LayoutOrder = 1
+	header.Size = UDim2.new(1, 0, 0, 60)
+	header.BackgroundTransparency = 1
+	header.ZIndex = card.ZIndex + 1
+	header.Parent = card
+
+	local iconImage = Instance.new("ImageLabel")
+	iconImage.Name = "Icon"
+	iconImage.AnchorPoint = Vector2.new(0, 0.5)
+	iconImage.Position = UDim2.new(0, 0, 0.5, 0)
+	iconImage.Size = UDim2.fromOffset(60, 60)
+	iconImage.BackgroundTransparency = 1
+	iconImage.BorderSizePixel = 0
+	iconImage.ScaleType = Enum.ScaleType.Fit
+	iconImage.Image = ""   -- E9 fills from snapshot.icon
+	iconImage.ZIndex = header.ZIndex + 1
+	iconImage.Parent = header
+
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.AnchorPoint = Vector2.new(0, 0)
+	title.Position = UDim2.new(0, 70, 0, 2)
+	title.Size = UDim2.new(1, -70, 0, 22)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 16
+	title.TextColor3 = COLOR_WOOD_DARKEST
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextYAlignment = Enum.TextYAlignment.Center
+	title.TextTruncate = Enum.TextTruncate.AtEnd
+	title.Text = ""
+	title.ZIndex = header.ZIndex + 1
+	title.Parent = header
+
+	local body = Instance.new("TextLabel")
+	body.Name = "Body"
+	body.AnchorPoint = Vector2.new(0, 0)
+	body.Position = UDim2.new(0, 70, 0, 26)
+	body.Size = UDim2.new(1, -70, 0, 32)
+	body.BackgroundTransparency = 1
+	body.Font = Enum.Font.Gotham
+	body.TextSize = 12
+	body.TextColor3 = COLOR_WOOD_DARK
+	body.TextXAlignment = Enum.TextXAlignment.Left
+	body.TextYAlignment = Enum.TextYAlignment.Top
+	body.TextWrapped = true
+	body.Text = ""
+	body.ZIndex = header.ZIndex + 1
+	body.Parent = header
+
+	-- E5-E7 layer objectives / footer onto refs.
 	local refs = {
-		card = card,
+		card      = card,
+		iconImage = iconImage,
+		title     = title,
+		body      = body,
 	}
 	return card, refs
 end
