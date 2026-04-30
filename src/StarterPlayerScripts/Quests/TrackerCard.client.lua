@@ -212,9 +212,75 @@ if not questStateEvent then
 	return
 end
 
--- Subscribe so H4's paint path can read incoming snapshots.
+-- ─── Reactive paint (H4) ────────────────────────────────────────────
+-- Server enforces "one tracked at a time" in the QuestState handlers,
+-- so we just hunt for the first q.tracked == true. If none is found
+-- the tracker hides itself; otherwise we paint title/objective/
+-- progress/timer and show the ScreenGui.
+local trackedQuest    -- cached for H5's heartbeat tick
+local trackedDeadline -- os.clock()-based deadline for challenges
+
+local function fmtSeconds(secs)
+	secs = math.max(0, math.floor(secs + 0.5))
+	local m = math.floor(secs / 60)
+	local s = secs % 60
+	return string.format("%d:%02d", m, s)
+end
+
+local function paint(q)
+	trackedQuest = q
+
+	if not q then
+		screenGui.Enabled = false
+		trackedDeadline = nil
+		return
+	end
+
+	screenGui.Enabled = true
+	iconImage.Image = q.icon or ""
+	title.Text      = q.title or q.id or ""
+
+	-- Objective text — story has multiple, dailies/challenges have one.
+	-- Show the first not-yet-completed objective; if all are done,
+	-- show the last one so the line doesn't blank out before claim.
+	local objs = q.objectives or {}
+	local prog, goal = 0, 0
+	local activeObj = objs[#objs]
+	local pickedActive = false
+	for _, obj in ipairs(objs) do
+		local p = tonumber(obj.progress) or 0
+		local g = tonumber(obj.goal) or 0
+		prog = prog + p
+		goal = goal + g
+		if not pickedActive and p < g then
+			activeObj = obj
+			pickedActive = true
+		end
+	end
+	objective.Text = activeObj and (activeObj.label or activeObj.eventType or "") or ""
+
+	local pct = (goal > 0) and math.clamp(prog / goal, 0, 1) or 0
+	progressFill.Size  = UDim2.new(pct, 0, 1, 0)
+	progressLabel.Text = string.format("%d / %d", prog, goal)
+
+	-- Timer — only for tracked challenges that are still running.
+	if q.kind == "challenge" and q.startedAt and q.secondsRemaining
+		and not q.rewardPending then
+		timerLabel.Visible = true
+		timerLabel.Text    = fmtSeconds(q.secondsRemaining)
+		trackedDeadline    = os.clock() + q.secondsRemaining
+	else
+		timerLabel.Visible = false
+		trackedDeadline    = nil
+	end
+end
+
 questStateEvent.OnClientEvent:Connect(function(action, payload)
 	if action ~= "state" then return end
 	if type(payload) ~= "table" then return end
-	-- Phase H4 will hunt for q.tracked and paint the card.
+	local picked
+	for _, q in ipairs(payload.quests or {}) do
+		if q.tracked then picked = q; break end
+	end
+	paint(picked)
 end)
