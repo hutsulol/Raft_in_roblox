@@ -198,15 +198,67 @@ local function buildCard(parent, layoutOrder)
 	body.ZIndex = card.ZIndex + 1
 	body.Parent = card
 
+	-- ── Progress bar (D5) ─────────────────────────────────────────────
+	-- Pill bar that mirrors OnboardingTooltip's style: wood-dark track,
+	-- bright wood-base fill, fully rounded with UICorner using half the
+	-- bar height. Sits below the body block; D9's paint path scales
+	-- progressFill.Size.X.Scale and overwrites progressLabel.Text.
+	local PROGRESS_Y = TITLE_Y + 20 + 30 + 4   -- body bottom + 4
+	local PROGRESS_H = 8
+
+	local progressTrack = Instance.new("Frame")
+	progressTrack.Name = "ProgressTrack"
+	progressTrack.AnchorPoint = Vector2.new(0.5, 0)
+	progressTrack.Position = UDim2.new(0.5, 0, 0, PROGRESS_Y)
+	progressTrack.Size = UDim2.new(1, 0, 0, PROGRESS_H)
+	progressTrack.BackgroundColor3 = COLOR_WOOD_DARK
+	progressTrack.BackgroundTransparency = 0.35
+	progressTrack.BorderSizePixel = 0
+	progressTrack.ZIndex = card.ZIndex + 1
+	progressTrack.Parent = card
+	local trackCorner = Instance.new("UICorner")
+	trackCorner.CornerRadius = UDim.new(0, math.floor(PROGRESS_H / 2))
+	trackCorner.Parent = progressTrack
+
+	local progressFill = Instance.new("Frame")
+	progressFill.Name = "ProgressFill"
+	progressFill.AnchorPoint = Vector2.new(0, 0.5)
+	progressFill.Position = UDim2.fromScale(0, 0.5)
+	progressFill.Size = UDim2.fromScale(0, 1)   -- D9 paints Size.X.Scale
+	progressFill.BackgroundColor3 = COLOR_PAPER_LIGHT
+	progressFill.BorderSizePixel = 0
+	progressFill.ZIndex = progressTrack.ZIndex + 1
+	progressFill.Parent = progressTrack
+	local fillCorner = Instance.new("UICorner")
+	fillCorner.CornerRadius = UDim.new(0, math.floor(PROGRESS_H / 2))
+	fillCorner.Parent = progressFill
+
+	local progressLabel = Instance.new("TextLabel")
+	progressLabel.Name = "ProgressLabel"
+	progressLabel.AnchorPoint = Vector2.new(0.5, 0)
+	progressLabel.Position = UDim2.new(0.5, 0, 0, PROGRESS_Y + PROGRESS_H + 2)
+	progressLabel.Size = UDim2.new(1, 0, 0, 12)
+	progressLabel.BackgroundTransparency = 1
+	progressLabel.Font = Enum.Font.GothamBold
+	progressLabel.TextSize = 10
+	progressLabel.TextColor3 = COLOR_WOOD_DARK
+	progressLabel.TextXAlignment = Enum.TextXAlignment.Center
+	progressLabel.Text = ""
+	progressLabel.ZIndex = card.ZIndex + 1
+	progressLabel.Parent = card
+
 	-- refs is the live handle the reactive paint path (D9) updates.
 	-- D3-D7 add nodes (iconImage, title, body, progressFill, label,
 	-- rewardLabel, trackBtn) into it.
 	local refs = {
-		card      = card,
-		iconBox   = iconBox,
-		iconImage = iconImage,
-		title     = title,
-		body      = body,
+		card          = card,
+		iconBox       = iconBox,
+		iconImage     = iconImage,
+		title         = title,
+		body          = body,
+		progressTrack = progressTrack,
+		progressFill  = progressFill,
+		progressLabel = progressLabel,
 	}
 	return card, refs
 end
