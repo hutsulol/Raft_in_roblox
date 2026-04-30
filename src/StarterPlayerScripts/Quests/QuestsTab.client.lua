@@ -309,6 +309,37 @@ local function buildCard(parent, layoutOrder)
 	rewardLabel.ZIndex = rewardRow.ZIndex + 1
 	rewardLabel.Parent = rewardRow
 
+	-- ── Track button (D7) ─────────────────────────────────────────────
+	-- Full-width button pinned to the bottom of the card. Three states
+	-- the paint path (D9) cycles through:
+	--   • "Track"        — paper-light fill, default label
+	--   • "Tracking"     — wood-dark fill, paper text (active)
+	--   • "Claim Reward" — gold-ish wood-base fill, paper text (done)
+	-- D7 here only builds the button chrome + a single text label;
+	-- state painting + click handlers land in D8/D9.
+	local trackBtn = Instance.new("TextButton")
+	trackBtn.Name = "TrackBtn"
+	trackBtn.AnchorPoint = Vector2.new(0.5, 1)
+	trackBtn.Position = UDim2.new(0.5, 0, 1, 0)
+	trackBtn.Size = UDim2.new(1, 0, 0, TRACK_BTN_H)
+	trackBtn.AutoButtonColor = false
+	trackBtn.BackgroundColor3 = COLOR_PAPER_LIGHT
+	trackBtn.BorderSizePixel = 0
+	trackBtn.Font = Enum.Font.GothamBold
+	trackBtn.TextSize = 12
+	trackBtn.TextColor3 = COLOR_WOOD_DARKEST
+	trackBtn.Text = "Track"
+	trackBtn.ZIndex = card.ZIndex + 2
+	trackBtn.Parent = card
+	local btnCorner = Instance.new("UICorner")
+	btnCorner.CornerRadius = UDim.new(0, 8)
+	btnCorner.Parent = trackBtn
+	local btnStroke = Instance.new("UIStroke")
+	btnStroke.Color = COLOR_WOOD_DARK
+	btnStroke.Thickness = 1.5
+	btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	btnStroke.Parent = trackBtn
+
 	-- refs is the live handle the reactive paint path (D9) updates.
 	-- D3-D7 add nodes (iconImage, title, body, progressFill, label,
 	-- rewardLabel, trackBtn) into it.
@@ -325,6 +356,8 @@ local function buildCard(parent, layoutOrder)
 		rewardRow     = rewardRow,
 		rewardIcon    = rewardIcon,
 		rewardLabel   = rewardLabel,
+		trackBtn      = trackBtn,
+		trackBtnStroke= btnStroke,
 	}
 	return card, refs
 end
