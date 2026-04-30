@@ -150,8 +150,136 @@ local function markDirty(player)
 	end
 end
 
+-- ─── Daily roll (C7) ────────────────────────────────────────────────
+-- Called on player join. Compares os.date('*t').yday against the
+-- player's saved lastDailyDate; if they differ, picks 4 fresh daily
+-- ids from the catalog filtered against permanentlyCompleted (so
+-- single-use crafting gates don't reappear) and clears any active
+-- entries for the OLD daily ids so the new selection is the only
+-- visible set on the Quests tab.
+--
+-- Story + challenge entries are unaffected — story is permanent, and
+-- challenges are explicitly Started/Expired by the player so they
+-- never spend a "daily slot".
+local DAILIES_PER_DAY = 4
+-- The catalog lives on _G.QuestCatalog (set by QuestCatalog.server.lua,
+-- a sibling .server.lua so they should parse before this script for
+-- alphabetical-folder-order reasons). Wait briefly + warn-fallback for
+-- the rare load-order quirk.
+local function waitForCatalog(timeoutSec)
+	local deadline = os.clock() + (timeoutSec or 5)
+	while os.clock() < deadline do
+		if _G.QuestCatalog and _G.QuestCatalog.getByKind then
+			return _G.QuestCatalog
+		end
+		task.wait(0.1)
+	end
+	return nil
+end
+
+local function rollDailiesIfNeeded(player)
+	local s = states[player]
+	if not s then return end
+
+	local today = os.date("*t").yday
+	if s.lastDailyDate == today and #s.dailySelection > 0 then
+		-- Already rolled today; keep the same selection so progress
+		-- across a relog mid-day doesn't reset.
+		return
+	end
+
+	local catalog = waitForCatalog(5)
+	if not catalog then
+		warn("[QuestState] _G.QuestCatalog never appeared; skipping daily roll for "
+			.. tostring(player.Name))
+		return
+	end
+
+	-- Build the eligibility pool: every daily entry whose id isn't
+	-- already in permanentlyCompleted. Workbench gate + future single-
+	-- use crafting dailies fall out here automatically.
+	local pool = {}
+	for _, q in ipairs(catalog.getByKind("daily")) do
+		if not s.permanentlyCompleted[q.id] then
+			table.insert(pool, q.id)
+		end
+	end
+
+	-- Shuffle (Fisher-Yates) so the same 4 don't cluster on
+	-- consecutive days, then take the first N.
+	for i = #pool, 2, -1 do
+		local j = math.random(1, i)
+		pool[i], pool[j] = pool[j], pool[i]
+	end
+
+	-- Drop any active entries from the previous day's daily set so
+	-- only the new picks show on the Quests tab. Story + challenge
+	-- active entries survive the swap.
+	for _, oldId in ipairs(s.dailySelection) do
+		s.active[oldId] = nil
+		s.pendingRewards[oldId] = nil
+	end
+
+	s.dailySelection = {}
+	for i = 1, math.min(DAILIES_PER_DAY, #pool) do
+		local id = pool[i]
+		table.insert(s.dailySelection, id)
+		-- Seed an active entry with zero-filled progress per
+		-- objective slot so the event hook in C8 has a target to
+		-- increment without re-checking the catalog every tick.
+		local def = catalog.get(id)
+		if def then
+			local progress = {}
+			for objIdx = 1, #def.objectives do
+				progress[objIdx] = 0
+			end
+			s.active[id] = {
+				progress  = progress,
+				startedAt = nil,
+				tracked   = false,
+			}
+		end
+	end
+
+	s.lastDailyDate = today
+	markDirty(player)
+end
+
+-- Story quests aren't part of the daily roll, but they DO need an
+-- active entry on first sight so the event hook (C8) can match
+-- objectives. This runs after the daily roll on first join + every
+-- relog as a no-op.
+local function ensureStoryActiveEntries(player)
+	local s = states[player]
+	if not s then return end
+	local catalog = waitForCatalog(5)
+	if not catalog then return end
+
+	for _, q in ipairs(catalog.getByKind("story")) do
+		if not s.permanentlyCompleted[q.id] and not s.active[q.id] then
+			local progress = {}
+			for objIdx = 1, #q.objectives do
+				progress[objIdx] = 0
+			end
+			s.active[q.id] = {
+				progress  = progress,
+				startedAt = nil,
+				tracked   = false,
+			}
+			markDirty(player)
+		end
+	end
+end
+
+-- Player-init helper that loadState calls into below.
+local function initPlayerQuestState(player)
+	loadState(player)
+	rollDailiesIfNeeded(player)
+	ensureStoryActiveEntries(player)
+end
+
 -- ─── Lifecycle hooks ─────────────────────────────────────────────────
-Players.PlayerAdded:Connect(loadState)
+Players.PlayerAdded:Connect(initPlayerQuestState)
 
 Players.PlayerRemoving:Connect(function(player)
 	saveState(player)
@@ -161,7 +289,7 @@ end)
 
 -- Already-in-game players (live-reload / Studio Play Solo).
 for _, player in ipairs(Players:GetPlayers()) do
-	task.spawn(loadState, player)
+	task.spawn(initPlayerQuestState, player)
 end
 
 task.spawn(function()
