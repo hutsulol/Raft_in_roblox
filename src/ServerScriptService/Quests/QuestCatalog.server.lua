@@ -82,6 +82,92 @@ addQuest({
 	permanent = true,
 })
 
+-- ─── Daily quest pool (C4) ──────────────────────────────────────────
+-- 6 candidates; the daily-roll logic in C7 will randomly pick 4 each
+-- day from this pool, filtered against the player's permanentlyCompleted
+-- set so already-crafted single-use objectives (workbench) don't
+-- re-appear.
+--
+-- Single-objective quests by design — multi-step quests live in the
+-- story arc instead. Numbers are tuned for ~5–10 minutes of casual
+-- play each, so a player who logs in once a day can plausibly clear
+-- all 4 in one session.
+addQuest({
+	id    = "daily_logs",
+	kind  = "daily",
+	title = "Fallen Branches",
+	body  = "Chop down 10 logs.",
+	icon  = "rbxassetid://121862782555497",
+	objectives = {
+		{ eventType = "resource:Log", goal = 10, label = "Chop logs" },
+	},
+	reward = { kind = "resource", name = "Log", count = 10 },
+})
+
+addQuest({
+	id    = "daily_plastic",
+	kind  = "daily",
+	title = "Plastic Patrol",
+	body  = "Fish 8 plastic canisters out of the sea.",
+	icon  = "rbxassetid://121862782555497",
+	objectives = {
+		{ eventType = "resource:Plastic", goal = 8, label = "Collect plastic" },
+	},
+	reward = { kind = "resource", name = "Plastic", count = 8 },
+})
+
+addQuest({
+	id    = "daily_leaves",
+	kind  = "daily",
+	title = "Green Harvest",
+	body  = "Gather 12 bunches of leaves.",
+	icon  = "rbxassetid://121862782555497",
+	objectives = {
+		{ eventType = "resource:Leaves", goal = 12, label = "Gather leaves" },
+	},
+	reward = { kind = "resource", name = "Leaves", count = 6 },
+})
+
+addQuest({
+	id    = "daily_stones",
+	kind  = "daily",
+	title = "Stone Cold",
+	body  = "Mine 6 stones from floating rocks.",
+	icon  = "rbxassetid://121862782555497",
+	objectives = {
+		{ eventType = "resource:Stone", goal = 6, label = "Mine stones" },
+	},
+	reward = { kind = "resource", name = "Stone", count = 6 },
+})
+
+addQuest({
+	id    = "daily_craft_workbench",
+	kind  = "daily",
+	title = "First Workshop",
+	body  = "Craft your very first workbench.",
+	icon  = "rbxassetid://121862782555497",
+	objectives = {
+		{ eventType = "crafted:Workbench", goal = 1, label = "Craft workbench" },
+	},
+	reward = { kind = "resource", name = "Log", count = 15 },
+	-- Single-use: once a player has crafted a workbench, this quest
+	-- is filtered out of every future daily roll. Other crafting-
+	-- gate dailies follow the same pattern.
+	permanent = true,
+})
+
+addQuest({
+	id    = "daily_plant_berries",
+	kind  = "daily",
+	title = "Sunny Garden",
+	body  = "Plant 5 berry bushes.",
+	icon  = "rbxassetid://121862782555497",
+	objectives = {
+		{ eventType = "planted:BerryBush", goal = 5, label = "Plant berry bushes" },
+	},
+	reward = { kind = "resource", name = "Leaves", count = 10 },
+})
+
 -- ─── Filtered views (helper queries used by QuestState in C6+) ───────
 -- Returned tables are fresh copies so callers can mutate freely.
 
