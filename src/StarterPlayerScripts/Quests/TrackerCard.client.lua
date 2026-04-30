@@ -16,6 +16,7 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
+local TweenService      = game:GetService("TweenService")
 
 local localPlayer = Players.LocalPlayer
 
@@ -228,16 +229,32 @@ local function fmtSeconds(secs)
 	return string.format("%d:%02d", m, s)
 end
 
+local wasVisible = false
 local function paint(q)
+	local previous = trackedQuest
 	trackedQuest = q
 
 	if not q then
-		screenGui.Enabled = false
+		if wasVisible then
+			-- Animate out, then hide (slideOutAndHide guards for re-entry).
+			slideOutAndHide()
+			wasVisible = false
+		else
+			screenGui.Enabled = false
+		end
 		trackedDeadline = nil
 		return
 	end
 
-	screenGui.Enabled = true
+	-- New quest tracked (or first one this session) → slide in.
+	if not previous or previous.id ~= q.id then
+		screenGui.Enabled = true
+		slideIn()
+	else
+		screenGui.Enabled = true
+	end
+	wasVisible = true
+
 	iconImage.Image = q.icon or ""
 	title.Text      = q.title or q.id or ""
 
@@ -284,6 +301,44 @@ questStateEvent.OnClientEvent:Connect(function(action, payload)
 		if q.tracked then picked = q; break end
 	end
 	paint(picked)
+end)
+
+-- ─── Click + slide animation (H6) ───────────────────────────────────
+-- Clicking anywhere on the card opens the QuestMenu via the global
+-- _G.OpenQuestMenu hook QuestEntryButton + QuestMenu publish. The
+-- slide-in/out is driven off the container's X offset: rest position
+-- is -TRACKER_MARGIN (already set), hidden position is +TRACKER_W so
+-- it tucks just past the right edge. We animate whenever paint()
+-- toggles screenGui.Enabled so the player sees the card slide in
+-- once a quest is tracked, slide out once they untrack.
+local OPEN_INFO  = TweenInfo.new(0.28, Enum.EasingStyle.Back,  Enum.EasingDirection.Out)
+local CLOSE_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad,  Enum.EasingDirection.In)
+local REST_X     = -TRACKER_MARGIN
+local HIDDEN_X   = TRACKER_W + 16
+
+local function slideIn()
+	container.Position = UDim2.new(1, HIDDEN_X, 0, TRACKER_MARGIN + 36)
+	TweenService:Create(container, OPEN_INFO,
+		{ Position = UDim2.new(1, REST_X, 0, TRACKER_MARGIN + 36) }):Play()
+end
+
+local function slideOutAndHide()
+	local tween = TweenService:Create(container, CLOSE_INFO,
+		{ Position = UDim2.new(1, HIDDEN_X, 0, TRACKER_MARGIN + 36) })
+	tween:Play()
+	tween.Completed:Connect(function()
+		-- Only hide if no tracked quest re-appeared mid-tween.
+		if not trackedQuest then
+			screenGui.Enabled = false
+		end
+	end)
+end
+
+card.Activated:Connect(function()
+	local opener = _G.OpenQuestMenu
+	if typeof(opener) == "function" then
+		pcall(opener)
+	end
 end)
 
 -- ─── Live countdown tick (H5) ───────────────────────────────────────
