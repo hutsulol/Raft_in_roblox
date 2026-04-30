@@ -126,6 +126,12 @@ recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 		recruitedCounts[player] += 1
 		recruitEvent:FireClient(player, "recruited", recruitedCounts[player])
 
+		-- Quest hook (Phase I): credit "Hire 1 mercenary" objectives.
+		-- pcall keeps a buggy quest path from breaking recruitment.
+		if typeof(_G.OnQuestEvent) == "function" then
+			pcall(_G.OnQuestEvent, player, "merc:hired", 1)
+		end
+
 		-- Track individual mercenary (one per name)
 		local folder = ensureMercenariesFolder(player)
 		local pirateName = pirate.Name
@@ -175,6 +181,11 @@ recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 		fullCapsule:SetAttribute("BloodType", pirate.Name)
 		if backpack then
 			fullCapsule.Parent = backpack
+		end
+
+		-- Quest hook (Phase I): credit "Collect 5 blood samples" objectives.
+		if typeof(_G.OnQuestEvent) == "function" then
+			pcall(_G.OnQuestEvent, player, "pirate:bloodTaken", 1)
 		end
 
 		task.spawn(fadePirate, pirate, 0, 2)
