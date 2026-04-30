@@ -121,10 +121,51 @@ local function buildCard(parent, layoutOrder)
 	cPad.PaddingRight  = UDim.new(0, 10)
 	cPad.Parent = card
 
+	-- ── Icon box (D3) ─────────────────────────────────────────────────
+	-- 80x80 square pinned to the top of the card. Slightly darker
+	-- paper fill than the card itself so the icon reads as elevated.
+	-- Quest icon is filled in by D9's paint path; for now D3 just
+	-- creates the empty box and the inner ImageLabel.
+	local ICON_BOX_SIZE = 80
+	local iconBox = Instance.new("Frame")
+	iconBox.Name = "IconBox"
+	iconBox.AnchorPoint = Vector2.new(0.5, 0)
+	iconBox.Position = UDim2.new(0.5, 0, 0, 0)
+	iconBox.Size = UDim2.fromOffset(ICON_BOX_SIZE, ICON_BOX_SIZE)
+	iconBox.BackgroundColor3 = COLOR_WOOD_BASE
+	iconBox.BackgroundTransparency = 0.45
+	iconBox.BorderSizePixel = 0
+	iconBox.ZIndex = card.ZIndex + 1
+	iconBox.Parent = card
+	local iCorner = Instance.new("UICorner")
+	iCorner.CornerRadius = UDim.new(0, 10)
+	iCorner.Parent = iconBox
+	local iStroke = Instance.new("UIStroke")
+	iStroke.Color = COLOR_WOOD_DARK
+	iStroke.Thickness = 1.5
+	iStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	iStroke.Parent = iconBox
+
+	local iconImage = Instance.new("ImageLabel")
+	iconImage.Name = "Icon"
+	iconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+	iconImage.Position = UDim2.fromScale(0.5, 0.5)
+	iconImage.Size = UDim2.new(1, -12, 1, -12)
+	iconImage.BackgroundTransparency = 1
+	iconImage.BorderSizePixel = 0
+	iconImage.Image = ""   -- D9 fills from snapshot.icon
+	iconImage.ScaleType = Enum.ScaleType.Fit
+	iconImage.ZIndex = iconBox.ZIndex + 1
+	iconImage.Parent = iconBox
+
 	-- refs is the live handle the reactive paint path (D9) updates.
 	-- D3-D7 add nodes (iconImage, title, body, progressFill, label,
 	-- rewardLabel, trackBtn) into it.
-	local refs = { card = card }
+	local refs = {
+		card      = card,
+		iconBox   = iconBox,
+		iconImage = iconImage,
+	}
 	return card, refs
 end
 
