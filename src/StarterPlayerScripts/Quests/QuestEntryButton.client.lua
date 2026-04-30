@@ -120,3 +120,33 @@ icon.ScaleType = Enum.ScaleType.Fit
 icon.ImageColor3 = Color3.new(1, 1, 1)
 icon.ZIndex = 3
 icon.Parent = button
+
+-- ─── Hover / pressed / state animation (A5 + A6) ─────────────────────
+-- UIScale on the button drives the size animation; tweening Size on a
+-- TextButton with offset coords would also work but UIScale composes
+-- cleaner with the Position offset added in A6.
+local TweenService = game:GetService("TweenService")
+
+local btnScale = Instance.new("UIScale")
+btnScale.Scale = 1
+btnScale.Parent = button
+
+local HOVER_INFO = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+
+local function setHover(isHover)
+	-- Brighten the paper fill toward paper-light + scale up slightly
+	-- so the button reads as a clear interactive element on hover.
+	TweenService:Create(button, HOVER_INFO, {
+		BackgroundColor3 = isHover and COLOR_PAPER_LIGHT or COLOR_PAPER,
+	}):Play()
+	TweenService:Create(btnScale, HOVER_INFO, {
+		Scale = isHover and 1.03 or 1.0,
+	}):Play()
+end
+
+button.MouseEnter:Connect(function()
+	setHover(true)
+end)
+button.MouseLeave:Connect(function()
+	setHover(false)
+end)
