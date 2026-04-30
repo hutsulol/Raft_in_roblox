@@ -81,11 +81,16 @@ local CLOSE_BTN_RADIUS = 8
 -- ─── Tab catalog ─────────────────────────────────────────────────────
 -- Order = vertical order in the rail. id is used as the key for the
 -- right-side content swap (B6) and the active-tab tracking (B9).
+-- Glyph + label per tab. Glyphs are Unicode (no asset id needed) and
+-- mirror the reference design's icon-on-the-left, label-on-the-right
+-- layout: a paper-scroll for the daily Quests tab, an open book for
+-- the Story arc, crossed swords for timed Challenges, a hourglass-ish
+-- counter-clockwise arrow for History.
 local TABS = {
-	{ id = "quests",     label = "Quests"     },
-	{ id = "story",      label = "Story"      },
-	{ id = "challenges", label = "Challenges" },
-	{ id = "history",    label = "History"    },
+	{ id = "quests",     label = "Quests",     glyph = "📜" },
+	{ id = "story",      label = "Story",      glyph = "📖" },
+	{ id = "challenges", label = "Challenges", glyph = "⚔" },
+	{ id = "history",    label = "History",    glyph = "↻" },
 }
 
 -- Lazy build: the ScreenGui isn't created until the menu is first
@@ -104,29 +109,31 @@ local contentPages  -- [id] = Frame; one per tab, only the active one
                     -- F / G — B6 just creates the empty container.
 
 -- ─── Tab visual states (B4) ─────────────────────────────────────────
--- Active tab: paper-light fill, wood-darkest text + a small wood-dark
--- dot to the left of the label. Reads as a "page" tab pinned to the
--- rail. Inactive tabs: fully transparent background, paper-light
--- text, no dot. Hover on inactive: paper-fill at 0.6 transparency
--- (handled at the click site) so the player gets feedback without it
--- looking like a second active tab.
+-- Active tab: paper-light fill + wood-darkest text + small wood-dark
+-- dot pinned to the *right* edge (matching the reference design).
+-- Inactive tabs: transparent background, paper-light text, no dot.
+-- Hover on inactive: paper-fill at 0.6 transparency for affordance.
 local TAB_DOT_SIZE   = 6
-local TAB_DOT_INSET  = 12   -- distance from the tab's left edge to the dot's centre
+local TAB_DOT_INSET  = 14   -- distance from the tab's right edge to the dot's centre
 
 local function paintTab(id)
 	local h = tabHandles[id]
 	if not h or not h.tile then return end
-	local tile = h.tile
-	local dot  = h.dot
+	local tile  = h.tile
+	local dot   = h.dot
+	local glyph = h.glyph
+	local label = h.label
 	if id == activeTabId then
 		tile.BackgroundTransparency = 0
-		tile.BackgroundColor3 = COLOR_PAPER_LIGHT
-		tile.TextColor3 = COLOR_WOOD_DARKEST
-		if dot then dot.Visible = true end
+		tile.BackgroundColor3       = COLOR_PAPER_LIGHT
+		if label then label.TextColor3 = COLOR_WOOD_DARKEST end
+		if glyph then glyph.TextColor3 = COLOR_WOOD_DARKEST end
+		if dot   then dot.Visible      = true               end
 	else
 		tile.BackgroundTransparency = 1
-		tile.TextColor3 = COLOR_PAPER_LIGHT
-		if dot then dot.Visible = false end
+		if label then label.TextColor3 = COLOR_PAPER_LIGHT end
+		if glyph then glyph.TextColor3 = COLOR_PAPER_LIGHT end
+		if dot   then dot.Visible      = false             end
 	end
 end
 
@@ -234,6 +241,10 @@ local function buildTabRail(parent)
 	for i, tab in ipairs(TABS) do
 		local y = TAB_LIST_TOP + (i - 1) * (TAB_HEIGHT + TAB_GAP)
 
+		-- Outer click target. Text on the button itself stays empty —
+		-- the visual content (glyph + label + dot) lives as children
+		-- so they paint independently and don't fight the button's
+		-- own auto-text-color behaviour.
 		local tile = Instance.new("TextButton")
 		tile.Name = "Tab_" .. tab.id
 		tile.AnchorPoint = Vector2.new(0, 0)
@@ -242,12 +253,7 @@ local function buildTabRail(parent)
 		tile.AutoButtonColor = false
 		tile.BackgroundTransparency = 1
 		tile.BorderSizePixel = 0
-		tile.Font = Enum.Font.GothamBold
-		tile.TextSize = 14
-		tile.TextColor3 = COLOR_PAPER_LIGHT
-		tile.TextXAlignment = Enum.TextXAlignment.Left
-		tile.TextYAlignment = Enum.TextYAlignment.Center
-		tile.Text = "    " .. tab.label   -- leading spaces leave room for the dot indicator (B5)
+		tile.Text = ""
 		tile.ZIndex = 5
 		tile.Parent = tabRail
 
@@ -255,24 +261,66 @@ local function buildTabRail(parent)
 		tCorner.CornerRadius = UDim.new(0, TAB_RADIUS)
 		tCorner.Parent = tile
 
-		-- Active-tab dot indicator. Lives inside the tile so it gets
-		-- the rail's transparent background when the tab isn't
-		-- active; paintTab toggles its Visible flag.
+		-- Glyph icon on the left of the tile. Sized to fit a 14-pt
+		-- bold font's cap height + a little headroom so the emoji-style
+		-- characters render at the same vertical centre as the label.
+		local glyph = Instance.new("TextLabel")
+		glyph.Name = "Glyph"
+		glyph.AnchorPoint = Vector2.new(0, 0.5)
+		glyph.Position = UDim2.new(0, 12, 0.5, 0)
+		glyph.Size = UDim2.fromOffset(20, 20)
+		glyph.BackgroundTransparency = 1
+		glyph.Font = Enum.Font.GothamBold
+		glyph.TextSize = 16
+		glyph.TextColor3 = COLOR_PAPER_LIGHT
+		glyph.TextXAlignment = Enum.TextXAlignment.Center
+		glyph.TextYAlignment = Enum.TextYAlignment.Center
+		glyph.Text = tab.glyph or ""
+		glyph.ZIndex = tile.ZIndex + 1
+		glyph.Parent = tile
+
+		-- Label sits to the right of the glyph and stretches to the
+		-- dot's reserve area, so a long label (e.g. "Challenges")
+		-- can't push past the dot.
+		local label = Instance.new("TextLabel")
+		label.Name = "Label"
+		label.AnchorPoint = Vector2.new(0, 0.5)
+		label.Position = UDim2.new(0, 38, 0.5, 0)
+		label.Size = UDim2.new(1, -38 - (TAB_DOT_INSET + TAB_DOT_SIZE + 4), 1, 0)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 14
+		label.TextColor3 = COLOR_PAPER_LIGHT
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.TextYAlignment = Enum.TextYAlignment.Center
+		label.TextTruncate = Enum.TextTruncate.AtEnd
+		label.Text = tab.label
+		label.ZIndex = tile.ZIndex + 1
+		label.Parent = tile
+
+		-- Active-tab dot indicator pinned to the right edge. Reads as
+		-- a "you are here" marker, matching the reference design where
+		-- the active tile shows a small dot on the right.
 		local dot = Instance.new("Frame")
 		dot.Name = "ActiveDot"
-		dot.AnchorPoint = Vector2.new(0.5, 0.5)
-		dot.Position = UDim2.new(0, TAB_DOT_INSET, 0.5, 0)
+		dot.AnchorPoint = Vector2.new(1, 0.5)
+		dot.Position = UDim2.new(1, -TAB_DOT_INSET, 0.5, 0)
 		dot.Size = UDim2.fromOffset(TAB_DOT_SIZE, TAB_DOT_SIZE)
 		dot.BackgroundColor3 = COLOR_WOOD_DARK
 		dot.BorderSizePixel = 0
 		dot.Visible = false
-		dot.ZIndex = tile.ZIndex + 1
+		dot.ZIndex = tile.ZIndex + 2
 		dot.Parent = tile
 		local dotCorner = Instance.new("UICorner")
 		dotCorner.CornerRadius = UDim.new(1, 0)
 		dotCorner.Parent = dot
 
-		tabHandles[tab.id] = { tile = tile, dot = dot }
+		tabHandles[tab.id] = {
+			tile  = tile,
+			glyph = glyph,
+			label = label,
+			dot   = dot,
+		}
 
 		tile.MouseButton1Click:Connect(function()
 			setActiveTab(tab.id)
