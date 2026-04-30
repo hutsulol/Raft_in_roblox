@@ -74,7 +74,7 @@ addQuest({
 	body  = "The sea won't feed itself. Build out the raft and stockpile.",
 	icon  = "rbxassetid://121862782555497",
 	objectives = {
-		{ eventType = "crafted:Workbench",  goal = 1,  label = "Craft a workbench" },
+		{ eventType = "crafted:WorkBench",  goal = 1,  label = "Craft a workbench" },
 		{ eventType = "crafted:WallPanel",  goal = 4,  label = "Build 4 wall panels" },
 		{ eventType = "resource:Log",       goal = 50, label = "Stockpile 50 logs" },
 	},
@@ -147,7 +147,7 @@ addQuest({
 	body  = "Craft your very first workbench.",
 	icon  = "rbxassetid://121862782555497",
 	objectives = {
-		{ eventType = "crafted:Workbench", goal = 1, label = "Craft workbench" },
+		{ eventType = "crafted:WorkBench", goal = 1, label = "Craft workbench" },
 	},
 	reward = { kind = "resource", name = "Log", count = 15 },
 	-- Single-use: once a player has crafted a workbench, this quest

@@ -317,5 +317,13 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 		_G.SendInventory(player)
 	end
 
+	-- Quest hook (Phase I): credit any "crafted:<name>" objectives. We
+	-- fire the recipe name verbatim so future quests that gate on a
+	-- new recipe just need to add it to the catalog without touching
+	-- this dispatch.
+	if typeof(_G.OnQuestEvent) == "function" then
+		pcall(_G.OnQuestEvent, player, "crafted:" .. recipe.name, 1)
+	end
+
 	inventoryCraftEvent:FireClient(player, "success", recipe.name)
 end)
