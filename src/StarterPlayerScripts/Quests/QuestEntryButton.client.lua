@@ -87,3 +87,23 @@ hStroke.Color = Color3.fromRGB(255, 255, 255)
 hStroke.Thickness = 1
 hStroke.Transparency = 0.82
 hStroke.Parent = highlight
+
+-- ─── Quest icon (A3) ────────────────────────────────────────────────
+-- Asset supplied by the user. Inset 8 px on every side so the artwork
+-- breathes inside the wood frame and the inner highlight stroke stays
+-- visible around it.
+local QUEST_ICON_ASSET = "rbxassetid://121862782555497"
+local ICON_INSET = 8
+
+local icon = Instance.new("ImageLabel")
+icon.Name = "QuestIcon"
+icon.AnchorPoint = Vector2.new(0.5, 0.5)
+icon.Position = UDim2.fromScale(0.5, 0.5)
+icon.Size = UDim2.new(1, -ICON_INSET * 2, 1, -ICON_INSET * 2)
+icon.BackgroundTransparency = 1
+icon.BorderSizePixel = 0
+icon.Image = QUEST_ICON_ASSET
+icon.ScaleType = Enum.ScaleType.Fit
+icon.ImageColor3 = Color3.new(1, 1, 1)
+icon.ZIndex = 3
+icon.Parent = button
