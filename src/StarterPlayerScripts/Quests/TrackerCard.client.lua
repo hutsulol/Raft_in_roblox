@@ -58,6 +58,48 @@ container.BackgroundTransparency = 1
 container.BorderSizePixel = 0
 container.Parent = screenGui
 
+-- ─── Card chrome (H2) ───────────────────────────────────────────────
+-- Same wood/paper palette as the menu cards so the tracker reads as
+-- "this is a quest UI". The card is a TextButton (not a Frame) so
+-- H6 can wire the click-to-open-menu action to the whole surface
+-- without a fragile MouseButton1 hit on a child object.
+local COLOR_WOOD_DARKEST = Color3.fromRGB( 61,  40,  23)
+local COLOR_WOOD_DARK    = Color3.fromRGB( 91,  58,  34)
+local COLOR_WOOD_MID     = Color3.fromRGB(138, 106,  68)
+local COLOR_WOOD_BASE    = Color3.fromRGB(176, 138,  92)
+local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
+local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
+local COLOR_PROGRESS     = Color3.fromRGB(126, 175,  90)
+local COLOR_TIMER        = Color3.fromRGB(178,  79,  64)
+
+local card = Instance.new("TextButton")
+card.Name = "Card"
+card.AutoButtonColor = false
+card.Size = UDim2.fromScale(1, 1)
+card.BackgroundColor3 = COLOR_PAPER
+card.BackgroundTransparency = 0.05
+card.BorderSizePixel = 0
+card.Text = ""   -- click target only, no text on the button itself
+card.ZIndex = 1
+card.Parent = container
+
+local cCorner = Instance.new("UICorner")
+cCorner.CornerRadius = UDim.new(0, 10)
+cCorner.Parent = card
+
+local cStroke = Instance.new("UIStroke")
+cStroke.Color = COLOR_WOOD_DARK
+cStroke.Thickness = 2
+cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+cStroke.Parent = card
+
+local cPad = Instance.new("UIPadding")
+cPad.PaddingTop    = UDim.new(0, 8)
+cPad.PaddingBottom = UDim.new(0, 8)
+cPad.PaddingLeft   = UDim.new(0, 10)
+cPad.PaddingRight  = UDim.new(0, 10)
+cPad.Parent = card
+
 local questStateEvent = waitForQuestStateEvent(30)
 if not questStateEvent then
 	warn("[TrackerCard] QuestState RemoteEvent missing; tracker disabled")
