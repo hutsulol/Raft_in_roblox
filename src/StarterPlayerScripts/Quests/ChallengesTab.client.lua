@@ -219,7 +219,46 @@ local function buildCard(parent, layoutOrder)
 	progressLabel.ZIndex = card.ZIndex + 1
 	progressLabel.Parent = card
 
-	-- F6-F7 layer timer / footer onto refs.
+	-- ── Timer (F6) ────────────────────────────────────────────────────
+	-- Top-right of the card. Reads "0:30" when idle (the catalog
+	-- duration), "0:23" while counting down, "Done!" when the player
+	-- has hit the goal but not claimed yet. F10 drives the live
+	-- countdown via RunService.Heartbeat.
+	local timerBox = Instance.new("Frame")
+	timerBox.Name = "TimerBox"
+	timerBox.AnchorPoint = Vector2.new(1, 0)
+	timerBox.Position = UDim2.new(1, 0, 0, 0)
+	timerBox.Size = UDim2.fromOffset(76, 36)
+	timerBox.BackgroundColor3 = COLOR_PAPER_LIGHT
+	timerBox.BackgroundTransparency = 0.25
+	timerBox.BorderSizePixel = 0
+	timerBox.ZIndex = card.ZIndex + 1
+	timerBox.Parent = card
+	local tCorner = Instance.new("UICorner")
+	tCorner.CornerRadius = UDim.new(0, 8)
+	tCorner.Parent = timerBox
+	local tStroke = Instance.new("UIStroke")
+	tStroke.Color = COLOR_WOOD_DARK
+	tStroke.Thickness = 1
+	tStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	tStroke.Parent = timerBox
+
+	local timerLabel = Instance.new("TextLabel")
+	timerLabel.Name = "TimerLabel"
+	timerLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+	timerLabel.Position = UDim2.fromScale(0.5, 0.5)
+	timerLabel.Size = UDim2.fromScale(1, 1)
+	timerLabel.BackgroundTransparency = 1
+	timerLabel.Font = Enum.Font.GothamBold
+	timerLabel.TextSize = 16
+	timerLabel.TextColor3 = COLOR_WOOD_DARKEST
+	timerLabel.TextXAlignment = Enum.TextXAlignment.Center
+	timerLabel.TextYAlignment = Enum.TextYAlignment.Center
+	timerLabel.Text = "0:00"
+	timerLabel.ZIndex = timerBox.ZIndex + 1
+	timerLabel.Parent = timerBox
+
+	-- F7 layers footer onto refs.
 	local refs = {
 		card          = card,
 		iconImage     = iconImage,
@@ -228,6 +267,8 @@ local function buildCard(parent, layoutOrder)
 		progressTrack = progressTrack,
 		progressFill  = progressFill,
 		progressLabel = progressLabel,
+		timerBox      = timerBox,
+		timerLabel    = timerLabel,
 	}
 	return card, refs
 end
