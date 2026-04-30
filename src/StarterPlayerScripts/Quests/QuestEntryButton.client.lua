@@ -21,17 +21,17 @@ local playerGui = player:WaitForChild("PlayerGui")
 
 local SCREENGUI_DISPLAY_ORDER = 90
 
--- ─── Wood/paper palette (matches the Onboarding tooltip + the
--- design mockup so the entire quest UI reads as one set) ──────────────
+-- ─── Wood-darkest is reused for the hover label pill (A10) — every
+-- other wood/paper colour the original chrome used was deleted along
+-- with the chrome itself when we switched to the bare icon asset.
 local COLOR_WOOD_DARKEST = Color3.fromRGB( 61,  40,  23)
-local COLOR_WOOD_DARK    = Color3.fromRGB( 91,  58,  34)
-local COLOR_WOOD_MID     = Color3.fromRGB(138, 106,  68)
-local COLOR_WOOD_BASE    = Color3.fromRGB(176, 138,  92)
-local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
 local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
 
-local BTN_SIZE      = 56
-local BTN_RADIUS    = 12
+-- The icon asset already ships its own wood-frame + paper background,
+-- so the click-target is a plain ImageButton — no UICorner / UIStroke
+-- / paper fill / inner highlight on our side. Larger than the original
+-- 56-px chrome'd version so the baked-in frame reads at HUD distance.
+local BTN_SIZE      = 78
 -- Anchored to the LEFT EDGE, vertically centred. Centring along the
 -- mid-Y keeps us clear of the Roblox top-bar (chat / menu / Roblox
 -- icon at the top-left) and the player stat bars (HP / hunger / XP
@@ -50,81 +50,30 @@ screenGui.DisplayOrder = SCREENGUI_DISPLAY_ORDER
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 screenGui.Parent = playerGui
 
--- ─── Button frame (A2) ──────────────────────────────────────────────
--- Wood-base TextButton acts as the click-target + outer chrome. The
--- icon glyph (A3) and badge (A7) parent into this. Position is set in
--- A4; for now we place it at (16, 96) so it's visible during testing
--- without colliding with the Roblox top-bar.
-local button = Instance.new("TextButton")
+-- ─── Quest entry button (just the icon) ─────────────────────────────
+-- The supplied asset is a self-contained icon (wood frame + scroll +
+-- emerald are baked in), so we render it as a plain ImageButton with
+-- no surrounding chrome. Hover / press feel comes from UIScale + Y
+-- offset only — there's no fill colour to brighten anymore.
+local QUEST_ICON_ASSET = "rbxassetid://121862782555497"
+
+local button = Instance.new("ImageButton")
 button.Name = "QuestButton"
--- Left-anchor + scale-Y mid so the button always parks in the empty
--- slab between the Roblox top-bar and the player stat HUD regardless
--- of viewport height. AnchorPoint (0, 0.5) means Y position 0.5 puts
--- the button's centre exactly on the screen's midline.
 button.AnchorPoint = Vector2.new(0, 0.5)
 button.Position = UDim2.new(0, BTN_MARGIN_X, BTN_ANCHOR_Y, 0)
 button.Size = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
-button.BackgroundColor3 = COLOR_PAPER
+button.BackgroundTransparency = 1
 button.BorderSizePixel = 0
 button.AutoButtonColor = false
-button.Text = ""
+button.Image = QUEST_ICON_ASSET
+button.ScaleType = Enum.ScaleType.Fit
 button.ZIndex = 1
 button.Parent = screenGui
 
-local btnCorner = Instance.new("UICorner")
-btnCorner.CornerRadius = UDim.new(0, BTN_RADIUS)
-btnCorner.Parent = button
-
-local btnStroke = Instance.new("UIStroke")
-btnStroke.Color = COLOR_WOOD_DARK
-btnStroke.Thickness = 2
-btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-btnStroke.Parent = button
-
--- Inner highlight (mockup's ::before trick): 1 px white-18% inset
--- stroke 2 px from the outer border so the button feels raised.
-local highlight = Instance.new("Frame")
-highlight.Name = "InnerHighlight"
-highlight.AnchorPoint = Vector2.new(0.5, 0.5)
-highlight.Position = UDim2.fromScale(0.5, 0.5)
-highlight.Size = UDim2.new(1, -4, 1, -4)
-highlight.BackgroundTransparency = 1
-highlight.BorderSizePixel = 0
-highlight.ZIndex = 2
-highlight.Parent = button
-local hCorner = Instance.new("UICorner")
-hCorner.CornerRadius = UDim.new(0, BTN_RADIUS - 2)
-hCorner.Parent = highlight
-local hStroke = Instance.new("UIStroke")
-hStroke.Color = Color3.fromRGB(255, 255, 255)
-hStroke.Thickness = 1
-hStroke.Transparency = 0.82
-hStroke.Parent = highlight
-
--- ─── Quest icon (A3) ────────────────────────────────────────────────
--- Asset supplied by the user. Inset 8 px on every side so the artwork
--- breathes inside the wood frame and the inner highlight stroke stays
--- visible around it.
-local QUEST_ICON_ASSET = "rbxassetid://121862782555497"
-local ICON_INSET = 8
-
-local icon = Instance.new("ImageLabel")
-icon.Name = "QuestIcon"
-icon.AnchorPoint = Vector2.new(0.5, 0.5)
-icon.Position = UDim2.fromScale(0.5, 0.5)
-icon.Size = UDim2.new(1, -ICON_INSET * 2, 1, -ICON_INSET * 2)
-icon.BackgroundTransparency = 1
-icon.BorderSizePixel = 0
-icon.Image = QUEST_ICON_ASSET
-icon.ScaleType = Enum.ScaleType.Fit
-icon.ImageColor3 = Color3.new(1, 1, 1)
-icon.ZIndex = 3
-icon.Parent = button
-
--- ─── Hover / pressed / state animation (A5 + A6) ─────────────────────
--- UIScale on the button drives the size animation; tweening Size on a
--- TextButton with offset coords would also work but UIScale composes
--- cleaner with the Position offset added in A6.
+-- ─── Hover / pressed state animation (A5 + A6) ──────────────────────
+-- UIScale drives the bounce; UIScale composes cleanly with the
+-- Position offset added in the press path so the two states don't
+-- fight over the same property.
 local TweenService = game:GetService("TweenService")
 
 local btnScale = Instance.new("UIScale")
@@ -134,13 +83,11 @@ btnScale.Parent = button
 local HOVER_INFO = TweenInfo.new(0.12, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 
 local function setHover(isHover)
-	-- Brighten the paper fill toward paper-light + scale up slightly
-	-- so the button reads as a clear interactive element on hover.
-	TweenService:Create(button, HOVER_INFO, {
-		BackgroundColor3 = isHover and COLOR_PAPER_LIGHT or COLOR_PAPER,
-	}):Play()
+	-- Hover scales up slightly so the button reads as interactive.
+	-- No more "brighten fill" tween — there's no fill anymore now
+	-- that the wood frame moved into the asset itself.
 	TweenService:Create(btnScale, HOVER_INFO, {
-		Scale = isHover and 1.03 or 1.0,
+		Scale = isHover and 1.05 or 1.0,
 	}):Play()
 end
 
