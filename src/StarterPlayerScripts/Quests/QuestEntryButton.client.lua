@@ -30,8 +30,17 @@ local COLOR_WOOD_BASE    = Color3.fromRGB(176, 138,  92)
 local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
 local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
 
-local BTN_SIZE   = 56
-local BTN_RADIUS = 12
+local BTN_SIZE      = 56
+local BTN_RADIUS    = 12
+-- Anchored to the LEFT EDGE, vertically centred. Centring along the
+-- mid-Y keeps us clear of the Roblox top-bar (chat / menu / Roblox
+-- icon at the top-left) and the player stat bars (HP / hunger / XP
+-- pinned at the bottom-left in this game's HUD), regardless of
+-- viewport height — the button always sits in the empty slab of
+-- screen between them. 16-px X margin matches the inventory tooltip
+-- gap so the left HUD reads consistently.
+local BTN_MARGIN_X  = 16
+local BTN_ANCHOR_Y  = 0.5   -- scale; mid-screen vertically
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "QuestEntryGui"
@@ -48,8 +57,12 @@ screenGui.Parent = playerGui
 -- without colliding with the Roblox top-bar.
 local button = Instance.new("TextButton")
 button.Name = "QuestButton"
-button.AnchorPoint = Vector2.new(0, 0)
-button.Position = UDim2.fromOffset(16, 96)
+-- Left-anchor + scale-Y mid so the button always parks in the empty
+-- slab between the Roblox top-bar and the player stat HUD regardless
+-- of viewport height. AnchorPoint (0, 0.5) means Y position 0.5 puts
+-- the button's centre exactly on the screen's midline.
+button.AnchorPoint = Vector2.new(0, 0.5)
+button.Position = UDim2.new(0, BTN_MARGIN_X, BTN_ANCHOR_Y, 0)
 button.Size = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
 button.BackgroundColor3 = COLOR_PAPER
 button.BorderSizePixel = 0
