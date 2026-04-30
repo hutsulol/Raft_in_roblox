@@ -51,6 +51,27 @@ local states = {}    -- [player] = state table
 local dirty  = {}    -- [player] = true when in-memory state has
                      -- diverged from the last persisted snapshot
 
+-- Forward-declared so onQuestEvent (defined further down) can push
+-- a snapshot to the client whenever progress changes. The actual
+-- function body lives further down next to buildSnapshot — this
+-- declaration is just a placeholder so the upvalue resolves.
+local fireSnapshot
+
+-- Coalesces multiple onQuestEvent calls in the same frame into a
+-- single snapshot push. Without this, chopping 10 logs would push
+-- 10 separate state events.
+local snapshotPending = {}
+local function schedulePush(player)
+	if snapshotPending[player] then return end
+	snapshotPending[player] = true
+	task.defer(function()
+		snapshotPending[player] = nil
+		if states[player] and fireSnapshot then
+			fireSnapshot(player)
+		end
+	end)
+end
+
 local function freshState()
 	return {
 		active               = {},   -- [questId] = { progress, startedAt, tracked }
@@ -383,6 +404,10 @@ local function onQuestEvent(player, eventType, count)
 
 	if stateChanged then
 		markDirty(player)
+		-- Push the new state to the client so the menu's progress bars
+		-- update live. schedulePush coalesces multiple events in the
+		-- same frame into one snapshot.
+		schedulePush(player)
 	end
 end
 
@@ -553,7 +578,7 @@ local function buildSnapshot(player)
 	}
 end
 
-local function fireSnapshot(player)
+function fireSnapshot(player)
 	event:FireClient(player, "state", buildSnapshot(player))
 end
 
