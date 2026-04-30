@@ -412,6 +412,12 @@ local function applyStudyTick(player, mercName, mercState)
 		barCompleted = barCompleted,
 	})
 	dnaEvent:FireClient(player, "state", mercName, snapshot)
+
+	-- Quest hook (Phase I): credit "Analyse a mercenary's DNA" objectives.
+	-- One credit per study completion regardless of which stat advanced.
+	if typeof(_G.OnQuestEvent) == "function" then
+		pcall(_G.OnQuestEvent, player, "dna:analyzed", 1)
+	end
 end
 
 task.spawn(function()
