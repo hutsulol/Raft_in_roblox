@@ -258,17 +258,104 @@ local function buildCard(parent, layoutOrder)
 	timerLabel.ZIndex = timerBox.ZIndex + 1
 	timerLabel.Parent = timerBox
 
-	-- F7 layers footer onto refs.
+	-- ── Footer: reward + action button (F7) ───────────────────────────
+	-- Reward stays compact on the left (icon + count); action button
+	-- on the right cycles Start → Tracking → Claim depending on the
+	-- challenge's current state.
+	local FOOTER_Y = 90 - 10  -- 80; relative to padded inner area
+	local rewardRow = Instance.new("Frame")
+	rewardRow.Name = "RewardRow"
+	rewardRow.AnchorPoint = Vector2.new(0, 1)
+	rewardRow.Position = UDim2.new(0, 0, 1, 0)
+	rewardRow.Size = UDim2.new(1, -130, 0, 22)
+	rewardRow.BackgroundTransparency = 1
+	rewardRow.ZIndex = card.ZIndex + 1
+	rewardRow.Parent = card
+
+	local rwLayout = Instance.new("UIListLayout")
+	rwLayout.FillDirection = Enum.FillDirection.Horizontal
+	rwLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	rwLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+	rwLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	rwLayout.Padding = UDim.new(0, 6)
+	rwLayout.Parent = rewardRow
+
+	local rewardCaption = Instance.new("TextLabel")
+	rewardCaption.Name = "RewardCaption"
+	rewardCaption.LayoutOrder = 1
+	rewardCaption.Size = UDim2.fromOffset(50, 22)
+	rewardCaption.BackgroundTransparency = 1
+	rewardCaption.Font = Enum.Font.Gotham
+	rewardCaption.TextSize = 11
+	rewardCaption.TextColor3 = COLOR_WOOD_MID
+	rewardCaption.TextXAlignment = Enum.TextXAlignment.Left
+	rewardCaption.Text = "Reward"
+	rewardCaption.ZIndex = rewardRow.ZIndex + 1
+	rewardCaption.Parent = rewardRow
+
+	local rewardIcon = Instance.new("ImageLabel")
+	rewardIcon.Name = "RewardIcon"
+	rewardIcon.LayoutOrder = 2
+	rewardIcon.Size = UDim2.fromOffset(22, 22)
+	rewardIcon.BackgroundTransparency = 1
+	rewardIcon.ScaleType = Enum.ScaleType.Fit
+	rewardIcon.Image = ""
+	rewardIcon.ZIndex = rewardRow.ZIndex + 1
+	rewardIcon.Parent = rewardRow
+
+	local rewardLabel = Instance.new("TextLabel")
+	rewardLabel.Name = "RewardLabel"
+	rewardLabel.LayoutOrder = 3
+	rewardLabel.Size = UDim2.new(0, 0, 1, 0)
+	rewardLabel.AutomaticSize = Enum.AutomaticSize.X
+	rewardLabel.BackgroundTransparency = 1
+	rewardLabel.Font = Enum.Font.GothamBold
+	rewardLabel.TextSize = 14
+	rewardLabel.TextColor3 = COLOR_WOOD_DARKEST
+	rewardLabel.TextXAlignment = Enum.TextXAlignment.Left
+	rewardLabel.TextYAlignment = Enum.TextYAlignment.Center
+	rewardLabel.Text = ""
+	rewardLabel.ZIndex = rewardRow.ZIndex + 1
+	rewardLabel.Parent = rewardRow
+
+	local actionBtn = Instance.new("TextButton")
+	actionBtn.Name = "ActionBtn"
+	actionBtn.AnchorPoint = Vector2.new(1, 1)
+	actionBtn.Position = UDim2.new(1, 0, 1, 0)
+	actionBtn.Size = UDim2.fromOffset(120, 30)
+	actionBtn.AutoButtonColor = false
+	actionBtn.BackgroundColor3 = COLOR_PAPER_LIGHT
+	actionBtn.BorderSizePixel = 0
+	actionBtn.Font = Enum.Font.GothamBold
+	actionBtn.TextSize = 13
+	actionBtn.TextColor3 = COLOR_WOOD_DARKEST
+	actionBtn.Text = "▶ Start"
+	actionBtn.ZIndex = card.ZIndex + 2
+	actionBtn.Parent = card
+	local btnCorner = Instance.new("UICorner")
+	btnCorner.CornerRadius = UDim.new(0, 8)
+	btnCorner.Parent = actionBtn
+	local btnStroke = Instance.new("UIStroke")
+	btnStroke.Color = COLOR_WOOD_DARK
+	btnStroke.Thickness = 1.5
+	btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	btnStroke.Parent = actionBtn
+
 	local refs = {
-		card          = card,
-		iconImage     = iconImage,
-		title         = title,
-		body          = body,
-		progressTrack = progressTrack,
-		progressFill  = progressFill,
-		progressLabel = progressLabel,
-		timerBox      = timerBox,
-		timerLabel    = timerLabel,
+		card           = card,
+		iconImage      = iconImage,
+		title          = title,
+		body           = body,
+		progressTrack  = progressTrack,
+		progressFill   = progressFill,
+		progressLabel  = progressLabel,
+		timerBox       = timerBox,
+		timerLabel     = timerLabel,
+		rewardCaption  = rewardCaption,
+		rewardIcon     = rewardIcon,
+		rewardLabel    = rewardLabel,
+		actionBtn      = actionBtn,
+		actionBtnStroke= btnStroke,
 	}
 	return card, refs
 end
