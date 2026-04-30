@@ -396,18 +396,24 @@ local function buildCard(parent, layoutOrder)
 	return card, refs
 end
 
+print("[QuestsTab] script started")
+
 local mountPoint = waitForMountPoint(30)
 if not mountPoint then
 	warn("[QuestsTab] _G.QuestMenuContentPages.quests not available within 30 s; tab disabled")
 	return
 end
+print("[QuestsTab] mount point resolved:", mountPoint:GetFullName())
+
 questStateEvent = waitForQuestStateEvent(30)
 if not questStateEvent then
 	warn("[QuestsTab] QuestState RemoteEvent missing; tab disabled")
 	return
 end
+print("[QuestsTab] QuestState RemoteEvent resolved")
 
 local scrollFrame = mount(mountPoint)
+print("[QuestsTab] scroll frame mounted")
 
 -- ─── Empty state (D10) ──────────────────────────────────────────────
 -- Sits as a sibling of the scroll frame so the UIGridLayout inside
@@ -535,11 +541,20 @@ local function repaint(payload)
 end
 
 questStateEvent.OnClientEvent:Connect(function(action, payload)
+	print(string.format("[QuestsTab] OnClientEvent action=%s type=%s",
+		tostring(action), type(payload)))
 	if action ~= "state" then return end
 	if type(payload) ~= "table" then return end
+	local total = #(payload.quests or {})
+	local dailies = 0
+	for _, q in ipairs(payload.quests or {}) do
+		if q.kind == "daily" then dailies = dailies + 1 end
+	end
+	print(string.format("[QuestsTab] state: %d total quests, %d daily", total, dailies))
 	repaint(payload)
 end)
 
 -- Request initial state on mount in case the server's PlayerAdded
 -- snapshot fired before this LocalScript was ready.
+print("[QuestsTab] firing getState to server")
 questStateEvent:FireServer("getState")
