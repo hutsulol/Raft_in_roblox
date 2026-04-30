@@ -182,19 +182,22 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	furnace:PivotTo(worldCF)
 	furnace.Parent = raft
 
-	-- Velocity snapshot/restore around the welds so placing the
-	-- furnace doesn't bob the raft (T13).
+	-- Velocity snapshot + weld-then-unanchor (T13 + T15).
 	local primary = raft.PrimaryPart
 	local linVel = primary.AssemblyLinearVelocity
 	local angVel = primary.AssemblyAngularVelocity
 
 	for _, part in furnace:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.Anchored = false
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart
 			weld.Parent = part
+		end
+	end
+	for _, part in furnace:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
 		end
 	end
 

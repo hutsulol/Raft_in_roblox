@@ -201,7 +201,12 @@ local function swapPurifierModel(purifier)
 		purifier:PivotTo(savedCF)
 	end
 
-	-- Weld + unanchor.
+	-- Weld FIRST while every part is still anchored, THEN unanchor in
+	-- a second pass (T15). Unanchoring first leaves each part as a
+	-- zero-velocity free body that the weld's solver has to equalise
+	-- against the moving raft, and that drain is what kicks the
+	-- buoyancy spring into a bob with multi-part models like the
+	-- Destitalor.
 	if raftPrimary then
 		for _, part in purifier:GetDescendants() do
 			if part:IsA("BasePart") then
@@ -209,6 +214,10 @@ local function swapPurifierModel(purifier)
 				weld.Part0 = part
 				weld.Part1 = raftPrimary
 				weld.Parent = part
+			end
+		end
+		for _, part in purifier:GetDescendants() do
+			if part:IsA("BasePart") then
 				part.Anchored = false
 			end
 		end
@@ -393,18 +402,30 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		-- Same velocity-preservation pattern as the workbench branch
 		-- above so placing the purifier doesn't kick the raft's vertical
-		-- buoyancy out of equilibrium.
+		-- buoyancy out of equilibrium. Weld FIRST while every part is
+		-- still anchored, THEN unanchor in a second pass (T15) — if we
+		-- unanchor first, each part briefly exists as a free body with
+		-- zero velocity, and the weld's constraint solver then drains
+		-- momentum out of the moving raft to equalise. With ~10 parts
+		-- in the Destitalor model that drain is large enough that the
+		-- buoyancy spring overshoots and the raft bobs under the player.
 		local primary = raft.PrimaryPart
 		local linVel = primary.AssemblyLinearVelocity
 		local angVel = primary.AssemblyAngularVelocity
 
+		-- Pass 1: weld every part to the raft while still anchored.
 		for _, part in purifier:GetDescendants() do
 			if part:IsA("BasePart") then
-				part.Anchored = false
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = part
+			end
+		end
+		-- Pass 2: unanchor (parts inherit raft velocity via the weld).
+		for _, part in purifier:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.Anchored = false
 			end
 		end
 
@@ -440,25 +461,26 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		workbench:PivotTo(worldCF)
 		workbench.Parent = raft
 
-		-- Snapshot raft velocity before the weld so adding the workbench
-		-- doesn't perturb the raft's motion. Welding a new mass-bearing
-		-- part into a moving assembly causes Roblox to equilibrate
-		-- momentum (V_new = M*V/(M+m)), which leaves the buoyancy
-		-- spring with a velocity error and kicks off a vertical bob
-		-- that takes ~10 s to damp out. Mirrors BuildingSystem's
-		-- placeWithVelocityPreserved.
+		-- Snapshot raft velocity + weld-then-unanchor (T13/T15) so adding
+		-- the workbench doesn't perturb the raft's motion. Welding while
+		-- still anchored has the parts inherit the raft's velocity
+		-- through the constraint instead of forcing the solver to
+		-- equalise from a free-body zero-velocity state.
 		local primary = raft.PrimaryPart
 		local linVel = primary.AssemblyLinearVelocity
 		local angVel = primary.AssemblyAngularVelocity
 
-		-- Weld to raft
 		for _, part in workbench:GetDescendants() do
 			if part:IsA("BasePart") then
-				part.Anchored = false
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = part
+			end
+		end
+		for _, part in workbench:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.Anchored = false
 			end
 		end
 

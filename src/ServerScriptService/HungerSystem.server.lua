@@ -345,19 +345,22 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			pcall(_G.OnQuestEvent, player, "planted:BerryBush", 1)
 		end
 
-		-- Velocity snapshot/restore around the welds so planting the
-		-- bush doesn't kick the raft into a vertical bob (T13).
+		-- Velocity snapshot + weld-then-unanchor (T13 + T15).
 		local primary = raft.PrimaryPart
 		local linVel = primary.AssemblyLinearVelocity
 		local angVel = primary.AssemblyAngularVelocity
 
 		for _, part in bush:GetDescendants() do
 			if part:IsA("BasePart") then
-				part.Anchored = false
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = part
+			end
+		end
+		for _, part in bush:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.Anchored = false
 			end
 		end
 

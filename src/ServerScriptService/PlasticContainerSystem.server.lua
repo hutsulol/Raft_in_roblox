@@ -203,19 +203,22 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	container:PivotTo(worldCF)
 	container.Parent = raft
 
-	-- Velocity snapshot/restore so welding doesn't bleed momentum out of
-	-- the raft assembly and trigger a vertical bounce (T13).
+	-- Velocity snapshot + weld-then-unanchor (T13 + T15).
 	local primary = raft.PrimaryPart
 	local linVel = primary.AssemblyLinearVelocity
 	local angVel = primary.AssemblyAngularVelocity
 
 	for _, part in container:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.Anchored = false
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart
 			weld.Parent = part
+		end
+	end
+	for _, part in container:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
 		end
 	end
 

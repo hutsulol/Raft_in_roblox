@@ -140,6 +140,9 @@ local function swapContainerModel(container)
 		container:PivotTo(savedCF)
 	end
 
+	-- Weld FIRST while still anchored, THEN unanchor (T15) so the
+	-- new parts inherit the raft's velocity via the weld instead of
+	-- the solver having to equalise from a zero-velocity free body.
 	local storage = container:FindFirstChild("StoredTools")
 	if raftPrimary then
 		for _, part in container:GetDescendants() do
@@ -148,6 +151,10 @@ local function swapContainerModel(container)
 				weld.Part0 = part
 				weld.Part1 = raftPrimary
 				weld.Parent = part
+			end
+		end
+		for _, part in container:GetDescendants() do
+			if part:IsA("BasePart") and not (storage and part:IsDescendantOf(storage)) then
 				part.Anchored = false
 			end
 		end
@@ -337,18 +344,22 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	container:PivotTo(worldCF)
 	container.Parent = raft
 
-	-- Velocity snapshot/restore around the placement weld (T13).
+	-- Velocity snapshot + weld-then-unanchor (T13 + T15).
 	local primary = raft.PrimaryPart
 	local linVel = primary.AssemblyLinearVelocity
 	local angVel = primary.AssemblyAngularVelocity
 
 	for _, part in container:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.Anchored = false
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart
 			weld.Parent = part
+		end
+	end
+	for _, part in container:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
 		end
 	end
 
