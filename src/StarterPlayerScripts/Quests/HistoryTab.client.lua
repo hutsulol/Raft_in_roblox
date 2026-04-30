@@ -76,6 +76,99 @@ local function mount(parent)
 	return scroll
 end
 
+-- ─── Single history row (G2) ────────────────────────────────────────
+-- Compact horizontal layout: icon on the left, title + relative
+-- timestamp stacked in the middle, reward on the right. Returned
+-- refs let G4's paint path overwrite text + image without rebuilding.
+local ROW_HEIGHT = 44
+local function buildRow(parent, layoutOrder)
+	local row = Instance.new("Frame")
+	row.Name = "HistoryRow"
+	row.LayoutOrder = layoutOrder or 0
+	row.Size = UDim2.new(1, 0, 0, ROW_HEIGHT)
+	row.BackgroundColor3 = COLOR_PAPER_LIGHT
+	row.BackgroundTransparency = 0.35
+	row.BorderSizePixel = 0
+	row.ZIndex = 7
+	row.Parent = parent
+
+	local rCorner = Instance.new("UICorner")
+	rCorner.CornerRadius = UDim.new(0, 8)
+	rCorner.Parent = row
+
+	local rPad = Instance.new("UIPadding")
+	rPad.PaddingTop    = UDim.new(0, 6)
+	rPad.PaddingBottom = UDim.new(0, 6)
+	rPad.PaddingLeft   = UDim.new(0, 8)
+	rPad.PaddingRight  = UDim.new(0, 8)
+	rPad.Parent = row
+
+	local iconImage = Instance.new("ImageLabel")
+	iconImage.Name = "Icon"
+	iconImage.AnchorPoint = Vector2.new(0, 0.5)
+	iconImage.Position = UDim2.new(0, 0, 0.5, 0)
+	iconImage.Size = UDim2.fromOffset(32, 32)
+	iconImage.BackgroundTransparency = 1
+	iconImage.ScaleType = Enum.ScaleType.Fit
+	iconImage.Image = ""
+	iconImage.ZIndex = row.ZIndex + 1
+	iconImage.Parent = row
+
+	local title = Instance.new("TextLabel")
+	title.Name = "Title"
+	title.AnchorPoint = Vector2.new(0, 0)
+	title.Position = UDim2.new(0, 40, 0, 0)
+	title.Size = UDim2.new(1, -40 - 110, 0, 18)
+	title.BackgroundTransparency = 1
+	title.Font = Enum.Font.GothamBold
+	title.TextSize = 13
+	title.TextColor3 = COLOR_WOOD_DARKEST
+	title.TextXAlignment = Enum.TextXAlignment.Left
+	title.TextYAlignment = Enum.TextYAlignment.Center
+	title.TextTruncate = Enum.TextTruncate.AtEnd
+	title.Text = ""
+	title.ZIndex = row.ZIndex + 1
+	title.Parent = row
+
+	local timestamp = Instance.new("TextLabel")
+	timestamp.Name = "Timestamp"
+	timestamp.AnchorPoint = Vector2.new(0, 1)
+	timestamp.Position = UDim2.new(0, 40, 1, 0)
+	timestamp.Size = UDim2.new(1, -40 - 110, 0, 12)
+	timestamp.BackgroundTransparency = 1
+	timestamp.Font = Enum.Font.Gotham
+	timestamp.TextSize = 11
+	timestamp.TextColor3 = COLOR_WOOD_MID
+	timestamp.TextXAlignment = Enum.TextXAlignment.Left
+	timestamp.TextYAlignment = Enum.TextYAlignment.Center
+	timestamp.Text = ""
+	timestamp.ZIndex = row.ZIndex + 1
+	timestamp.Parent = row
+
+	local reward = Instance.new("TextLabel")
+	reward.Name = "Reward"
+	reward.AnchorPoint = Vector2.new(1, 0.5)
+	reward.Position = UDim2.new(1, 0, 0.5, 0)
+	reward.Size = UDim2.new(0, 105, 1, 0)
+	reward.BackgroundTransparency = 1
+	reward.Font = Enum.Font.GothamBold
+	reward.TextSize = 13
+	reward.TextColor3 = COLOR_WOOD_DARK
+	reward.TextXAlignment = Enum.TextXAlignment.Right
+	reward.TextYAlignment = Enum.TextYAlignment.Center
+	reward.Text = ""
+	reward.ZIndex = row.ZIndex + 1
+	reward.Parent = row
+
+	return {
+		row       = row,
+		iconImage = iconImage,
+		title     = title,
+		timestamp = timestamp,
+		reward    = reward,
+	}
+end
+
 local mountPoint = waitForMountPoint(30)
 if not mountPoint then
 	warn("[HistoryTab] _G.QuestMenuContentPages.history not available within 30 s; tab disabled")
