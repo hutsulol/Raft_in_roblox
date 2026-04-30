@@ -203,11 +203,17 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	container:PivotTo(worldCF)
 	container.Parent = raft
 
-	-- Velocity snapshot + weld-then-unanchor (T13 + T15).
+	-- T13/T15/T16: snapshot velocity, force-anchor (templates may be
+	-- unanchored), weld while anchored, then unanchor.
 	local primary = raft.PrimaryPart
 	local linVel = primary.AssemblyLinearVelocity
 	local angVel = primary.AssemblyAngularVelocity
 
+	for _, part in container:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = true
+		end
+	end
 	for _, part in container:GetDescendants() do
 		if part:IsA("BasePart") then
 			local weld = Instance.new("WeldConstraint")

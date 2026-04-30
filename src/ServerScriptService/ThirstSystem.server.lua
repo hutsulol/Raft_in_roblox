@@ -402,17 +402,24 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		-- Same velocity-preservation pattern as the workbench branch
 		-- above so placing the purifier doesn't kick the raft's vertical
-		-- buoyancy out of equilibrium. Weld FIRST while every part is
-		-- still anchored, THEN unanchor in a second pass (T15) — if we
-		-- unanchor first, each part briefly exists as a free body with
-		-- zero velocity, and the weld's constraint solver then drains
-		-- momentum out of the moving raft to equalise. With ~10 parts
-		-- in the Destitalor model that drain is large enough that the
-		-- buoyancy spring overshoots and the raft bobs under the player.
+		-- buoyancy out of equilibrium. Force-anchor every part FIRST
+		-- (T16) — the Destitalor template stores its parts unanchored,
+		-- so the cloned model otherwise starts free-falling under
+		-- gravity before our welds attach, and Roblox's solver then
+		-- has to equalise the falling part with the moving raft. Then
+		-- weld while anchored (T15) and only unanchor in a third pass
+		-- so the parts inherit the raft's velocity through the rigid
+		-- weld instead of starting at zero.
 		local primary = raft.PrimaryPart
 		local linVel = primary.AssemblyLinearVelocity
 		local angVel = primary.AssemblyAngularVelocity
 
+		-- Pass 0: anchor every part regardless of how the template was authored.
+		for _, part in purifier:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.Anchored = true
+			end
+		end
 		-- Pass 1: weld every part to the raft while still anchored.
 		for _, part in purifier:GetDescendants() do
 			if part:IsA("BasePart") then
@@ -461,15 +468,19 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		workbench:PivotTo(worldCF)
 		workbench.Parent = raft
 
-		-- Snapshot raft velocity + weld-then-unanchor (T13/T15) so adding
-		-- the workbench doesn't perturb the raft's motion. Welding while
-		-- still anchored has the parts inherit the raft's velocity
-		-- through the constraint instead of forcing the solver to
-		-- equalise from a free-body zero-velocity state.
+		-- T13/T15/T16: snapshot raft velocity, force-anchor every part
+		-- (templates may be stored unanchored), weld while anchored,
+		-- then unanchor so the new parts inherit the raft's velocity
+		-- through the rigid weld.
 		local primary = raft.PrimaryPart
 		local linVel = primary.AssemblyLinearVelocity
 		local angVel = primary.AssemblyAngularVelocity
 
+		for _, part in workbench:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.Anchored = true
+			end
+		end
 		for _, part in workbench:GetDescendants() do
 			if part:IsA("BasePart") then
 				local weld = Instance.new("WeldConstraint")
