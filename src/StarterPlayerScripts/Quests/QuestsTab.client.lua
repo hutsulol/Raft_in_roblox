@@ -14,6 +14,16 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+-- ─── Wood/paper palette (matches OnboardingTooltip + QuestMenu) ─────
+local COLOR_WOOD_DARKEST = Color3.fromRGB( 61,  40,  23)
+local COLOR_WOOD_DARK    = Color3.fromRGB( 91,  58,  34)
+local COLOR_WOOD_MID     = Color3.fromRGB(138, 106,  68)
+local COLOR_WOOD_BASE    = Color3.fromRGB(176, 138,  92)
+local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
+local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
+
+local CARD_RADIUS = 12
+
 local function waitForMountPoint(timeoutSec)
 	local deadline = os.clock() + (timeoutSec or 30)
 	while os.clock() < deadline do
@@ -77,6 +87,45 @@ local function mount(parent)
 	grid.Parent = scroll
 
 	return scroll
+end
+
+-- ─── Single quest card (D2 → D7) ────────────────────────────────────
+-- Returns the outer card Frame plus a refs table that later substeps
+-- (D9 reactive paint) populate to update the card without rebuilding.
+-- D2 (this commit) covers the outer paper-fill card chrome only;
+-- D3-D7 layer in the icon, title, body, progress bar, reward, and
+-- track button on top.
+local function buildCard(parent, layoutOrder)
+	local card = Instance.new("Frame")
+	card.Name = "QuestCard"
+	card.LayoutOrder = layoutOrder or 0
+	card.BackgroundColor3 = COLOR_PAPER
+	card.BorderSizePixel = 0
+	card.ZIndex = 7
+	card.Parent = parent
+
+	local cCorner = Instance.new("UICorner")
+	cCorner.CornerRadius = UDim.new(0, CARD_RADIUS)
+	cCorner.Parent = card
+
+	local cStroke = Instance.new("UIStroke")
+	cStroke.Color = COLOR_WOOD_DARK
+	cStroke.Thickness = 2
+	cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	cStroke.Parent = card
+
+	local cPad = Instance.new("UIPadding")
+	cPad.PaddingTop    = UDim.new(0, 10)
+	cPad.PaddingBottom = UDim.new(0, 10)
+	cPad.PaddingLeft   = UDim.new(0, 10)
+	cPad.PaddingRight  = UDim.new(0, 10)
+	cPad.Parent = card
+
+	-- refs is the live handle the reactive paint path (D9) updates.
+	-- D3-D7 add nodes (iconImage, title, body, progressFill, label,
+	-- rewardLabel, trackBtn) into it.
+	local refs = { card = card }
+	return card, refs
 end
 
 local mountPoint = waitForMountPoint(30)
