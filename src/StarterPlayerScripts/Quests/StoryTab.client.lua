@@ -466,6 +466,29 @@ end
 
 local scrollFrame = mount(mountPoint)
 
+-- ─── Empty state (E10) ──────────────────────────────────────────────
+-- Sibling of the scroll frame so it isn't laid out by the UIListLayout.
+-- Visible when the player has no story quests left in the snapshot —
+-- i.e. they've permanently completed every story arc the catalog
+-- ships, or the catalog never loaded server-side. Sits centered with
+-- a brief congratulations note.
+local emptyState = Instance.new("TextLabel")
+emptyState.Name = "EmptyState"
+emptyState.AnchorPoint = Vector2.new(0.5, 0.5)
+emptyState.Position = UDim2.fromScale(0.5, 0.5)
+emptyState.Size = UDim2.new(1, -40, 0, 40)
+emptyState.BackgroundTransparency = 1
+emptyState.Font = Enum.Font.GothamMedium
+emptyState.TextSize = 14
+emptyState.TextColor3 = COLOR_WOOD_DARK
+emptyState.TextWrapped = true
+emptyState.TextXAlignment = Enum.TextXAlignment.Center
+emptyState.TextYAlignment = Enum.TextYAlignment.Center
+emptyState.Text = "No story quests right now.\nMore arcs coming soon."
+emptyState.Visible = false
+emptyState.ZIndex = 6
+emptyState.Parent = mountPoint
+
 -- ─── Reactive paint (E9) ────────────────────────────────────────────
 -- cardsById maps quest id → { card, refs } so each snapshot repaints
 -- in place. Per-objective rows are reused across pushes too: the
@@ -569,6 +592,8 @@ local function repaint(payload)
 			cardsById[id] = nil
 		end
 	end
+
+	emptyState.Visible = (next(cardsById) == nil)
 end
 
 questStateEvent.OnClientEvent:Connect(function(action, payload)
