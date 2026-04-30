@@ -33,7 +33,7 @@ local RECIPES = {
 }
 
 local inventory = {Log = 0, Stone = 0, Plastic = 0}
-local screenGui, recipesGrid, detailsPanel, searchBox, qtyLabel, craftButton, logCountLabel
+local screenGui, recipesGrid, detailsPanel, searchBox, qtyLabel, craftButton
 local selectedRecipe = RECIPES[1]
 local selectedCategory = "All"
 local craftAmount = 1
@@ -136,22 +136,23 @@ local function refreshGrid()
 	for _, c in ipairs(recipesGrid:GetChildren()) do if c:IsA("TextButton") then c:Destroy() end end
 	for _, recipe in ipairs(filteredRecipes()) do
 		local btn = Instance.new("TextButton")
-		btn.Size = UDim2.new(0, 136, 0, 172)
+		btn.Size = UDim2.new(0, 110, 0, 140)
 		btn.BackgroundColor3 = THEME.card
 		btn.Text = ""
 		btn.Parent = recipesGrid
 		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 10)
 
 		local icon = Instance.new("ImageLabel")
-		icon.Size = UDim2.new(0, 80, 0, 80)
-		icon.Position = UDim2.new(0.5, -40, 0, 10)
+		icon.Size = UDim2.new(0, 64, 0, 64)
+		icon.Position = UDim2.new(0.5, -32, 0, 8)
 		icon.BackgroundTransparency = 1
 		icon.Image = recipe.icon
+		icon.ScaleType = Enum.ScaleType.Fit
 		icon.Parent = btn
 
 		local name = Instance.new("TextLabel")
-		name.Size = UDim2.new(1, -12, 0, 38)
-		name.Position = UDim2.new(0, 6, 0, 94)
+		name.Size = UDim2.new(1, -10, 0, 34)
+		name.Position = UDim2.new(0, 5, 0, 74)
 		name.BackgroundTransparency = 1
 		name.TextWrapped = true
 		name.TextScaled = true
@@ -162,8 +163,8 @@ local function refreshGrid()
 
 		local affordable = affordableTimes(recipe) > 0
 		local cost = Instance.new("TextLabel")
-		cost.Size = UDim2.new(1, -10, 0, 24)
-		cost.Position = UDim2.new(0, 5, 1, -28)
+		cost.Size = UDim2.new(1, -10, 0, 20)
+		cost.Position = UDim2.new(0, 5, 1, -22)
 		cost.BackgroundTransparency = 1
 		cost.TextScaled = true
 		cost.Font = Enum.Font.GothamBold
@@ -205,27 +206,9 @@ local function buildUI()
 	Instance.new("UICorner", main).CornerRadius = UDim.new(0, 16)
 	Instance.new("UIStroke", main).Color = THEME.accent
 
-	local top = Instance.new("Frame", main)
-	top.Size = UDim2.new(1, -24, 0, 42)
-	top.Position = UDim2.new(0, 12, 0, 10)
-	top.BackgroundTransparency = 1
-	local icon = Instance.new("ImageLabel", top)
-	icon.Size = UDim2.new(0, 28, 0, 28)
-	icon.BackgroundTransparency = 1
-	icon.Image = LOG_ICON
-	icon.Position = UDim2.new(0, 0, 0.5, -14)
-	logCountLabel = Instance.new("TextLabel", top)
-	logCountLabel.Size = UDim2.new(0, 150, 1, 0)
-	logCountLabel.Position = UDim2.new(0, 34, 0, 0)
-	logCountLabel.BackgroundTransparency = 1
-	logCountLabel.TextXAlignment = Enum.TextXAlignment.Left
-	logCountLabel.TextScaled = true
-	logCountLabel.Font = Enum.Font.GothamBold
-	logCountLabel.TextColor3 = Color3.fromRGB(74, 55, 38)
-
 	local closeBtn = Instance.new("TextButton", main)
-	closeBtn.Size = UDim2.new(0, 42, 0, 42)
-	closeBtn.Position = UDim2.new(1, -54, 0, 10)
+	closeBtn.Size = UDim2.new(0, 30, 0, 30)
+	closeBtn.Position = UDim2.new(1, -40, 0, 10)
 	closeBtn.Text = "✕"
 	closeBtn.TextScaled = true
 	closeBtn.Font = Enum.Font.GothamBold
@@ -235,21 +218,40 @@ local function buildUI()
 	closeBtn.MouseButton1Click:Connect(closeUI)
 
 	local left = Instance.new("Frame", main)
-	left.Size = UDim2.new(0, 170, 1, -78)
-	left.Position = UDim2.new(0, 14, 0, 62)
+	left.Size = UDim2.new(0, 170, 1, -24)
+	left.Position = UDim2.new(0, 14, 0, 12)
 	left.BackgroundColor3 = THEME.panel
 	Instance.new("UICorner", left).CornerRadius = UDim.new(0, 10)
 
+	local listPad = Instance.new("UIPadding", left)
+	listPad.PaddingTop = UDim.new(0, 8)
+	listPad.PaddingLeft = UDim.new(0, 6)
+	listPad.PaddingRight = UDim.new(0, 6)
+	listPad.PaddingBottom = UDim.new(0, 8)
+
+	searchBox = Instance.new("TextBox", left)
+	searchBox.PlaceholderText = "Search..."
+	searchBox.Text = ""
+	searchBox.Size = UDim2.new(1, 0, 0, 34)
+	searchBox.TextScaled = false
+	searchBox.TextSize = 22
+	searchBox.LayoutOrder = 0
+	searchBox.Font = Enum.Font.Gotham
+	searchBox.BackgroundColor3 = THEME.panelLight
+	searchBox.TextColor3 = THEME.text
+	Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 8)
+	searchBox:GetPropertyChangedSignal("Text"):Connect(refreshGrid)
+
 	local list = Instance.new("UIListLayout", left)
 	list.Padding = UDim.new(0, 6)
-	for _, c in ipairs(CATEGORY_ORDER) do
+	for i, c in ipairs(CATEGORY_ORDER) do
 		local b = Instance.new("TextButton", left)
-		b.Size = UDim2.new(1, -12, 0, 52)
-		b.Position = UDim2.new(0, 6, 0, 0)
+		b.Size = UDim2.new(1, 0, 0, 46)
+		b.LayoutOrder = i
 		b.Text = c
 		b.Font = Enum.Font.GothamBold
 		b.TextScaled = false
-		b.TextSize = 30
+		b.TextSize = 16
 		b.BackgroundColor3 = THEME.panelLight
 		b.TextColor3 = THEME.text
 		Instance.new("UICorner", b).CornerRadius = UDim.new(0, 9)
@@ -259,22 +261,11 @@ local function buildUI()
 		end)
 	end
 
-	searchBox = Instance.new("TextBox", left)
-	searchBox.PlaceholderText = "Search..."
-	searchBox.Text = ""
-	searchBox.Size = UDim2.new(1, -12, 0, 42)
-	searchBox.TextScaled = false
-	searchBox.TextSize = 28
-	searchBox.Font = Enum.Font.Gotham
-	searchBox.BackgroundColor3 = THEME.panelLight
-	searchBox.TextColor3 = THEME.text
-	Instance.new("UICorner", searchBox).CornerRadius = UDim.new(0, 8)
-	searchBox:GetPropertyChangedSignal("Text"):Connect(refreshGrid)
-
 	local center = Instance.new("Frame", main)
-	center.Size = UDim2.new(0, 470, 1, -78)
-	center.Position = UDim2.new(0, 194, 0, 62)
+	center.Size = UDim2.new(0, 350, 1, -24)
+	center.Position = UDim2.new(0, 194, 0, 12)
 	center.BackgroundColor3 = THEME.panel
+	center.ClipsDescendants = true
 	Instance.new("UICorner", center).CornerRadius = UDim.new(0, 10)
 
 	recipesGrid = Instance.new("Frame", center)
@@ -282,14 +273,15 @@ local function buildUI()
 	recipesGrid.Position = UDim2.new(0, 8, 0, 8)
 	recipesGrid.BackgroundTransparency = 1
 	local grid = Instance.new("UIGridLayout", recipesGrid)
-	grid.CellSize = UDim2.new(0, 136, 0, 172)
+	grid.CellSize = UDim2.new(0, 110, 0, 140)
 	grid.CellPadding = UDim2.new(0, 8, 0, 8)
 	grid.SortOrder = Enum.SortOrder.LayoutOrder
 
 	local right = Instance.new("Frame", main)
-	right.Size = UDim2.new(0, 248, 1, -78)
-	right.Position = UDim2.new(1, -262, 0, 62)
+	right.Size = UDim2.new(0, 248, 1, -24)
+	right.Position = UDim2.new(1, -262, 0, 12)
 	right.BackgroundColor3 = THEME.panel
+	right.ClipsDescendants = true
 	Instance.new("UICorner", right).CornerRadius = UDim.new(0, 10)
 	detailsPanel = right
 
@@ -381,7 +373,6 @@ end
 
 local function refreshAll()
 	if not screenGui then return end
-	logCountLabel.Text = tostring(inventory.Log or 0)
 	refreshGrid()
 	refreshDetails()
 end
