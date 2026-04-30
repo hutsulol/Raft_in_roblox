@@ -85,6 +85,52 @@ local function mount(parent)
 	return scroll
 end
 
+-- ─── Challenge card chrome (F3) ─────────────────────────────────────
+-- Full-width card that stacks vertically inside the scroll. Same
+-- chrome treatment as the story card: paper fill, wood-dark stroke,
+-- rounded corners. Internal layout uses absolute positioning so the
+-- countdown timer can sit on the right of the header without being
+-- pushed by the title length.
+local function buildCard(parent, layoutOrder)
+	local card = Instance.new("Frame")
+	card.Name = "ChallengeCard"
+	card.LayoutOrder = layoutOrder or 0
+	card.Size = UDim2.new(1, 0, 0, 110)
+	card.BackgroundColor3 = COLOR_PAPER
+	card.BorderSizePixel = 0
+	card.ZIndex = 7
+	card.Parent = parent
+	-- Card attributes drive the click handler dispatch (F8). F9's paint
+	-- path overwrites these per snapshot:
+	--   QuestId : "" | "<id>"
+	--   Mode    : "start" | "tracking" | "claim"
+	card:SetAttribute("QuestId", "")
+	card:SetAttribute("Mode", "start")
+
+	local cCorner = Instance.new("UICorner")
+	cCorner.CornerRadius = UDim.new(0, CARD_RADIUS)
+	cCorner.Parent = card
+
+	local cStroke = Instance.new("UIStroke")
+	cStroke.Color = COLOR_WOOD_DARK
+	cStroke.Thickness = 2
+	cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	cStroke.Parent = card
+
+	local cPad = Instance.new("UIPadding")
+	cPad.PaddingTop    = UDim.new(0, 10)
+	cPad.PaddingBottom = UDim.new(0, 10)
+	cPad.PaddingLeft   = UDim.new(0, 12)
+	cPad.PaddingRight  = UDim.new(0, 12)
+	cPad.Parent = card
+
+	-- F4-F7 layer header / progress / timer / footer onto refs.
+	local refs = {
+		card = card,
+	}
+	return card, refs
+end
+
 local mountPoint = waitForMountPoint(30)
 if not mountPoint then
 	warn("[ChallengesTab] _G.QuestMenuContentPages.challenges not available within 30 s; tab disabled")
