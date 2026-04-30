@@ -256,3 +256,45 @@ local function openQuestMenu()
 end
 
 button.MouseButton1Click:Connect(openQuestMenu)
+
+-- ─── Hide while the phone menu is open (A9) ─────────────────────────
+-- The phone covers most of the screen and has its own quest log
+-- inside it; leaving the entry button on top of the phone UI would
+-- read as a stray duplicate. PhoneMenu.client.lua publishes the
+-- ScreenGui at _G.PhoneScreenGui and toggles .Enabled on open/close
+-- (same handshake the inventory tooltip uses). Listen for that
+-- changed event so we sync within a frame of the phone state.
+local RunService = game:GetService("RunService")
+
+local function isPhoneOpen()
+	local phoneGui = _G.PhoneScreenGui
+	return phoneGui ~= nil and phoneGui:IsA("ScreenGui") and phoneGui.Enabled
+end
+
+local function syncVisibility()
+	screenGui.Enabled = not isPhoneOpen()
+end
+
+-- The PhoneScreenGui reference may not exist yet when this script
+-- first runs (PhoneMenu builds it lazily on first open). Poll briefly
+-- until it appears, then bind to its Enabled-changed signal so we
+-- react immediately on later open/close events without polling.
+task.spawn(function()
+	local deadline = os.clock() + 30
+	while os.clock() < deadline do
+		local phoneGui = _G.PhoneScreenGui
+		if phoneGui and phoneGui:IsA("ScreenGui") then
+			phoneGui:GetPropertyChangedSignal("Enabled"):Connect(syncVisibility)
+			syncVisibility()
+			return
+		end
+		task.wait(0.5)
+	end
+	-- If the phone never appeared (e.g. game without PhoneMenu),
+	-- leave the button always-visible. Heartbeat fallback also
+	-- catches the case where _G.PhoneScreenGui swaps reference at
+	-- runtime (re-spawn / re-build).
+	RunService.Heartbeat:Connect(syncVisibility)
+end)
+
+syncVisibility()
