@@ -15,6 +15,7 @@
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
 
 local localPlayer = Players.LocalPlayer
 
@@ -283,4 +284,27 @@ questStateEvent.OnClientEvent:Connect(function(action, payload)
 		if q.tracked then picked = q; break end
 	end
 	paint(picked)
+end)
+
+-- ─── Live countdown tick (H5) ───────────────────────────────────────
+-- For tracked challenges only; advances the timer label off the
+-- cached deadline so it ticks down between server pushes. When the
+-- timer hits zero we ping the server with getState — its expiry
+-- sweep then snaps the card off the tracker (and back to "Start"
+-- on the Challenges tab). A debounce keeps us from spamming.
+local sentExpiryPing = false
+RunService.Heartbeat:Connect(function()
+	if not trackedQuest or not trackedDeadline then return end
+	if trackedQuest.rewardPending then return end
+	local remaining = trackedDeadline - os.clock()
+	if remaining <= 0 then
+		timerLabel.Text = "0:00"
+		if not sentExpiryPing then
+			sentExpiryPing = true
+			questStateEvent:FireServer("getState")
+		end
+	else
+		timerLabel.Text = fmtSeconds(remaining)
+		sentExpiryPing = false
+	end
 end)
