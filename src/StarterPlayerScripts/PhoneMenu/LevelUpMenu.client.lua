@@ -27,8 +27,8 @@ local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
 
 -- ─── Icons ───────────────────────────────────────────────────────────────
-local ICON_LOG          = "rbxassetid://110032041583533"
-local ICON_UPGRADE_PT   = "rbxassetid://89809613033816" -- star / pick-axe style
+local ICON_LOG          = "rbxassetid://95176887036839"
+local ICON_UPGRADE_PT   = "rbxassetid://102411845666126" -- star / pick-axe style
 
 -- ─── Per-level unlock definitions ────────────────────────────────────────
 -- Each entry lists the recipes / items that become available at that level.
@@ -48,11 +48,11 @@ local LEVEL_UNLOCKS = {
 	},
 	[7] = {
 		{ name = "Furnace",       icon = "rbxassetid://117760352651529" },
-		{ name = "Shovel",        icon = "rbxassetid://91548954831391"  },
+		{ name = "Shovel",        icon = "rbxassetid://123765089142597"  },
 	},
 	[8] = {
 		{ name = "Fishing Rod",   icon = "" },
-		{ name = "Wooden Spear",  icon = "rbxassetid://110032041583533" },
+		{ name = "Wooden Spear",  icon = "rbxassetid://95176887036839" },
 	},
 }
 

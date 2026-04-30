@@ -13,7 +13,7 @@ local recipes = {
 	{
 		name = "Wood_Knife",
 		displayName = "Wood Knife",
-		icon = "rbxassetid://110032041583533",
+		icon = "rbxassetid://95176887036839",
 		costs = {Log = 2},
 		model = "Wood_Knife",
 	},

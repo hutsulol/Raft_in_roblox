@@ -15,7 +15,7 @@ local recipes = {
 	{
 		name = "Wood_Knife",
 		displayName = "Wood Knife",
-		icon = "rbxassetid://110032041583533",
+		icon = "rbxassetid://95176887036839",
 		costs = {Log = 2},
 	},
 	{
@@ -59,13 +59,13 @@ local selectedRecipe = nil
 local isOpen = false
 local screenGui = nil
 
-local LOG_ICON = "rbxassetid://110032041583533"
+local LOG_ICON = "rbxassetid://95176887036839"
 
 local COST_ICONS = {
 	Log = LOG_ICON,
-	Stone = "rbxassetid://134781813180973",
+	Stone = "rbxassetid://96450657403376",
 	Plastic = "rbxassetid://132919988751848",
-	Iron_Ore = "rbxassetid://73676755288746",
+	Iron_Ore = "rbxassetid://78456892304314",
 	Iron_Ingot = "rbxassetid://72890243946368",
 	Plank = "rbxassetid://118108820731466",
 	Leaves = "rbxassetid://96691360298069",
