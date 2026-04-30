@@ -109,10 +109,12 @@ local contentPages  -- [id] = Frame; one per tab, only the active one
                     -- F / G — B6 just creates the empty container.
 
 -- ─── Tab visual states (B4) ─────────────────────────────────────────
--- Active tab: paper-light fill + wood-darkest text + small wood-dark
--- dot pinned to the *right* edge (matching the reference design).
--- Inactive tabs: transparent background, paper-light text, no dot.
--- Hover on inactive: paper-fill at 0.6 transparency for affordance.
+-- Both active and inactive tabs render with a paper fill — the
+-- inactive variant is dimmer (BackgroundTransparency 0.55, faint
+-- text) so the wood-textured rail shows through, the active variant
+-- snaps to fully opaque paper-light + wood-darkest text + a small
+-- dot pinned to the right edge. This matches the reference where
+-- every tile reads as a button instead of bare text on the rail.
 local TAB_DOT_SIZE   = 6
 local TAB_DOT_INSET  = 14   -- distance from the tab's right edge to the dot's centre
 
@@ -124,16 +126,19 @@ local function paintTab(id)
 	local glyph = h.glyph
 	local label = h.label
 	if id == activeTabId then
-		tile.BackgroundTransparency = 0
 		tile.BackgroundColor3       = COLOR_PAPER_LIGHT
-		if label then label.TextColor3 = COLOR_WOOD_DARKEST end
-		if glyph then glyph.TextColor3 = COLOR_WOOD_DARKEST end
-		if dot   then dot.Visible      = true               end
+		tile.BackgroundTransparency = 0
+		if h.stroke then h.stroke.Color = COLOR_WOOD_DARKEST end
+		if label    then label.TextColor3 = COLOR_WOOD_DARKEST end
+		if glyph    then glyph.TextColor3 = COLOR_WOOD_DARKEST end
+		if dot      then dot.Visible      = true               end
 	else
-		tile.BackgroundTransparency = 1
-		if label then label.TextColor3 = COLOR_PAPER_LIGHT end
-		if glyph then glyph.TextColor3 = COLOR_PAPER_LIGHT end
-		if dot   then dot.Visible      = false             end
+		tile.BackgroundColor3       = COLOR_PAPER
+		tile.BackgroundTransparency = 0.45
+		if h.stroke then h.stroke.Color = COLOR_WOOD_DARK end
+		if label    then label.TextColor3 = COLOR_PAPER_LIGHT end
+		if glyph    then glyph.TextColor3 = COLOR_PAPER_LIGHT end
+		if dot      then dot.Visible      = false             end
 	end
 end
 
@@ -261,6 +266,16 @@ local function buildTabRail(parent)
 		tCorner.CornerRadius = UDim.new(0, TAB_RADIUS)
 		tCorner.Parent = tile
 
+		-- Stroke gives every tile a defined edge so even the inactive
+		-- ones read as a button instead of a tinted rectangle. paintTab
+		-- swaps the colour between wood-dark / wood-darkest for the
+		-- active state.
+		local tStroke = Instance.new("UIStroke")
+		tStroke.Color = COLOR_WOOD_DARK
+		tStroke.Thickness = 1.5
+		tStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		tStroke.Parent = tile
+
 		-- Glyph icon on the left of the tile. Sized to fit a 14-pt
 		-- bold font's cap height + a little headroom so the emoji-style
 		-- characters render at the same vertical centre as the label.
@@ -316,23 +331,24 @@ local function buildTabRail(parent)
 		dotCorner.Parent = dot
 
 		tabHandles[tab.id] = {
-			tile  = tile,
-			glyph = glyph,
-			label = label,
-			dot   = dot,
+			tile   = tile,
+			glyph  = glyph,
+			label  = label,
+			dot    = dot,
+			stroke = tStroke,
 		}
 
 		tile.MouseButton1Click:Connect(function()
 			setActiveTab(tab.id)
 		end)
 
-		-- Inactive-tab hover feedback: faint paper wash so the player
-		-- knows the tab is interactive without it looking like a
-		-- second active tab. paintTab() snaps it back on MouseLeave.
+		-- Inactive-tab hover feedback: brighten the paper fill so the
+		-- player gets affordance without it being mistaken for the
+		-- active tab. paintTab() snaps it back on MouseLeave.
 		tile.MouseEnter:Connect(function()
 			if tab.id == activeTabId then return end
-			tile.BackgroundTransparency = 0.6
-			tile.BackgroundColor3 = COLOR_PAPER_LIGHT
+			tile.BackgroundColor3       = COLOR_PAPER_LIGHT
+			tile.BackgroundTransparency = 0.15
 		end)
 		tile.MouseLeave:Connect(function()
 			paintTab(tab.id)
