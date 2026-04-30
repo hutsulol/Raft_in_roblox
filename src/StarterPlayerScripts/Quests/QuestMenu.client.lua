@@ -40,12 +40,90 @@ local PANEL_H      = 360
 local PANEL_RADIUS = 18
 local PANEL_PAD    = 14
 
+-- Tab rail (left half of the panel content). Three vertical tabs:
+-- "Quests", "History", "Challenges". Width tuned so a long label
+-- like "Challenges" fits without clipping at our 14-px font.
+local TAB_RAIL_W   = 130
+local TAB_HEIGHT   = 38
+local TAB_GAP      = 6
+local TAB_RADIUS   = 8
+-- Y offset where the tab list starts inside the rail. Leaves room
+-- above for the QUESTS header (B7) so the first tab doesn't sit
+-- directly under it.
+local TAB_LIST_TOP = 56
+
+-- ─── Tab catalog ─────────────────────────────────────────────────────
+-- Order = vertical order in the rail. id is used as the key for the
+-- right-side content swap (B6) and the active-tab tracking (B9).
+local TABS = {
+	{ id = "quests",     label = "Quests"     },
+	{ id = "history",    label = "History"    },
+	{ id = "challenges", label = "Challenges" },
+}
+
 -- Lazy build: the ScreenGui isn't created until the menu is first
 -- opened. Cuts the cost of one always-resident GUI for players who
 -- never open the quest log. Panel + tabs + content are also built
 -- once during ensureScreenGui's first call.
 local screenGui
 local panel        -- the wood panel root (built in B2)
+local tabRail      -- container for the left-side tab buttons (B3)
+local tabHandles   -- [id] = { tile = TextButton } populated by B3
+
+-- ─── Tab rail (B3) ───────────────────────────────────────────────────
+-- Vertical strip on the left side of the panel content. Each tab is a
+-- TextButton holding a label; visual states (active vs inactive
+-- fills, the leading dot indicator) layer on in B4 / B5. Click
+-- handlers are stubbed for B3 — the real "swap content" path lands
+-- in B9.
+local function buildTabRail(parent)
+	tabRail = Instance.new("Frame")
+	tabRail.Name = "TabRail"
+	tabRail.AnchorPoint = Vector2.new(0, 0)
+	tabRail.Position = UDim2.fromOffset(0, 0)
+	tabRail.Size = UDim2.new(0, TAB_RAIL_W, 1, 0)
+	tabRail.BackgroundTransparency = 1
+	tabRail.BorderSizePixel = 0
+	tabRail.ZIndex = 4
+	tabRail.Parent = parent
+
+	tabHandles = {}
+
+	for i, tab in ipairs(TABS) do
+		local y = TAB_LIST_TOP + (i - 1) * (TAB_HEIGHT + TAB_GAP)
+
+		local tile = Instance.new("TextButton")
+		tile.Name = "Tab_" .. tab.id
+		tile.AnchorPoint = Vector2.new(0, 0)
+		tile.Position = UDim2.fromOffset(0, y)
+		tile.Size = UDim2.new(1, 0, 0, TAB_HEIGHT)
+		tile.AutoButtonColor = false
+		tile.BackgroundTransparency = 1
+		tile.BorderSizePixel = 0
+		tile.Font = Enum.Font.GothamBold
+		tile.TextSize = 14
+		tile.TextColor3 = COLOR_PAPER_LIGHT
+		tile.TextXAlignment = Enum.TextXAlignment.Left
+		tile.TextYAlignment = Enum.TextYAlignment.Center
+		tile.Text = "    " .. tab.label   -- leading spaces leave room for the dot indicator (B5)
+		tile.ZIndex = 5
+		tile.Parent = tabRail
+
+		local tCorner = Instance.new("UICorner")
+		tCorner.CornerRadius = UDim.new(0, TAB_RADIUS)
+		tCorner.Parent = tile
+
+		tabHandles[tab.id] = { tile = tile }
+
+		-- B3 wiring: log the click so the rail is testable. The real
+		-- "switch active tab + swap content" handler installs in B9.
+		tile.MouseButton1Click:Connect(function()
+			print(string.format("[QuestMenu] Tab clicked: %s", tab.id))
+		end)
+	end
+
+	return tabRail
+end
 
 local function buildPanel(parent)
 	-- Outer wood panel: same recipe as the onboarding tooltip's
@@ -100,6 +178,8 @@ local function buildPanel(parent)
 	hStroke.Thickness = 1
 	hStroke.Transparency = 0.82
 	hStroke.Parent = highlight
+
+	buildTabRail(panel)
 
 	return panel
 end
