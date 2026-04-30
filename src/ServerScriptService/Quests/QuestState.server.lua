@@ -633,8 +633,23 @@ event.OnServerEvent:Connect(function(player, action, ...)
 	elseif action == "startChallenge" then
 		local questId = (select(1, ...))
 		if typeof(questId) ~= "string" then return end
-		local entry, def, s = getActiveEntry(player, questId)
-		if not entry or not def or def.kind ~= "challenge" then return end
+		local s = states[player]
+		if not s then return end
+		local def = _G.QuestCatalog and _G.QuestCatalog.get(questId)
+		if not def or def.kind ~= "challenge" then return end
+
+		-- Challenges aren't seeded at init time the way story / dailies
+		-- are — the player picks which one to engage with by clicking
+		-- Start. If there's no active entry yet, create one here so
+		-- the rest of the handler has somewhere to write progress.
+		local entry = s.active[questId]
+		if not entry then
+			local progress = {}
+			for i = 1, #def.objectives do progress[i] = 0 end
+			entry = { progress = progress, startedAt = nil, tracked = false }
+			s.active[questId] = entry
+		end
+
 		if entry.startedAt then return end -- already running
 
 		entry.startedAt = os.time()
