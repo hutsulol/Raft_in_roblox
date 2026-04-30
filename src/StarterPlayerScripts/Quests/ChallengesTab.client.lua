@@ -341,6 +341,26 @@ local function buildCard(parent, layoutOrder)
 	btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	btnStroke.Parent = actionBtn
 
+	-- ── Click dispatch (F8) ───────────────────────────────────────────
+	-- Challenges have a 4th mode the daily/story cards don't: "start".
+	-- The card defaults to that mode (no startedAt yet); clicking
+	-- fires startChallenge which the server handles by stamping
+	-- startedAt + auto-tracking. From there it cycles like the others:
+	-- Tracking re-click → untrack, Claim → claimReward.
+	actionBtn.Activated:Connect(function()
+		local id   = card:GetAttribute("QuestId")
+		local mode = card:GetAttribute("Mode")
+		if type(id) ~= "string" or id == "" then return end
+		if not questStateEvent then return end
+		if mode == "start" then
+			questStateEvent:FireServer("startChallenge", id)
+		elseif mode == "tracking" then
+			questStateEvent:FireServer("untrack", id)
+		elseif mode == "claim" then
+			questStateEvent:FireServer("claimReward", id)
+		end
+	end)
+
 	local refs = {
 		card           = card,
 		iconImage      = iconImage,
