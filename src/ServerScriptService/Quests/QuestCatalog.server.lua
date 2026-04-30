@@ -168,6 +168,65 @@ addQuest({
 	reward = { kind = "resource", name = "Leaves", count = 10 },
 })
 
+-- ─── Timed challenges (C5) ──────────────────────────────────────────
+-- Player presses "Start" on the card, which kicks off a timer; the
+-- challenge auto-shows in the upper-right tracker (Phase H) and the
+-- card flips to a live countdown. If the goal isn't hit before the
+-- timer expires the quest disappears with no reward and the player
+-- has to wait for the next day's pool. Phase F drives the timer +
+-- expiry server-side; this catalog just declares durations + goals.
+addQuest({
+	id    = "challenge_logs_30s",
+	kind  = "challenge",
+	title = "Speed Chopper",
+	body  = "Chop 10 logs before time runs out.",
+	icon  = "rbxassetid://121862782555497",
+	objectives = {
+		{ eventType = "resource:Log", goal = 10, label = "Chop logs" },
+	},
+	reward      = { kind = "resource", name = "Log", count = 25 },
+	durationSec = 30,
+})
+
+addQuest({
+	id    = "challenge_pirate_kills_30s",
+	kind  = "challenge",
+	title = "Quick Draw",
+	body  = "Defeat 3 hostile pirates before time runs out.",
+	icon  = "rbxassetid://121862782555497",
+	objectives = {
+		{ eventType = "pirate:kill", goal = 3, label = "Defeat hostile pirates" },
+	},
+	reward      = { kind = "resource", name = "Plastic", count = 15 },
+	durationSec = 30,
+})
+
+addQuest({
+	id    = "challenge_stones_45s",
+	kind  = "challenge",
+	title = "Quarry Sprint",
+	body  = "Mine 5 stones in 45 seconds.",
+	icon  = "rbxassetid://121862782555497",
+	objectives = {
+		{ eventType = "resource:Stone", goal = 5, label = "Mine stones" },
+	},
+	reward      = { kind = "resource", name = "Stone", count = 12 },
+	durationSec = 45,
+})
+
+addQuest({
+	id    = "challenge_plastic_60s",
+	kind  = "challenge",
+	title = "Reef Cleanup",
+	body  = "Fish 8 plastic canisters in 60 seconds.",
+	icon  = "rbxassetid://121862782555497",
+	objectives = {
+		{ eventType = "resource:Plastic", goal = 8, label = "Collect plastic" },
+	},
+	reward      = { kind = "resource", name = "Plastic", count = 20 },
+	durationSec = 60,
+})
+
 -- ─── Filtered views (helper queries used by QuestState in C6+) ───────
 -- Returned tables are fresh copies so callers can mutate freely.
 
