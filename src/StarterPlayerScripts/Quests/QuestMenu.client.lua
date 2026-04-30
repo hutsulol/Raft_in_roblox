@@ -132,11 +132,79 @@ local function repaintAllTabs()
 	end
 end
 
+-- ─── Tab cross-fade (B9) ────────────────────────────────────────────
+-- Visible content swap when the active tab changes. ContentPages is
+-- a per-tab Frame parented to the contentRoot in B6; only the
+-- active page is Visible at any time, plus a brief out-going fade
+-- on the previous one for a soft transition.
+local TweenService = game:GetService("TweenService")
+local CONTENT_FADE_TIME = 0.15
+
+local function fadePage(page, toTransparency, makeInvisibleAtEnd)
+	if not page then return end
+	-- We tween BackgroundTransparency on the page itself + every
+	-- visible descendant Frame / Text / Image / UIStroke so the
+	-- whole subtree fades in/out together. Cheap to do because
+	-- contentPages are mostly empty in Phase B; later phases that
+	-- mount heavier content can override this if needed.
+	local function visit(node)
+		if node:IsA("Frame") and node.BackgroundTransparency < 1 then
+			TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
+				{ BackgroundTransparency = toTransparency }):Play()
+		elseif node:IsA("TextLabel") or node:IsA("TextButton") then
+			TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
+				{ TextTransparency = toTransparency }):Play()
+			if node.BackgroundTransparency < 1 then
+				TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
+					{ BackgroundTransparency = toTransparency }):Play()
+			end
+		elseif node:IsA("ImageLabel") or node:IsA("ImageButton") then
+			TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
+				{ ImageTransparency = toTransparency }):Play()
+		elseif node:IsA("UIStroke") then
+			TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
+				{ Transparency = toTransparency }):Play()
+		end
+	end
+	visit(page)
+	for _, child in ipairs(page:GetDescendants()) do
+		visit(child)
+	end
+	if makeInvisibleAtEnd then
+		task.delay(CONTENT_FADE_TIME, function()
+			-- Don't hide if the player flipped back to this tab
+			-- mid-fade. Re-check before destroying visibility.
+			if activeTabId ~= page:GetAttribute("TabId") then
+				page.Visible = false
+			end
+		end)
+	end
+end
+
 local function setActiveTab(id)
 	if not tabHandles or not tabHandles[id] then return end
 	if activeTabId == id then return end
+
+	local outgoingId = activeTabId
 	activeTabId = id
 	repaintAllTabs()
+
+	-- Cross-fade the per-tab content. The new page is shown
+	-- immediately at full transparency and tweens to opaque; the
+	-- old one tweens to fully transparent then hides itself.
+	if contentPages then
+		local incoming = contentPages[id]
+		local outgoing = outgoingId and contentPages[outgoingId]
+		if incoming then
+			incoming:SetAttribute("TabId", id)
+			incoming.Visible = true
+			fadePage(incoming, 0, false)
+		end
+		if outgoing then
+			outgoing:SetAttribute("TabId", outgoingId)
+			fadePage(outgoing, 1, true)
+		end
+	end
 end
 
 -- ─── Tab rail (B3) ───────────────────────────────────────────────────
