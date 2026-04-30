@@ -69,6 +69,11 @@ local HEADER_GLYPH_SIZE = 30
 local HEADER_GLYPH_GAP  = 8
 local QUEST_ICON_ASSET  = "rbxassetid://121862782555497"
 
+-- Close button (top-right of the panel). Same dimensions + recipe as
+-- the OnboardingTooltip's X so the wood-style UIs read as one set.
+local CLOSE_BTN_SIZE = 26
+local CLOSE_BTN_RADIUS = 8
+
 -- ─── Tab catalog ─────────────────────────────────────────────────────
 -- Order = vertical order in the rail. id is used as the key for the
 -- right-side content swap (B6) and the active-tab tracking (B9).
@@ -313,6 +318,68 @@ local function buildHeader(parent)
 	return header
 end
 
+-- ─── Close button (B8) ──────────────────────────────────────────────
+-- 26x26 wood-mid X anchored to the panel's top-right. Same recipe as
+-- the OnboardingTooltip's close button — hover darkens to wood-dark.
+-- AnchorPoint (1, 0) with positive offset moves it past the parent
+-- UIPadding so the button kisses the visual edge instead of the
+-- padded box.
+local function buildCloseButton(parent)
+	local close = Instance.new("TextButton")
+	close.Name = "CloseButton"
+	close.AnchorPoint = Vector2.new(1, 0)
+	-- (PANEL_PAD - 8) lifts the button past the parent's 14-px
+	-- UIPadding by 6 px so the visible 8-px margin from the panel's
+	-- outer rect matches the mockup's `top: 8px; right: 8px`.
+	close.Position = UDim2.new(1, PANEL_PAD - 8, 0, -(PANEL_PAD - 8))
+	close.Size = UDim2.fromOffset(CLOSE_BTN_SIZE, CLOSE_BTN_SIZE)
+	close.BackgroundColor3 = COLOR_WOOD_MID
+	close.BorderSizePixel = 0
+	close.AutoButtonColor = false
+	close.Text = ""
+	close.ZIndex = 7
+	close.Parent = parent
+
+	local cCorner = Instance.new("UICorner")
+	cCorner.CornerRadius = UDim.new(0, CLOSE_BTN_RADIUS)
+	cCorner.Parent = close
+
+	local cStroke = Instance.new("UIStroke")
+	cStroke.Color = COLOR_WOOD_DARK
+	cStroke.Thickness = 2
+	cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	cStroke.Parent = close
+
+	local glyph = Instance.new("TextLabel")
+	glyph.BackgroundTransparency = 1
+	glyph.BorderSizePixel = 0
+	glyph.Size = UDim2.fromScale(1, 1)
+	glyph.Font = Enum.Font.GothamBold
+	glyph.TextSize = 14
+	glyph.TextColor3 = COLOR_PAPER_LIGHT
+	glyph.Text = "✕"
+	glyph.ZIndex = 8
+	glyph.Parent = close
+
+	close.MouseEnter:Connect(function()
+		close.BackgroundColor3 = COLOR_WOOD_DARK
+	end)
+	close.MouseLeave:Connect(function()
+		close.BackgroundColor3 = COLOR_WOOD_MID
+	end)
+
+	close.MouseButton1Click:Connect(function()
+		-- closeQuestMenu is declared at module-bottom; capture by
+		-- name resolves at call time so the upvalue is valid by the
+		-- time the button is clicked.
+		if typeof(_G.CloseQuestMenu) == "function" then
+			_G.CloseQuestMenu()
+		end
+	end)
+
+	return close
+end
+
 local function buildPanel(parent)
 	-- Outer wood panel: same recipe as the onboarding tooltip's
 	-- panel — wood-base fill, 3 px wood-dark border, inner 1 px
@@ -370,6 +437,7 @@ local function buildPanel(parent)
 	buildHeader(panel)
 	buildTabRail(panel)
 	buildContentRoot(panel)
+	buildCloseButton(panel)
 
 	return panel
 end
