@@ -388,6 +388,30 @@ end
 
 _G.OnQuestEvent = onQuestEvent
 
+-- ─── _G.OnQuestResource shim (C10) ──────────────────────────────────
+-- Existing gameplay systems (ResourceSpawner, ShovelSystem,
+-- PickAxeSystem, FurnaceCraft) already call _G.OnQuestResource on
+-- every harvest. DailyQuests + ChopTreesFlow have prior claims on
+-- the same global, so we chain instead of overwrite — capture the
+-- previous hook inside task.defer (which fires after every
+-- ServerScriptService script's top-level body has parsed regardless
+-- of folder order), then route every call through both the previous
+-- chain and our generic _G.OnQuestEvent("resource:"..resType) hook.
+task.defer(function()
+	local previous = _G.OnQuestResource
+	_G.OnQuestResource = function(player, resType, amount)
+		if typeof(previous) == "function" then
+			-- pcall isolates a buggy peer (DailyQuests' progress
+			-- table corruption, ChopTreesFlow's onboarding bookkeeping)
+			-- so a downstream error doesn't break our own credit path.
+			pcall(previous, player, resType, amount)
+		end
+		if typeof(resType) == "string" and resType ~= "" then
+			pcall(onQuestEvent, player, "resource:" .. resType, amount or 1)
+		end
+	end
+end)
+
 -- ─── RemoteEvent + handlers (C9) ────────────────────────────────────
 -- One channel for every menu/tracker → server quest action. Server
 -- replies with snapshots that bake in the catalog data the client
