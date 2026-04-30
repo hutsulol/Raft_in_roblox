@@ -52,6 +52,13 @@ local TAB_RADIUS   = 8
 -- directly under it.
 local TAB_LIST_TOP = 56
 
+-- Right-side content area sits to the right of the tab rail with a
+-- small gap so the rail's active-tab fill doesn't kiss the content
+-- card. Each tab's content lives inside as a child Frame; only the
+-- one matching activeTabId is Visible at any time (B9).
+local CONTENT_GAP   = 12
+local CONTENT_RADIUS = 12
+
 -- ─── Tab catalog ─────────────────────────────────────────────────────
 -- Order = vertical order in the rail. id is used as the key for the
 -- right-side content swap (B6) and the active-tab tracking (B9).
@@ -66,11 +73,15 @@ local TABS = {
 -- never open the quest log. Panel + tabs + content are also built
 -- once during ensureScreenGui's first call.
 local screenGui
-local panel        -- the wood panel root (built in B2)
-local tabRail      -- container for the left-side tab buttons (B3)
-local tabHandles   -- [id] = { tile = TextButton } populated by B3
-local activeTabId  -- which tab is currently selected (default = first
-                   -- entry in TABS, applied by buildTabRail)
+local panel         -- the wood panel root (built in B2)
+local tabRail       -- container for the left-side tab buttons (B3)
+local tabHandles    -- [id] = { tile, dot } populated by B3 / B5
+local activeTabId   -- which tab is currently selected (default = first
+                    -- entry in TABS, applied by buildTabRail)
+local contentRoot   -- right-side content frame (built in B6)
+local contentPages  -- [id] = Frame; one per tab, only the active one
+                    -- is Visible. Populated lazily by Phases D / E /
+                    -- F / G — B6 just creates the empty container.
 
 -- ─── Tab visual states (B4) ─────────────────────────────────────────
 -- Active tab: paper-light fill, wood-darkest text + a small wood-dark
@@ -200,6 +211,51 @@ local function buildTabRail(parent)
 	return tabRail
 end
 
+-- ─── Right-side content root (B6) ───────────────────────────────────
+-- Single container that stays put while tabs swap their inner Frames.
+-- Phase D / E / F / G mount per-tab page Frames into contentPages
+-- keyed by tab id; B9 toggles their .Visible based on activeTabId.
+-- Today the placeholder per-tab Frame is empty so the menu shell is
+-- visually complete on its own and Phase B is independently shippable.
+local function buildContentRoot(parent)
+	contentRoot = Instance.new("Frame")
+	contentRoot.Name = "Content"
+	contentRoot.AnchorPoint = Vector2.new(0, 0)
+	contentRoot.Position = UDim2.fromOffset(TAB_RAIL_W + CONTENT_GAP, 0)
+	contentRoot.Size = UDim2.new(1, -(TAB_RAIL_W + CONTENT_GAP), 1, 0)
+	contentRoot.BackgroundColor3 = COLOR_PAPER
+	contentRoot.BackgroundTransparency = 0.15
+	contentRoot.BorderSizePixel = 0
+	contentRoot.ClipsDescendants = true
+	contentRoot.ZIndex = 4
+	contentRoot.Parent = parent
+
+	local cCorner = Instance.new("UICorner")
+	cCorner.CornerRadius = UDim.new(0, CONTENT_RADIUS)
+	cCorner.Parent = contentRoot
+
+	local cStroke = Instance.new("UIStroke")
+	cStroke.Color = COLOR_WOOD_DARK
+	cStroke.Thickness = 2
+	cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	cStroke.Parent = contentRoot
+
+	contentPages = {}
+	for _, tab in ipairs(TABS) do
+		local page = Instance.new("Frame")
+		page.Name = "Page_" .. tab.id
+		page.Size = UDim2.fromScale(1, 1)
+		page.BackgroundTransparency = 1
+		page.BorderSizePixel = 0
+		page.Visible = (tab.id == activeTabId)
+		page.ZIndex = 5
+		page.Parent = contentRoot
+		contentPages[tab.id] = page
+	end
+
+	return contentRoot
+end
+
 local function buildPanel(parent)
 	-- Outer wood panel: same recipe as the onboarding tooltip's
 	-- panel — wood-base fill, 3 px wood-dark border, inner 1 px
@@ -255,6 +311,7 @@ local function buildPanel(parent)
 	hStroke.Parent = highlight
 
 	buildTabRail(panel)
+	buildContentRoot(panel)
 
 	return panel
 end
