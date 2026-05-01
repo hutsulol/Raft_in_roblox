@@ -42,18 +42,52 @@ local primaryPart = boat.PrimaryPart
 -- position. This is the target height for the buoyancy spring.
 local waterY = primaryPart.Position.Y
 
+-- Collision groups (T29). Floating resources (logs / leaves / plastic
+-- canisters) are kept in "FloatingResource" so they drift past the
+-- raft without applying contact impulses. The raft + everything ever
+-- welded onto it lives in "Raft". The two are configured to ignore
+-- each other; everything else stays in "Default" so players still
+-- walk on the raft normally.
+local PhysicsService = game:GetService("PhysicsService")
+local function ensureGroup(name)
+	pcall(function()
+		PhysicsService:RegisterCollisionGroup(name)
+	end)
+end
+ensureGroup("Raft")
+ensureGroup("FloatingResource")
+pcall(function()
+	PhysicsService:CollisionGroupSetCollidable("Raft", "FloatingResource", false)
+end)
+
+local function tagRaftPart(part)
+	if part and part:IsA("BasePart") then
+		part.CollisionGroup = "Raft"
+	end
+end
+
 -- Ensure all raft parts are unanchored so physics (buoyancy, movement) work.
 -- SpawnLocations are anchored by default in Studio; if any part in a welded
 -- assembly is anchored the entire raft is frozen in place.
 for _, desc in boat:GetDescendants() do
 	if desc:IsA("BasePart") then
 		desc.Anchored = false
+		tagRaftPart(desc)
 		pcall(function()
 			desc:SetNetworkOwner(nil)
 		end)
 	end
 end
 primaryPart.Anchored = false
+tagRaftPart(primaryPart)
+
+-- Auto-tag every BasePart welded onto the raft as it gets added,
+-- so placements (workbench / sawmill / planks / etc.) inherit the
+-- raft's CollisionGroup without each placement system having to
+-- know about it.
+boat.DescendantAdded:Connect(function(d)
+	if d:IsA("BasePart") then tagRaftPart(d) end
+end)
 
 -- Lock the raft as server-controlled. Without this, Roblox auto-assigns
 -- network ownership to the nearest player, and any time a new part is
