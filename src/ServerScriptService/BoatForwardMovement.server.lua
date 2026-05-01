@@ -63,6 +63,20 @@ end)
 local function tagRaftPart(part)
 	if part and part:IsA("BasePart") then
 		part.CollisionGroup = "Raft"
+		-- Pin NetworkOwner to the server (T33). Without this, Roblox
+		-- can reassign physics ownership of newly-welded parts to a
+		-- nearby player; replication jitter from the player's client
+		-- then pumps the buoyancy spring through the rigid welds and
+		-- the raft slowly bobs. BuildingSystem's wall placement has
+		-- always done this in unanchorAndPin — that's exactly why
+		-- walls don't bounce the raft and items did. Deferred because
+		-- a part that's anchored at the moment we tag it (placement
+		-- systems use Pass 0 force-anchor) errors on SetNetworkOwner.
+		task.defer(function()
+			if part.Parent and not part.Anchored then
+				pcall(function() part:SetNetworkOwner(nil) end)
+			end
+		end)
 	end
 end
 
@@ -408,13 +422,15 @@ RunService.Heartbeat:Connect(function(dt)
 
 	vectorForce.Force = Vector3.new(horizontalForce.X, buoyancyForce, horizontalForce.Z)
 
-	-- Y velocity safety cap (T31/T32). Tightened from 8 → 2 studs/s
-	-- so any residual perturbation that slips past the per-system
-	-- fixes is bled off before it produces a visibly noticeable bob.
-	-- 2 studs/s is well above what normal player motion / weight
-	-- shifts produce, but any resonant pumping is killed before the
-	-- raft moves more than ~0.3 studs vertically.
-	local Y_VEL_CAP = 2
+	-- Y velocity safety net (T31/T32/T33). Defence in depth — T33
+	-- pins NetworkOwner so the root cause of the items-vs-walls
+	-- discrepancy is gone, but if anything else ever pumps the
+	-- buoyancy spring we don't want it to be visible. 1 stud/s is
+	-- below human visual perception for a raft of this scale; even
+	-- if the cap fires, the resulting peak displacement is small
+	-- enough that the user can't see the snap-back the previous 2-
+	-- stud cap was producing.
+	local Y_VEL_CAP = 1
 	local v = primaryPart.AssemblyLinearVelocity
 	if math.abs(v.Y) > Y_VEL_CAP then
 		local clamped = math.sign(v.Y) * Y_VEL_CAP
