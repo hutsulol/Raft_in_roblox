@@ -11,8 +11,25 @@ local VELOCITY_GAIN = 6
 -- then a spring-damper corrects any displacement. Without gravity
 -- compensation, the spring alone would need enormous stiffness to fight
 -- the 196.2 studs/s² gravity — at stiffness 8 the raft sinks ~25 studs.
-local BUOYANCY_STIFFNESS = 10 -- spring correction for displacement from waterY
-local BUOYANCY_DAMPING = 6    -- damping to prevent vertical oscillation
+--
+-- Tuning (T21): the buoyancy is now strongly over-damped so any
+-- disturbance — placing a workbench / purifier / container, a player
+-- jumping on the raft, weld constraint impulses — decays exponentially
+-- in well under a second instead of bobbing for 6-8 seconds. With ω₀
+-- = √14 ≈ 3.74 rad/s and ζ = 24/(2√14) ≈ 3.2, the raft can't oscillate
+-- on any single perturbation; it just slides smoothly back to waterY.
+local BUOYANCY_STIFFNESS = 14 -- spring correction for displacement from waterY
+local BUOYANCY_DAMPING   = 24 -- damping; ζ ≈ 3.2 → strongly over-damped
+
+-- Subtle wave motion (T21). The original buoyancy pinned the raft to
+-- a hard-coded waterY captured at script init, which made the raft
+-- feel like it was glued to a flat surface. A sin(t) offset on waterY
+-- gives the spring a slowly-moving target so the raft gently bobs
+-- with the sea — about 0.15 studs of vertical sway every ~10 seconds —
+-- without amplifying placement perturbations because the spring is
+-- over-damped.
+local WAVE_AMPLITUDE = 0.15
+local WAVE_FREQUENCY = 0.6   -- rad/s; period ≈ 10.5 s
 
 -- ─── Wind event ───
 -- Wind only starts once the players have survived past the 5th day, then
@@ -365,9 +382,11 @@ RunService.Heartbeat:Connect(function(dt)
 	-- Custom buoyancy: first counteract gravity entirely so the raft is
 	-- weightless, then apply a spring-damper to lock it at waterY.
 	-- gravityCompensation alone makes the raft hover; the spring corrects
-	-- any drift above or below the water surface.
+	-- any drift above or below the water surface. The target Y shifts
+	-- with a slow sin wave so the raft bobs gently with the sea (T21).
 	local gravityCompensation = totalMass * workspace.Gravity
-	local yError = waterY - primaryPart.Position.Y
+	local targetY = waterY + math.sin(os.clock() * WAVE_FREQUENCY) * WAVE_AMPLITUDE
+	local yError = targetY - primaryPart.Position.Y
 	local yVelocity = currentVelocity.Y
 	local springForce = (yError * BUOYANCY_STIFFNESS - yVelocity * BUOYANCY_DAMPING) * totalMass
 	local buoyancyForce = gravityCompensation + springForce
