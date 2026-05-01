@@ -87,11 +87,36 @@ local function setGhostColor(valid)
 	end
 end
 
+-- Full set of placeable model names — kept in sync across every
+-- placer (CupPurifier, SmallContainerPlacer, PlasticContainerPlacer,
+-- FurnacePlacer, WetBrickPlacer). Drift between these is what let
+-- a Garden land inside a SmallContainer.
 local PLACED_NAMES = {
-	WorkBench = true, Purifier = true, Garden = true,
-	Bed = true, Destitalor = true, bush = true,
-	Furnace = true, Sawmill = true, SmallContainer = true,
+	WorkBench       = true,
+	Purifier        = true,
+	Garden          = true,
+	Bed             = true,
+	Destitalor      = true,
+	bush            = true,
+	Furnace         = true,
+	Sawmill         = true,
+	SmallContainer  = true,
+	PlasticContainer = true,
+	Wet_Brick       = true,
+	Dry_Brick       = true,
+	Anchor_part     = true,
 }
+
+local function isInsidePlaceable(instance)
+	local current = instance
+	while current and current.Parent do
+		if current:IsA("Model") and PLACED_NAMES[current.Name] then
+			return current
+		end
+		current = current.Parent
+	end
+	return nil
+end
 
 local function isPlacementBlocked(placeCF, ghostSize)
 	local raft = workspace:FindFirstChild("Raft")
@@ -152,7 +177,11 @@ local function updateGhost()
 
 	ghost:PivotTo(placeCF)
 
-	if hitOnRaft then
+	-- Reject hits that land on the top of an existing placeable —
+	-- bounding-box overlap alone misses stacked-above placement.
+	local hitOnPlaceable = isInsidePlaceable(result.Instance)
+
+	if hitOnRaft and not hitOnPlaceable then
 		lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
 		local blocked = isPlacementBlocked(placeCF, ghostSize)
 		setGhostColor(not blocked)

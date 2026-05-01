@@ -83,12 +83,34 @@ local function setGhostColor(valid)
 	end
 end
 
+-- Full set of placeable model names — kept in sync across every
+-- placer so any placeable blocks any other from overlapping it.
 local PLACED_NAMES = {
-	WorkBench = true, Purifier = true, Garden = true,
-	Bed = true, Destitalor = true, bush = true,
-	Furnace = true, Sawmill = true,
-	SmallContainer = true, PlasticContainer = true,
+	WorkBench       = true,
+	Purifier        = true,
+	Garden          = true,
+	Bed             = true,
+	Destitalor      = true,
+	bush            = true,
+	Furnace         = true,
+	Sawmill         = true,
+	SmallContainer  = true,
+	PlasticContainer = true,
+	Wet_Brick       = true,
+	Dry_Brick       = true,
+	Anchor_part     = true,
 }
+
+local function isInsidePlaceable(instance)
+	local current = instance
+	while current and current.Parent do
+		if current:IsA("Model") and PLACED_NAMES[current.Name] then
+			return current
+		end
+		current = current.Parent
+	end
+	return nil
+end
 
 local function isPlacementBlocked(placeCF, ghostSize)
 	local raft = workspace:FindFirstChild("Raft")
@@ -136,6 +158,9 @@ local function updateGhost()
 	end
 
 	local hitOnRaft = result.Instance:IsDescendantOf(raft)
+	-- Reject hits on the top of an already-placed object so the ghost
+	-- can't stack one layer above containers / purifiers / workbenches.
+	local hitOnPlaceable = isInsidePlaceable(result.Instance)
 	local hitPos = result.Position
 	local ghostSize = ghost:GetExtentsSize()
 	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
@@ -145,7 +170,7 @@ local function updateGhost()
 
 	ghost:PivotTo(placeCF)
 
-	if hitOnRaft then
+	if hitOnRaft and not hitOnPlaceable then
 		lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
 		local blocked = isPlacementBlocked(placeCF, ghostSize)
 		setGhostColor(not blocked)

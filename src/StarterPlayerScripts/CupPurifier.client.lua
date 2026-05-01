@@ -204,6 +204,41 @@ local function gardenHasBush(garden)
 end
 
 -- ─── Check if placement spot is blocked by existing objects ───
+-- Full set of placeable model names — every placer in the project
+-- shares this union so any placeable blocks any other from overlapping
+-- it. Drift between placers is what let the player drop a Garden into
+-- a Small Container before this was unified.
+local PLACED_OBJECT_NAMES = {
+	WorkBench       = true,
+	Purifier        = true,
+	Garden          = true,
+	Bed             = true,
+	Destitalor      = true,
+	bush            = true,
+	Furnace         = true,
+	Sawmill         = true,
+	SmallContainer  = true,
+	PlasticContainer = true,
+	Wet_Brick       = true,
+	Dry_Brick       = true,
+	Anchor_part     = true,
+}
+
+-- Walks ancestors looking for one of our placeable model names. Used
+-- to reject placement when the raycast lands on the top of an already
+-- placed object — without this the ghost happily sits a layer above
+-- (e.g. a Garden floating on top of a Purifier or Container).
+local function isInsidePlaceable(instance)
+	local current = instance
+	while current and current.Parent do
+		if current:IsA("Model") and PLACED_OBJECT_NAMES[current.Name] then
+			return current
+		end
+		current = current.Parent
+	end
+	return nil
+end
+
 local function isPlacementBlocked(placeCF, ghostSize)
 	local raft = workspace:FindFirstChild("Raft")
 	if not raft then return true end
@@ -217,18 +252,12 @@ local function isPlacementBlocked(placeCF, ghostSize)
 
 	local parts = workspace:GetPartBoundsInBox(placeCF, checkSize, overlapParams)
 
-	-- Known placed object names to check against
-	local placedObjectNames = {
-		WorkBench = true, Purifier = true, Garden = true,
-		Bed = true, Destitalor = true, bush = true, Sawmill = true,
-	}
-
 	for _, part in parts do
 		if part:IsDescendantOf(raft) then
 			-- Walk up to find parent model
 			local current = part
 			while current and current ~= raft do
-				if current:IsA("Model") and placedObjectNames[current.Name] then
+				if current:IsA("Model") and PLACED_OBJECT_NAMES[current.Name] then
 					return true
 				end
 				current = current.Parent
@@ -290,8 +319,14 @@ local function updateGhost()
 	else
 		-- Other placeables: place on raft surface
 		local hitOnRaft = result.Instance:IsDescendantOf(raft)
+		-- Reject hits that land on the top of an existing placeable —
+		-- otherwise the ghost stacks above containers / purifiers /
+		-- workbenches even though the bounding-box overlap check
+		-- (which is purely horizontal at the ghost's centre Y) doesn't
+		-- detect anything below.
+		local hitOnPlaceable = isInsidePlaceable(result.Instance)
 
-		if hitOnRaft then
+		if hitOnRaft and not hitOnPlaceable then
 			local hitPos = result.Position
 			local ghostSize = ghost:GetExtentsSize()
 			local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0

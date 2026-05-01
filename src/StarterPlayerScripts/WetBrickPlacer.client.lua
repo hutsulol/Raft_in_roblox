@@ -90,6 +90,35 @@ local function setGhostColor(valid)
 end
 
 -- ─── Check overlap with placed objects ───
+-- Full set of placeable model names — kept in sync across every
+-- placer so any placeable blocks any other from overlapping it.
+local PLACED_OBJECT_NAMES = {
+	WorkBench       = true,
+	Purifier        = true,
+	Garden          = true,
+	Bed             = true,
+	Destitalor      = true,
+	bush            = true,
+	Furnace         = true,
+	Sawmill         = true,
+	SmallContainer  = true,
+	PlasticContainer = true,
+	Wet_Brick       = true,
+	Dry_Brick       = true,
+	Anchor_part     = true,
+}
+
+local function isInsidePlaceable(instance)
+	local current = instance
+	while current and current.Parent do
+		if current:IsA("Model") and PLACED_OBJECT_NAMES[current.Name] then
+			return current
+		end
+		current = current.Parent
+	end
+	return nil
+end
+
 local function isPlacementBlocked(placeCF, ghostSize)
 	local raft = workspace:FindFirstChild("Raft")
 	if not raft then return true end
@@ -101,17 +130,11 @@ local function isPlacementBlocked(placeCF, ghostSize)
 	local checkSize = ghostSize * 0.7
 	local parts = workspace:GetPartBoundsInBox(placeCF, checkSize, overlapParams)
 
-	local placedObjectNames = {
-		WorkBench = true, Purifier = true, Garden = true,
-		Bed = true, Destitalor = true, bush = true, Furnace = true, Sawmill = true,
-		Wet_Brick = true, Dry_Brick = true,
-	}
-
 	for _, part in parts do
 		if part:IsDescendantOf(raft) then
 			local current = part
 			while current and current ~= raft do
-				if current:IsA("Model") and placedObjectNames[current.Name] then
+				if current:IsA("Model") and PLACED_OBJECT_NAMES[current.Name] then
 					return true
 				end
 				current = current.Parent
@@ -144,7 +167,10 @@ local function updateGhost()
 	end
 
 	local hitOnRaft = result.Instance:IsDescendantOf(raft)
-	if not hitOnRaft then
+	-- Reject hits on top of an already-placed object so the brick
+	-- can't stack on a container / purifier / workbench.
+	local hitOnPlaceable = isInsidePlaceable(result.Instance)
+	if not hitOnRaft or hitOnPlaceable then
 		setGhostColor(false)
 		return
 	end
