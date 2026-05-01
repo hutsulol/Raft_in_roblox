@@ -20,7 +20,7 @@ local recipes = {
 	{
 		name = "Hammer",
 		displayName = "Hammer",
-		icon = "rbxassetid://96978301002259",
+		icon = "rbxassetid://72168072336946",
 		costs = {Log = 1},
 		craftType = "tool",
 		category = "Tools",
@@ -111,7 +111,7 @@ local recipes = {
 	{
 		name = "Shovel",
 		displayName = "Shovel",
-		icon = "rbxassetid://91548954831391",
+		icon = "rbxassetid://123765089142597",
 		costs = {Rope = 1, Stone = 3, Log = 1},
 		craftType = "tool",
 		category = "Tools",

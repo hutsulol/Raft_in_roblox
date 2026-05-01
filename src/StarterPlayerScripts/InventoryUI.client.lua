@@ -13,10 +13,10 @@ StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local inventoryCraftEvent = ReplicatedStorage:WaitForChild("InventoryCraft")
 
-local LOG_ICON = "rbxassetid://110032041583533"
+local LOG_ICON = "rbxassetid://95176887036839"
 local PLASTIC_ICON = "rbxassetid://132919988751848"
-local STONE_ICON = "rbxassetid://134781813180973"
-local IRON_ORE_ICON = "rbxassetid://73676755288746"
+local STONE_ICON = "rbxassetid://96450657403376"
+local IRON_ORE_ICON = "rbxassetid://78456892304314"
 local IRON_INGOT_ICON = "rbxassetid://72890243946368"
 local LEAVES_ICON = "rbxassetid://78493803156432"
 
@@ -69,23 +69,23 @@ local RESOURCE_ICONS = {
 }
 
 local TOOL_ICONS = {
-	["Hammer"] = "rbxassetid://96978301002259",
-	["Pick-Axe"] = "rbxassetid://89809613033816",
+	["Hammer"] = "rbxassetid://72168072336946",
+	["Pick-Axe"] = "rbxassetid://102411845666126",
 	["Cup"] = "rbxassetid://99673504095026",
 	["Destitalor"] = "rbxassetid://90221080738714",
 	["Furnace"] = "rbxassetid://117760352651529",
 	["bush"] = "rbxassetid://100755665041729",
 
 	["Machete"] = "rbxassetid://92926554091794",
-	["Wood_Knife"] = "rbxassetid://110032041583533",
+	["Wood_Knife"] = "rbxassetid://95176887036839",
 	["WorkBench"] = "rbxassetid://104306543647624",
 	["Bed"] = "rbxassetid://85069521486600",
 	["Garden"] = "rbxassetid://77159786623285",
 	["Paddle"] = "rbxassetid://93358108538106",
 	["Sawmill"] = "rbxassetid://75858978626954",
-	["Shovel"] = "rbxassetid://91548954831391",
-	["Hook"] = "rbxassetid://110032041583533",
-	["Axe"] = "rbxassetid://110032041583533",
+	["Shovel"] = "rbxassetid://123765089142597",
+	["Hook"] = "rbxassetid://95176887036839",
+	["Axe"] = "rbxassetid://95176887036839",
 	["[GRAPES]"] = "rbxassetid://137478230275649",
 	["Grapes"] = "rbxassetid://137478230275649",
 	["FishingRod"] = "rbxassetid://105180666555503",
@@ -2365,7 +2365,7 @@ inventoryCraftEvent.OnClientEvent:Connect(function(action, data, inv)
 			table.insert(recipes, {
 				name = "Pick-Axe",
 				displayName = "Pick-Axe",
-				icon = "rbxassetid://89809613033816",
+				icon = "rbxassetid://102411845666126",
 				costs = {Log = 2},
 				craftType = "tool",
 				category = "Tools",

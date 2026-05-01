@@ -71,7 +71,7 @@ end
 local PREVIEW_COLOR_VALID = Color3.fromRGB(80, 200, 80)
 local PREVIEW_COLOR_INVALID = Color3.fromRGB(200, 80, 80)
 
-local LOG_ICON = "rbxassetid://110032041583533"
+local LOG_ICON = "rbxassetid://95176887036839"
 local FLOOR_ICON = "rbxassetid://114819085093343"
 local WALL_ICON = "rbxassetid://103259353018381"
 local BEAM_ICON = "rbxassetid://128953076654373"

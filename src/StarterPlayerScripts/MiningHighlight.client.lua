@@ -17,8 +17,8 @@ local mineOreEvent = ReplicatedStorage:WaitForChild("MineOre")
 
 -- ─── Resource Icons ───
 local RESOURCE_ICONS = {
-	Stone = "rbxassetid://134781813180973",
-	Iron_Ore = "rbxassetid://73676755288746",
+	Stone = "rbxassetid://96450657403376",
+	Iron_Ore = "rbxassetid://78456892304314",
 }
 
 -- ─── Mining feedback UI ───
