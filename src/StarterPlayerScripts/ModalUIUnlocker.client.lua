@@ -40,10 +40,14 @@ local function attachModal(screenGui)
 
 	-- An invisible GuiButton with Modal = true is enough — the camera
 	-- script checks for any visible Modal button in PlayerGui and
-	-- releases the mouse when it finds one.
+	-- releases the mouse when it finds one. We keep btn.Modal in sync
+	-- with screenGui.Enabled so a modal that lazy-builds and toggles
+	-- Enabled (instead of Destroy on close) lets go of the cursor on
+	-- close, otherwise the camera script keeps the mouse unlocked
+	-- forever and the player loses RMB-rotate / first-person look.
 	local btn = Instance.new("TextButton")
 	btn.Name = "__ModalUnlock"
-	btn.Modal = true
+	btn.Modal = screenGui.Enabled
 	btn.Visible = true
 	btn.Active = true
 	btn.BackgroundTransparency = 1
@@ -56,6 +60,9 @@ local function attachModal(screenGui)
 	btn.Parent = screenGui
 
 	activeModalGuis[screenGui] = true
+	screenGui:GetPropertyChangedSignal("Enabled"):Connect(function()
+		btn.Modal = screenGui.Enabled
+	end)
 	screenGui.AncestryChanged:Connect(function(_, parent)
 		if not parent then
 			activeModalGuis[screenGui] = nil
