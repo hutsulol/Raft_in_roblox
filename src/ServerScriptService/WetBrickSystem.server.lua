@@ -10,7 +10,7 @@ local PICKUP_RANGE = 10
 local WET_COLOR = Color3.fromRGB(96, 70, 50)
 local DRY_COLOR = Color3.fromRGB(180, 130, 90)
 local BRICK_SIZE = Vector3.new(3, 1.4, 2)
-local DRY_BRICK_ICON = "rbxassetid://129896663405682"
+local DRY_BRICK_ICON = "rbxassetid://97322022540143"
 
 local wetBrickAction = rs:FindFirstChild("WetBrickAction")
 if not wetBrickAction then

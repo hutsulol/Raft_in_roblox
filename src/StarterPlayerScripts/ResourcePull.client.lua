@@ -122,7 +122,7 @@ local function removeProgress(resource)
 end
 
 local RESOURCE_ICONS = {
-	Log = "rbxassetid://110032041583533",
+	Log = "rbxassetid://116178347748793",
 	Plastic = "rbxassetid://132919988751848",
 	Leaves = "rbxassetid://96691360298069",
 }
@@ -132,7 +132,7 @@ local function showCollectedPopup(worldPos, resType, resAmount)
 	if not onScreen then return end
 
 	local amount = resAmount or 1
-	local iconId = RESOURCE_ICONS[resType or "Log"] or "rbxassetid://110032041583533"
+	local iconId = RESOURCE_ICONS[resType or "Log"] or "rbxassetid://116178347748793"
 
 	local screenGui = Instance.new("ScreenGui")
 	screenGui.Parent = playerGui

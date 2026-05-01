@@ -13,14 +13,14 @@ local recipes = {
 	{
 		name = "Wood_Knife",
 		displayName = "Wood Knife",
-		icon = "rbxassetid://110032041583533",
+		icon = "rbxassetid://116178347748793",
 		costs = {Log = 2},
 		model = "Wood_Knife",
 	},
 	{
 		name = "Sawmill",
 		displayName = "Sawmill",
-		icon = "rbxassetid://75858978626954",
+		icon = "rbxassetid://105762338578204",
 		costs = {Log = 1},
 		craftType = "placeable",
 	},

@@ -145,7 +145,7 @@ craftEvent.OnServerEvent:Connect(function(player, action, data)
 	local tool = Instance.new("Tool")
 	tool.Name = "Bed"
 	tool.CanBeDropped = false
-	tool.TextureId = "rbxassetid://110032041583533"
+	tool.TextureId = "rbxassetid://116178347748793"
 
 	local handle = Instance.new("Part")
 	handle.Name = "Handle"

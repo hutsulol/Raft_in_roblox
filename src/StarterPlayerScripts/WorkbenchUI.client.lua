@@ -64,20 +64,20 @@ local CLOSE_BTN_RADIUS = 8
 local INVENTORY_BAR_H = 56
 
 -- ─── Asset ids ──────────────────────────────────────────────────────
-local LOG_ICON = "rbxassetid://110032041583533"
+local LOG_ICON = "rbxassetid://116178347748793"
 local COST_ICONS = {
 	Log         = LOG_ICON,
-	Stone       = "rbxassetid://134781813180973",
+	Stone       = "rbxassetid://96450657403376",
 	Plastic     = "rbxassetid://132919988751848",
-	Iron_Ore    = "rbxassetid://73676755288746",
+	Iron_Ore    = "rbxassetid://78456892304314",
 	Iron_Ingot  = "rbxassetid://72890243946368",
 	Plank       = "rbxassetid://118108820731466",
 	Leaves      = "rbxassetid://96691360298069",
 	Rope        = "rbxassetid://78492721752628",
 	Sand        = "rbxassetid://92407877736322",
 	Clay        = "rbxassetid://129473903672183",
-	Wet_Brick   = "rbxassetid://77999856849195",
-	Dry_Brick   = "rbxassetid://129896663405682",
+	Wet_Brick   = "rbxassetid://139059474647090",
+	Dry_Brick   = "rbxassetid://97322022540143",
 }
 
 -- ─── Recipe catalog (client-side, mirrors CraftingSystem) ───────────
@@ -85,10 +85,10 @@ local COST_ICONS = {
 -- detail panel. Server is the source of truth for whether a recipe is
 -- actually craftable — entries here just need to match by `name`.
 local recipes = {
-	{ name = "Wood_Knife",       displayName = "Wood Knife",       icon = "rbxassetid://110032041583533", costs = {Log = 2},                category = "tools",      description = "A sharp blade with a wooden handle. Useful for cutting things." },
+	{ name = "Wood_Knife",       displayName = "Wood Knife",       icon = "rbxassetid://116178347748793", costs = {Log = 2},                category = "tools",      description = "A sharp blade with a wooden handle. Useful for cutting things." },
 	{ name = "Bed",              displayName = "Bed",              icon = "rbxassetid://85069521486600",  costs = {Log = 2},                category = "structures", description = "A simple bed for resting and setting your respawn." },
 	{ name = "Furnace",          displayName = "Furnace",          icon = "rbxassetid://117760352651529", costs = {Stone = 10, Log = 5},    category = "structures", description = "Smelts ores into usable ingots." },
-	{ name = "Sawmill",          displayName = "Sawmill",          icon = "rbxassetid://75858978626954",  costs = {Log = 1},                category = "structures", description = "Processes logs into planks." },
+	{ name = "Sawmill",          displayName = "Sawmill",          icon = "rbxassetid://105762338578204",  costs = {Log = 1},                category = "structures", description = "Processes logs into planks." },
 	{ name = "SmallContainer",   displayName = "Small Container",  icon = "rbxassetid://86632287242518",  costs = {Log = 1},                category = "storage",    description = "A small container for storing items." },
 	{ name = "PlasticContainer", displayName = "Plastic Container", icon = "rbxassetid://98308527317479", costs = {Plastic = 5},            category = "storage",    description = "A large container for storing items." },
 	{ name = "Anchor_part",      displayName = "Anchor",           icon = "rbxassetid://120414328052740", costs = {Log = 1},                category = "structures", description = "Stops the raft from drifting on the current." },

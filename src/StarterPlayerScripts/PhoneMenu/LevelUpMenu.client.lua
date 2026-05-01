@@ -27,15 +27,15 @@ local FONT_TITLE = Enum.Font.GothamBold
 local FONT_BODY  = Enum.Font.Gotham
 
 -- ─── Icons ───────────────────────────────────────────────────────────────
-local ICON_LOG          = "rbxassetid://110032041583533"
-local ICON_UPGRADE_PT   = "rbxassetid://89809613033816" -- star / pick-axe style
+local ICON_LOG          = "rbxassetid://116178347748793"
+local ICON_UPGRADE_PT   = "rbxassetid://102411845666126" -- star / pick-axe style
 
 -- ─── Per-level unlock definitions ────────────────────────────────────────
 -- Each entry lists the recipes / items that become available at that level.
 -- `icon` is the same rbxassetid used in the crafting system.
 local LEVEL_UNLOCKS = {
 	[4] = {
-		{ name = "Work Bench",    icon = "rbxassetid://104306543647624" },
+		{ name = "Work Bench",    icon = "rbxassetid://116083064101694" },
 		{ name = "Paddle",        icon = "rbxassetid://93358108538106"  },
 	},
 	[5] = {
@@ -43,16 +43,16 @@ local LEVEL_UNLOCKS = {
 		{ name = "Water Purifier", icon = "rbxassetid://90221080738714" },
 	},
 	[6] = {
-		{ name = "Garden Bed",    icon = "rbxassetid://77159786623285"  },
-		{ name = "Grape Bush",    icon = "rbxassetid://100755665041729" },
+		{ name = "Garden Bed",    icon = "rbxassetid://137766871451752"  },
+		{ name = "Grape Bush",    icon = "rbxassetid://93957489757544" },
 	},
 	[7] = {
 		{ name = "Furnace",       icon = "rbxassetid://117760352651529" },
-		{ name = "Shovel",        icon = "rbxassetid://91548954831391"  },
+		{ name = "Shovel",        icon = "rbxassetid://123765089142597"  },
 	},
 	[8] = {
 		{ name = "Fishing Rod",   icon = "" },
-		{ name = "Wooden Spear",  icon = "rbxassetid://110032041583533" },
+		{ name = "Wooden Spear",  icon = "rbxassetid://116178347748793" },
 	},
 }
 
