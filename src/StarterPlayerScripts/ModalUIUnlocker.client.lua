@@ -76,9 +76,13 @@ end
 playerGui.ChildAdded:Connect(checkChild)
 
 -- Backup: force unlock cursor each frame while a modal UI exists.
+-- We honour the GUI's Enabled flag so modal UIs that lazy-build and
+-- toggle Enabled (instead of Destroy on close) release the mouse on
+-- close — otherwise the camera script stays unlocked forever and the
+-- player loses RMB-rotate / first-person look.
 RunService.RenderStepped:Connect(function()
 	for gui in pairs(activeModalGuis) do
-		if gui.Parent then
+		if gui.Parent and gui.Enabled then
 			if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
 				UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 			end
