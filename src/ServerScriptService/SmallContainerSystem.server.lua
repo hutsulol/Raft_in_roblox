@@ -133,6 +133,18 @@ local function swapContainerModel(container)
 		end
 	end
 
+	-- Reset WorldPivot to the NEW model's bounding-box centre (T20).
+	-- Container_empty / Container_50 / Container_full can have slightly
+	-- different geometry, and reusing the WorldPivot from the original
+	-- place call leaves PivotTo positioning the new parts against a
+	-- pivot that no longer matches their bounding box. Parts then land
+	-- with a Y offset that overlaps raft logs, and Roblox's collision
+	-- solver applies repulsion forces that kick the assembly into a bob.
+	if container:IsA("Model") then
+		local bbCF = container:GetBoundingBox()
+		container.WorldPivot = CFrame.new(bbCF.Position)
+	end
+
 	-- Reposition against the raft's CURRENT pose, not the stale one.
 	if savedRelCF and raftPrimary then
 		container:PivotTo(raftPrimary.CFrame * savedRelCF)
@@ -140,11 +152,16 @@ local function swapContainerModel(container)
 		container:PivotTo(savedCF)
 	end
 
-	-- Weld FIRST while still anchored, THEN unanchor (T15) so the
-	-- new parts inherit the raft's velocity via the weld instead of
-	-- the solver having to equalise from a zero-velocity free body.
+	-- T15/T16/T20: Pass 0 force-anchor every BasePart (defensive — the
+	-- template might be authored unanchored), Pass 1 weld while anchored,
+	-- Pass 2 unanchor.
 	local storage = container:FindFirstChild("StoredTools")
 	if raftPrimary then
+		for _, part in container:GetDescendants() do
+			if part:IsA("BasePart") and not (storage and part:IsDescendantOf(storage)) then
+				part.Anchored = true
+			end
+		end
 		for _, part in container:GetDescendants() do
 			if part:IsA("BasePart") and not (storage and part:IsDescendantOf(storage)) then
 				local weld = Instance.new("WeldConstraint")
@@ -158,6 +175,7 @@ local function swapContainerModel(container)
 				part.Anchored = false
 			end
 		end
+
 		raftPrimary.AssemblyLinearVelocity  = linVel
 		raftPrimary.AssemblyAngularVelocity = angVel
 	end
