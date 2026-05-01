@@ -135,16 +135,19 @@ local function processLog(sawmill, droppedLog)
 				if first then plankClone.PrimaryPart = first end
 			end
 
-			-- No collision, no touch, massless — pickup target welded to raft
+			-- No collision, no touch, massless — pickup target welded to raft.
+			-- Force-anchor every part BEFORE the PivotTo + Parent so the
+			-- plank can never exist as a free body in the moving world
+			-- (T26). The unanchor pass runs after the welds are in place.
 			if plankClone:IsA("BasePart") then
-				plankClone.Anchored = false
+				plankClone.Anchored = true
 				plankClone.CanCollide = false
 				plankClone.CanTouch = false
 				plankClone.Massless = true
 			end
 			for _, p in plankClone:GetDescendants() do
 				if p:IsA("BasePart") then
-					p.Anchored = false
+					p.Anchored = true
 					p.CanCollide = false
 					p.CanTouch = false
 					p.Massless = true
@@ -156,23 +159,43 @@ local function processLog(sawmill, droppedLog)
 			plankClone:PivotTo(CFrame.new(claimerPos))
 			plankClone.Parent = workspace
 
-			-- Weld to raft so it stays in place as raft moves
+			-- Weld to raft so it stays in place as raft moves. Snapshot
+			-- raft velocity around the welds + unanchor pass so cumulative
+			-- plank drops don't bleed momentum out of the assembly. (Two
+			-- planks landing in the same spot was visibly bobbing the raft.)
 			local raft = getRaft()
 			if raft and raft.PrimaryPart then
+				local rPrim = raft.PrimaryPart
+				local linVel = rPrim.AssemblyLinearVelocity
+				local angVel = rPrim.AssemblyAngularVelocity
+
+				-- Pass 1: weld every part while anchored.
 				for _, p in plankClone:GetDescendants() do
 					if p:IsA("BasePart") then
 						local w = Instance.new("WeldConstraint")
 						w.Part0 = p
-						w.Part1 = raft.PrimaryPart
+						w.Part1 = rPrim
 						w.Parent = p
 					end
 				end
 				if plankClone:IsA("BasePart") then
 					local w = Instance.new("WeldConstraint")
 					w.Part0 = plankClone
-					w.Part1 = raft.PrimaryPart
+					w.Part1 = rPrim
 					w.Parent = plankClone
 				end
+				-- Pass 2: unanchor (parts inherit raft velocity via the welds).
+				for _, p in plankClone:GetDescendants() do
+					if p:IsA("BasePart") then
+						p.Anchored = false
+					end
+				end
+				if plankClone:IsA("BasePart") then
+					plankClone.Anchored = false
+				end
+
+				rPrim.AssemblyLinearVelocity  = linVel
+				rPrim.AssemblyAngularVelocity = angVel
 			end
 
 			plankClone:SetAttribute("ResourceType", "Plank")
