@@ -22,12 +22,23 @@ end
 -- Names of parts that need to spin (use Motor6D so client can rotate via Transform)
 local SPIN_PART_NAMES = { Hexagon = true, Hexagon_placer = true, Hexagon_claimer = true, SawBlade = true }
 
+-- Canonical 3-pass weld pattern (matches GardenSystem / SmallContainerSystem
+-- after T20). Pass 0 force-anchors every BasePart (templates may be
+-- authored unanchored). Pass 1 creates the constraint while still
+-- anchored — for spinning parts (saw blade, hexagons) we use Motor6D
+-- so the client can rotate them via Transform; everything else gets a
+-- rigid WeldConstraint. Pass 2 unanchors so the parts inherit the raft's
+-- velocity through the constraint instead of starting at zero. Velocity
+-- snapshot/restore is wrapped around the loop in the caller.
 local function weldToRaft(obj, raft)
 	local raftPart = raft.PrimaryPart
 	for _, part in obj:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.Anchored = false
-			part.Massless = true
+			part.Anchored = true
+		end
+	end
+	for _, part in obj:GetDescendants() do
+		if part:IsA("BasePart") then
 			if SPIN_PART_NAMES[part.Name] then
 				local motor = Instance.new("Motor6D")
 				motor.Name = "SpinMotor"
@@ -42,6 +53,11 @@ local function weldToRaft(obj, raft)
 				weld.Part1 = raftPart
 				weld.Parent = part
 			end
+		end
+	end
+	for _, part in obj:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
 		end
 	end
 end
@@ -235,7 +251,15 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(data)
 		sawmill:PivotTo(worldCF)
 		sawmill.Parent = raft
+
+		-- Snapshot raft velocity around the welds so adding the sawmill
+		-- doesn't bleed momentum out of the assembly and bob the raft.
+		local primary = raft.PrimaryPart
+		local linVel = primary.AssemblyLinearVelocity
+		local angVel = primary.AssemblyAngularVelocity
 		weldToRaft(sawmill, raft)
+		primary.AssemblyLinearVelocity  = linVel
+		primary.AssemblyAngularVelocity = angVel
 
 		sawmill:SetAttribute("IsSawmill", true)
 		sawmill:SetAttribute("SawmillState", "idle")

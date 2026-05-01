@@ -443,15 +443,22 @@ local function rebuildRaft(player, saveData)
 		return (raftCF * CFrame.new(localOffset)).Position
 	end
 
-	-- Save load: snapshot velocity + weld-FIRST-then-unanchor per item
-	-- (T13 + T15) so replaying the save doesn't bleed momentum out of
-	-- the raft assembly.
+	-- Save load: snapshot velocity + 3-pass anchor/weld/unanchor per
+	-- item (T13/T15/T16/T24) so replaying the save doesn't bleed
+	-- momentum out of the raft assembly.
 	local primary = raft.PrimaryPart
 
 	local function weldAndUnanchor(clone)
 		local linVel = primary.AssemblyLinearVelocity
 		local angVel = primary.AssemblyAngularVelocity
 		if clone:IsA("Model") then
+			-- Pass 0: force-anchor every part (saved state may have
+			-- unanchored values from when we last saved).
+			for _, part in clone:GetDescendants() do
+				if part:IsA("BasePart") then
+					part.Anchored = true
+				end
+			end
 			-- Pass 1: weld every part while still anchored.
 			for _, part in clone:GetDescendants() do
 				if part:IsA("BasePart") then
@@ -468,6 +475,7 @@ local function rebuildRaft(player, saveData)
 				end
 			end
 		else
+			clone.Anchored = true
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = primary
 			weld.Part1 = clone
