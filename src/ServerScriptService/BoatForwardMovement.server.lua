@@ -42,12 +42,15 @@ local primaryPart = boat.PrimaryPart
 -- position. This is the target height for the buoyancy spring.
 local waterY = primaryPart.Position.Y
 
--- Collision groups (T29). Floating resources (logs / leaves / plastic
--- canisters) are kept in "FloatingResource" so they drift past the
--- raft without applying contact impulses. The raft + everything ever
--- welded onto it lives in "Raft". The two are configured to ignore
--- each other; everything else stays in "Default" so players still
--- walk on the raft normally.
+-- Collision groups (T29/T34). Floating resources (logs / leaves /
+-- plastic canisters) are kept in "FloatingResource" so they drift
+-- past the raft AND past players without applying contact impulses.
+-- The raft + everything ever welded onto it lives in "Raft", and
+-- "FloatingResource" is configured non-collidable against both Raft
+-- AND Default — so anything not tagged Raft (most things in the
+-- world, including players and any not-yet-tagged raft part) also
+-- ignores resources. Resources keep CanCollide = true so terrain
+-- water buoyancy keeps them floating.
 local PhysicsService = game:GetService("PhysicsService")
 local function ensureGroup(name)
 	pcall(function()
@@ -58,6 +61,12 @@ ensureGroup("Raft")
 ensureGroup("FloatingResource")
 pcall(function()
 	PhysicsService:CollisionGroupSetCollidable("Raft", "FloatingResource", false)
+end)
+pcall(function()
+	PhysicsService:CollisionGroupSetCollidable("Default", "FloatingResource", false)
+end)
+pcall(function()
+	PhysicsService:CollisionGroupSetCollidable("FloatingResource", "FloatingResource", false)
 end)
 
 local function tagRaftPart(part)
@@ -421,21 +430,6 @@ RunService.Heartbeat:Connect(function(dt)
 	local buoyancyForce = gravityCompensation + springForce
 
 	vectorForce.Force = Vector3.new(horizontalForce.X, buoyancyForce, horizontalForce.Z)
-
-	-- Y velocity safety net (T31/T32/T33). Defence in depth — T33
-	-- pins NetworkOwner so the root cause of the items-vs-walls
-	-- discrepancy is gone, but if anything else ever pumps the
-	-- buoyancy spring we don't want it to be visible. 1 stud/s is
-	-- below human visual perception for a raft of this scale; even
-	-- if the cap fires, the resulting peak displacement is small
-	-- enough that the user can't see the snap-back the previous 2-
-	-- stud cap was producing.
-	local Y_VEL_CAP = 1
-	local v = primaryPart.AssemblyLinearVelocity
-	if math.abs(v.Y) > Y_VEL_CAP then
-		local clamped = math.sign(v.Y) * Y_VEL_CAP
-		primaryPart.AssemblyLinearVelocity = Vector3.new(v.X, clamped, v.Z)
-	end
 
 	-- Scale torque with raft mass so it always rotates, even with many tiles
 	alignOrientation.MaxTorque = totalMass * 500
