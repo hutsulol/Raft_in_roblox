@@ -41,8 +41,12 @@ local PANEL_PAD    = 14
 local TAB_RAIL_W = 140
 local DETAIL_W   = 240
 local CONTENT_GAP = 12
+-- Top strip inside the panel reserved for the close button. Pushes
+-- the three columns down so they line up below the X with breathing
+-- room, instead of having the X overlap the column edges.
+local HEADER_STRIP_H = 32
 
-local TAB_HEIGHT = 38
+local TAB_HEIGHT = 42
 local TAB_GAP    = 6
 local TAB_RADIUS = 10
 local TAB_DOT_SIZE  = 6
@@ -239,19 +243,24 @@ end
 local function paintCategoryTab(id)
 	local h = categoryHandles and categoryHandles[id]
 	if not h then return end
+	-- Both states use dark wood text on a paper-tinted button — only
+	-- the fill brightness + stroke weight change so the rail reads as
+	-- a coherent set of paper buttons (matches the reference design).
 	if id == activeCategory then
 		h.tile.BackgroundColor3       = COLOR_PAPER_LIGHT
 		h.tile.BackgroundTransparency = 0
 		h.stroke.Color                = COLOR_WOOD_DARKEST
+		h.stroke.Thickness            = 2
 		h.label.TextColor3            = COLOR_WOOD_DARKEST
 		h.glyph.TextColor3            = COLOR_WOOD_DARKEST
 		h.dot.Visible                 = true
 	else
-		h.tile.BackgroundColor3       = COLOR_PAPER
+		h.tile.BackgroundColor3       = COLOR_PAPER_LIGHT
 		h.tile.BackgroundTransparency = 0.45
 		h.stroke.Color                = COLOR_WOOD_DARK
-		h.label.TextColor3            = COLOR_PAPER_LIGHT
-		h.glyph.TextColor3            = COLOR_PAPER_LIGHT
+		h.stroke.Thickness            = 1.5
+		h.label.TextColor3            = COLOR_WOOD_DARKEST
+		h.glyph.TextColor3            = COLOR_WOOD_DARKEST
 		h.dot.Visible                 = false
 	end
 end
@@ -331,11 +340,13 @@ local function buildSearchBox(parent, y)
 end
 
 local function buildTabRail(parent)
+	-- Rail fills the parent (railHolder applies its own UIPadding so
+	-- this Frame sits inside the holder's padded inner box).
 	local rail = Instance.new("Frame")
 	rail.Name = "CategoryRail"
 	rail.AnchorPoint = Vector2.new(0, 0)
 	rail.Position = UDim2.fromOffset(0, 0)
-	rail.Size = UDim2.new(0, TAB_RAIL_W, 1, 0)
+	rail.Size = UDim2.fromScale(1, 1)
 	rail.BackgroundTransparency = 1
 	rail.BorderSizePixel = 0
 	rail.ZIndex = 4
@@ -377,8 +388,8 @@ local function buildTabRail(parent)
 		glyph.Size = UDim2.fromOffset(20, 20)
 		glyph.BackgroundTransparency = 1
 		glyph.Font = Enum.Font.GothamBold
-		glyph.TextSize = 16
-		glyph.TextColor3 = COLOR_PAPER_LIGHT
+		glyph.TextSize = 18
+		glyph.TextColor3 = COLOR_WOOD_DARKEST
 		glyph.Text = cat.glyph or ""
 		glyph.ZIndex = tile.ZIndex + 1
 		glyph.Parent = tile
@@ -390,8 +401,8 @@ local function buildTabRail(parent)
 		label.Size = UDim2.new(1, -38 - (TAB_DOT_INSET + TAB_DOT_SIZE + 4), 1, 0)
 		label.BackgroundTransparency = 1
 		label.Font = Enum.Font.GothamBold
-		label.TextSize = 14
-		label.TextColor3 = COLOR_PAPER_LIGHT
+		label.TextSize = 16
+		label.TextColor3 = COLOR_WOOD_DARKEST
 		label.TextXAlignment = Enum.TextXAlignment.Left
 		label.TextTruncate = Enum.TextTruncate.AtEnd
 		label.Text = cat.label
@@ -443,7 +454,7 @@ local function buildRecipeCard(parent, recipe)
 	card.AutoButtonColor = false
 	card.Size = UDim2.fromOffset(CARD_W, CARD_H)
 	card.BackgroundColor3 = COLOR_PAPER
-	card.BackgroundTransparency = 0.12
+	card.BackgroundTransparency = 0
 	card.BorderSizePixel = 0
 	card.Text = ""
 	card.ZIndex = 7
@@ -558,8 +569,8 @@ local function buildRecipeList(parent)
 	local listFrame = Instance.new("ScrollingFrame")
 	listFrame.Name = "RecipeList"
 	listFrame.AnchorPoint = Vector2.new(0, 0)
-	listFrame.Position = UDim2.fromOffset(0, 30)
-	listFrame.Size = UDim2.new(1, 0, 1, -30)
+	listFrame.Position = UDim2.fromOffset(0, 0)
+	listFrame.Size = UDim2.fromScale(1, 1)
 	listFrame.BackgroundColor3 = COLOR_PAPER
 	listFrame.BackgroundTransparency = 0.35
 	listFrame.BorderSizePixel = 0
@@ -593,22 +604,6 @@ local function buildRecipeList(parent)
 	grid.SortOrder = Enum.SortOrder.LayoutOrder
 	grid.HorizontalAlignment = Enum.HorizontalAlignment.Left
 	grid.Parent = listFrame
-
-	-- "Craftable" header sits above the scroll frame inside the same
-	-- middle column so the grid card outline doesn't clip it.
-	local header = Instance.new("TextLabel")
-	header.Name = "Header"
-	header.AnchorPoint = Vector2.new(0, 0)
-	header.Position = UDim2.fromOffset(0, 0)
-	header.Size = UDim2.new(1, 0, 0, 26)
-	header.BackgroundTransparency = 1
-	header.Font = Enum.Font.GothamBold
-	header.TextSize = 18
-	header.TextColor3 = COLOR_PAPER_LIGHT
-	header.TextXAlignment = Enum.TextXAlignment.Left
-	header.Text = "Craftable"
-	header.ZIndex = 5
-	header.Parent = parent
 
 	recipeListFrame = listFrame
 	recipeCards = {}
@@ -949,8 +944,16 @@ repaintRecipeList = function()
 				order = order + 1
 				refs.card.LayoutOrder = order
 				local affordable = canAfford(r)
-				refs.card.BackgroundTransparency = affordable and 0.12 or 0.45
-				refs.icon.ImageTransparency = affordable and 0 or 0.35
+				-- Affordability is signalled via text colour, not card
+				-- opacity — fading the whole card just makes it blend
+				-- into the panel and hides which item is which.
+				refs.card.BackgroundTransparency = 0
+				refs.icon.ImageTransparency = 0
+				if affordable then
+					refs.name.TextColor3 = COLOR_WOOD_DARKEST
+				else
+					refs.name.TextColor3 = COLOR_WOOD_MID
+				end
 				for _, ce in ipairs(refs.costEntries) do
 					if (inventory[ce.item] or 0) >= ce.amount then
 						ce.label.TextColor3 = COLOR_WOOD_DARKEST
@@ -1133,20 +1136,41 @@ local function buildPanel(parent)
 	hStroke.Transparency = 0.82
 	hStroke.Parent = highlight
 
-	-- Three-column grid: rail | center | detail.
+	-- Three-column grid: rail | center | detail. All three holders
+	-- start at HEADER_STRIP_H so the close button gets a clean
+	-- empty band along the top of the panel; their bottoms align so
+	-- the visible boxes are the same height (matches the reference).
 	local railHolder = Instance.new("Frame")
 	railHolder.Name = "RailHolder"
-	railHolder.Position = UDim2.fromOffset(0, 0)
-	railHolder.Size = UDim2.new(0, TAB_RAIL_W, 1, 0)
-	railHolder.BackgroundTransparency = 1
+	railHolder.Position = UDim2.fromOffset(0, HEADER_STRIP_H)
+	railHolder.Size = UDim2.new(0, TAB_RAIL_W, 1, -HEADER_STRIP_H)
+	-- Paper-tinted box so the rail visually matches the centre + detail
+	-- columns (the reference renders all three as the same paper card).
+	railHolder.BackgroundColor3 = COLOR_PAPER
+	railHolder.BackgroundTransparency = 0.35
+	railHolder.BorderSizePixel = 0
 	railHolder.ZIndex = 4
 	railHolder.Parent = panel
+	local rhCorner = Instance.new("UICorner")
+	rhCorner.CornerRadius = UDim.new(0, 12)
+	rhCorner.Parent = railHolder
+	local rhStroke = Instance.new("UIStroke")
+	rhStroke.Color = COLOR_WOOD_DARK
+	rhStroke.Thickness = 2
+	rhStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	rhStroke.Parent = railHolder
+	local rhPad = Instance.new("UIPadding")
+	rhPad.PaddingTop    = UDim.new(0, 12)
+	rhPad.PaddingBottom = UDim.new(0, 12)
+	rhPad.PaddingLeft   = UDim.new(0, 10)
+	rhPad.PaddingRight  = UDim.new(0, 10)
+	rhPad.Parent = railHolder
 	buildTabRail(railHolder)
 
 	local centerHolder = Instance.new("Frame")
 	centerHolder.Name = "CenterHolder"
-	centerHolder.Position = UDim2.fromOffset(TAB_RAIL_W + CONTENT_GAP, 0)
-	centerHolder.Size = UDim2.new(1, -(TAB_RAIL_W + DETAIL_W + 2 * CONTENT_GAP), 1, 0)
+	centerHolder.Position = UDim2.fromOffset(TAB_RAIL_W + CONTENT_GAP, HEADER_STRIP_H)
+	centerHolder.Size = UDim2.new(1, -(TAB_RAIL_W + DETAIL_W + 2 * CONTENT_GAP), 1, -HEADER_STRIP_H)
 	centerHolder.BackgroundTransparency = 1
 	centerHolder.ZIndex = 4
 	centerHolder.Parent = panel
@@ -1155,8 +1179,8 @@ local function buildPanel(parent)
 	local detailHolder = Instance.new("Frame")
 	detailHolder.Name = "DetailHolder"
 	detailHolder.AnchorPoint = Vector2.new(1, 0)
-	detailHolder.Position = UDim2.new(1, 0, 0, 0)
-	detailHolder.Size = UDim2.new(0, DETAIL_W, 1, 0)
+	detailHolder.Position = UDim2.new(1, 0, 0, HEADER_STRIP_H)
+	detailHolder.Size = UDim2.new(0, DETAIL_W, 1, -HEADER_STRIP_H)
 	detailHolder.BackgroundTransparency = 1
 	detailHolder.ZIndex = 4
 	detailHolder.Parent = panel
