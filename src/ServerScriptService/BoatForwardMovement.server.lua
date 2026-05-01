@@ -374,6 +374,35 @@ RunService.Heartbeat:Connect(function(dt)
 
 	vectorForce.Force = Vector3.new(horizontalForce.X, buoyancyForce, horizontalForce.Z)
 
+	-- Hard Y clamp (T27). The buoyancy spring above is correct in
+	-- principle but soft enough that a strong impulse — Motor6D
+	-- reaction torque from a running sawmill, multiple plank welds
+	-- in the same frame, a player jumping on the raft right after a
+	-- placement — can briefly drive the raft well above or below
+	-- waterY before the spring catches up. Clamping pos.Y to a
+	-- small ±band around waterY and zeroing the corresponding
+	-- velocity component if the clamp triggers means the raft
+	-- physically can't fly up or sink: any disturbance gets eaten
+	-- here without the spring having to swing back through zero.
+	local Y_CLAMP_UP   = 0.6   -- studs above waterY
+	local Y_CLAMP_DOWN = 1.5   -- studs below waterY
+	local curY = primaryPart.Position.Y
+	if curY > waterY + Y_CLAMP_UP then
+		primaryPart.CFrame = primaryPart.CFrame
+			- Vector3.new(0, curY - (waterY + Y_CLAMP_UP), 0)
+		local v = primaryPart.AssemblyLinearVelocity
+		if v.Y > 0 then
+			primaryPart.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
+		end
+	elseif curY < waterY - Y_CLAMP_DOWN then
+		primaryPart.CFrame = primaryPart.CFrame
+			+ Vector3.new(0, (waterY - Y_CLAMP_DOWN) - curY, 0)
+		local v = primaryPart.AssemblyLinearVelocity
+		if v.Y < 0 then
+			primaryPart.AssemblyLinearVelocity = Vector3.new(v.X, 0, v.Z)
+		end
+	end
+
 	-- Scale torque with raft mass so it always rotates, even with many tiles
 	alignOrientation.MaxTorque = totalMass * 500
 	-- Compose the target rotation from the initial rotation + a world-Y yaw
