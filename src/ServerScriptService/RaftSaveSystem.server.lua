@@ -7,6 +7,14 @@ local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TeleportService = game:GetService("TeleportService")
 
+-- Per-player ownership tracking. Forward-declared up here (T18) so
+-- savePlayerData (defined further down) captures the same local as
+-- the join-time + leave-time wiring at line ~750. Previously the
+-- function captured a nil global, and PlayerRemoving / BindToClose
+-- crashed with "attempt to index nil with Instance" trying to read
+-- playerIsRaftOwner[player].
+local playerIsRaftOwner = {} -- [player] = true/false
+
 local raftStore = nil
 local storeOk, storeErr = pcall(function()
 	raftStore = DataStoreService:GetDataStore("RaftSaveData_v1")
@@ -746,8 +754,9 @@ end
 -- Track whether the raft has already been rebuilt from a save (for group loads)
 local raftRebuiltFromSave = false
 
--- Per-player ownership tracking (only the owner gets raft data saved)
-local playerIsRaftOwner = {} -- [player] = true/false
+-- Per-player ownership tracking (only the owner gets raft data saved).
+-- The local was forward-declared at the top of the file (T18) so
+-- savePlayerData's upvalue resolves to the right slot.
 
 -- ─── Load save data by UserId key ───
 local function loadPlayerDataByUserId(userId)
