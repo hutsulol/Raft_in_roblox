@@ -70,9 +70,26 @@ local function isFloatingResourcePart(part)
 	return false
 end
 
+local function isDecorativeRaftPart(part)
+	local current = part
+	while current and current ~= boat do
+		if current.Name == "CommunityBoard" or current.Name == "Robot" then
+			return true
+		end
+		current = current.Parent
+	end
+	return false
+end
+
 local function tagRaftPart(part)
 	if part and part:IsA("BasePart") then
 		part.CollisionGroup = "Raft"
+		if isDecorativeRaftPart(part) then
+			part.Massless = true
+			part.CanCollide = false
+			part.CanTouch = false
+			part.CanQuery = false
+		end
 		task.defer(function()
 			if part.Parent and not part.Anchored then
 				pcall(function() part:SetNetworkOwner(nil) end)
@@ -320,7 +337,8 @@ RunService.Heartbeat:Connect(function(dt)
 	primaryPart.AssemblyAngularVelocity = Vector3.new(w.X * (1 - math.clamp(ANGULAR_DAMPING * dt, 0, 0.95)), w.Y, w.Z * (1 - math.clamp(ANGULAR_DAMPING * dt, 0, 0.95)))
 
 	local pos = primaryPart.Position
-	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos) * targetRotation)
+	local restRotation = CFrame.Angles(0, yawDelta, 0) * initialRotation
+	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos) * restRotation)
 	primaryPart:SetAttribute("RestYaw", lockedYaw)
 
 	if windActive then
