@@ -1,20 +1,20 @@
-local SPEED = 22
+local SPEED = 27
 local PADDLE_BOOST = 6
 local PADDLE_DECAY = 1.3
 local PADDLE_COURSE_NUDGE = math.rad(4)
 
-local SURGE_ACCEL = 3.2
-local WATER_DRAG = 2.8
-local LATERAL_DRAG = 6.5
+local SURGE_ACCEL = 4.8
+local WATER_DRAG = 1.9
+local LATERAL_DRAG = 5.2
 local ANGULAR_DAMPING = 2.6
 
-local BUOYANCY_STIFFNESS = 42
-local BUOYANCY_DAMPING = 11
-local WATERLINE_OFFSET = -1.4
-local BOB_AMPLITUDE = 0.5
+local BUOYANCY_STIFFNESS = 56
+local BUOYANCY_DAMPING = 15
+local WATERLINE_OFFSET = -0.7
+local BOB_AMPLITUDE = 0.35
 local BOB_FREQUENCY = 0.45
 local ROLL_AMPLITUDE = math.rad(2.2)
-local PITCH_AMPLITUDE = math.rad(1.4)
+local PITCH_AMPLITUDE = math.rad(0.8)
 local WAVE_RESPONSIVENESS = 4.2
 
 local WIND_START_DAY = 6
@@ -86,6 +86,7 @@ local function tagRaftPart(part)
 		part.CollisionGroup = "Raft"
 		if isDecorativeRaftPart(part) then
 			part.Massless = true
+			part.CustomPhysicalProperties = PhysicalProperties.new(0.01, 0.3, 0.5)
 			part.CanCollide = false
 			part.CanTouch = false
 			part.CanQuery = false
@@ -326,7 +327,7 @@ RunService.Heartbeat:Connect(function(dt)
 	local right = forwardDirection:Cross(Vector3.yAxis)
 	if right.Magnitude < 0.001 then right = Vector3.xAxis else right = right.Unit end
 	local rollAngle = wave * ROLL_AMPLITUDE + math.clamp(sideways:Dot(right) / 20, -0.08, 0.08)
-	local pitchAngle = math.sin((waveClock * BOB_FREQUENCY * 1.2) * math.pi * 2 + wavePhase * 0.4) * PITCH_AMPLITUDE - math.clamp((forwardSpeed - targetSpeed) / 28, -0.06, 0.06)
+	local pitchAngle = math.sin((waveClock * BOB_FREQUENCY * 1.2) * math.pi * 2 + wavePhase * 0.4) * PITCH_AMPLITUDE
 	local yawDelta = lockedYaw - initialYaw
 	local targetRotation = CFrame.Angles(0, yawDelta, 0) * initialRotation * CFrame.Angles(pitchAngle, 0, rollAngle)
 	alignOrientation.Responsiveness = WAVE_RESPONSIVENESS
