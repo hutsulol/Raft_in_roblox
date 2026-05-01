@@ -30,6 +30,14 @@ local SPIN_PART_NAMES = { Hexagon = true, Hexagon_placer = true, Hexagon_claimer
 -- rigid WeldConstraint. Pass 2 unanchors so the parts inherit the raft's
 -- velocity through the constraint instead of starting at zero. Velocity
 -- snapshot/restore is wrapped around the loop in the caller.
+--
+-- Spinning parts also get Massless = true (T25). The Motor6D applies
+-- reaction torque on the raft side every frame the client spins them
+-- via Transform; if they have non-zero mass that torque rocks the raft
+-- visibly. Massless = true zeros the inertia for those parts only,
+-- so the saw blade can spin without bobbing the assembly. The static
+-- frame parts keep their mass (so the buoyancy spring's compensation
+-- stays balanced).
 local function weldToRaft(obj, raft)
 	local raftPart = raft.PrimaryPart
 	for _, part in obj:GetDescendants() do
@@ -40,6 +48,7 @@ local function weldToRaft(obj, raft)
 	for _, part in obj:GetDescendants() do
 		if part:IsA("BasePart") then
 			if SPIN_PART_NAMES[part.Name] then
+				part.Massless = true
 				local motor = Instance.new("Motor6D")
 				motor.Name = "SpinMotor"
 				motor.Part0 = raftPart
