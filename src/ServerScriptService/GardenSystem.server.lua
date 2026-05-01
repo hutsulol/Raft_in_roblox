@@ -45,6 +45,21 @@ local function swapGardenModel(garden, watered)
 		return
 	end
 
+	-- Snapshot raft velocity + capture garden pose AS RAFT-RELATIVE
+	-- BEFORE any destroy/clone work (T14/T19). The destroy + clone
+	-- steps span a couple of physics frames during which the raft
+	-- drifts, so saving a world CFrame and PivotTo'ing it back later
+	-- places the new parts against a stale raft pose. Welds then
+	-- lock that drift in and the solver kicks the assembly to fix
+	-- it → the bouncing.
+	local raft = workspace:FindFirstChild("Raft")
+	local raftPrimary = raft and raft.PrimaryPart or nil
+	local linVel, angVel
+	if raftPrimary then
+		linVel = raftPrimary.AssemblyLinearVelocity
+		angVel = raftPrimary.AssemblyAngularVelocity
+	end
+
 	-- Save position from an actual part
 	local savedCF = nil
 	local primaryPart = garden.PrimaryPart
@@ -57,6 +72,10 @@ local function swapGardenModel(garden, watered)
 		else
 			savedCF = garden:GetPivot()
 		end
+	end
+	local savedRelCF
+	if raftPrimary and savedCF then
+		savedRelCF = raftPrimary.CFrame:ToObjectSpace(savedCF)
 	end
 
 	-- Save attributes
@@ -99,23 +118,33 @@ local function swapGardenModel(garden, watered)
 		end
 	end
 
-	-- Position at saved CFrame
-	if savedCF then
+	-- Position against the raft's CURRENT pose, not the stale one.
+	if savedRelCF and raftPrimary then
+		garden:PivotTo(raftPrimary.CFrame * savedRelCF)
+	elseif savedCF then
 		garden:PivotTo(savedCF)
 	end
 
-	-- Weld to raft
-	local raft = workspace:FindFirstChild("Raft")
-	if raft and raft.PrimaryPart then
+	-- T15/T16: weld FIRST while anchored (the swap pass-1 already
+	-- anchored the new parts on clone), THEN unanchor in a separate
+	-- pass so the parts inherit the raft's velocity through the
+	-- rigid weld instead of being equalised from a free-body state.
+	if raftPrimary then
 		for _, part in garden:GetDescendants() do
 			if part:IsA("BasePart") then
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
-				weld.Part1 = raft.PrimaryPart
+				weld.Part1 = raftPrimary
 				weld.Parent = part
+			end
+		end
+		for _, part in garden:GetDescendants() do
+			if part:IsA("BasePart") then
 				part.Anchored = false
 			end
 		end
+		raftPrimary.AssemblyLinearVelocity  = linVel
+		raftPrimary.AssemblyAngularVelocity = angVel
 	end
 
 	-- Restore bushes back into garden
@@ -214,16 +243,38 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 		garden:PivotTo(worldCF)
 		garden.Parent = raft
 
-		-- Weld to raft
+		-- T13/T15/T16/T19: snapshot raft velocity, force-anchor every
+		-- part (templates may be authored unanchored), weld while
+		-- anchored, then unanchor in a third pass so the new parts
+		-- inherit the raft's velocity through the rigid weld instead
+		-- of starting at zero. Without this, placing the garden bed
+		-- drains enough momentum out of the assembly to kick the
+		-- buoyancy spring into a sustained vertical bob.
+		local primary = raft.PrimaryPart
+		local linVel = primary.AssemblyLinearVelocity
+		local angVel = primary.AssemblyAngularVelocity
+
 		for _, part in garden:GetDescendants() do
 			if part:IsA("BasePart") then
-				part.Anchored = false
+				part.Anchored = true
+			end
+		end
+		for _, part in garden:GetDescendants() do
+			if part:IsA("BasePart") then
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = part
 			end
 		end
+		for _, part in garden:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.Anchored = false
+			end
+		end
+
+		primary.AssemblyLinearVelocity  = linVel
+		primary.AssemblyAngularVelocity = angVel
 
 		-- Remove tool from player
 		tool:Destroy()
