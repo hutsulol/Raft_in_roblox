@@ -12,24 +12,31 @@ local VELOCITY_GAIN = 6
 -- compensation, the spring alone would need enormous stiffness to fight
 -- the 196.2 studs/s² gravity — at stiffness 8 the raft sinks ~25 studs.
 --
--- Tuning (T21): the buoyancy is now strongly over-damped so any
+-- Tuning (T21/T22): the buoyancy is over-damped (ζ ≈ 1.9) so any
 -- disturbance — placing a workbench / purifier / container, a player
 -- jumping on the raft, weld constraint impulses — decays exponentially
--- in well under a second instead of bobbing for 6-8 seconds. With ω₀
--- = √14 ≈ 3.74 rad/s and ζ = 24/(2√14) ≈ 3.2, the raft can't oscillate
--- on any single perturbation; it just slides smoothly back to waterY.
+-- without oscillation. Combined with the live waveform on the target
+-- waterY + AlignOrientation roll/pitch (T22), the raft tracks the
+-- water surface smoothly: gentle bob + side-to-side rock + fore/aft
+-- pitch, but no springy reaction to single-event perturbations.
 local BUOYANCY_STIFFNESS = 14 -- spring correction for displacement from waterY
-local BUOYANCY_DAMPING   = 24 -- damping; ζ ≈ 3.2 → strongly over-damped
+local BUOYANCY_DAMPING   = 14 -- ζ ≈ 1.87 → over-damped, no overshoot
 
--- Subtle wave motion (T21). The original buoyancy pinned the raft to
--- a hard-coded waterY captured at script init, which made the raft
--- feel like it was glued to a flat surface. A sin(t) offset on waterY
--- gives the spring a slowly-moving target so the raft gently bobs
--- with the sea — about 0.15 studs of vertical sway every ~10 seconds —
--- without amplifying placement perturbations because the spring is
--- over-damped.
-local WAVE_AMPLITUDE = 0.15
-local WAVE_FREQUENCY = 0.6   -- rad/s; period ≈ 10.5 s
+-- Wave motion (T22). Three independent sin waves with different
+-- frequencies + phase offsets so the combined motion never repeats
+-- exactly — the raft bobs (Y), rolls side-to-side, and pitches
+-- forward/back at slightly different cadences. AlignOrientation +
+-- the over-damped Y spring track all three smoothly. Amplitudes are
+-- small enough that placed items don't visibly tilt off the deck,
+-- but large enough that the raft visibly behaves like it's on water.
+local WAVE_Y_AMPLITUDE     = 0.40    -- studs
+local WAVE_Y_FREQUENCY     = 0.45    -- rad/s; period ≈ 14 s
+local WAVE_ROLL_AMPLITUDE  = math.rad(2.0)
+local WAVE_ROLL_FREQUENCY  = 0.36    -- period ≈ 17 s
+local WAVE_ROLL_PHASE      = 0.0
+local WAVE_PITCH_AMPLITUDE = math.rad(1.5)
+local WAVE_PITCH_FREQUENCY = 0.42    -- period ≈ 15 s
+local WAVE_PITCH_PHASE     = 1.7
 
 -- ─── Wind event ───
 -- Wind only starts once the players have survived past the 5th day, then
@@ -383,9 +390,10 @@ RunService.Heartbeat:Connect(function(dt)
 	-- weightless, then apply a spring-damper to lock it at waterY.
 	-- gravityCompensation alone makes the raft hover; the spring corrects
 	-- any drift above or below the water surface. The target Y shifts
-	-- with a slow sin wave so the raft bobs gently with the sea (T21).
+	-- with a slow sin wave so the raft bobs gently with the sea (T21/T22).
+	local now = os.clock()
 	local gravityCompensation = totalMass * workspace.Gravity
-	local targetY = waterY + math.sin(os.clock() * WAVE_FREQUENCY) * WAVE_AMPLITUDE
+	local targetY = waterY + math.sin(now * WAVE_Y_FREQUENCY) * WAVE_Y_AMPLITUDE
 	local yError = targetY - primaryPart.Position.Y
 	local yVelocity = currentVelocity.Y
 	local springForce = (yError * BUOYANCY_STIFFNESS - yVelocity * BUOYANCY_DAMPING) * totalMass
@@ -398,8 +406,16 @@ RunService.Heartbeat:Connect(function(dt)
 	-- Compose the target rotation from the initial rotation + a world-Y yaw
 	-- change. This avoids the Euler gimbal lock at 90° pitch that made
 	-- CFrame.fromEulerAnglesYXZ(π/2, yaw, 0) unstable.
+	-- T22: layer slow roll + pitch waves on top of the yaw lock so the
+	-- raft visibly rocks side-to-side and pitches fore/aft. Different
+	-- frequencies + phase offsets keep the motion from looking like a
+	-- single repeating cycle.
+	local roll  = math.sin(now * WAVE_ROLL_FREQUENCY  + WAVE_ROLL_PHASE)  * WAVE_ROLL_AMPLITUDE
+	local pitch = math.sin(now * WAVE_PITCH_FREQUENCY + WAVE_PITCH_PHASE) * WAVE_PITCH_AMPLITUDE
 	local yawDelta = lockedYaw - initialYaw
-	local targetRotation = CFrame.Angles(0, yawDelta, 0) * initialRotation
+	local targetRotation = CFrame.Angles(0, yawDelta, 0)
+		* initialRotation
+		* CFrame.Angles(pitch, 0, roll)
 	alignOrientation.CFrame = targetRotation
 
 	-- Update RestCFrame so building systems use the current yaw. Use the
