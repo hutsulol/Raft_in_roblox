@@ -265,14 +265,21 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 
 	-- Unanchor the clone itself if it's a BasePart (GetDescendants doesn't
 	-- include the instance itself, so single-part resources stayed anchored).
+	-- CanCollide = false (T28) so floating resources can drift through the
+	-- raft instead of slamming into it. They're pickup-only — Touched still
+	-- fires for the CollectResource handler — and water-material buoyancy
+	-- from Roblox terrain doesn't depend on CanCollide, so they keep
+	-- floating on the surface.
 	if clone:IsA("BasePart") then
 		clone.Anchored = false
+		clone.CanCollide = false
 		clone:SetNetworkOwner(nil)
 	end
 
 	for _, part in clone:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
+			part.CanCollide = false
 			part:SetNetworkOwner(nil)
 		end
 	end
