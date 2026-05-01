@@ -347,6 +347,15 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		-- T13/T15/T16: snapshot velocity, force-anchor (templates may
 		-- be unanchored), weld while anchored, then unanchor.
+		-- T32: also set CanCollide = false on bush parts. PivotTo
+		-- positions the bush's bbox centre at the garden's top
+		-- surface, so the bush's lower half sits INSIDE the garden
+		-- bed's soil parts. With both bush and garden welded to the
+		-- raft and both colliding (same Raft group), Roblox's solver
+		-- applies separation forces through their welds — those
+		-- propagate as torque on the raft. Bushes are decorative +
+		-- pickup-only (player clicks grapes to harvest), so collision
+		-- isn't needed.
 		local primary = raft.PrimaryPart
 		local linVel = primary.AssemblyLinearVelocity
 		local angVel = primary.AssemblyAngularVelocity
@@ -354,6 +363,7 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		for _, part in bush:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.Anchored = true
+				part.CanCollide = false
 			end
 		end
 		for _, part in bush:GetDescendants() do

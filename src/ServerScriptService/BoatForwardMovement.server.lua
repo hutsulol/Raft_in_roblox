@@ -408,19 +408,13 @@ RunService.Heartbeat:Connect(function(dt)
 
 	vectorForce.Force = Vector3.new(horizontalForce.X, buoyancyForce, horizontalForce.Z)
 
-	-- Y velocity safety cap (T31). The buoyancy spring is correct in
-	-- principle but susceptible to resonant pumping — if any periodic
-	-- system on top of the raft (swap-model paths, the sawmill, plank
-	-- expiry, etc.) happens to kick the assembly at the spring's
-	-- natural frequency, energy accumulates and the whole raft visibly
-	-- bobs after about a minute. We don't want to clamp position (that
-	-- broke the placement physics last time) but capping the magnitude
-	-- of the vertical velocity prevents runaway oscillation no matter
-	-- what's pumping energy in: each kick is allowed, but the raft
-	-- can't accelerate past a sane vertical speed. Picked at 8 studs/s
-	-- because normal player jumping / weight-shift transients stay
-	-- well under that, but a resonance amplifier crosses it quickly.
-	local Y_VEL_CAP = 8
+	-- Y velocity safety cap (T31/T32). Tightened from 8 → 2 studs/s
+	-- so any residual perturbation that slips past the per-system
+	-- fixes is bled off before it produces a visibly noticeable bob.
+	-- 2 studs/s is well above what normal player motion / weight
+	-- shifts produce, but any resonant pumping is killed before the
+	-- raft moves more than ~0.3 studs vertically.
+	local Y_VEL_CAP = 2
 	local v = primaryPart.AssemblyLinearVelocity
 	if math.abs(v.Y) > Y_VEL_CAP then
 		local clamped = math.sign(v.Y) * Y_VEL_CAP
