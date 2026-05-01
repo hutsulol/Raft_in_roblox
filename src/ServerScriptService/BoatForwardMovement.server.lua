@@ -70,6 +70,15 @@ local function isFloatingResourcePart(part)
 	return false
 end
 
+local function isRobotPart(part)
+	local current = part
+	while current and current ~= boat do
+		if current.Name == "Robot" then return true end
+		current = current.Parent
+	end
+	return false
+end
+
 local function isDecorativeRaftPart(part)
 	local current = part
 	while current and current ~= boat do
@@ -89,7 +98,10 @@ local function tagRaftPart(part)
 			part.CustomPhysicalProperties = PhysicalProperties.new(0.01, 0.3, 0.5)
 			part.CanCollide = false
 			part.CanTouch = false
-			part.CanQuery = false
+			part.CanQuery = true
+			if isRobotPart(part) then
+				part.CanTouch = true
+			end
 		end
 		task.defer(function()
 			if part.Parent and not part.Anchored then
