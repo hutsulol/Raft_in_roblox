@@ -115,27 +115,57 @@ local selectedRecipe = nil
 local selectedCategory = nil
 local detailOverlay = nil
 local categoryOverlay = nil
+-- Set by openDetailOverlay() to a function that repaints the
+-- materials list + craft button. updateUI() calls it whenever the
+-- inventory snapshot changes so the bars / counts / status pill
+-- stay in sync without rebuilding the whole overlay.
+local refreshDetailOverlay = nil
 local CATEGORIES = {"Tools", "Technology", "Misc", "Resources"}
 local isOpen = false
 local screenGui = nil
 local hotbarGui = nil
 
--- Wooden / tan inventory palette.
+-- Wood / paper palette — kept in sync with QuestMenu and WorkbenchUI
+-- so every in-world UI reads as one set. The keys mirror the previous
+-- tan palette's semantic names (`panelBg`, `slotBg`, etc.) so the rest
+-- of this file keeps working without touching every call site.
+local WOOD_DARKEST = Color3.fromRGB( 61,  40,  23)
+local WOOD_DARK    = Color3.fromRGB( 91,  58,  34)
+local WOOD_MID     = Color3.fromRGB(138, 106,  68)
+local WOOD_BASE    = Color3.fromRGB(176, 138,  92)
+local PAPER        = Color3.fromRGB(233, 217, 184)
+local PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
+local GREEN_OK     = Color3.fromRGB(126, 175,  90)
+local GREEN_DEEP   = Color3.fromRGB( 96, 148,  72)
+local RED_BAD      = Color3.fromRGB(168,  64,  56)
+
 local COLORS = {
-	panelBg = Color3.fromRGB(139, 109, 63),
-	panelBorder = Color3.fromRGB(100, 75, 40),
-	slotBg = Color3.fromRGB(175, 145, 95),
-	slotBorder = Color3.fromRGB(120, 90, 50),
-	titleText = Color3.fromRGB(50, 35, 15),
-	lightText = Color3.fromRGB(255, 245, 220),
-	craftPanelBg = Color3.fromRGB(220, 205, 175),
-	craftItemBg = Color3.fromRGB(200, 180, 140),
-	craftItemHover = Color3.fromRGB(180, 160, 120),
-	affordable = Color3.fromRGB(60, 160, 60),
-	notAffordable = Color3.fromRGB(160, 60, 60),
-	hotbarBg = Color3.fromRGB(139, 109, 63),
-	separator = Color3.fromRGB(200, 185, 150),
-	equipped = Color3.fromRGB(200, 170, 100),
+	-- Outer wooden frame around the inventory + hotbar.
+	panelBg     = WOOD_BASE,
+	panelBorder = WOOD_DARK,
+	-- Slot fill + border. The inventory grid + hotbar slots use these.
+	slotBg      = PAPER,
+	slotBorder  = WOOD_DARK,
+	-- Body / detail text on paper backgrounds.
+	titleText   = WOOD_DARKEST,
+	-- Light text for labels on the wood-base hotbar backdrop.
+	lightText   = PAPER_LIGHT,
+	-- Crafting side panel — same wood-tone as the inventory frame so
+	-- the two columns read as one set.
+	craftPanelBg   = WOOD_BASE,
+	craftItemBg    = PAPER,
+	craftItemHover = PAPER_LIGHT,
+	-- Affordability cues. The detail overlay also uses these for its
+	-- progress bar / status label.
+	affordable    = GREEN_DEEP,
+	notAffordable = RED_BAD,
+	-- Hotbar backdrop colour; same as the inventory panel so the two
+	-- frames don't fight each other.
+	hotbarBg = WOOD_BASE,
+	-- Hairline divider used inside the inventory header / craft panel.
+	separator = WOOD_DARK,
+	-- Highlight colour for an equipped hotbar slot.
+	equipped = PAPER_LIGHT,
 }
 
 local HOTBAR_SLOTS = 8
@@ -751,32 +781,74 @@ local function renderSlot(slot, data)
 	clearSlotUI(slot)
 	if not data then return end
 
+	-- Inner cell sits inside the slot's paper background to give the
+	-- icon its own framed area (matches the reference). Slightly
+	-- brighter paper-light fill with a thin wood stroke so it reads as
+	-- a card rather than naked icon.
+	local cell = Instance.new("Frame")
+	cell.Name = "ItemCell"
+	cell.AnchorPoint = Vector2.new(0.5, 0.5)
+	cell.Size = UDim2.new(1, -14, 1, -14)
+	cell.Position = UDim2.new(0.5, 0, 0.5, 0)
+	cell.BackgroundColor3 = PAPER_LIGHT
+	cell.BackgroundTransparency = 0.05
+	cell.BorderSizePixel = 0
+	cell.ZIndex = 2
+	cell.Parent = slot
+	local cellCorner = Instance.new("UICorner")
+	cellCorner.CornerRadius = UDim.new(0, 8)
+	cellCorner.Parent = cell
+	local cellStroke = Instance.new("UIStroke")
+	cellStroke.Color = WOOD_DARK
+	cellStroke.Thickness = 1
+	cellStroke.Transparency = 0.35
+	cellStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	cellStroke.Parent = cell
+
 	local img = Instance.new("ImageLabel")
 	img.Name = "ItemIcon"
 	img.AnchorPoint = Vector2.new(0.5, 0.5)
-	img.Size = UDim2.new(0.7, 0, 0.7, 0)
+	img.Size = UDim2.new(0.85, 0, 0.85, 0)
 	img.Position = UDim2.new(0.5, 0, 0.5, 0)
 	img.BackgroundTransparency = 1
 	img.Image = data.icon or ""
 	img.ScaleType = Enum.ScaleType.Fit
-	img.ZIndex = 2
-	img.Parent = slot
+	img.ZIndex = 3
+	img.Parent = cell
 
 	if data.count and data.count > 1 then
+		-- Count badge: small paper-light pill at the bottom-right of
+		-- the slot with dark wood text. Matches the reference's white
+		-- count chip on the LOG / STONE slots.
+		local pill = Instance.new("Frame")
+		pill.Name = "ItemCount"
+		pill.AnchorPoint = Vector2.new(1, 1)
+		pill.Position = UDim2.new(1, -4, 1, -4)
+		pill.Size = UDim2.fromOffset(28, 18)
+		pill.BackgroundColor3 = PAPER_LIGHT
+		pill.BackgroundTransparency = 0
+		pill.BorderSizePixel = 0
+		pill.ZIndex = 5
+		pill.Parent = slot
+		local pillCorner = Instance.new("UICorner")
+		pillCorner.CornerRadius = UDim.new(0, 6)
+		pillCorner.Parent = pill
+		local pillStroke = Instance.new("UIStroke")
+		pillStroke.Color = WOOD_DARK
+		pillStroke.Thickness = 1
+		pillStroke.Transparency = 0.4
+		pillStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		pillStroke.Parent = pill
+
 		local count = Instance.new("TextLabel")
-		count.Name = "ItemCount"
-		count.Size = UDim2.new(0, 25, 0, 16)
-		count.Position = UDim2.new(1, -27, 1, -18)
+		count.Size = UDim2.fromScale(1, 1)
 		count.BackgroundTransparency = 1
 		count.Text = tostring(data.count)
-		count.TextColor3 = COLORS.lightText
-		count.TextStrokeTransparency = 0.3
-		count.TextStrokeColor3 = Color3.new(0, 0, 0)
+		count.TextColor3 = WOOD_DARKEST
 		count.Font = Enum.Font.GothamBold
-		count.TextSize = 13
-		count.TextXAlignment = Enum.TextXAlignment.Right
-		count.ZIndex = 3
-		count.Parent = slot
+		count.TextSize = 12
+		count.ZIndex = 6
+		count.Parent = pill
 	end
 end
 
@@ -1237,6 +1309,7 @@ local function closeDetailOverlay()
 		detailOverlay = nil
 	end
 	selectedRecipe = nil
+	refreshDetailOverlay = nil
 end
 
 local function closeCategoryOverlay()
@@ -1290,11 +1363,12 @@ local function openCategoryOverlay(cat)
 	stroke.Parent = categoryOverlay
 
 	local backBtn = Instance.new("TextButton")
-	backBtn.Size = UDim2.new(0, 60, 0, 28)
-	backBtn.Position = UDim2.new(0, 10, 0, 8)
-	backBtn.BackgroundColor3 = COLORS.craftItemBg
-	backBtn.Text = "< Back"
-	backBtn.TextColor3 = COLORS.titleText
+	backBtn.Size = UDim2.new(0, 64, 0, 28)
+	backBtn.Position = UDim2.new(0, 12, 0, 10)
+	backBtn.BackgroundColor3 = PAPER_LIGHT
+	backBtn.AutoButtonColor = false
+	backBtn.Text = "← Back"
+	backBtn.TextColor3 = WOOD_DARKEST
 	backBtn.Font = Enum.Font.GothamBold
 	backBtn.TextSize = 13
 	backBtn.BorderSizePixel = 0
@@ -1302,8 +1376,14 @@ local function openCategoryOverlay(cat)
 	backBtn.Parent = categoryOverlay
 
 	local backCorner = Instance.new("UICorner")
-	backCorner.CornerRadius = UDim.new(0, 6)
+	backCorner.CornerRadius = UDim.new(0, 8)
 	backCorner.Parent = backBtn
+
+	local backStroke = Instance.new("UIStroke")
+	backStroke.Color = WOOD_DARK
+	backStroke.Thickness = 1.5
+	backStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	backStroke.Parent = backBtn
 
 	backBtn.MouseButton1Click:Connect(closeCategoryOverlay)
 
@@ -1411,25 +1491,42 @@ local function openDetailOverlay(recipe)
 
 	-- Separator
 	local sep = Instance.new("Frame")
-	sep.Size = UDim2.new(1, -24, 0, 2)
+	sep.Size = UDim2.new(1, -24, 0, 1)
 	sep.Position = UDim2.new(0, 12, 0, 104)
 	sep.BackgroundColor3 = COLORS.separator
+	sep.BackgroundTransparency = 0.4
 	sep.BorderSizePixel = 0
 	sep.ZIndex = 21
 	sep.Parent = detailOverlay
 
-	-- Icon — enlarged so the crafted item is clearly legible.
+	-- Icon card — paper-light tile with a wood-dark stroke so the icon
+	-- reads as a framed item card (matches the reference design).
+	local iconCard = Instance.new("Frame")
+	iconCard.Size = UDim2.new(0, 110, 0, 110)
+	iconCard.Position = UDim2.new(0, 20, 0, 118)
+	iconCard.BackgroundColor3 = PAPER_LIGHT
+	iconCard.BorderSizePixel = 0
+	iconCard.ZIndex = 21
+	iconCard.Parent = detailOverlay
+	local iconCardCorner = Instance.new("UICorner")
+	iconCardCorner.CornerRadius = UDim.new(0, 12)
+	iconCardCorner.Parent = iconCard
+	local iconCardStroke = Instance.new("UIStroke")
+	iconCardStroke.Color = WOOD_DARK
+	iconCardStroke.Thickness = 1.5
+	iconCardStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	iconCardStroke.Parent = iconCard
+
 	local iconFrame = Instance.new("ImageLabel")
-	iconFrame.Size = UDim2.new(0, 110, 0, 110)
-	iconFrame.Position = UDim2.new(0, 20, 0, 118)
+	iconFrame.Size = UDim2.fromScale(0.85, 0.85)
+	iconFrame.AnchorPoint = Vector2.new(0.5, 0.5)
+	iconFrame.Position = UDim2.fromScale(0.5, 0.5)
 	iconFrame.BackgroundTransparency = 1
 	iconFrame.Image = recipe.icon or ""
 	iconFrame.ScaleType = Enum.ScaleType.Fit
-	iconFrame.ZIndex = 21
-	iconFrame.Parent = detailOverlay
+	iconFrame.ZIndex = 22
+	iconFrame.Parent = iconCard
 
-	-- Description — sits to the right of the icon, vertical extent
-	-- matches the icon's height so wrapped text has room to breathe.
 	local descLabel = Instance.new("TextLabel")
 	descLabel.Size = UDim2.new(1, -160, 0, 110)
 	descLabel.Position = UDim2.new(0, 145, 0, 118)
@@ -1437,33 +1534,50 @@ local function openDetailOverlay(recipe)
 	descLabel.Text = recipe.description or ""
 	descLabel.TextColor3 = COLORS.titleText
 	descLabel.Font = Enum.Font.Gotham
-	descLabel.TextSize = 20
+	descLabel.TextSize = 18
 	descLabel.TextXAlignment = Enum.TextXAlignment.Left
 	descLabel.TextYAlignment = Enum.TextYAlignment.Top
 	descLabel.TextWrapped = true
 	descLabel.ZIndex = 21
 	descLabel.Parent = detailOverlay
 
-	-- Materials section
+	-- Materials header + status pill on the right (READY TO CRAFT / MISSING X).
 	local matTitle = Instance.new("TextLabel")
-	matTitle.Size = UDim2.new(1, -24, 0, 30)
-	matTitle.Position = UDim2.new(0, 12, 0, 240)
+	matTitle.Size = UDim2.new(0, 200, 0, 24)
+	matTitle.Position = UDim2.new(0, 17, 0, 244)
 	matTitle.BackgroundTransparency = 1
-	matTitle.Text = "Materials:"
+	matTitle.Text = "MATERIALS"
 	matTitle.TextColor3 = COLORS.titleText
 	matTitle.Font = Enum.Font.GothamBold
-	matTitle.TextSize = 22
+	matTitle.TextSize = 16
 	matTitle.TextXAlignment = Enum.TextXAlignment.Left
 	matTitle.ZIndex = 21
 	matTitle.Parent = detailOverlay
 
-	-- Material items — in a ScrollingFrame so recipes with many
-	-- ingredients don't slide under the Craft button. The frame spans
-	-- from just below the "Materials:" header to just above the craft
-	-- button (which sits at bottom -68, height 54).
+	-- Affordability summary updated by paintMaterials() below — green
+	-- "READY TO CRAFT" or red "MISSING N". Bound to detailOverlay so
+	-- the multi-craft buttons can find + repaint it without us having
+	-- to thread a ref through.
+	local statusLabel = Instance.new("TextLabel")
+	statusLabel.Name = "StatusLabel"
+	statusLabel.AnchorPoint = Vector2.new(1, 0)
+	statusLabel.Size = UDim2.new(0, 200, 0, 24)
+	statusLabel.Position = UDim2.new(1, -17, 0, 244)
+	statusLabel.BackgroundTransparency = 1
+	statusLabel.Text = ""
+	statusLabel.Font = Enum.Font.GothamBold
+	statusLabel.TextSize = 14
+	statusLabel.TextXAlignment = Enum.TextXAlignment.Right
+	statusLabel.ZIndex = 21
+	statusLabel.Parent = detailOverlay
+
+	-- Materials list — each row is icon + name + progress bar + count.
+	-- Drawn in a ScrollingFrame so recipes with many ingredients don't
+	-- slide under the Craft button. The frame stops 102 px above the
+	-- bottom to leave room for the craft + multi-craft buttons.
 	local matScroll = Instance.new("ScrollingFrame")
 	matScroll.Name = "MaterialsScroll"
-	matScroll.Size = UDim2.new(1, -34, 1, -348)
+	matScroll.Size = UDim2.new(1, -34, 1, -382)
 	matScroll.Position = UDim2.new(0, 17, 0, 274)
 	matScroll.BackgroundTransparency = 1
 	matScroll.BorderSizePixel = 0
@@ -1479,78 +1593,222 @@ local function openDetailOverlay(recipe)
 	local matLayout = Instance.new("UIListLayout")
 	matLayout.FillDirection = Enum.FillDirection.Vertical
 	matLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	matLayout.Padding = UDim.new(0, 6)
+	matLayout.Padding = UDim.new(0, 8)
 	matLayout.Parent = matScroll
 
-	-- Small right-side padding so rows don't sit under the scroll bar.
 	local matPadding = Instance.new("UIPadding")
 	matPadding.PaddingRight = UDim.new(0, 8)
 	matPadding.Parent = matScroll
 
+	-- Build one row per ingredient with an animated progress bar. The
+	-- per-row refs go into matRefs so paintMaterials() can repaint
+	-- without rebuilding the rows.
+	local matRefs = {}
 	local matOrder = 0
 	for item, amount in recipe.costs do
 		matOrder = matOrder + 1
 		local matRow = Instance.new("Frame")
-		matRow.Size = UDim2.new(1, 0, 0, 48)
+		matRow.Name = "MatRow_" .. item
+		matRow.Size = UDim2.new(1, 0, 0, 44)
 		matRow.LayoutOrder = matOrder
-		matRow.BackgroundColor3 = COLORS.craftItemBg
-		matRow.BorderSizePixel = 0
+		matRow.BackgroundTransparency = 1
 		matRow.ZIndex = 21
 		matRow.Parent = matScroll
 
-		local matCorner = Instance.new("UICorner")
-		matCorner.CornerRadius = UDim.new(0, 6)
-		matCorner.Parent = matRow
-
+		local matIconCard = Instance.new("Frame")
+		matIconCard.Size = UDim2.fromOffset(34, 34)
+		matIconCard.Position = UDim2.new(0, 0, 0, 0)
+		matIconCard.BackgroundColor3 = PAPER_LIGHT
+		matIconCard.BorderSizePixel = 0
+		matIconCard.ZIndex = 22
+		matIconCard.Parent = matRow
+		local matIconCardCorner = Instance.new("UICorner")
+		matIconCardCorner.CornerRadius = UDim.new(0, 6)
+		matIconCardCorner.Parent = matIconCard
+		local matIconCardStroke = Instance.new("UIStroke")
+		matIconCardStroke.Color = WOOD_DARK
+		matIconCardStroke.Thickness = 1
+		matIconCardStroke.Transparency = 0.35
+		matIconCardStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		matIconCardStroke.Parent = matIconCard
 		local matIcon = Instance.new("ImageLabel")
-		matIcon.Size = UDim2.new(0, 36, 0, 36)
-		matIcon.Position = UDim2.new(0, 8, 0.5, -18)
+		matIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+		matIcon.Position = UDim2.fromScale(0.5, 0.5)
+		matIcon.Size = UDim2.fromScale(0.85, 0.85)
 		matIcon.BackgroundTransparency = 1
 		matIcon.Image = RESOURCE_ICONS[item] or ""
 		matIcon.ScaleType = Enum.ScaleType.Fit
-		matIcon.ZIndex = 22
-		matIcon.Parent = matRow
+		matIcon.ZIndex = 23
+		matIcon.Parent = matIconCard
 
-		local have = inventory[item] or 0
-		local matLabel = Instance.new("TextLabel")
-		matLabel.Name = "MatLabel_" .. item
-		matLabel.Size = UDim2.new(1, -60, 1, 0)
-		matLabel.Position = UDim2.new(0, 52, 0, 0)
-		matLabel.BackgroundTransparency = 1
-		matLabel.Text = item .. ": " .. have .. " / " .. amount
-		matLabel.TextColor3 = have >= amount and COLORS.affordable or COLORS.notAffordable
-		matLabel.Font = Enum.Font.GothamBold
-		matLabel.TextSize = 20
-		matLabel.TextXAlignment = Enum.TextXAlignment.Left
-		matLabel.ZIndex = 22
-		matLabel.Parent = matRow
-		matRow:SetAttribute("ItemName", item)
-		matRow:SetAttribute("ItemAmount", amount)
+		-- Name on the left, count on the right of the row above the bar.
+		local nameLabel = Instance.new("TextLabel")
+		nameLabel.Position = UDim2.new(0, 44, 0, 0)
+		nameLabel.Size = UDim2.new(1, -120, 0, 18)
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.Font = Enum.Font.GothamBold
+		nameLabel.TextSize = 13
+		nameLabel.TextColor3 = COLORS.titleText
+		nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+		nameLabel.Text = string.upper(item)
+		nameLabel.ZIndex = 22
+		nameLabel.Parent = matRow
+
+		local countLabel = Instance.new("TextLabel")
+		countLabel.AnchorPoint = Vector2.new(1, 0)
+		countLabel.Position = UDim2.new(1, 0, 0, 0)
+		countLabel.Size = UDim2.new(0, 100, 0, 18)
+		countLabel.BackgroundTransparency = 1
+		countLabel.Font = Enum.Font.GothamBold
+		countLabel.TextSize = 13
+		countLabel.TextXAlignment = Enum.TextXAlignment.Right
+		countLabel.Text = ""
+		countLabel.ZIndex = 22
+		countLabel.Parent = matRow
+
+		local barTrack = Instance.new("Frame")
+		barTrack.Name = "BarTrack"
+		barTrack.AnchorPoint = Vector2.new(0, 1)
+		barTrack.Position = UDim2.new(0, 44, 1, -2)
+		barTrack.Size = UDim2.new(1, -44, 0, 8)
+		barTrack.BackgroundColor3 = WOOD_DARK
+		barTrack.BackgroundTransparency = 0.55
+		barTrack.BorderSizePixel = 0
+		barTrack.ZIndex = 22
+		barTrack.Parent = matRow
+		local trackCorner = Instance.new("UICorner")
+		trackCorner.CornerRadius = UDim.new(0, 4)
+		trackCorner.Parent = barTrack
+
+		local barFill = Instance.new("Frame")
+		barFill.AnchorPoint = Vector2.new(0, 0.5)
+		barFill.Position = UDim2.fromScale(0, 0.5)
+		barFill.Size = UDim2.fromScale(0, 1)
+		barFill.BackgroundColor3 = GREEN_OK
+		barFill.BorderSizePixel = 0
+		barFill.ZIndex = 23
+		barFill.Parent = barTrack
+		local fillCorner = Instance.new("UICorner")
+		fillCorner.CornerRadius = UDim.new(0, 4)
+		fillCorner.Parent = barFill
+
+		matRefs[item] = {
+			amount = amount, count = countLabel, fill = barFill,
+		}
 	end
 
-	-- Craft button at bottom
+	-- Repaint per-row counts + bar widths + the status pill. Called
+	-- whenever the inventory snapshot or selected-recipe changes.
+	local function paintMaterials()
+		local missing = 0
+		for item, refs in pairs(matRefs) do
+			local have = inventory[item] or 0
+			local need = refs.amount
+			local pct = (need > 0) and math.clamp(have / need, 0, 1) or 0
+			refs.fill.Size = UDim2.new(pct, 0, 1, 0)
+			refs.fill.BackgroundColor3 = (have >= need) and GREEN_OK or RED_BAD
+			refs.count.Text = string.format("%d / %d", have, need)
+			refs.count.TextColor3 = (have >= need) and GREEN_DEEP or RED_BAD
+			if have < need then missing = missing + 1 end
+		end
+		if missing == 0 then
+			statusLabel.Text = "READY TO CRAFT"
+			statusLabel.TextColor3 = GREEN_DEEP
+		else
+			statusLabel.Text = "MISSING " .. missing
+			statusLabel.TextColor3 = RED_BAD
+		end
+	end
+	paintMaterials()
+	-- Tag the overlay so external repaint paths (inventoryEvent) can
+	-- re-run the update without us needing to expose paintMaterials.
+	detailOverlay:SetAttribute("RecipeName", recipe.name)
+
+	-- Module-level refresh hook used by updateUI() when the inventory
+	-- snapshot changes. Captures the local paintMaterials closure +
+	-- the craft button so a fresh inventory drains/refills the bars
+	-- and re-colours the Craft button without rebuilding the overlay.
+	refreshDetailOverlay = function()
+		if not detailOverlay or not detailOverlay.Parent then return end
+		paintMaterials()
+		local btn = detailOverlay:FindFirstChild("DetailCraftButton")
+		if btn then
+			btn.BackgroundColor3 = canAfford(recipe) and GREEN_OK or WOOD_MID
+		end
+	end
+
+	-- ── Craft + multi-craft buttons ──────────────────────────────────
+	-- Bottom row: full-width green Craft on the left, ×5 / ×10 paper
+	-- buttons on the right. Multi-craft just fires the existing craft
+	-- event N times — server keeps owning resource validation, so a
+	-- spam of fires is safe and self-rate-limiting.
+	local function makeMultiBtn(label, qty)
+		local b = Instance.new("TextButton")
+		b.Name = "Multi_" .. tostring(qty)
+		b.AutoButtonColor = false
+		b.BackgroundColor3 = PAPER_LIGHT
+		b.BorderSizePixel = 0
+		b.Font = Enum.Font.GothamBold
+		b.TextSize = 16
+		b.TextColor3 = WOOD_DARKEST
+		b.Text = label
+		b.ZIndex = 21
+		local c = Instance.new("UICorner"); c.CornerRadius = UDim.new(0, 8); c.Parent = b
+		local s = Instance.new("UIStroke"); s.Color = WOOD_DARK; s.Thickness = 1.5
+		s.ApplyStrokeMode = Enum.ApplyStrokeMode.Border; s.Parent = b
+		b.MouseButton1Click:Connect(function()
+			for _ = 1, qty do
+				if not canAfford(recipe) then break end
+				inventoryCraftEvent:FireServer("craft", recipe.name)
+			end
+		end)
+		return b
+	end
+
+	local MULTI_W = 56
+	local MULTI_GAP = 8
 	local craftBtn = Instance.new("TextButton")
 	craftBtn.Name = "DetailCraftButton"
-	craftBtn.Size = UDim2.new(1, -34, 0, 54)
+	craftBtn.Size = UDim2.new(1, -34 - 2 * (MULTI_W + MULTI_GAP), 0, 54)
 	craftBtn.Position = UDim2.new(0, 17, 1, -68)
-	craftBtn.BackgroundColor3 = canAfford(recipe) and COLORS.affordable or Color3.fromRGB(120, 120, 120)
-	craftBtn.Text = "Craft " .. (recipe.displayName or recipe.name)
-	craftBtn.TextColor3 = Color3.new(1, 1, 1)
+	craftBtn.BackgroundColor3 = canAfford(recipe) and GREEN_OK or WOOD_MID
+	craftBtn.AutoButtonColor = false
+	craftBtn.Text = "Craft"
+	craftBtn.TextColor3 = WOOD_DARKEST
 	craftBtn.Font = Enum.Font.GothamBold
-	craftBtn.TextSize = 24
+	craftBtn.TextSize = 22
 	craftBtn.BorderSizePixel = 0
 	craftBtn.ZIndex = 21
 	craftBtn.Parent = detailOverlay
 
 	local craftCorner = Instance.new("UICorner")
-	craftCorner.CornerRadius = UDim.new(0, 8)
+	craftCorner.CornerRadius = UDim.new(0, 10)
 	craftCorner.Parent = craftBtn
+
+	local craftStroke = Instance.new("UIStroke")
+	craftStroke.Color = WOOD_DARKEST
+	craftStroke.Thickness = 2
+	craftStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	craftStroke.Parent = craftBtn
 
 	craftBtn.MouseButton1Click:Connect(function()
 		if canAfford(recipe) then
 			inventoryCraftEvent:FireServer("craft", recipe.name)
 		end
 	end)
+
+	-- ×5 / ×10 multi-craft side buttons sit to the right of Craft.
+	local multi5 = makeMultiBtn("×5", 5)
+	multi5.Size = UDim2.new(0, MULTI_W, 0, 54)
+	multi5.AnchorPoint = Vector2.new(1, 0)
+	multi5.Position = UDim2.new(1, -17 - (MULTI_W + MULTI_GAP), 1, -68)
+	multi5.Parent = detailOverlay
+
+	local multi10 = makeMultiBtn("×10", 10)
+	multi10.Size = UDim2.new(0, MULTI_W, 0, 54)
+	multi10.AnchorPoint = Vector2.new(1, 0)
+	multi10.Position = UDim2.new(1, -17, 1, -68)
+	multi10.Parent = detailOverlay
 end
 
 function rebuildCraftList()
@@ -1574,8 +1832,9 @@ function rebuildCraftList()
 
 			local btn = Instance.new("TextButton")
 			btn.Name = "Recipe_" .. recipe.name
-			btn.Size = UDim2.new(1, 0, 0, 90)
+			btn.Size = UDim2.new(1, 0, 0, 86)
 			btn.BackgroundColor3 = COLORS.craftItemBg
+			btn.BackgroundTransparency = 0.1
 			btn.Text = ""
 			btn.BorderSizePixel = 0
 			btn.LayoutOrder = idx
@@ -1585,8 +1844,14 @@ function rebuildCraftList()
 			btn:SetAttribute("RecipeName", recipe.name)
 
 			local btnCorner = Instance.new("UICorner")
-			btnCorner.CornerRadius = UDim.new(0, 6)
+			btnCorner.CornerRadius = UDim.new(0, 10)
 			btnCorner.Parent = btn
+
+			local btnStroke = Instance.new("UIStroke")
+			btnStroke.Color = WOOD_DARK
+			btnStroke.Thickness = 1.5
+			btnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+			btnStroke.Parent = btn
 
 			local icon = Instance.new("ImageLabel")
 			icon.Size = UDim2.new(0, 64, 0, 64)
@@ -1630,9 +1895,11 @@ function rebuildCraftList()
 
 			btn.MouseEnter:Connect(function()
 				btn.BackgroundColor3 = COLORS.craftItemHover
+				btn.BackgroundTransparency = 0
 			end)
 			btn.MouseLeave:Connect(function()
 				btn.BackgroundColor3 = COLORS.craftItemBg
+				btn.BackgroundTransparency = 0.1
 			end)
 			btn.MouseButton1Click:Connect(function()
 				openDetailOverlay(recipe)
@@ -1686,30 +1953,11 @@ local function updateCraftPanel()
 		end
 	end
 
-	-- Update detail overlay craft button if open
-	if detailOverlay and selectedRecipe then
-		local craftBtn = detailOverlay:FindFirstChild("DetailCraftButton")
-		if craftBtn then
-			craftBtn.BackgroundColor3 = canAfford(selectedRecipe) and COLORS.affordable or Color3.fromRGB(120, 120, 120)
-		end
-
-		-- Refresh the "Log: have / need" material rows so a just-
-		-- completed craft immediately reflects the drained inventory.
-		local matScroll = detailOverlay:FindFirstChild("MaterialsScroll")
-		if matScroll then
-			for _, row in matScroll:GetChildren() do
-				local item = row:GetAttribute("ItemName")
-				local amount = row:GetAttribute("ItemAmount")
-				if item and amount then
-					local label = row:FindFirstChild("MatLabel_" .. item)
-					if label then
-						local have = inventory[item] or 0
-						label.Text = item .. ": " .. have .. " / " .. amount
-						label.TextColor3 = have >= amount and COLORS.affordable or COLORS.notAffordable
-					end
-				end
-			end
-		end
+	-- Refresh the open detail overlay's bars / counts / craft button
+	-- via the hook openDetailOverlay() registered. Cheaper than
+	-- rebuilding the overlay and keeps the scroll position stable.
+	if detailOverlay and refreshDetailOverlay then
+		refreshDetailOverlay()
 	end
 end
 
@@ -1782,6 +2030,12 @@ end
 
 -- ─── Build Hotbar ───
 
+-- Hotbar layout — adds a small label band at the top of the bar where
+-- each slot's "1"…"8" number sits, so the slot itself stays centred
+-- below the number. Without this band the numbers either overlap the
+-- slot's content or push the slot off the bottom of the panel.
+local HOTBAR_LABEL_H = 16
+
 local function buildHotbar()
 	if hotbarGui then hotbarGui:Destroy() end
 
@@ -1793,43 +2047,61 @@ local function buildHotbar()
 	attachResponsiveScale(hotbarGui)
 
 	local barWidth = HOTBAR_SLOTS * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
+	local barHeight = SLOT_SIZE + SLOT_PAD * 2 + HOTBAR_LABEL_H
 	local bar = Instance.new("Frame")
 	bar.Name = "Hotbar"
-	bar.Size = UDim2.new(0, barWidth, 0, SLOT_SIZE + SLOT_PAD * 2)
-	bar.Position = UDim2.new(0.5, -barWidth / 2, 1, -(SLOT_SIZE + SLOT_PAD * 2) - 10)
+	bar.Size = UDim2.new(0, barWidth, 0, barHeight)
+	bar.Position = UDim2.new(0.5, -barWidth / 2, 1, -barHeight - 10)
 	bar.BackgroundColor3 = COLORS.hotbarBg
-	bar.BackgroundTransparency = 0.15
+	bar.BackgroundTransparency = 0
 	bar.BorderSizePixel = 0
 	bar.Parent = hotbarGui
 
 	local barCorner = Instance.new("UICorner")
-	barCorner.CornerRadius = UDim.new(0, 8)
+	barCorner.CornerRadius = UDim.new(0, 14)
 	barCorner.Parent = bar
 
 	local barStroke = Instance.new("UIStroke")
 	barStroke.Color = COLORS.panelBorder
-	barStroke.Thickness = 2
+	barStroke.Thickness = 3
+	barStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	barStroke.Parent = bar
 
 	for i = 1, HOTBAR_SLOTS do
+		local slotX = SLOT_PAD + (i - 1) * (SLOT_SIZE + SLOT_PAD)
+
+		-- "1"…"8" label above each slot. Drawn directly on the bar so
+		-- the slot below it stays a clean square.
+		local numberLabel = Instance.new("TextLabel")
+		numberLabel.Name = "HotbarNumber_" .. i
+		numberLabel.Size = UDim2.new(0, SLOT_SIZE, 0, HOTBAR_LABEL_H)
+		numberLabel.Position = UDim2.new(0, slotX, 0, 2)
+		numberLabel.BackgroundTransparency = 1
+		numberLabel.Font = Enum.Font.GothamBold
+		numberLabel.TextSize = 12
+		numberLabel.TextColor3 = COLORS.lightText
+		numberLabel.Text = tostring(i)
+		numberLabel.Parent = bar
+
 		local slot = Instance.new("TextButton")
 		slot.Name = "HotbarSlot_" .. i
 		slot.Size = UDim2.new(0, SLOT_SIZE, 0, SLOT_SIZE)
-		slot.Position = UDim2.new(0, SLOT_PAD + (i - 1) * (SLOT_SIZE + SLOT_PAD), 0, SLOT_PAD)
+		slot.Position = UDim2.new(0, slotX, 0, SLOT_PAD + HOTBAR_LABEL_H)
 		slot.BackgroundColor3 = COLORS.slotBg
-		slot.BackgroundTransparency = 0.1
+		slot.BackgroundTransparency = 0
 		slot.BorderSizePixel = 0
 		slot.Text = ""
 		slot.AutoButtonColor = false
 		slot.Parent = bar
 
 		local slotCorner = Instance.new("UICorner")
-		slotCorner.CornerRadius = UDim.new(0, 6)
+		slotCorner.CornerRadius = UDim.new(0, 10)
 		slotCorner.Parent = slot
 
 		local slotStroke = Instance.new("UIStroke")
 		slotStroke.Color = COLORS.slotBorder
 		slotStroke.Thickness = 1.5
+		slotStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		slotStroke.Parent = slot
 
 		local slotIndex = i
@@ -1926,12 +2198,13 @@ local function buildUI()
 	centerPanel.Parent = screenGui
 
 	local centerCorner = Instance.new("UICorner")
-	centerCorner.CornerRadius = UDim.new(0, 10)
+	centerCorner.CornerRadius = UDim.new(0, 16)
 	centerCorner.Parent = centerPanel
 
 	local centerStroke = Instance.new("UIStroke")
 	centerStroke.Color = COLORS.panelBorder
 	centerStroke.Thickness = 3
+	centerStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	centerStroke.Parent = centerPanel
 
 	local title = Instance.new("TextLabel")
@@ -2011,19 +2284,20 @@ local function buildUI()
 		slot.Size = UDim2.new(0, SLOT_SIZE, 0, SLOT_SIZE)
 		slot.Position = UDim2.new(0, SLOT_PAD + col * (SLOT_SIZE + SLOT_PAD), 0, SLOT_PAD + row * (SLOT_SIZE + SLOT_PAD))
 		slot.BackgroundColor3 = COLORS.slotBg
-		slot.BackgroundTransparency = 0.05
+		slot.BackgroundTransparency = 0
 		slot.BorderSizePixel = 0
 		slot.Text = ""
 		slot.AutoButtonColor = false
 		slot.Parent = gridFrame
 
 		local slotCorner = Instance.new("UICorner")
-		slotCorner.CornerRadius = UDim.new(0, 5)
+		slotCorner.CornerRadius = UDim.new(0, 10)
 		slotCorner.Parent = slot
 
 		local slotStroke = Instance.new("UIStroke")
 		slotStroke.Color = COLORS.slotBorder
 		slotStroke.Thickness = 1.5
+		slotStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		slotStroke.Parent = slot
 
 		gridSlotVisuals[i] = { button = slot, stroke = slotStroke }
@@ -2103,29 +2377,31 @@ local function buildUI()
 	craftPanel.Parent = screenGui
 
 	local craftCorner = Instance.new("UICorner")
-	craftCorner.CornerRadius = UDim.new(0, 10)
+	craftCorner.CornerRadius = UDim.new(0, 16)
 	craftCorner.Parent = craftPanel
 
 	local craftStroke = Instance.new("UIStroke")
 	craftStroke.Color = COLORS.panelBorder
-	craftStroke.Thickness = 2
+	craftStroke.Thickness = 3
+	craftStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	craftStroke.Parent = craftPanel
 
 	local craftTitle = Instance.new("TextLabel")
 	craftTitle.Size = UDim2.new(1, -15, 0, 28)
-	craftTitle.Position = UDim2.new(0, 10, 0, 8)
+	craftTitle.Position = UDim2.new(0, 10, 0, 10)
 	craftTitle.BackgroundTransparency = 1
 	craftTitle.Text = "Crafting"
-	craftTitle.TextColor3 = COLORS.titleText
-	craftTitle.Font = Enum.Font.GothamMedium
+	craftTitle.TextColor3 = COLORS.lightText
+	craftTitle.Font = Enum.Font.GothamBold
 	craftTitle.TextSize = 18
 	craftTitle.TextXAlignment = Enum.TextXAlignment.Left
 	craftTitle.Parent = craftPanel
 
 	local craftSep = Instance.new("Frame")
-	craftSep.Size = UDim2.new(1, -20, 0, 2)
-	craftSep.Position = UDim2.new(0, 10, 0, 38)
+	craftSep.Size = UDim2.new(1, -20, 0, 1)
+	craftSep.Position = UDim2.new(0, 10, 0, 40)
 	craftSep.BackgroundColor3 = COLORS.panelBorder
+	craftSep.BackgroundTransparency = 0.3
 	craftSep.BorderSizePixel = 0
 	craftSep.Parent = craftPanel
 
@@ -2146,19 +2422,19 @@ local function buildUI()
 	for i, cat in CATEGORIES do
 		local tab = Instance.new("TextButton")
 		tab.Name = "Tab_" .. cat
-		tab.Size = UDim2.new(1, 0, 0, 76)
+		tab.Size = UDim2.new(1, 0, 0, 60)
 		tab.LayoutOrder = i
 		tab.BackgroundColor3 = COLORS.craftItemBg
+		tab.BackgroundTransparency = 0.4
 		tab.TextColor3 = COLORS.titleText
 		tab.Text = ""
-		tab.Font = Enum.Font.GothamMedium
+		tab.Font = Enum.Font.GothamBold
 		tab.TextSize = 14
 		tab.BorderSizePixel = 0
 		tab.AutoButtonColor = false
 		tab.Parent = tabFrame
 		tab:SetAttribute("Category", cat)
 
-		-- Centered text label (category icons were removed on user request).
 		local label = Instance.new("TextLabel")
 		label.Name = "Label"
 		label.Size = UDim2.new(1, -20, 1, 0)
@@ -2166,28 +2442,31 @@ local function buildUI()
 		label.BackgroundTransparency = 1
 		label.Text = cat
 		label.TextColor3 = COLORS.titleText
-		label.Font = Enum.Font.GothamMedium
-		label.TextSize = 18
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 16
 		label.TextXAlignment = Enum.TextXAlignment.Center
 		label.Parent = tab
 
 		local tabCorner = Instance.new("UICorner")
-		tabCorner.CornerRadius = UDim.new(0, 6)
+		tabCorner.CornerRadius = UDim.new(0, 10)
 		tabCorner.Parent = tab
 
 		local tabStroke = Instance.new("UIStroke")
 		tabStroke.Color = COLORS.panelBorder
-		tabStroke.Thickness = 1
+		tabStroke.Thickness = 1.5
+		tabStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 		tabStroke.Parent = tab
 
 		tab.MouseEnter:Connect(function()
 			if selectedCategory ~= cat then
 				tab.BackgroundColor3 = COLORS.craftItemHover
+				tab.BackgroundTransparency = 0.15
 			end
 		end)
 		tab.MouseLeave:Connect(function()
 			if selectedCategory ~= cat then
 				tab.BackgroundColor3 = COLORS.craftItemBg
+				tab.BackgroundTransparency = 0.4
 			end
 		end)
 
@@ -2197,22 +2476,36 @@ local function buildUI()
 		end)
 	end
 
-	-- Close button
+	-- Close button — wood-mid X, hovers to wood-dark; same recipe used
+	-- by the workbench / quest menus so all in-world UIs share the X.
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.Size = UDim2.new(0, 28, 0, 28)
-	closeBtn.Position = UDim2.new(1, -32, 0, 6)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 50)
-	closeBtn.Text = "X"
-	closeBtn.TextColor3 = Color3.new(1, 1, 1)
+	closeBtn.Position = UDim2.new(1, -36, 0, 8)
+	closeBtn.BackgroundColor3 = WOOD_MID
+	closeBtn.AutoButtonColor = false
+	closeBtn.Text = "✕"
+	closeBtn.TextColor3 = COLORS.lightText
 	closeBtn.Font = Enum.Font.GothamBold
 	closeBtn.TextSize = 16
 	closeBtn.BorderSizePixel = 0
 	closeBtn.Parent = centerPanel
 
 	local closeBtnCorner = Instance.new("UICorner")
-	closeBtnCorner.CornerRadius = UDim.new(0, 6)
+	closeBtnCorner.CornerRadius = UDim.new(0, 8)
 	closeBtnCorner.Parent = closeBtn
 
+	local closeBtnStroke = Instance.new("UIStroke")
+	closeBtnStroke.Color = WOOD_DARK
+	closeBtnStroke.Thickness = 2
+	closeBtnStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	closeBtnStroke.Parent = closeBtn
+
+	closeBtn.MouseEnter:Connect(function()
+		closeBtn.BackgroundColor3 = WOOD_DARK
+	end)
+	closeBtn.MouseLeave:Connect(function()
+		closeBtn.BackgroundColor3 = WOOD_MID
+	end)
 	closeBtn.MouseButton1Click:Connect(closeUI)
 
 	-- Raise hotbar above inventory
