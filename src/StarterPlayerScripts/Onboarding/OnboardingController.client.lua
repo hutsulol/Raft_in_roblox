@@ -84,25 +84,10 @@ local completedFlags = {}
 -- cleanup needed for the per-log case.
 
 local LOG_HIGHLIGHT_NAME = "OnboardingChopTreesHighlight"
-local LOG_ARROW_NAME     = "OnboardingChopTreesArrow"
 local LOG_HIGHLIGHT_FILL    = Color3.fromRGB(120, 220,  90)
 local LOG_HIGHLIGHT_OUTLINE = Color3.fromRGB(180, 255, 140)
 
--- Green floating arrow above each Log (added in the same lifetime as
--- the green Highlight). Asset is the arrow_green icon the project
--- registered. Y offset puts it ~2 studs above the log so it's
--- visible without overlapping the Highlight outline.
---
--- Size uses the Scale dimension of UDim2 (studs in 3D space), not
--- Offset (fixed pixels). Stud-based sizing means the arrow shrinks
--- with distance instead of staying at a constant screen size — at a
--- distance the old pixel-sized 48×48 dwarfed the now-tiny log.
-local LOG_ARROW_ASSET    = "rbxassetid://74129628763110"
-local LOG_ARROW_SIZE     = UDim2.fromScale(2, 2)   -- 2x2 studs
-local LOG_ARROW_OFFSET_Y = 6.0   -- raised so the arrow clears the log
-
 local logHighlightAddedConn   -- CollectionService:GetInstanceAddedSignal handle
-local logArrowBobConn         -- RunService:Heartbeat handle for the bob animation
 
 local function isLogResource(resource)
 	if not resource then return false end
@@ -128,91 +113,16 @@ local function tryHighlightLog(resource)
 	hl.Parent = resource
 end
 
--- Use the model's PrimaryPart as the centre reference — the log's
--- PrimaryPart is set at its visual middle, and the previous bbox-
--- based picker was throwing the arrow off-axis because invisible
--- helper parts in the model dragged the bbox centre to one side.
--- Falls back to the first BasePart we find for malformed resources
--- without a PrimaryPart.
-local function pickArrowAdornee(resource)
-	if resource:IsA("BasePart") then return resource end
-	if resource.PrimaryPart then return resource.PrimaryPart end
-	for _, child in ipairs(resource:GetDescendants()) do
-		if child:IsA("BasePart") then return child end
-	end
-	return nil
-end
-
-local function tryAddArrow(resource)
-	if not isLogResource(resource) then return end
-	if resource:FindFirstChild(LOG_ARROW_NAME) then return end
-	local adornee = pickArrowAdornee(resource)
-	if not adornee then return end
-
-	-- The log model's PrimaryPart is at its visual centre, so we
-	-- adornee directly — no centre compensation needed. Just push
-	-- the billboard up by LOG_ARROW_OFFSET_Y studs in world space
-	-- so the arrow sits above the log instead of on it.
-	local bb = Instance.new("BillboardGui")
-	bb.Name = LOG_ARROW_NAME
-	bb.Adornee = adornee
-	bb.Size = LOG_ARROW_SIZE
-	bb.StudsOffsetWorldSpace = Vector3.new(0, LOG_ARROW_OFFSET_Y, 0)
-	bb.AlwaysOnTop = true
-	bb.LightInfluence = 0
-	bb.MaxDistance = 250
-	bb.ResetOnSpawn = false
-	bb.Parent = resource
-
-	local img = Instance.new("ImageLabel")
-	img.Name = "Arrow"
-	img.AnchorPoint = Vector2.new(0.5, 0.5)
-	img.Position = UDim2.fromScale(0.5, 0.5)
-	img.Size = UDim2.fromScale(1, 1)
-	img.BackgroundTransparency = 1
-	img.ScaleType = Enum.ScaleType.Fit
-	img.Image = LOG_ARROW_ASSET
-	img.Parent = bb
-end
-
-local function sweepArrows()
-	for _, resource in ipairs(CollectionService:GetTagged("Resource")) do
-		local arrow = resource:FindFirstChild(LOG_ARROW_NAME)
-		if arrow then arrow:Destroy() end
-	end
-end
-
 local function startLogHighlights()
 	-- Tag every Log already in the world.
 	for _, resource in ipairs(CollectionService:GetTagged("Resource")) do
 		tryHighlightLog(resource)
-		tryAddArrow(resource)
 	end
 	-- And every Log that spawns while the flow is active. The
 	-- ResourceType attribute is set before the model is parented +
 	-- tagged, so it's available by the time this signal fires.
 	if not logHighlightAddedConn then
-		logHighlightAddedConn = CollectionService:GetInstanceAddedSignal("Resource"):Connect(function(r)
-			tryHighlightLog(r)
-			tryAddArrow(r)
-		end)
-	end
-
-	-- Gentle vertical bob so the arrows visually pulse instead of
-	-- sitting dead still — easier to spot a moving indicator on a
-	-- choppy ocean. Cheap: a single sin() per arrow per frame.
-	if not logArrowBobConn then
-		local RunService = game:GetService("RunService")
-		logArrowBobConn = RunService.Heartbeat:Connect(function()
-			local t = os.clock()
-			local dy = math.sin(t * 4) * 0.35
-			for _, resource in ipairs(CollectionService:GetTagged("Resource")) do
-				local arrow = resource:FindFirstChild(LOG_ARROW_NAME)
-				if arrow and arrow:IsA("BillboardGui") then
-					arrow.StudsOffsetWorldSpace = Vector3.new(0, LOG_ARROW_OFFSET_Y + dy, 0)
-				end
-			end
-		end)
+		logHighlightAddedConn = CollectionService:GetInstanceAddedSignal("Resource"):Connect(tryHighlightLog)
 	end
 end
 
@@ -221,10 +131,6 @@ local function stopLogHighlights()
 		logHighlightAddedConn:Disconnect()
 		logHighlightAddedConn = nil
 	end
-	if logArrowBobConn then
-		logArrowBobConn:Disconnect()
-		logArrowBobConn = nil
-	end
 	-- Sweep any Highlights still attached to surviving logs (a Log
 	-- the player didn't chop yet stays in the workspace; we just
 	-- want the green to disappear when the flow ends).
@@ -232,7 +138,6 @@ local function stopLogHighlights()
 		local hl = resource:FindFirstChild(LOG_HIGHLIGHT_NAME)
 		if hl then hl:Destroy() end
 	end
-	sweepArrows()
 end
 
 local function startChopTreesTip(initialProgress)
