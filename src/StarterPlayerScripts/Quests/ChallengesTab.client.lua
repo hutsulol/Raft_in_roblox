@@ -18,7 +18,6 @@ local COLOR_WOOD_MID     = Color3.fromRGB(138, 106,  68)
 local COLOR_WOOD_BASE    = Color3.fromRGB(176, 138,  92)
 local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
 local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
-local COLOR_PROGRESS     = Color3.fromRGB(126, 175,  90)
 local COLOR_TIMER        = Color3.fromRGB(178,  79,  64)   -- redder when running
 
 local CARD_RADIUS = 12
@@ -172,48 +171,22 @@ local function buildCard(parent, layoutOrder)
 	body.ZIndex = card.ZIndex + 1
 	body.Parent = card
 
-	-- ── Progress bar (F5) ─────────────────────────────────────────────
-	-- Sits below the header. Reserves 140 px on the right for the
-	-- action button (T8) so the bar visually ends well before the
-	-- button starts — no more overlap.
+	-- ── Progress counter ──────────────────────────────────────────────
+	-- The visual progress bar (track + fill) was removed: it added a
+	-- lot of descendants for the QuestMenu's open-fade tween to walk,
+	-- which produced a visible hitch on first open of the Challenges
+	-- tab. The "N / M" counter stays as a compact text-only readout
+	-- on the right side of the card, sitting where the bar used to be.
 	local PROGRESS_Y = 64
-	local PROGRESS_H = 8
 	local ACTION_RESERVE = 140   -- button (120) + 20 px gap
-	local progressTrack = Instance.new("Frame")
-	progressTrack.Name = "ProgressTrack"
-	progressTrack.AnchorPoint = Vector2.new(0, 0)
-	progressTrack.Position = UDim2.new(0, 0, 0, PROGRESS_Y)
-	progressTrack.Size = UDim2.new(1, -ACTION_RESERVE, 0, PROGRESS_H)
-	progressTrack.BackgroundColor3 = COLOR_WOOD_DARK
-	progressTrack.BackgroundTransparency = 0.55
-	progressTrack.BorderSizePixel = 0
-	progressTrack.ZIndex = card.ZIndex + 1
-	progressTrack.Parent = card
-	local trackCorner = Instance.new("UICorner")
-	trackCorner.CornerRadius = UDim.new(0, math.floor(PROGRESS_H / 2))
-	trackCorner.Parent = progressTrack
-
-	local progressFill = Instance.new("Frame")
-	progressFill.Name = "ProgressFill"
-	progressFill.AnchorPoint = Vector2.new(0, 0.5)
-	progressFill.Position = UDim2.fromScale(0, 0.5)
-	progressFill.Size = UDim2.fromScale(0, 1)
-	progressFill.BackgroundColor3 = COLOR_PROGRESS
-	progressFill.BorderSizePixel = 0
-	progressFill.ZIndex = progressTrack.ZIndex + 1
-	progressFill.Parent = progressTrack
-	local fillCorner = Instance.new("UICorner")
-	fillCorner.CornerRadius = UDim.new(0, math.floor(PROGRESS_H / 2))
-	fillCorner.Parent = progressFill
-
 	local progressLabel = Instance.new("TextLabel")
 	progressLabel.Name = "ProgressLabel"
 	progressLabel.AnchorPoint = Vector2.new(0, 0)
-	progressLabel.Position = UDim2.new(0, 0, 0, PROGRESS_Y + PROGRESS_H + 2)
-	progressLabel.Size = UDim2.new(1, -ACTION_RESERVE, 0, 12)
+	progressLabel.Position = UDim2.new(0, 0, 0, PROGRESS_Y + 2)
+	progressLabel.Size = UDim2.new(1, -ACTION_RESERVE, 0, 14)
 	progressLabel.BackgroundTransparency = 1
 	progressLabel.Font = Enum.Font.GothamMedium
-	progressLabel.TextSize = 11
+	progressLabel.TextSize = 12
 	progressLabel.TextColor3 = COLOR_WOOD_DARK
 	progressLabel.TextXAlignment = Enum.TextXAlignment.Right
 	progressLabel.Text = ""
@@ -367,8 +340,6 @@ local function buildCard(parent, layoutOrder)
 		iconImage      = iconImage,
 		title          = title,
 		body           = body,
-		progressTrack  = progressTrack,
-		progressFill   = progressFill,
 		progressLabel  = progressLabel,
 		timerBox       = timerBox,
 		timerLabel     = timerLabel,
@@ -461,8 +432,6 @@ local function paintCard(refs, q)
 		prog = prog + (tonumber(obj.progress) or 0)
 		goal = goal + (tonumber(obj.goal) or 0)
 	end
-	local pct = (goal > 0) and math.clamp(prog / goal, 0, 1) or 0
-	refs.progressFill.Size  = UDim2.new(pct, 0, 1, 0)
 	refs.progressLabel.Text = string.format("%d / %d", prog, goal)
 
 	if q.reward and q.reward.count then
