@@ -34,37 +34,19 @@ local uiOpen = false
 local minigameRunning = false
 local claimedLocally = {} -- client-side set; immune to server replication overwriting
 -- Per-NPC-type session flags. Keyed by NpcType id (e.g. "Pirate lvl1",
--- "Infected Military") so each type gets its own first-defeat dialogue
--- and its own "already recruited → drop blood" behaviour. The first
--- recruit of any type also unlocks the Mercenaries phone section,
--- but only once per session via mercenariesUnlockShown.
+-- "Infected Military") so each type gets its own first-defeat
+-- dialogue and its own "already recruited → drop blood" behaviour.
 local firstDefeatShownByType = {}
-local recruitedTypes = {}
+-- Session-only set: a type lands in here when the player actually
+-- finishes the brain-maze recruit minigame. After that point, future
+-- kills of the same type route to the Injector + EmptyCapsule blood
+-- path. NOT a mirror of player.Mercenaries — DEV_AUTO_GRANT pre-fills
+-- the roster for menu testing, and we don't want that to skip the
+-- first-defeat dialogue for a type the player hasn't actually
+-- studied in this session yet.
+local recruitedThisSession = {}
 local defeatDialogueOpen = false
 local mercenariesUnlockShown = false
-
--- Mirror of the server's player.Mercenaries folder so the client can
--- decide locally whether a downed NPC is "already recruited" without
--- waiting for a round-trip.
-local function refreshRecruitedTypes()
-	local folder = player:FindFirstChild("Mercenaries")
-	recruitedTypes = {}
-	if folder then
-		for _, child in folder:GetChildren() do
-			recruitedTypes[child.Name] = true
-		end
-	end
-end
-refreshRecruitedTypes()
-do
-	local folder = player:FindFirstChild("Mercenaries")
-		or player:WaitForChild("Mercenaries", 5)
-	if folder then
-		folder.ChildAdded:Connect(refreshRecruitedTypes)
-		folder.ChildRemoved:Connect(refreshRecruitedTypes)
-		refreshRecruitedTypes()
-	end
-end
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- UI construction
@@ -815,7 +797,11 @@ local function openRecruitPanel(pirate)
 				claimedLocally[pirate] = true
 				recruitEvent:FireServer("recruit", pirate)
 				if npcInfo then
-					recruitedTypes[npcInfo.mercName] = true
+					-- Lock in the injector / blood-drop path for this
+					-- type from the next kill onward. Session-scoped:
+					-- on relog, the dialogue plays again so the
+					-- player can re-test the recruit flow.
+					recruitedThisSession[npcInfo.mercName] = true
 				end
 
 				if not mercenariesUnlockShown then
@@ -855,12 +841,15 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		local npcInfo = NpcTypes.resolve(pirate)
 		local typeId  = npcInfo and npcInfo.mercName
 
-		-- Already-recruited type → injector blood-collection flow.
-		-- Studying / recruiting an NPC for the first time is a
-		-- one-shot per type; from the second downed body onward the
-		-- player extracts blood with the Injector + EmptyCapsule
-		-- combo, exactly like the original Pirate flow.
-		if typeId and recruitedTypes[typeId] then
+		-- Type the player already recruited THIS SESSION → injector
+		-- blood-collection flow. Studying / recruiting an NPC for the
+		-- first time is a one-shot per type; from the second downed
+		-- body onward the player extracts blood with the Injector +
+		-- EmptyCapsule combo, exactly like the original Pirate flow.
+		-- The session-scoped check (vs. mirroring player.Mercenaries)
+		-- means DEV_AUTO_GRANT can pre-populate the roster for menu
+		-- testing without skipping the first-defeat dialogue.
+		if typeId and recruitedThisSession[typeId] then
 			local char = player.Character
 			local equipped = char and char:FindFirstChildOfClass("Tool")
 			if not equipped or equipped.Name ~= "Injector" then

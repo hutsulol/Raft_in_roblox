@@ -32,13 +32,16 @@ local claimedPirates = {}
 -- can enumerate them. Duplicate pirate names are skipped ("max one of
 -- each type" rule).
 -- ── DEV MODE ──────────────────────────────────────────────────────────
--- Disabled: pre-granting "Pirate lvl1" populated player.Mercenaries on
--- join, which made the client treat the type as "already recruited"
--- and route every kill through the injector / blood-drop flow instead
--- of opening the recruit panel. Real recruitment now drives the
--- folder population end-to-end.
-local DEV_AUTO_GRANT = false
-local DEV_MERCENARY_NAME = "Pirate lvl1"
+-- Pre-grants the player a roster of mercenaries on join so the phone
+-- menu can be tested without doing a full kill / recruit cycle every
+-- session. Recruit-flow dialogue is gated client-side by a separate
+-- session-only flag (recruitedThisSession), so pre-granting the
+-- roster here does NOT skip the first-defeat dialogue when the
+-- player actually kills one of these NPCs in the world.
+--
+-- Set to false before shipping.
+local DEV_AUTO_GRANT = true
+local DEV_MERCENARY_NAMES = { "Pirate lvl1", "Infected Military" }
 
 local function ensureMercenariesFolder(player)
 	local folder = player:FindFirstChild("Mercenaries")
@@ -53,11 +56,13 @@ end
 local function grantDevMercenary(player)
 	if not DEV_AUTO_GRANT then return end
 	local folder = ensureMercenariesFolder(player)
-	if not folder:FindFirstChild(DEV_MERCENARY_NAME) then
-		local entry = Instance.new("StringValue")
-		entry.Name = DEV_MERCENARY_NAME
-		entry.Value = DEV_MERCENARY_NAME
-		entry.Parent = folder
+	for _, name in DEV_MERCENARY_NAMES do
+		if not folder:FindFirstChild(name) then
+			local entry = Instance.new("StringValue")
+			entry.Name = name
+			entry.Value = name
+			entry.Parent = folder
+		end
 	end
 end
 
