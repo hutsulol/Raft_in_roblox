@@ -317,11 +317,17 @@ local MERC_THEMES = {
 		spawnModel  = "Infected_Military_Menu",
 		-- Firearm is the Soldier's signature loadout — the MAIN HAND
 		-- tile shows it on the management page and the recruit comes
-		-- with an automatic pistol pre-selected. If the rig already
-		-- carries a built-in AK-47 model (not a Tool), it stays in
-		-- place; applyWeaponToClone only welds in addition to the
-		-- existing rig geometry, it doesn't strip Models.
+		-- with an automatic pistol pre-selected.
 		defaultWeapon = "Firearm",
+		-- Rig children that ARE the visual for an equippable weapon.
+		-- The AK-47 Model lives directly under Infected_Military_Menu
+		-- and serves as the Firearm rendering. When the player picks
+		-- a different weapon (Hands, Shotgun, FishingRod), the AK-47
+		-- hides; when they pick Firearm, it shows. This is what stops
+		-- a sword + AK-47 doubled-up in the merc's hands.
+		rigBuiltinWeapons = {
+			Firearm = "AK-47",
+		},
 		-- Soldier rig sits lower in the bind pose than Pirate, which
 		-- pushed the head to the bottom of the viewport. Lifting the
 		-- pivot up centres him with the camera at (0.6, 2.3, 6.2).
@@ -1101,13 +1107,47 @@ local WEAPON_SLOT_BACKPACK_IDS = {
 	BackPack_lvl2 = true,
 }
 
-local function applyWeaponToClone(clone, weaponId)
+-- Toggle visibility of any rigBuiltinWeapon Models declared in the
+-- merc's theme so the rig only ever shows ONE weapon at a time. The
+-- Soldier rig ships with an AK-47 Model under it that visualises the
+-- "Firearm" equip; if the player picks Shotgun / FishingRod / Hands
+-- we hide the AK-47 so the welded weapon isn't doubled up on the
+-- existing model. Visible iff the weapon id matches the mapping.
+local function syncRigBuiltinWeapons(clone, mercName, weaponId)
+	if not mercName then return end
+	local theme = MERC_THEMES[mercName]
+	if not theme or not theme.rigBuiltinWeapons then return end
+
+	local function setVisible(inst, visible)
+		local t = visible and 0 or 1
+		if inst:IsA("BasePart") then inst.Transparency = t end
+		for _, desc in inst:GetDescendants() do
+			if desc:IsA("BasePart") then desc.Transparency = t end
+			if desc:IsA("Decal") then desc.Transparency = t end
+		end
+	end
+
+	for slotId, modelName in pairs(theme.rigBuiltinWeapons) do
+		local part = clone:FindFirstChild(modelName)
+		if part then
+			setVisible(part, slotId == weaponId)
+		end
+	end
+end
+
+local function applyWeaponToClone(clone, weaponId, mercName)
 	-- Sanitise backpack ids up front so the ReplicatedStorage lookup
 	-- below can't possibly grab a backpack Tool and weld it to the
 	-- hand. Falls through to the Unarmed branch (strip-only, no attach).
 	if weaponId and WEAPON_SLOT_BACKPACK_IDS[weaponId] then
 		weaponId = "Unarmed"
 	end
+
+	-- Toggle rig-baked weapon Models (e.g. AK-47) so only the one
+	-- matching the equipped slot is visible. Done before the weld
+	-- pass so the welded mesh and the hidden rig-baked one don't
+	-- overlap visually for a frame.
+	syncRigBuiltinWeapons(clone, mercName, weaponId)
 
 	local requestedTool = weaponId
 	if not requestedTool or requestedTool == "Sword" then
@@ -1267,7 +1307,7 @@ local function buildMercViewport(parent, mercName, weaponId)
 		-- acts as a self-heal: any leftover Tool in the right arm from
 		-- a polluted earlier state gets stripped on the next cache hit,
 		-- not only when the weapon id actually differs.
-		applyWeaponToClone(cached.clone, weaponId)
+		applyWeaponToClone(cached.clone, weaponId, mercName)
 		cached.weaponId = weaponId
 		syncBackpackVisibility(cached.clone, mercName)
 		return cached.vp
@@ -1489,7 +1529,7 @@ local function buildMercViewport(parent, mercName, weaponId)
 	clone:PivotTo(CFrame.new(0, pivotY, 0) * CFrame.Angles(0, math.pi, 0))
 
 	-- Set up the picked weapon (sword / rod) on the rig.
-	applyWeaponToClone(clone, weaponId)
+	applyWeaponToClone(clone, weaponId, mercName)
 
 	-- Play the plain body idle so the pirate has its breathing / sway in
 	-- the preview. Runs once during the initial build; subsequent equipment
@@ -3037,6 +3077,8 @@ EQUIP_ITEMS = {
 			baseAttack    = 10,
 			description   = "A basic pirate cutlass. Short range but reliable in close combat.",
 			alwaysUnlocked = true,
+			-- Pirate-only — Soldier never sees this in the arsenal grid.
+			restrictedTo  = { "Pirate lvl1" },
 		},
 		{
 			id            = "FishingRod",

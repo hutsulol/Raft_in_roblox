@@ -43,6 +43,33 @@ local DEFAULT_WEAPON_BY_MERC = {
 	["Infected Military"] = "Firearm",
 }
 
+-- Per-merc map: equip-slot id → child Model name baked into the rig
+-- as the visual for that weapon. The Soldier rig ships with an
+-- "AK-47" Model that visualises the Firearm equip; we hide it when
+-- a different weapon is selected so the rig isn't holding two
+-- weapons at once. Mirror of MERC_THEMES.rigBuiltinWeapons on the
+-- client.
+local RIG_BUILTIN_WEAPONS_BY_MERC = {
+	["Infected Military"] = { Firearm = "AK-47" },
+}
+
+local function syncRigBuiltinWeapons(clone, mercName, equippedWeapon)
+	local map = RIG_BUILTIN_WEAPONS_BY_MERC[mercName]
+	if not map then return end
+	for slotId, modelName in pairs(map) do
+		local part = clone:FindFirstChild(modelName)
+		if part then
+			local visible = (slotId == equippedWeapon)
+			local t = visible and 0 or 1
+			if part:IsA("BasePart") then part.Transparency = t end
+			for _, desc in part:GetDescendants() do
+				if desc:IsA("BasePart") then desc.Transparency = t end
+				if desc:IsA("Decal") then desc.Transparency = t end
+			end
+		end
+	end
+end
+
 -- Locate a rig template anywhere it might reasonably live: top-level
 -- of ReplicatedStorage / ServerStorage, or nested inside a folder
 -- under either. Lets the user organise their assets without forcing a
@@ -144,6 +171,11 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	-- Remove EquipFishingRod script if present (handled by spawner now)
 	local equipScript = clone:FindFirstChild("EquipFishingRod")
 	if equipScript then equipScript:Destroy() end
+
+	-- Toggle rig-baked weapon Models (e.g. the Soldier's AK-47) so the
+	-- merc never holds two weapons at once: the welded equip and the
+	-- baked rig piece.
+	syncRigBuiltinWeapons(clone, mercName, equippedWeapon)
 
 	-- Toggle backpack model visibility: show only the equipped one,
 	-- hide all others. If none is equipped, hide them all. The match

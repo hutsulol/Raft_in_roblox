@@ -252,18 +252,44 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
 		else
 			mercEntry:SetAttribute("EquippedWeapon", itemId)
 
+			-- Update visibility of any rig-baked weapon Models on the
+			-- live merc immediately. The Soldier's AK-47 rig piece
+			-- toggles based on whether the equipped weapon is Firearm
+			-- so the merc isn't holding both at once. Mirrors the
+			-- per-merc table in MercenarySpawner.
+			local CollectionService = game:GetService("CollectionService")
+			local RIG_BUILTIN_WEAPONS = {
+				["Infected Military"] = { Firearm = "AK-47" },
+			}
+			local builtinMap = RIG_BUILTIN_WEAPONS[mercName]
+
 			-- If Unarmed, strip the tool from any currently-spawned merc
 			-- owned by this player so the change is visible immediately.
-			if itemId == "Unarmed" then
-				local CollectionService = game:GetService("CollectionService")
-				for _, model in CollectionService:GetTagged("SpawnedMercenary") do
-					if model:GetAttribute("OwnerUserId") == player.UserId
-						and model:GetAttribute("MercName") == mercName
-						and model.Parent then
+			for _, model in CollectionService:GetTagged("SpawnedMercenary") do
+				if model:GetAttribute("OwnerUserId") == player.UserId
+					and model:GetAttribute("MercName") == mercName
+					and model.Parent then
+					if itemId == "Unarmed" then
 						model:SetAttribute("EquippedWeapon", "Unarmed")
 						for _, child in model:GetChildren() do
 							if child:IsA("Tool") then
 								child:Destroy()
+							end
+						end
+					end
+
+					-- Sync rig-baked weapon visibility to the new equip.
+					if builtinMap then
+						for slotId, modelName in pairs(builtinMap) do
+							local part = model:FindFirstChild(modelName)
+							if part then
+								local visible = (slotId == itemId)
+								local t = visible and 0 or 1
+								if part:IsA("BasePart") then part.Transparency = t end
+								for _, desc in part:GetDescendants() do
+									if desc:IsA("BasePart") then desc.Transparency = t end
+									if desc:IsA("Decal") then desc.Transparency = t end
+								end
 							end
 						end
 					end

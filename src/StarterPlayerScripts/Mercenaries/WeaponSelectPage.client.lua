@@ -745,8 +745,9 @@ local function openWeaponSelectPage(ctx)
 	end
 
 	buildTab("Warrior",   "WARRIOR",   1)
-	buildTab("Fisherman", "FISHERMAN", 2)
-	buildTab("Assistant", "ASSISTANT", 3)
+	buildTab("Soldier",   "SOLDIER",   2)
+	buildTab("Fisherman", "FISHERMAN", 3)
+	buildTab("Assistant", "ASSISTANT", 4)
 	refreshTabVisuals()
 
 	-- ── Arsenal weapon grid (cards) ─────────────────────────────────
