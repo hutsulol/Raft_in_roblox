@@ -289,16 +289,21 @@ local MERC_THEMES = {
 		charStats   = { str = 72, spd = 48, luck = 35 },
 		portraitIcon = ICON_PIRATE,
 	},
-	["SCP Guard Killer"] = {
+	["Infected Military"] = {
+		-- Internal id stays "Infected Military" so it matches the
+		-- ReplicatedStorage rig and the player.Mercenaries entry.
+		-- displayName is what the card actually renders — keep it
+		-- friendly so the in-world copy doesn't lean on the internal
+		-- system name.
 		accent      = Color3.fromRGB(80, 200, 255),
-		displayName = "SCP Guard Killer",
+		displayName = "Soldier",
 		stars       = 2,
 		role        = "Infected Soldier · Military",
 		-- Higher base stats than Pirate per spec — mirror in
 		-- ServerScriptService/Mercenaries/MercenarySpawner so the
 		-- spawned rig matches what the card promises.
 		stats       = { hp = 420, damage = 32, mana = "30/min" },
-		spawnModel  = "SCP_Guard_Merc",
+		spawnModel  = "Infected Military",
 		level       = 1,
 		xp          = 0,
 		xpMax       = 800,
@@ -992,6 +997,12 @@ end
 local page = nil
 local hiddenPanels = {}    -- panels hidden while mercenaries page is open
 local currentMercNames = {}  -- remembered across page switches
+-- Set of mercenary IDs the player has actually recruited. Locked
+-- entries (in MERC_THEMES but not in player.Mercenaries) still appear
+-- in the roster as greyed-out cards; this set is what the UI checks
+-- to decide whether interactions (Spawn / Manage / Equip) are
+-- enabled and which chip ("OWNED" vs "LOCKED") gets drawn.
+local currentOwnedSet  = {}
 local currentSelectedMerc = nil
 local mercStatUpgrades = {}   -- [mercName] = { str = n, spd = n, luck = n }
 local mercSpentUpgradePoints = {} -- [mercName] = total spent points
@@ -1515,7 +1526,15 @@ buildPage = function(mercNames)
 	if page then page:Destroy() end
 
 	currentMercNames = mercNames
+	-- Default selection prefers the first OWNED merc so the right
+	-- panel doesn't open onto a locked card with disabled buttons.
 	local selectedName = mercNames[1]
+	for _, n in mercNames do
+		if currentOwnedSet[n] then
+			selectedName = n
+			break
+		end
+	end
 	currentSelectedMerc = selectedName
 
 	-- Full-screen page container, fully transparent — the holo
@@ -1892,9 +1911,15 @@ buildPage = function(mercNames)
 
 	-- Cap of 6 matches the design's MERCS roster — it's purely a text
 	-- hint; actual slot count is driven by what's in player.Mercenaries.
+	-- The HIRED counter only counts OWNED mercs (locked roster entries
+	-- still take up card slots but aren't "hired" yet).
 	local ROSTER_CAP = 6
+	local ownedCount = 0
+	for _, n in mercNames do
+		if currentOwnedSet[n] then ownedCount = ownedCount + 1 end
+	end
 	local countLabel = makeLabel(leftHeader,
-		string.format("%d / %d HIRED", #mercNames, ROSTER_CAP),
+		string.format("%d / %d HIRED", ownedCount, ROSTER_CAP),
 		FONT_BODY, 11, COLOR_TEXT_DIM, Enum.TextXAlignment.Right)
 	countLabel.AnchorPoint = Vector2.new(1, 0.5)
 	countLabel.Position = UDim2.new(1, 0, 0.5, 0)
@@ -1954,9 +1979,14 @@ buildPage = function(mercNames)
 		refreshRight(mercName)
 	end
 
-	-- Build one holo card per recruited mercenary.
+	-- Build one holo card per known mercenary type. Cards for types
+	-- the player hasn't recruited yet are still rendered, but greyed
+	-- out with a "LOCKED" chip and the click handler is a no-op so
+	-- the right-hand panel can't open onto a card the player can't
+	-- actually use.
 	for i, mercName in mercNames do
 		local theme = MERC_THEMES[mercName] or DEFAULT_THEME
+		local isOwned = currentOwnedSet[mercName] == true
 		local displayName = theme.displayName or mercName
 
 		local card = Instance.new("TextButton")
@@ -2008,21 +2038,41 @@ buildPage = function(mercNames)
 			charIcon.Name = "PortraitIcon"
 			charIcon.AnchorPoint = Vector2.new(0.5, 0.5)
 			charIcon.Position = UDim2.fromScale(0.5, 0.5)
+			-- Dim and desaturate the portrait for locked entries so
+			-- the player visually parses them as "not yet earned".
+			if not isOwned then
+				charIcon.ImageColor3 = Color3.fromRGB(120, 120, 130)
+				charIcon.ImageTransparency = 0.35
+			end
 		else
 			local charGlyph = makeCharacterIcon(portrait, 56, HOLO_PANEL_LBRACKET)
 			charGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
 			charGlyph.Position = UDim2.fromScale(0.5, 0.5)
 		end
 
-		-- Right side of the card: name row (+ OWNED chip) / star row / role
-		-- line, all left-aligned starting 100 px in so they sit clear of
-		-- the 88-wide portrait plus its 12 px gap.
-		local name = makeLabel(card, displayName, FONT_TITLE, 22, COLOR_TEXT)
+		if not isOwned then
+			-- Whole card sits at lower opacity so it reads as disabled.
+			card.BackgroundTransparency = math.min(0.85, HOLO_PANEL_TRANSPARENCY + 0.15)
+			portrait.BackgroundTransparency = 0.85
+		end
+
+		-- Right side of the card: name row (+ OWNED/LOCKED chip) /
+		-- star row / role line, all left-aligned starting 100 px in
+		-- so they sit clear of the 88-wide portrait plus its 12 px gap.
+		-- Locked cards mask the actual displayName so unrecruited
+		-- mercenaries read as "Unknown" until the player encounters
+		-- them in the world.
+		local nameText = isOwned and displayName or "Unknown"
+		local nameColor = isOwned and COLOR_TEXT or COLOR_TEXT_DIM
+		local name = makeLabel(card, nameText, FONT_TITLE, 22, nameColor)
 		name.Position = UDim2.fromOffset(100, 4)
 		name.Size = UDim2.new(1, -210, 0, 26)
 
-		-- OWNED chip in green stroke — every merc we render here comes
-		-- from player.Mercenaries, so they're by definition recruited.
+		-- Status chip: green "OWNED" when recruited, grey "LOCKED"
+		-- when not. Locked cards keep the same shape so the roster
+		-- layout doesn't shift as new mercs are unlocked.
+		local chipColor = isOwned and Color3.fromRGB(110, 200, 140) or Color3.fromRGB(170, 170, 180)
+		local chipText  = isOwned and "OWNED" or "LOCKED"
 		local ownedChip = Instance.new("Frame")
 		ownedChip.Name = "OwnedChip"
 		ownedChip.AnchorPoint = Vector2.new(1, 0.5)
@@ -2032,11 +2082,11 @@ buildPage = function(mercNames)
 		ownedChip.BorderSizePixel = 0
 		ownedChip.Parent = card
 		local ownedStroke = Instance.new("UIStroke")
-		ownedStroke.Color     = Color3.fromRGB(110, 200, 140)
+		ownedStroke.Color     = chipColor
 		ownedStroke.Thickness = 1
 		ownedStroke.Parent    = ownedChip
-		local ownedLbl = makeLabel(ownedChip, "OWNED", FONT_TITLE, 9,
-			Color3.fromRGB(110, 200, 140), Enum.TextXAlignment.Center)
+		local ownedLbl = makeLabel(ownedChip, chipText, FONT_TITLE, 9,
+			chipColor, Enum.TextXAlignment.Center)
 		ownedLbl.Size = UDim2.fromScale(1, 1)
 
 		local starRow = makeImageStarRow(card, theme.stars or 1, 5, 12)
@@ -2065,7 +2115,12 @@ buildPage = function(mercNames)
 			end
 		end
 
+		-- Locked cards are visible but inert: clicking them must not
+		-- swap the right-hand panel onto a merc the player can't
+		-- spawn / equip / manage. The card stays focusable for hover
+		-- effects (handled elsewhere) but selection is gated.
 		card.MouseButton1Click:Connect(function()
+			if not isOwned then return end
 			setSelectedCard(mercName)
 		end)
 
@@ -2950,8 +3005,8 @@ EQUIP_ITEMS = {
 			profession    = "Soldier",
 			stars         = 2,
 			baseAttack    = 24,
-			description   = "Standard military sidearm. Default issue for SCP Guard Killers.",
-			restrictedTo  = { "SCP Guard Killer" },
+			description   = "Standard military sidearm. Default issue for Infected Military units.",
+			restrictedTo  = { "Infected Military" },
 		},
 		{
 			id            = "Shotgun",
@@ -2960,8 +3015,8 @@ EQUIP_ITEMS = {
 			profession    = "Soldier",
 			stars         = 2,
 			baseAttack    = 36,
-			description   = "Heavy close-range punch. SCP Guard Killers only.",
-			restrictedTo  = { "SCP Guard Killer" },
+			description   = "Heavy close-range punch. Infected Military units only.",
+			restrictedTo  = { "Infected Military" },
 		},
 	},
 	Artifacts = {
@@ -3614,17 +3669,40 @@ function clearRosterConns()
 	table.clear(rosterConns)
 end
 
+-- Returns the full roster (every key in MERC_THEMES) plus a set of
+-- which IDs the player has actually recruited. Locked entries stay in
+-- the list so future mercenary additions automatically show up as
+-- greyed-out cards without any per-type wiring at the call site.
 local function collectMercNames()
+	local owned = {}
 	local folder = player:FindFirstChild("Mercenaries")
-	local names = {}
 	if folder then
 		for _, child in folder:GetChildren() do
 			if child:IsA("StringValue") then
-				table.insert(names, child.Value)
+				owned[child.Value] = true
 			end
 		end
 	end
-	return names
+
+	-- All known types from MERC_THEMES, owned ones first so the
+	-- player's actual roster sits at the top of the list.
+	local ownedList   = {}
+	local lockedList  = {}
+	for id, _ in pairs(MERC_THEMES) do
+		if owned[id] then
+			table.insert(ownedList, id)
+		else
+			table.insert(lockedList, id)
+		end
+	end
+	table.sort(ownedList)
+	table.sort(lockedList)
+
+	local names = {}
+	for _, n in ownedList do table.insert(names, n) end
+	for _, n in lockedList do table.insert(names, n) end
+
+	return names, owned
 end
 
 -- ─── Close the page ─────────────────────────────────────────────────────
@@ -3652,7 +3730,11 @@ end
 local function openMercenariesMenu()
 	if page then return end
 
-	local mercNames = collectMercNames()
+	-- Every entry in MERC_THEMES is rendered, so the page is never
+	-- empty even if the player hasn't recruited anyone yet — locked
+	-- cards take the empty slots.
+	local mercNames, ownedSet = collectMercNames()
+	currentOwnedSet = ownedSet
 	if #mercNames == 0 then return end
 
 	buildPage(mercNames)
@@ -3662,10 +3744,12 @@ local function openMercenariesMenu()
 	-- buildPage, which handles viewport detach + page teardown for us.
 	clearRosterConns()
 	local folder = player:FindFirstChild("Mercenaries")
+		or player:WaitForChild("Mercenaries", 5)
 	if folder then
 		local function rebuild()
 			if not page then return end
-			local names = collectMercNames()
+			local names, owned = collectMercNames()
+			currentOwnedSet = owned
 			if #names > 0 then
 				buildPage(names)
 			else

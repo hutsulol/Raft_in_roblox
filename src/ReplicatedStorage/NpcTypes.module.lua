@@ -23,12 +23,16 @@ NpcTypes.Types = {
 		displayName = "Pirate",
 		dialogueId  = "pirate",
 	},
-	["SCP Guard Killer"] = {
-		mercName    = "SCP Guard Killer",
-		bloodType   = "SCP Guard Killer",
-		bloodLabel  = "SCP Guard Blood",
-		displayName = "SCP Guard Killer",
-		dialogueId  = "scp_guard",
+	["Infected Military"] = {
+		-- Internal id ("Infected Military") matches the rig name in
+		-- ReplicatedStorage and the player.Mercenaries entry. The UI
+		-- reads displayName instead so the in-world copy doesn't lean
+		-- on the internal system name.
+		mercName    = "Infected Military",
+		bloodType   = "Infected Military",
+		bloodLabel  = "Soldier Blood",
+		displayName = "Soldier",
+		dialogueId  = "infected_military",
 	},
 }
 

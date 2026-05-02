@@ -34,7 +34,7 @@ local uiOpen = false
 local minigameRunning = false
 local claimedLocally = {} -- client-side set; immune to server replication overwriting
 -- Per-NPC-type session flags. Keyed by NpcType id (e.g. "Pirate lvl1",
--- "SCP Guard Killer") so each type gets its own first-defeat dialogue
+-- "Infected Military") so each type gets its own first-defeat dialogue
 -- and its own "already recruited → drop blood" behaviour. The first
 -- recruit of any type also unlocks the Mercenaries phone section,
 -- but only once per session via mercenariesUnlockShown.
@@ -786,7 +786,7 @@ local function openRecruitPanel(pirate)
 	uiOpen = true
 
 	-- Adapt the panel title to the actual NPC type so the player sees
-	-- "Recruit SCP Guard Killer?" when SCPs are involved instead of
+	-- "Recruit Infected Military?" when the unit type is Infected Military instead of
 	-- the legacy "Recruit Pirate?" string.
 	local npcInfo = NpcTypes.resolve(pirate)
 	if npcInfo then
@@ -850,7 +850,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		end
 
 		-- Per-NPC-type first-defeat dialogue. The pirate intro plays
-		-- the existing voice lines; SCP Guard reuses the same template
+		-- the existing voice lines; Infected Military reuses the same template
 		-- (Part 4 explicitly allows this) until type-specific lines
 		-- are recorded.
 		local dialogueKey = typeId or "default"

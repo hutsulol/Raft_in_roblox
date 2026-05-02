@@ -1,5 +1,5 @@
--- ScpGuardSpawner.server.lua
--- Periodically spawns one "SCP Guard Killer" hostile NPC near the
+-- InfectedMilitarySpawner.server.lua
+-- Periodically spawns one "Infected Military" hostile NPC near the
 -- player raft. Kept intentionally simple (no boarding raft, no
 -- approach driver) — the goal is to give the recruitment system a
 -- second NPC type to filter on. Behaviour beyond spawning is
@@ -8,7 +8,7 @@
 local rs                = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 
-local TEMPLATE_NAME      = "SCP Guard Killer"
+local TEMPLATE_NAME      = "Infected Military"
 local SPAWN_INTERVAL     = 240
 local FIRST_SPAWN_DELAY  = 60
 local SPAWN_RADIUS       = 28
@@ -35,7 +35,7 @@ local function spawnGuard()
 	guard:PivotTo(CFrame.new(pos))
 	CollectionService:AddTag(guard, "HostilePirate")
 	-- Drives recruitment / blood / mercenary filtering — see NpcTypes.
-	guard:SetAttribute("NpcType", "SCP Guard Killer")
+	guard:SetAttribute("NpcType", "Infected Military")
 	guard.Parent = workspace
 end
 

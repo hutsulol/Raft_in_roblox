@@ -15,15 +15,15 @@ spawnEvent.Parent = ReplicatedStorage
 -- registering both this map and NpcTypes.module.lua.
 local SPAWN_MAP = {
 	["Pirate lvl1"]       = "Pirate_2",
-	["SCP Guard Killer"]  = "SCP_Guard_Merc",
+	["Infected Military"] = "Infected Military",
 }
 
 -- Per-mercenary baseline overrides applied when the rig is spawned.
--- Lets the SCP Guard Killer come out of the gate tougher than Pirate
+-- Lets the Infected Military come out of the gate tougher than Pirate
 -- without hand-editing every rig template. nil entries leave the
 -- rig's authored values untouched.
 local SPAWN_STAT_OVERRIDES = {
-	["SCP Guard Killer"] = {
+	["Infected Military"] = {
 		MaxHealth = 420,
 		WalkSpeed = 14,
 	},

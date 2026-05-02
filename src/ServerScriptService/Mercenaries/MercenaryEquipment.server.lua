@@ -16,7 +16,7 @@ equipEvent.Parent = rs
 -- Tools that can be equipped on mercenaries. Adding a new equippable
 -- weapon is a one-line entry here plus a Tool template under
 -- ReplicatedStorage. Per-mercenary restriction (e.g. firearms only for
--- SCP Guard Killer) is enforced by the client menu via restrictedTo;
+-- Infected Military) is enforced by the client menu via restrictedTo;
 -- the server still validates that the merc actually owns the weapon
 -- folder entry below.
 local EQUIPPABLE_TOOLS = {
@@ -115,10 +115,10 @@ local function watchContainer(player, container)
 end
 
 -- Equipment automatically unlocked when the player recruits a given
--- mercenary type. Lets the SCP Guard Killer come pre-equipped with its
--- military loadout the moment the player adds it to their roster.
+-- mercenary type. Lets the Infected Military come pre-equipped with
+-- its loadout the moment the player adds it to their roster.
 local AUTO_UNLOCK_BY_MERC = {
-	["SCP Guard Killer"] = { "Firearm", "Shotgun" },
+	["Infected Military"] = { "Firearm", "Shotgun" },
 }
 
 local function grantUnlock(player, itemId)

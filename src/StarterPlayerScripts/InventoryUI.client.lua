@@ -320,7 +320,7 @@ local DISPLAY_NAMES = {
 local function getDisplayName(data)
 	if not data then return nil end
 	-- Blood capsules carry a per-NPC-type label in data.displayName
-	-- (e.g. "Pirate Blood", "SCP Guard Blood") so the tooltip shows
+	-- (e.g. "Pirate Blood", "Infected Military Blood") so the tooltip shows
 	-- the differentiated name instead of the generic "FullCapsule".
 	if data.displayName and data.displayName ~= "" then
 		return data.displayName
@@ -670,7 +670,7 @@ end
 
 -- Group all FullCapsule tool instances by BloodType and lay them out
 -- into stacks of up to BLOOD_STACK_SIZE per inventory slot. Pirate
--- and SCP Guard blood land in different slots even though they share
+-- and Infected Military blood land in different slots even though they share
 -- the same Tool.Name, because the slot is keyed off BloodType.
 local function mergeBloodCapsules()
 	local capsules = getBloodCapsules()
