@@ -68,7 +68,6 @@ local COLOR_WOOD_BASE    = Color3.fromRGB(176, 138,  92)
 local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
 local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
 local COLOR_PROGRESS     = Color3.fromRGB(126, 175,  90)
-local COLOR_PROGRESS_DK  = Color3.fromRGB( 92, 132,  68)
 local COLOR_RIBBON       = Color3.fromRGB(115, 158,  84)
 local COLOR_TIMER        = Color3.fromRGB(178,  79,  64)
 
@@ -239,15 +238,11 @@ progressFill.Parent = progressTrack
 local fillCorner = Instance.new("UICorner")
 fillCorner.CornerRadius = UDim.new(0, math.floor(PROGRESS_H / 2))
 fillCorner.Parent = progressFill
-local fillGrad = Instance.new("UIGradient")
-fillGrad.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0,    COLOR_PROGRESS),
-	ColorSequenceKeypoint.new(0.49, COLOR_PROGRESS),
-	ColorSequenceKeypoint.new(0.50, COLOR_PROGRESS_DK),
-	ColorSequenceKeypoint.new(1,    COLOR_PROGRESS_DK),
-})
-fillGrad.Rotation = 45
-fillGrad.Parent = progressFill
+-- Solid COLOR_PROGRESS fill — same green the menu's quest cards use
+-- when a daily completes. Earlier revs split this with a 45° two-
+-- tone UIGradient (COLOR_PROGRESS / COLOR_PROGRESS_DK), but per
+-- playtest feedback the diagonal split read as a bug, so the bar
+-- now renders monochromatic.
 
 local progressLabel = Instance.new("TextLabel")
 progressLabel.Name = "ProgressLabel"
