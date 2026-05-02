@@ -47,7 +47,12 @@ local function notifyAll()
 end
 
 local BASE_X = 16
-local BASE_Y_OFFSET = -188
+-- Sits 10 px above the mana bar's top edge. The mana container in
+-- UIManager is anchored to the screen bottom at y=-102 with height
+-- 36, so its top is at screen_bottom - 138. We want the icon's
+-- bottom (anchor 0,1) at screen_bottom - 148 → 10 px gap above
+-- the bar.
+local BASE_Y_OFFSET = -148
 local SLOT_STRIDE = 44 -- 36px icon + 8px gap
 
 -- ─── UI Setup ───
@@ -57,6 +62,38 @@ screenGui.DisplayOrder = 16
 screenGui.IgnoreGuiInset = true
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
+
+-- Mirror UIManager's HUD scale so the radiation icon shrinks in
+-- lockstep with the mana / hunger / health bars. Without this the
+-- bars scale down on narrow viewports while the icon stays at its
+-- full -188 offset — the icon then floats far above the (scaled)
+-- mana bar instead of sitting just above it. Constants must stay in
+-- sync with UIManager.HUD_REF_WIDTH / HUD_REF_HEIGHT / clamps.
+local HUD_REF_WIDTH  = 1400
+local HUD_REF_HEIGHT = 720
+local HUD_MIN_SCALE  = 0.35
+local HUD_MAX_SCALE  = 1.0
+
+local hudScale = Instance.new("UIScale")
+hudScale.Parent = screenGui
+
+local function recomputeScale()
+	local camera = workspace.CurrentCamera
+	local vp = camera and camera.ViewportSize or Vector2.new(HUD_REF_WIDTH, HUD_REF_HEIGHT)
+	local s = math.min(vp.X / HUD_REF_WIDTH, vp.Y / HUD_REF_HEIGHT)
+	hudScale.Scale = math.clamp(s, HUD_MIN_SCALE, HUD_MAX_SCALE)
+end
+recomputeScale()
+
+local function hookCamera(cam)
+	if not cam then return end
+	cam:GetPropertyChangedSignal("ViewportSize"):Connect(recomputeScale)
+end
+hookCamera(workspace.CurrentCamera)
+workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
+	hookCamera(workspace.CurrentCamera)
+	recomputeScale()
+end)
 
 -- Radiation icon (positioned above the three stat bars)
 local icon = Instance.new("ImageLabel")
