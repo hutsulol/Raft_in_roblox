@@ -99,7 +99,7 @@ local LOG_HIGHLIGHT_OUTLINE = Color3.fromRGB(180, 255, 140)
 -- distance the old pixel-sized 48×48 dwarfed the now-tiny log.
 local LOG_ARROW_ASSET    = "rbxassetid://74129628763110"
 local LOG_ARROW_SIZE     = UDim2.fromScale(2, 2)   -- 2x2 studs
-local LOG_ARROW_OFFSET_Y = 2.0
+local LOG_ARROW_OFFSET_Y = 4.0   -- raised so the arrow sits above the log
 
 local logHighlightAddedConn   -- CollectionService:GetInstanceAddedSignal handle
 local logArrowBobConn         -- RunService:Heartbeat handle for the bob animation
@@ -164,10 +164,24 @@ local function tryAddArrow(resource)
 	local adornee = pickArrowAdornee(resource)
 	if not adornee then return end
 
+	-- Adornee's pivot is rarely at the model's visual centre — even
+	-- the bbox-closest part usually sits a stud or two off-axis (the
+	-- floating log model is built off one end). Compute the centre
+	-- in the adornee's local space and apply it as StudsOffset so the
+	-- billboard snaps to the model centre. StudsOffset is in object
+	-- space, so it stays correct as the log rolls on the waves; the
+	-- world-up Y push is layered on via StudsOffsetWorldSpace below.
+	local centreOffset = Vector3.zero
+	if resource:IsA("Model") then
+		local bboxCF = resource:GetBoundingBox()
+		centreOffset = adornee.CFrame:PointToObjectSpace(bboxCF.Position)
+	end
+
 	local bb = Instance.new("BillboardGui")
 	bb.Name = LOG_ARROW_NAME
 	bb.Adornee = adornee
 	bb.Size = LOG_ARROW_SIZE
+	bb.StudsOffset = centreOffset
 	-- StudsOffsetWorldSpace keeps the arrow at a fixed world-Y offset
 	-- above the log so it bobs nicely with the waves instead of
 	-- spinning when the log rotates around its own axis.
