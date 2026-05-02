@@ -67,7 +67,9 @@ local COLOR_WOOD_MID     = Color3.fromRGB(138, 106,  68)
 local COLOR_WOOD_BASE    = Color3.fromRGB(176, 138,  92)
 local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
 local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
-local COLOR_PROGRESS     = Color3.fromRGB(126, 175,  90)
+local COLOR_PROGRESS       = Color3.fromRGB(116, 176,  82)
+local COLOR_PROGRESS_LIGHT = Color3.fromRGB(160, 220, 110)
+local COLOR_PROGRESS_DARK  = Color3.fromRGB( 92, 148,  64)
 local COLOR_RIBBON       = Color3.fromRGB(115, 158,  84)
 local COLOR_TIMER        = Color3.fromRGB(178,  79,  64)
 
@@ -238,11 +240,19 @@ progressFill.Parent = progressTrack
 local fillCorner = Instance.new("UICorner")
 fillCorner.CornerRadius = UDim.new(0, math.floor(PROGRESS_H / 2))
 fillCorner.Parent = progressFill
--- Solid COLOR_PROGRESS fill — same green the menu's quest cards use
--- when a daily completes. Earlier revs split this with a 45° two-
--- tone UIGradient (COLOR_PROGRESS / COLOR_PROGRESS_DK), but per
--- playtest feedback the diagonal split read as a bug, so the bar
--- now renders monochromatic.
+-- Vertical green gradient — same recipe used by the OnboardingTooltip
+-- progress pill (light → green → dark, top-to-bottom) so both progress
+-- indicators read as one set. The earlier 45° two-tone split read as
+-- a render bug; this gives the fill a clean shaded look without
+-- splitting the colour horizontally.
+local fillGrad = Instance.new("UIGradient")
+fillGrad.Rotation = 90
+fillGrad.Color = ColorSequence.new({
+	ColorSequenceKeypoint.new(0,   COLOR_PROGRESS_LIGHT),
+	ColorSequenceKeypoint.new(0.6, COLOR_PROGRESS),
+	ColorSequenceKeypoint.new(1,   COLOR_PROGRESS_DARK),
+})
+fillGrad.Parent = progressFill
 
 local progressLabel = Instance.new("TextLabel")
 progressLabel.Name = "ProgressLabel"
@@ -397,8 +407,14 @@ local function paint(q)
 	end
 	objective.Text = activeObj and (activeObj.label or activeObj.eventType or "") or ""
 
+	-- Tween the fill width on every paint so progress increments
+	-- read as motion instead of snapping. Same TweenInfo the
+	-- OnboardingTooltip uses for its progress pill so both bars
+	-- animate identically.
 	local pct = (goal > 0) and math.clamp(prog / goal, 0, 1) or 0
-	progressFill.Size  = UDim2.new(pct, 0, 1, 0)
+	TweenService:Create(progressFill,
+		TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Size = UDim2.new(pct, 0, 1, 0) }):Play()
 	progressLabel.Text = string.format("%d / %d", prog, goal)
 
 	-- Timer — only for tracked challenges that are still running.
