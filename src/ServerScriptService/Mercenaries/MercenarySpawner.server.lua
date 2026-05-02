@@ -5,6 +5,7 @@
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 
 local spawnEvent = Instance.new("RemoteEvent")
 spawnEvent.Name = "SpawnMercenary"
@@ -32,6 +33,33 @@ local SPAWN_STAT_OVERRIDES = {
 	},
 }
 
+-- Default weapon a merc spawns with when its EquippedWeapon attribute
+-- isn't set yet (i.e. fresh recruit who has never visited the
+-- equipment page). Pirates default to Sword; Soldiers default to
+-- Unarmed so the rig's built-in pistol / AK-47 model stays in place
+-- instead of having a sword welded over it.
+local DEFAULT_WEAPON_BY_MERC = {
+	["Pirate lvl1"]       = "Sword",
+	["Infected Military"] = "Unarmed",
+}
+
+-- Locate a rig template anywhere it might reasonably live: top-level
+-- of ReplicatedStorage / ServerStorage, or nested inside a folder
+-- under either. Lets the user organise their assets without forcing a
+-- flat layout on the spawner.
+local function findTemplate(modelName)
+	local candidates = {
+		ReplicatedStorage:FindFirstChild(modelName),
+		ReplicatedStorage:FindFirstChild(modelName, true),
+		ServerStorage:FindFirstChild(modelName),
+		ServerStorage:FindFirstChild(modelName, true),
+	}
+	for _, c in candidates do
+		if c then return c end
+	end
+	return nil
+end
+
 -- Prevent spam: one active mercenary per player per type
 local activeMercs = {} -- [player] = { [mercName] = modelInstance }
 
@@ -46,9 +74,10 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local modelName = SPAWN_MAP[mercName]
 	if not modelName then return end
 
-	local template = ReplicatedStorage:FindFirstChild(modelName)
+	local template = findTemplate(modelName)
 	if not template then
-		warn("[MercenarySpawner] Model not found:", modelName)
+		warn("[MercenarySpawner] Model not found:", modelName,
+			"(searched ReplicatedStorage + ServerStorage, recursive)")
 		return
 	end
 
@@ -72,9 +101,13 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local clone = template:Clone()
 	template.Archivable = wasArchivable
 
-	-- Read equipped weapon and swap to the correct one
+	-- Read equipped weapon and swap to the correct one. Falls back to
+	-- the per-merc default so a fresh recruit (never visited equipment
+	-- page) gets the right weapon — Pirate → Sword, Soldier → Unarmed.
 	local mercEntry = folder:FindFirstChild(mercName)
-	local equippedWeapon = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+	local equippedWeapon = (mercEntry and mercEntry:GetAttribute("EquippedWeapon"))
+		or DEFAULT_WEAPON_BY_MERC[mercName]
+		or "Sword"
 
 	-- Remove all existing tools from the clone (template may have a FishingRod, etc.)
 	for _, child in clone:GetChildren() do

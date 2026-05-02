@@ -279,6 +279,13 @@ local MERC_THEMES = {
 		-- lie to the player about how tough their merc actually is.
 		stats       = { hp = 250, damage = 18, mana = "20/min" },
 		spawnModel  = "Pirate_2",
+		-- Default weapon a fresh-recruited merc holds before the player
+		-- visits the equipment page. Pirate sailors are sword-wielders.
+		defaultWeapon = "Sword",
+		-- Y offset applied to the rig in the menu viewport so the camera
+		-- frames the whole body cleanly. Different rig scales need
+		-- different offsets — Pirate sits comfortably at 0.5.
+		viewportPivotY = 0.5,
 		-- Right-column progression + characteristic distribution
 		-- (Strength / Speed / Luck, 0-100). Values mirror the Claude
 		-- Design MercenaryPage.jsx STATS block so the card numbers stay
@@ -308,6 +315,15 @@ local MERC_THEMES = {
 		-- rig in ReplicatedStorage. The hostile encounter rig
 		-- ("Infected Military") is a separate model.
 		spawnModel  = "Infected_Military_Menu",
+		-- "Unarmed" leaves the rig's built-in AK-47 / pistol model in
+		-- place instead of welding a sword to the hand. Players can
+		-- still pick Firearm / Shotgun via the equipment page; this
+		-- is just the at-spawn default.
+		defaultWeapon = "Unarmed",
+		-- Soldier rig sits lower in the bind pose than Pirate, which
+		-- pushed the head to the bottom of the viewport. Lifting the
+		-- pivot up centres him with the camera at (0.6, 2.3, 6.2).
+		viewportPivotY = 1.8,
 		level       = 1,
 		xp          = 0,
 		xpMax       = 800,
@@ -1450,8 +1466,12 @@ local function buildMercViewport(parent, mercName, weaponId)
 		end
 	end
 
-	-- Position and rotate to face camera
-	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
+	-- Position and rotate to face camera. Per-merc viewportPivotY lifts
+	-- rigs whose bind-pose origin sits below the camera focus so the
+	-- whole body fits in the viewport instead of half of it falling
+	-- below the SPAWN button.
+	local pivotY = (theme and theme.viewportPivotY) or 0.5
+	clone:PivotTo(CFrame.new(0, pivotY, 0) * CFrame.Angles(0, math.pi, 0))
 
 	-- Set up the picked weapon (sword / rod) on the rig.
 	applyWeaponToClone(clone, weaponId)
@@ -2443,11 +2463,16 @@ buildPage = function(mercNames)
 
 		local mercFolder = player:FindFirstChild("Mercenaries")
 		local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
-		local weaponId = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+		local mercTheme = MERC_THEMES[mercName] or DEFAULT_THEME
+		local weaponId = (mercEntry and mercEntry:GetAttribute("EquippedWeapon"))
+			or mercTheme.defaultWeapon
+			or "Sword"
 
 		local profession = "ASSISTANT"
 		if weaponId == "FishingRod" then
 			profession = "FISHERMAN"
+		elseif weaponId == "Firearm" or weaponId == "Shotgun" then
+			profession = "SOLDIER"
 		elseif weaponId == "Sword" then
 			profession = "WARRIOR"
 		end
@@ -3067,7 +3092,9 @@ buildEquipmentPage = function(mercName, mercNames)
 
 	-- Which category is active
 	local activeCategory = "Weapons"
-	local selectedItemId = "Sword" -- default selection
+	-- Default selection respects the merc's defaultWeapon (e.g. the
+	-- Soldier opens to "Unarmed" / "Firearm" instead of Sword).
+	local selectedItemId = theme.defaultWeapon or "Sword"
 
 	-- Read currently equipped weapon from attribute
 	local mercFolder = player:FindFirstChild("Mercenaries")
@@ -3322,7 +3349,9 @@ buildEquipmentPage = function(mercName, mercNames)
 		if activeCategory ~= "Weapons" then
 			-- If browsing artifacts, show currently equipped weapon
 			local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
-			weaponToShow = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+			weaponToShow = (mercEntry and mercEntry:GetAttribute("EquippedWeapon"))
+				or theme.defaultWeapon
+				or "Sword"
 		end
 		currentViewport = buildMercViewport(page, mercName, weaponToShow)
 	end
@@ -3382,7 +3411,9 @@ buildEquipmentPage = function(mercName, mercNames)
 		if activeCategory == "Artifacts" then
 			currentEquip = mercEntry and mercEntry:GetAttribute("EquippedBackpack") or ""
 		else
-			currentEquip = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+			currentEquip = (mercEntry and mercEntry:GetAttribute("EquippedWeapon"))
+				or theme.defaultWeapon
+				or "Sword"
 		end
 		if currentEquip == selectedItemId then
 			equipBtn.Text = "EQUIPPED"
