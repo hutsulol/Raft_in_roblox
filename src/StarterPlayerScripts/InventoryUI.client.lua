@@ -319,6 +319,12 @@ local DISPLAY_NAMES = {
 
 local function getDisplayName(data)
 	if not data then return nil end
+	-- Blood capsules carry a per-NPC-type label in data.displayName
+	-- (e.g. "Pirate Blood", "SCP Guard Blood") so the tooltip shows
+	-- the differentiated name instead of the generic "FullCapsule".
+	if data.displayName and data.displayName ~= "" then
+		return data.displayName
+	end
 	local key = data.name or data.toolName
 	if not key then return nil end
 	if DISPLAY_NAMES[key] then return DISPLAY_NAMES[key] end
@@ -499,21 +505,58 @@ local function canAfford(recipe)
 	return true
 end
 
+-- Tools that opt out of the per-instance one-tool-per-slot rule and
+-- instead get visually stacked by NPC-type via mergeBloodCapsules().
+-- Each member of this set must carry a "BloodType" attribute set by
+-- the recruitment server when the capsule is created.
+local STACKABLE_TOOL_NAMES = { FullCapsule = true }
+local BLOOD_STACK_SIZE = 12
+
 local function getToolList()
 	local tools = {}
 	local backpack = player:FindFirstChild("Backpack")
 	local char = player.Character
 	if backpack then
 		for _, t in backpack:GetChildren() do
-			if t:IsA("Tool") then table.insert(tools, t) end
+			-- Stackable tools are handled separately; excluding them
+			-- here prevents the standard "one Tool, one slot" path
+			-- from allocating a fresh slot per blood capsule.
+			if t:IsA("Tool") and not STACKABLE_TOOL_NAMES[t.Name] then
+				table.insert(tools, t)
+			end
 		end
 	end
 	if char then
 		for _, t in char:GetChildren() do
-			if t:IsA("Tool") then table.insert(tools, t) end
+			if t:IsA("Tool") and not STACKABLE_TOOL_NAMES[t.Name] then
+				table.insert(tools, t)
+			end
 		end
 	end
 	return tools
+end
+
+-- Returns every blood capsule the player currently holds, regardless of
+-- whether the tool is in Backpack or equipped to the character.
+local function getBloodCapsules()
+	local out = {}
+	local backpack = player:FindFirstChild("Backpack")
+	local char = player.Character
+	if backpack then
+		for _, t in backpack:GetChildren() do
+			if t:IsA("Tool") and t.Name == "FullCapsule" then
+				table.insert(out, t)
+			end
+		end
+	end
+	if char then
+		for _, t in char:GetChildren() do
+			if t:IsA("Tool") and t.Name == "FullCapsule" then
+				table.insert(out, t)
+			end
+		end
+	end
+	return out
 end
 
 local function findEmptySlot(startIdx, endIdx)
@@ -625,6 +668,82 @@ local function updateResourceSlots(name, count, icon)
 	end
 end
 
+-- Group all FullCapsule tool instances by BloodType and lay them out
+-- into stacks of up to BLOOD_STACK_SIZE per inventory slot. Pirate
+-- and SCP Guard blood land in different slots even though they share
+-- the same Tool.Name, because the slot is keyed off BloodType.
+local function mergeBloodCapsules()
+	local capsules = getBloodCapsules()
+
+	-- Drop any existing blood-stack slots; we rebuild them fresh each
+	-- pass to keep the layout in sync with what's actually in Backpack.
+	for i = 1, TOTAL_SLOTS do
+		local d = slotData[i]
+		if d and d.type == "tool" and d.toolName == "FullCapsule" then
+			slotData[i] = nil
+		end
+	end
+
+	if #capsules == 0 then return end
+
+	-- Bucket by BloodType so each NPC type produces a distinct stack.
+	-- Untagged legacy capsules collapse into "" so they still display.
+	local groups = {}
+	local order  = {}
+	for _, t in capsules do
+		local bt = t:GetAttribute("BloodType") or ""
+		if not groups[bt] then
+			groups[bt] = { tools = {}, label = t:GetAttribute("BloodLabel") }
+			table.insert(order, bt)
+		end
+		table.insert(groups[bt].tools, t)
+		if not groups[bt].label then
+			groups[bt].label = t:GetAttribute("BloodLabel")
+		end
+	end
+
+	local FALLBACK_ICON = "rbxassetid://132749498016835"
+
+	for _, bt in order do
+		local g = groups[bt]
+		local label = g.label
+			or (bt ~= "" and (bt .. " Blood"))
+			or "Blood"
+		local i = 1
+		while i <= #g.tools do
+			local stackTools = {}
+			for j = 1, BLOOD_STACK_SIZE do
+				local t = g.tools[i]
+				if not t then break end
+				table.insert(stackTools, t)
+				i = i + 1
+			end
+
+			local target = findEmptySlot(1, HOTBAR_SLOTS)
+				or findEmptySlot(HOTBAR_SLOTS + 1, maxWritableSlot())
+			if not target then break end
+
+			local primary = stackTools[1]
+			local extras  = {}
+			for k = 2, #stackTools do extras[k - 1] = stackTools[k] end
+
+			local icon = (primary.TextureId ~= "" and primary.TextureId) or FALLBACK_ICON
+
+			slotData[target] = {
+				type        = "tool",
+				name        = "FullCapsule",
+				toolName    = "FullCapsule",
+				toolInst    = primary,
+				extraInsts  = extras,
+				icon        = icon,
+				count       = #stackTools,
+				displayName = label,
+				bloodType   = bt,
+			}
+		end
+	end
+end
+
 local function rebuildSlotData()
 	local tools = getToolList()
 
@@ -660,6 +779,10 @@ local function rebuildSlotData()
 			slot = slot + 1
 		end
 
+		-- First pass: still run the blood-stack merge so capsules
+		-- present at boot collapse into 12-per-slot stacks like every
+		-- subsequent refresh.
+		mergeBloodCapsules()
 		slotsInitialized = true
 		return
 	end
@@ -735,6 +858,12 @@ local function rebuildSlotData()
 			end
 		end
 	end
+
+	-- Blood capsules are routed through their own stacking pass so
+	-- they collapse by BloodType into 12-per-slot stacks. Run last so
+	-- it sees the latest Backpack state and never collides with the
+	-- one-Tool-one-slot binding loop above.
+	mergeBloodCapsules()
 end
 
 -- ─── Rendering ───

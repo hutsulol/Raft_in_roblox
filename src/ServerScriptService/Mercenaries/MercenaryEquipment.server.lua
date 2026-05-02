@@ -13,9 +13,16 @@ local equipEvent = Instance.new("RemoteEvent")
 equipEvent.Name = "MercenaryEquipment"
 equipEvent.Parent = rs
 
--- Tools that can be equipped on mercenaries
+-- Tools that can be equipped on mercenaries. Adding a new equippable
+-- weapon is a one-line entry here plus a Tool template under
+-- ReplicatedStorage. Per-mercenary restriction (e.g. firearms only for
+-- SCP Guard Killer) is enforced by the client menu via restrictedTo;
+-- the server still validates that the merc actually owns the weapon
+-- folder entry below.
 local EQUIPPABLE_TOOLS = {
 	FishingRod = true,
+	Firearm    = true,
+	Shotgun    = true,
 }
 
 -- Items that occupy the "backpack" slot (a separate equipment slot from
@@ -107,6 +114,38 @@ local function watchContainer(player, container)
 	end
 end
 
+-- Equipment automatically unlocked when the player recruits a given
+-- mercenary type. Lets the SCP Guard Killer come pre-equipped with its
+-- military loadout the moment the player adds it to their roster.
+local AUTO_UNLOCK_BY_MERC = {
+	["SCP Guard Killer"] = { "Firearm", "Shotgun" },
+}
+
+local function grantUnlock(player, itemId)
+	local folder = ensureFolder(player)
+	if folder:FindFirstChild(itemId) then return end
+	local sv = Instance.new("StringValue")
+	sv.Name = itemId
+	sv.Value = itemId
+	sv.Parent = folder
+end
+
+local function watchMercenaries(player)
+	local mercFolder = player:FindFirstChild("Mercenaries")
+		or player:WaitForChild("Mercenaries", 10)
+	if not mercFolder then return end
+
+	local function onMercAdded(child)
+		local list = AUTO_UNLOCK_BY_MERC[child.Name]
+		if not list then return end
+		for _, itemId in list do
+			grantUnlock(player, itemId)
+		end
+	end
+	mercFolder.ChildAdded:Connect(onMercAdded)
+	for _, child in mercFolder:GetChildren() do onMercAdded(child) end
+end
+
 -- ── Player setup ────────────────────────────────────────────────────────
 
 Players.PlayerAdded:Connect(function(player)
@@ -121,6 +160,8 @@ Players.PlayerAdded:Connect(function(player)
 	if player.Character then
 		watchContainer(player, player.Character)
 	end
+
+	task.spawn(watchMercenaries, player)
 end)
 
 -- Handle players already in game
@@ -133,6 +174,7 @@ for _, player in Players:GetPlayers() do
 		player.CharacterAdded:Connect(function(char)
 			watchContainer(player, char)
 		end)
+		watchMercenaries(player)
 	end)
 end
 

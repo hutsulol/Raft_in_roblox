@@ -10,6 +10,12 @@ local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local rs = game:GetService("ReplicatedStorage")
 
+-- Central registry of recruitable NPC types. The recruitment flow
+-- filters every action through resolve() so unknown ragdolls (e.g.
+-- vanilla zombies, decorations, other-player corpses) cannot trigger
+-- the recruit/blood paths regardless of what the client sends.
+local NpcTypes = require(rs:WaitForChild("NpcTypes"))
+
 local recruitEvent = Instance.new("RemoteEvent")
 recruitEvent.Name = "RecruitPirate"
 recruitEvent.Parent = rs
@@ -86,6 +92,12 @@ recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 	if typeof(pirate) ~= "Instance" then return end
 	if not pirate:IsDescendantOf(workspace) then return end
 	if CollectionService:HasTag(pirate, "SpawnedMercenary") then return end
+	-- Strict NPC-type gate: only models registered in NpcTypes can
+	-- progress through any recruitment action. Without this, killing
+	-- e.g. a decorative ragdoll would let the player "recruit" it
+	-- under whatever Model.Name happened to be set.
+	local npcInfo = NpcTypes.resolve(pirate)
+	if not npcInfo then return end
 	-- Accept if Downed attribute is set, OR if the Humanoid is ragdolled
 	if not pirate:GetAttribute("Downed") then
 		local hum = pirate:FindFirstChildWhichIsA("Humanoid")
@@ -132,13 +144,15 @@ recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 			pcall(_G.OnQuestEvent, player, "merc:hired", 1)
 		end
 
-		-- Track individual mercenary (one per name)
+		-- Track individual mercenary (one per type). The mercName comes
+		-- from the NpcTypes registry, not Model.Name, so a renamed
+		-- template can't sneak a duplicate entry into the menu.
 		local folder = ensureMercenariesFolder(player)
-		local pirateName = pirate.Name
-		if not folder:FindFirstChild(pirateName) then
+		local mercName = npcInfo.mercName
+		if not folder:FindFirstChild(mercName) then
 			local entry = Instance.new("StringValue")
-			entry.Name = pirateName
-			entry.Value = pirateName
+			entry.Name = mercName
+			entry.Value = mercName
 			entry.Parent = folder
 		end
 
@@ -148,16 +162,38 @@ recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 		recruitEvent:FireClient(player, "failed")
 		task.spawn(fadePirate, pirate, 1.5, 1.5)
 
-	elseif action == "collectBlood" then
+	elseif action == "collectBlood" or action == "autoBloodDrop" then
 		local backpack = player:FindFirstChild("Backpack")
-		local emptyCapsule = (backpack and backpack:FindFirstChild("EmptyCapsule"))
-			or (player.Character and player.Character:FindFirstChild("EmptyCapsule"))
-		if not emptyCapsule then
-			claimedPirates[pirate] = nil
-			pirate:SetAttribute("Claimed", nil)
-			return
+
+		-- "collectBlood" is the original injector-driven flow: the
+		-- player consumes one EmptyCapsule + holds an Injector and
+		-- gets one FullCapsule back.
+		--
+		-- "autoBloodDrop" is the post-recruit shortcut (Part 6): once
+		-- the player has already recruited this NPC type, future kills
+		-- of the SAME type drop one blood capsule for free, no
+		-- consumables required. We still honour the type filter via
+		-- npcInfo so pirate kills can never drop SCP blood.
+		local mercFolder = player:FindFirstChild("Mercenaries")
+		local alreadyRecruited =
+			mercFolder and mercFolder:FindFirstChild(npcInfo.mercName) ~= nil
+
+		if action == "autoBloodDrop" then
+			if not alreadyRecruited then
+				claimedPirates[pirate] = nil
+				pirate:SetAttribute("Claimed", nil)
+				return
+			end
+		else
+			local emptyCapsule = (backpack and backpack:FindFirstChild("EmptyCapsule"))
+				or (player.Character and player.Character:FindFirstChild("EmptyCapsule"))
+			if not emptyCapsule then
+				claimedPirates[pirate] = nil
+				pirate:SetAttribute("Claimed", nil)
+				return
+			end
+			emptyCapsule:Destroy()
 		end
-		emptyCapsule:Destroy()
 
 		local template = rs:FindFirstChild("FullCapsule", true)
 		local fullCapsule
@@ -174,14 +210,16 @@ recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 			handle.Transparency = 1
 			handle.Parent = fullCapsule
 		end
-		-- Tag the sample with the merc it came from. DNAStudyPage filters
-		-- capsules by this attribute so a Pirate's DNA cannot be studied
-		-- under a different mercenary (and the SAMPLES counter on the
-		-- top bar only counts matching-blood capsules).
-		fullCapsule:SetAttribute("BloodType", pirate.Name)
+		-- Tag the sample with the type-specific blood marker. Inventory
+		-- and DNAStudyPage both group capsules by BloodType; using the
+		-- registry value (instead of Model.Name) keeps blood from a
+		-- renamed template from polluting the wrong stack.
+		fullCapsule:SetAttribute("BloodType", npcInfo.bloodType)
+		fullCapsule:SetAttribute("BloodLabel", npcInfo.bloodLabel)
 		if backpack then
 			fullCapsule.Parent = backpack
 		end
+		recruitEvent:FireClient(player, "bloodDropped", npcInfo.bloodType)
 
 		-- Quest hook (Phase I): credit "Collect 5 blood samples" objectives.
 		if typeof(_G.OnQuestEvent) == "function" then

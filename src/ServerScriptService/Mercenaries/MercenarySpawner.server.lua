@@ -10,9 +10,23 @@ local spawnEvent = Instance.new("RemoteEvent")
 spawnEvent.Name = "SpawnMercenary"
 spawnEvent.Parent = ReplicatedStorage
 
--- Map recruited mercenary names to the model to clone
+-- Map recruited mercenary names to the model to clone. Add a new
+-- recruitable type by dropping its rig under ReplicatedStorage and
+-- registering both this map and NpcTypes.module.lua.
 local SPAWN_MAP = {
-	["Pirate lvl1"] = "Pirate_2",
+	["Pirate lvl1"]       = "Pirate_2",
+	["SCP Guard Killer"]  = "SCP_Guard_Merc",
+}
+
+-- Per-mercenary baseline overrides applied when the rig is spawned.
+-- Lets the SCP Guard Killer come out of the gate tougher than Pirate
+-- without hand-editing every rig template. nil entries leave the
+-- rig's authored values untouched.
+local SPAWN_STAT_OVERRIDES = {
+	["SCP Guard Killer"] = {
+		MaxHealth = 420,
+		WalkSpeed = 14,
+	},
 }
 
 -- Prevent spam: one active mercenary per player per type
@@ -146,6 +160,19 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	if mercHum then
 		if mercHum.WalkSpeed <= 0 then
 			mercHum.WalkSpeed = 12
+		end
+		-- Per-type baseline overrides. Future tuning of HP / speed for
+		-- a specific mercenary type happens in SPAWN_STAT_OVERRIDES,
+		-- not by editing the shared rig template.
+		local override = SPAWN_STAT_OVERRIDES[mercName]
+		if override then
+			if override.MaxHealth then
+				mercHum.MaxHealth = override.MaxHealth
+				mercHum.Health    = override.MaxHealth
+			end
+			if override.WalkSpeed then
+				mercHum.WalkSpeed = override.WalkSpeed
+			end
 		end
 		mercHum.PlatformStand = false
 		mercHum.Sit = false

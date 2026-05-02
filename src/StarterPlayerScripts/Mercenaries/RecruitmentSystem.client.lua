@@ -19,6 +19,13 @@ local camera = workspace.CurrentCamera
 
 local recruitEvent = ReplicatedStorage:WaitForChild("RecruitPirate")
 
+-- Central NPC-type registry. The recruitment client uses it to
+-- (a) reject downed humanoids that aren't a recognised recruitable
+-- type, (b) label the UI / dialogue with the right names, and
+-- (c) track which types the player has already recruited so future
+-- kills of a recruited type drop blood instead of re-opening recruit.
+local NpcTypes = require(ReplicatedStorage:WaitForChild("NpcTypes"))
+
 -- ═══════════════════════════════════════════════════════════════════════
 -- State
 -- ═══════════════════════════════════════════════════════════════════════
@@ -26,9 +33,38 @@ local currentPirate = nil
 local uiOpen = false
 local minigameRunning = false
 local claimedLocally = {} -- client-side set; immune to server replication overwriting
-local firstDefeatShown = false
+-- Per-NPC-type session flags. Keyed by NpcType id (e.g. "Pirate lvl1",
+-- "SCP Guard Killer") so each type gets its own first-defeat dialogue
+-- and its own "already recruited → drop blood" behaviour. The first
+-- recruit of any type also unlocks the Mercenaries phone section,
+-- but only once per session via mercenariesUnlockShown.
+local firstDefeatShownByType = {}
+local recruitedTypes = {}
 local defeatDialogueOpen = false
 local mercenariesUnlockShown = false
+
+-- Mirror of the server's player.Mercenaries folder so the client can
+-- decide locally whether a downed NPC is "already recruited" without
+-- waiting for a round-trip.
+local function refreshRecruitedTypes()
+	local folder = player:FindFirstChild("Mercenaries")
+	recruitedTypes = {}
+	if folder then
+		for _, child in folder:GetChildren() do
+			recruitedTypes[child.Name] = true
+		end
+	end
+end
+refreshRecruitedTypes()
+do
+	local folder = player:FindFirstChild("Mercenaries")
+		or player:WaitForChild("Mercenaries", 5)
+	if folder then
+		folder.ChildAdded:Connect(refreshRecruitedTypes)
+		folder.ChildRemoved:Connect(refreshRecruitedTypes)
+		refreshRecruitedTypes()
+	end
+end
 
 -- ═══════════════════════════════════════════════════════════════════════
 -- UI construction
@@ -266,7 +302,9 @@ local DLG_COLOR_TEXT     = Color3.fromRGB(60, 40, 20)
 local DLG_COLOR_TEXT_DIM = Color3.fromRGB(160, 120, 60)
 local DLG_COLOR_INNER    = Color3.fromRGB(250, 235, 205)
 
-local function showFirstDefeatDialogue(onDone)
+local function showFirstDefeatDialogue(onDone, npcInfo)
+	local speakerName = (npcInfo and ("Defeated " .. (npcInfo.displayName or "Enemy")))
+		or "Defeated Pirate"
 	local PANEL_PAD = 20
 	local ICON_SZ   = 120
 	local GAP_      = 14
@@ -376,7 +414,7 @@ local function showFirstDefeatDialogue(onDone)
 	speakerLbl.Font           = Enum.Font.GothamBold
 	speakerLbl.TextSize       = 17
 	speakerLbl.TextColor3     = DLG_COLOR_ACCENT
-	speakerLbl.Text           = "Defeated Pirate"
+	speakerLbl.Text           = speakerName
 	speakerLbl.TextXAlignment = Enum.TextXAlignment.Left
 	speakerLbl.Parent         = textBg
 
@@ -604,7 +642,14 @@ local function findDownedPirateNearby()
 
 	local closest, closestDist = nil, 15
 	for _, child in workspace:GetChildren() do
-		if child:IsA("Model")
+		-- Strict type filter: only models registered in NpcTypes count
+		-- as recruitables. This is what fixes the cross-recruitment
+		-- bug — without this, any downed humanoid (zombies, decor
+		-- ragdolls, even other-mercenary models) could open the
+		-- "Recruit Pirate?" panel.
+		local npcInfo = NpcTypes.resolve(child)
+		if npcInfo
+			and child:IsA("Model")
 			and child:FindFirstChild("HumanoidRootPart")
 			and child:FindFirstChildWhichIsA("Humanoid")
 			and not Players:GetPlayerFromCharacter(child)
@@ -740,11 +785,22 @@ local function openRecruitPanel(pirate)
 	currentPirate = pirate
 	uiOpen = true
 
+	-- Adapt the panel title to the actual NPC type so the player sees
+	-- "Recruit SCP Guard Killer?" when SCPs are involved instead of
+	-- the legacy "Recruit Pirate?" string.
+	local npcInfo = NpcTypes.resolve(pirate)
+	if npcInfo then
+		title.Text = "Recruit " .. (npcInfo.displayName or "Enemy") .. "?"
+	end
+
 	if _G.OpenBrainMaze then
 		_G.OpenBrainMaze(pirate, function(result)
 			if result == "completed" and pirate then
 				claimedLocally[pirate] = true
 				recruitEvent:FireServer("recruit", pirate)
+				if npcInfo then
+					recruitedTypes[npcInfo.mercName] = true
+				end
 
 				if not mercenariesUnlockShown then
 					mercenariesUnlockShown = true
@@ -780,34 +836,26 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 	local pirate = findDownedPirateNearby()
 	if pirate then
-		if mercenariesUnlockShown then
-			local char = player.Character
-			local equipped = char and char:FindFirstChildOfClass("Tool")
-			if not equipped or equipped.Name ~= "Injector" then
-				showNotification("You need an Injector.", Color3.fromRGB(255, 200, 80))
-				return
-			end
+		local npcInfo = NpcTypes.resolve(pirate)
+		local typeId  = npcInfo and npcInfo.mercName
 
-			local backpack = player:FindFirstChild("Backpack")
-			local emptyCapsule = (backpack and backpack:FindFirstChild("EmptyCapsule"))
-				or (char and char:FindFirstChild("EmptyCapsule"))
-			if not emptyCapsule then
-				showNotification("You need an Empty Capsule.", Color3.fromRGB(255, 200, 80))
-				return
-			end
-
-			local injSound = equipped:FindFirstChild("Injection")
-			if injSound and injSound:IsA("Sound") then
-				injSound:Play()
-			end
-
+		-- Already-recruited type → free auto-blood drop (Part 6).
+		-- The injector / empty-capsule path is preserved for backward
+		-- compatibility but is no longer required: the server creates
+		-- a typed FullCapsule and stamps the correct BloodType.
+		if typeId and recruitedTypes[typeId] then
 			claimedLocally[pirate] = true
-			recruitEvent:FireServer("collectBlood", pirate)
+			recruitEvent:FireServer("autoBloodDrop", pirate)
 			return
 		end
 
-		if not firstDefeatShown then
-			firstDefeatShown = true
+		-- Per-NPC-type first-defeat dialogue. The pirate intro plays
+		-- the existing voice lines; SCP Guard reuses the same template
+		-- (Part 4 explicitly allows this) until type-specific lines
+		-- are recorded.
+		local dialogueKey = typeId or "default"
+		if not firstDefeatShownByType[dialogueKey] then
+			firstDefeatShownByType[dialogueKey] = true
 			defeatDialogueOpen = true
 			_G.SuppressInventoryToggle = true
 			showFirstDefeatDialogue(function()
@@ -821,7 +869,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 				else
 					_G.SuppressInventoryToggle = false
 				end
-			end)
+			end, npcInfo)
 		else
 			openRecruitPanel(pirate)
 		end
@@ -880,8 +928,12 @@ end)
 
 recruitEvent.OnClientEvent:Connect(function(action, data)
 	if action == "recruited" then
-		showNotification("Pirate Recruited!  (Total: " .. tostring(data) .. ")", Color3.fromRGB(80, 255, 80))
+		showNotification("Mercenary Recruited!  (Total: " .. tostring(data) .. ")", Color3.fromRGB(80, 255, 80))
 	elseif action == "failed" then
 		showNotification("Recruitment Failed", Color3.fromRGB(255, 100, 100))
+	elseif action == "bloodDropped" then
+		local info = NpcTypes.byBloodType(data)
+		local label = (info and info.bloodLabel) or "Blood"
+		showNotification("+1 " .. label, Color3.fromRGB(220, 80, 80))
 	end
 end)

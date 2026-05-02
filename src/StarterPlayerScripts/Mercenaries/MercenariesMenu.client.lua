@@ -289,6 +289,22 @@ local MERC_THEMES = {
 		charStats   = { str = 72, spd = 48, luck = 35 },
 		portraitIcon = ICON_PIRATE,
 	},
+	["SCP Guard Killer"] = {
+		accent      = Color3.fromRGB(80, 200, 255),
+		displayName = "SCP Guard Killer",
+		stars       = 2,
+		role        = "Infected Soldier · Military",
+		-- Higher base stats than Pirate per spec — mirror in
+		-- ServerScriptService/Mercenaries/MercenarySpawner so the
+		-- spawned rig matches what the card promises.
+		stats       = { hp = 420, damage = 32, mana = "30/min" },
+		spawnModel  = "SCP_Guard_Merc",
+		level       = 1,
+		xp          = 0,
+		xpMax       = 800,
+		charStats   = { str = 90, spd = 62, luck = 40 },
+		portraitIcon = ICON_PIRATE,
+	},
 }
 local DEFAULT_THEME = {
 	accent      = COLOR_ACCENT,
@@ -2927,6 +2943,26 @@ EQUIP_ITEMS = {
 			icon          = "rbxassetid://105180666555503",
 			description   = "Cast your line to catch fish. Equip to a mercenary for automated fishing.",
 		},
+		{
+			id            = "Firearm",
+			displayName   = "Firearm",
+			typeName      = "Ranged",
+			profession    = "Soldier",
+			stars         = 2,
+			baseAttack    = 24,
+			description   = "Standard military sidearm. Default issue for SCP Guard Killers.",
+			restrictedTo  = { "SCP Guard Killer" },
+		},
+		{
+			id            = "Shotgun",
+			displayName   = "Shotgun",
+			typeName      = "Ranged",
+			profession    = "Soldier",
+			stars         = 2,
+			baseAttack    = 36,
+			description   = "Heavy close-range punch. SCP Guard Killers only.",
+			restrictedTo  = { "SCP Guard Killer" },
+		},
 	},
 	Artifacts = {
 		{
@@ -3231,8 +3267,29 @@ buildEquipmentPage = function(mercName, mercNames)
 
 	local gridCards = {}
 
+	-- An item is shown for this merc when it has no restrictedTo list
+	-- (universal) or when the merc's name is in the list. Lets us add
+	-- SCP-only weapons (Firearm, Shotgun) without polluting the
+	-- Pirate's loadout grid.
+	local function isItemForMerc(item, mn)
+		if not item.restrictedTo then return true end
+		for _, allowed in ipairs(item.restrictedTo) do
+			if allowed == mn then return true end
+		end
+		return false
+	end
+
+	local function getItemsForMerc(category)
+		local raw = EQUIP_ITEMS[category] or {}
+		local out = {}
+		for _, it in raw do
+			if isItemForMerc(it, mercName) then table.insert(out, it) end
+		end
+		return out
+	end
+
 	local function refreshDetails()
-		local items = EQUIP_ITEMS[activeCategory] or {}
+		local items = getItemsForMerc(activeCategory)
 		local item
 		for _, it in items do
 			if it.id == selectedItemId then item = it; break end
@@ -3285,7 +3342,7 @@ buildEquipmentPage = function(mercName, mercNames)
 		for _, card in gridCards do card:Destroy() end
 		gridCards = {}
 
-		local items = EQUIP_ITEMS[activeCategory] or {}
+		local items = getItemsForMerc(activeCategory)
 		if #items == 0 then
 			local empty = Instance.new("TextLabel")
 			empty.BackgroundTransparency = 1
