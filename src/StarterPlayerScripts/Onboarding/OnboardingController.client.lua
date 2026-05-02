@@ -99,7 +99,7 @@ local LOG_HIGHLIGHT_OUTLINE = Color3.fromRGB(180, 255, 140)
 -- distance the old pixel-sized 48×48 dwarfed the now-tiny log.
 local LOG_ARROW_ASSET    = "rbxassetid://74129628763110"
 local LOG_ARROW_SIZE     = UDim2.fromScale(2, 2)   -- 2x2 studs
-local LOG_ARROW_OFFSET_Y = 4.0   -- raised so the arrow sits above the log
+local LOG_ARROW_OFFSET_Y = 6.0   -- raised so the arrow clears the log
 
 local logHighlightAddedConn   -- CollectionService:GetInstanceAddedSignal handle
 local logArrowBobConn         -- RunService:Heartbeat handle for the bob animation
@@ -128,34 +128,19 @@ local function tryHighlightLog(resource)
 	hl.Parent = resource
 end
 
--- Pick the BasePart whose centre is closest to the model's bounding-
--- box centre. Anchoring to PrimaryPart looked off because the log's
--- PrimaryPart is usually one end-cap, not the visual middle, so the
--- arrow rendered behind / in front of the log instead of above its
--- centre. Returns nil for malformed resources with no BaseParts.
+-- Use the model's PrimaryPart as the centre reference — the log's
+-- PrimaryPart is set at its visual middle, and the previous bbox-
+-- based picker was throwing the arrow off-axis because invisible
+-- helper parts in the model dragged the bbox centre to one side.
+-- Falls back to the first BasePart we find for malformed resources
+-- without a PrimaryPart.
 local function pickArrowAdornee(resource)
 	if resource:IsA("BasePart") then return resource end
-
-	local target
-	if resource:IsA("Model") then
-		local cf = resource:GetBoundingBox()
-		target = cf.Position
-	end
-
-	local bestPart, bestDist = nil, math.huge
+	if resource.PrimaryPart then return resource.PrimaryPart end
 	for _, child in ipairs(resource:GetDescendants()) do
-		if child:IsA("BasePart") then
-			if target then
-				local d = (child.Position - target).Magnitude
-				if d < bestDist then
-					bestPart, bestDist = child, d
-				end
-			else
-				return child
-			end
-		end
+		if child:IsA("BasePart") then return child end
 	end
-	return bestPart
+	return nil
 end
 
 local function tryAddArrow(resource)
@@ -164,29 +149,15 @@ local function tryAddArrow(resource)
 	local adornee = pickArrowAdornee(resource)
 	if not adornee then return end
 
-	-- Adornee's pivot is rarely at the model's visual centre — the
-	-- floating log model is built off one end. Compute the world
-	-- delta from the adornee to the bbox centre and bake it into the
-	-- world-space offset so the billboard sits on the model centre
-	-- regardless of which part we end up adornee'ing.
-	--
-	-- We *don't* use StudsOffset for this, even though it sounds
-	-- right: BillboardGui's StudsOffset is interpreted in camera /
-	-- screen space, not the adornee's object space, so feeding it a
-	-- part-local vector pushed the arrow in an unrelated direction.
-	-- StudsOffsetWorldSpace is straight world-space, so it does what
-	-- it says.
-	local centreOffset = Vector3.zero
-	if resource:IsA("Model") then
-		local bboxCF = resource:GetBoundingBox()
-		centreOffset = bboxCF.Position - adornee.Position
-	end
-
+	-- The log model's PrimaryPart is at its visual centre, so we
+	-- adornee directly — no centre compensation needed. Just push
+	-- the billboard up by LOG_ARROW_OFFSET_Y studs in world space
+	-- so the arrow sits above the log instead of on it.
 	local bb = Instance.new("BillboardGui")
 	bb.Name = LOG_ARROW_NAME
 	bb.Adornee = adornee
 	bb.Size = LOG_ARROW_SIZE
-	bb.StudsOffsetWorldSpace = centreOffset + Vector3.new(0, LOG_ARROW_OFFSET_Y, 0)
+	bb.StudsOffsetWorldSpace = Vector3.new(0, LOG_ARROW_OFFSET_Y, 0)
 	bb.AlwaysOnTop = true
 	bb.LightInfluence = 0
 	bb.MaxDistance = 250
@@ -229,9 +200,7 @@ local function startLogHighlights()
 
 	-- Gentle vertical bob so the arrows visually pulse instead of
 	-- sitting dead still — easier to spot a moving indicator on a
-	-- choppy ocean. Cheap: a single sin() per arrow per frame. Reads
-	-- the X/Z components off the existing offset so the centre-snap
-	-- baked in by tryAddArrow stays intact while the Y wiggles.
+	-- choppy ocean. Cheap: a single sin() per arrow per frame.
 	if not logArrowBobConn then
 		local RunService = game:GetService("RunService")
 		logArrowBobConn = RunService.Heartbeat:Connect(function()
@@ -240,8 +209,7 @@ local function startLogHighlights()
 			for _, resource in ipairs(CollectionService:GetTagged("Resource")) do
 				local arrow = resource:FindFirstChild(LOG_ARROW_NAME)
 				if arrow and arrow:IsA("BillboardGui") then
-					local cur = arrow.StudsOffsetWorldSpace
-					arrow.StudsOffsetWorldSpace = Vector3.new(cur.X, LOG_ARROW_OFFSET_Y + dy, cur.Z)
+					arrow.StudsOffsetWorldSpace = Vector3.new(0, LOG_ARROW_OFFSET_Y + dy, 0)
 				end
 			end
 		end)
