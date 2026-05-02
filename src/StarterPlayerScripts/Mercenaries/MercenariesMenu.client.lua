@@ -303,7 +303,11 @@ local MERC_THEMES = {
 		-- ServerScriptService/Mercenaries/MercenarySpawner so the
 		-- spawned rig matches what the card promises.
 		stats       = { hp = 420, damage = 32, mana = "30/min" },
-		spawnModel  = "Infected Military",
+		-- The recruited mercenary version (used for the menu viewport
+		-- and the actual spawned merc) is the "Infected_Military_Menu"
+		-- rig in ReplicatedStorage. The hostile encounter rig
+		-- ("Infected Military") is a separate model.
+		spawnModel  = "Infected_Military_Menu",
 		level       = 1,
 		xp          = 0,
 		xpMax       = 800,
@@ -2115,12 +2119,12 @@ buildPage = function(mercNames)
 			end
 		end
 
-		-- Locked cards are visible but inert: clicking them must not
-		-- swap the right-hand panel onto a merc the player can't
-		-- spawn / equip / manage. The card stays focusable for hover
-		-- effects (handled elsewhere) but selection is gated.
+		-- Locked cards are clickable for browsing — selection swaps the
+		-- centre viewport + right-hand stat panel so the player can
+		-- preview every mercenary type. Spawn / Manage actions still
+		-- gate on currentOwnedSet so the player can't act on a merc
+		-- they haven't recruited yet.
 		card.MouseButton1Click:Connect(function()
-			if not isOwned then return end
 			setSelectedCard(mercName)
 		end)
 
@@ -2404,7 +2408,12 @@ buildPage = function(mercNames)
 	hChev.Visible = false
 
 	handlingBtn.MouseButton1Click:Connect(function()
-		if spawnEvent and currentSelectedMerc then
+		-- Locked merc selected → Spawn does nothing. The user can
+		-- still browse the locked card but actions are gated until
+		-- they actually recruit the type in the world.
+		if not currentSelectedMerc then return end
+		if not currentOwnedSet[currentSelectedMerc] then return end
+		if spawnEvent then
 			spawnEvent:FireServer(currentSelectedMerc)
 		end
 		closePage()
@@ -2853,6 +2862,8 @@ buildPage = function(mercNames)
 
 	manageBtn.MouseButton1Click:Connect(function()
 		if not currentSelectedMerc then return end
+		-- Locked merc selected → Manage does nothing.
+		if not currentOwnedSet[currentSelectedMerc] then return end
 		local mercName  = currentSelectedMerc
 		local mercNames = currentMercNames
 

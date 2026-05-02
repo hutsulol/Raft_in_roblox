@@ -12,10 +12,13 @@ spawnEvent.Parent = ReplicatedStorage
 
 -- Map recruited mercenary names to the model to clone. Add a new
 -- recruitable type by dropping its rig under ReplicatedStorage and
--- registering both this map and NpcTypes.module.lua.
+-- registering both this map and NpcTypes.module.lua. The map points
+-- at the FRIENDLY rig (e.g. Pirate_2 / Infected_Military_Menu);
+-- the hostile encounter rigs ("Pirate lvl1" / "Infected Military")
+-- are separate models and live in their own spawners.
 local SPAWN_MAP = {
 	["Pirate lvl1"]       = "Pirate_2",
-	["Infected Military"] = "Infected Military",
+	["Infected Military"] = "Infected_Military_Menu",
 }
 
 -- Per-mercenary baseline overrides applied when the rig is spawned.
@@ -135,6 +138,20 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local ragdoller = clone:FindFirstChild("Ragdoller")
 	if ragdoller and (ragdoller:IsA("Script") or ragdoller:IsA("LocalScript")) then
 		ragdoller:Destroy()
+	end
+
+	-- Strip the hostile AK-47 / "NPC AI" scripts from Infected_Military
+	-- mercenary rigs so the friendly version doesn't fire on the player.
+	-- The pirate Combat.script is role-aware and stays in place; the
+	-- Infected Military hostile AI predates the role split, so the
+	-- safest move is to remove it on the merc clone entirely. Once a
+	-- proper role-aware Combat script ships for the Soldier, this loop
+	-- can be replaced with the same "keep it alive" pattern.
+	for _, child in clone:GetChildren() do
+		if (child:IsA("Script") or child:IsA("LocalScript"))
+			and (child.Name == "NPC AI" or child.Name == "NpcAi") then
+			child:Destroy()
+		end
 	end
 
 	local configs = clone:FindFirstChild("Configurations")
