@@ -218,20 +218,32 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
 			mercEntry:SetAttribute("EquippedBackpack", itemId)
 			initBackpackSlots(mercEntry)
 
-			-- Toggle visibility: hide all backpack models, show only the equipped one.
+			-- Toggle visibility: hide every backpack-ish child on the
+			-- live merc, then show the one whose Name matches the
+			-- equip request. Fuzzy-matches by "backpack" substring so
+			-- soldier rigs that name accessories slightly differently
+			-- still get toggled. Accessory instances also toggle via
+			-- their Handle child.
 			local CollectionService = game:GetService("CollectionService")
+			local function nameContainsBackpack(s)
+				return s:lower():find("backpack", 1, true) ~= nil
+			end
 			for _, model in CollectionService:GetTagged("SpawnedMercenary") do
 				if model:GetAttribute("OwnerUserId") == player.UserId
 					and model:GetAttribute("MercName") == mercName
 					and model.Parent then
-					for _, bpName in BACKPACK_MODELS do
-						local bp = model:FindFirstChild(bpName)
-						if bp then
-							local show = (bpName == itemId)
+					for _, child in model:GetChildren() do
+						if nameContainsBackpack(child.Name) then
+							local show = (child.Name == itemId)
 							local t = show and 0 or 1
-							if bp:IsA("BasePart") then bp.Transparency = t end
-							for _, desc in bp:GetDescendants() do
+							if child:IsA("BasePart") then child.Transparency = t end
+							if child:IsA("Accessory") then
+								local handle = child:FindFirstChild("Handle")
+								if handle and handle:IsA("BasePart") then handle.Transparency = t end
+							end
+							for _, desc in child:GetDescendants() do
 								if desc:IsA("BasePart") then desc.Transparency = t end
+								if desc:IsA("Decal") then desc.Transparency = t end
 							end
 						end
 					end

@@ -36,11 +36,11 @@ local SPAWN_STAT_OVERRIDES = {
 -- Default weapon a merc spawns with when its EquippedWeapon attribute
 -- isn't set yet (i.e. fresh recruit who has never visited the
 -- equipment page). Pirates default to Sword; Soldiers default to
--- Unarmed so the rig's built-in pistol / AK-47 model stays in place
--- instead of having a sword welded over it.
+-- Firearm so the rig comes out holding an automatic pistol instead
+-- of a sword.
 local DEFAULT_WEAPON_BY_MERC = {
 	["Pirate lvl1"]       = "Sword",
-	["Infected Military"] = "Unarmed",
+	["Infected Military"] = "Firearm",
 }
 
 -- Locate a rig template anywhere it might reasonably live: top-level
@@ -146,17 +146,34 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	if equipScript then equipScript:Destroy() end
 
 	-- Toggle backpack model visibility: show only the equipped one,
-	-- hide all others. If none is equipped, hide them all.
+	-- hide all others. If none is equipped, hide them all. The match
+	-- is fuzzy — any direct child whose name contains "ackpack" /
+	-- "ackPack" counts, so rigs that name accessories slightly
+	-- differently (Backpack, BackPack_lvl2, Soldier_Backpack, …) all
+	-- work without per-rig hooks. Accessory instances toggle their
+	-- Handle's Transparency (and any descendant BaseParts).
 	local equippedBp = mercEntry and mercEntry:GetAttribute("EquippedBackpack") or ""
-	for _, bpName in { "Backpack", "BackPack_lvl2" } do
-		local bpPart = clone:FindFirstChild(bpName)
-		if bpPart then
-			local show = (equippedBp == bpName)
-			local t = show and 0 or 1
-			if bpPart:IsA("BasePart") then bpPart.Transparency = t end
-			for _, desc in bpPart:GetDescendants() do
-				if desc:IsA("BasePart") then desc.Transparency = t end
-			end
+
+	local function nameContainsBackpack(s)
+		return s:lower():find("backpack", 1, true) ~= nil
+	end
+
+	local function setVisible(inst, visible)
+		local t = visible and 0 or 1
+		if inst:IsA("BasePart") then inst.Transparency = t end
+		if inst:IsA("Accessory") then
+			local handle = inst:FindFirstChild("Handle")
+			if handle and handle:IsA("BasePart") then handle.Transparency = t end
+		end
+		for _, desc in inst:GetDescendants() do
+			if desc:IsA("BasePart") then desc.Transparency = t end
+			if desc:IsA("Decal") then desc.Transparency = t end
+		end
+	end
+
+	for _, child in clone:GetChildren() do
+		if nameContainsBackpack(child.Name) then
+			setVisible(child, child.Name == equippedBp)
 		end
 	end
 

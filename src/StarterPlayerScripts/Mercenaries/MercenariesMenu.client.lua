@@ -315,11 +315,13 @@ local MERC_THEMES = {
 		-- rig in ReplicatedStorage. The hostile encounter rig
 		-- ("Infected Military") is a separate model.
 		spawnModel  = "Infected_Military_Menu",
-		-- "Unarmed" leaves the rig's built-in AK-47 / pistol model in
-		-- place instead of welding a sword to the hand. Players can
-		-- still pick Firearm / Shotgun via the equipment page; this
-		-- is just the at-spawn default.
-		defaultWeapon = "Unarmed",
+		-- Firearm is the Soldier's signature loadout — the MAIN HAND
+		-- tile shows it on the management page and the recruit comes
+		-- with an automatic pistol pre-selected. If the rig already
+		-- carries a built-in AK-47 model (not a Tool), it stays in
+		-- place; applyWeaponToClone only welds in addition to the
+		-- existing rig geometry, it doesn't strip Models.
+		defaultWeapon = "Firearm",
 		-- Soldier rig sits lower in the bind pose than Pirate, which
 		-- pushed the head to the bottom of the viewport. Lifting the
 		-- pivot up centres him with the camera at (0.6, 2.3, 6.2).
@@ -1227,14 +1229,27 @@ local function syncBackpackVisibility(clone, mercName)
 	local mEntry = mFolder and mFolder:FindFirstChild(mercName)
 	local equipped = mEntry and mEntry:GetAttribute("EquippedBackpack") or ""
 
-	for _, bpName in BACKPACK_MODELS do
-		local bpPart = clone:FindFirstChild(bpName)
-		if bpPart then
-			local show = (equipped == bpName)
+	-- Fuzzy match: any direct child whose name contains "backpack"
+	-- (case-insensitive) is treated as a backpack accessory. Lets
+	-- rigs that name their backpacks differently still get toggled
+	-- without a per-merc registry. Accessory instances toggle their
+	-- Handle as well, since the visible mesh hangs off it.
+	local function nameContainsBackpack(s)
+		return s:lower():find("backpack", 1, true) ~= nil
+	end
+
+	for _, child in clone:GetChildren() do
+		if nameContainsBackpack(child.Name) then
+			local show = (child.Name == equipped)
 			local t = show and 0 or 1
-			if bpPart:IsA("BasePart") then bpPart.Transparency = t end
-			for _, desc in bpPart:GetDescendants() do
+			if child:IsA("BasePart") then child.Transparency = t end
+			if child:IsA("Accessory") then
+				local handle = child:FindFirstChild("Handle")
+				if handle and handle:IsA("BasePart") then handle.Transparency = t end
+			end
+			for _, desc in child:GetDescendants() do
 				if desc:IsA("BasePart") then desc.Transparency = t end
+				if desc:IsA("Decal") then desc.Transparency = t end
 			end
 		end
 	end

@@ -521,7 +521,8 @@ local function openWeaponSelectPage(ctx)
 	-- the character jump. No clip frame here — no bottom cards need
 	-- to crop the rig on this page, so the pirate renders fully.
 	-- Per Q9 we don't add any "FOR · <MERC>" label — just the model.
-	local equippedWeaponId = "Sword"
+	local theme = ctx.theme or {}
+	local equippedWeaponId = theme.defaultWeapon or "Sword"
 	local mercFolder = player:FindFirstChild("Mercenaries")
 	if mercFolder and ctx.mercName then
 		local entry = mercFolder:FindFirstChild(ctx.mercName)
@@ -529,6 +530,18 @@ local function openWeaponSelectPage(ctx)
 			local eq = entry:GetAttribute("EquippedWeapon")
 			if eq and eq ~= "" then equippedWeaponId = eq end
 		end
+	end
+
+	-- Per-merc restrictedTo filter: SCP-only weapons (Firearm /
+	-- Shotgun) shouldn't appear on the Pirate's grid, and the Pirate
+	-- Sword shouldn't appear on the Soldier's. A def with no
+	-- restrictedTo list is universal and shows for everyone.
+	local function isWeaponForMerc(def)
+		if not def.restrictedTo then return true end
+		for _, allowed in ipairs(def.restrictedTo) do
+			if allowed == ctx.mercName then return true end
+		end
+		return false
 	end
 
 	local viewportHost = Instance.new("Frame")
@@ -655,7 +668,7 @@ local function openWeaponSelectPage(ctx)
 	do
 		local weapons = ctx.equipItems and ctx.equipItems.Weapons or {}
 		for _, def in ipairs(weapons) do
-			if def.id == equippedWeaponId and def.profession then
+			if isWeaponForMerc(def) and def.id == equippedWeaponId and def.profession then
 				arsenalActiveProfession = def.profession
 				break
 			end
@@ -1051,7 +1064,8 @@ local function openWeaponSelectPage(ctx)
 		local unlockedSet = collectUnlockedSet()
 		local visible = 0
 		for _, def in ipairs(weapons) do
-			if def.profession == nil or def.profession == profession then
+			if isWeaponForMerc(def)
+				and (def.profession == nil or def.profession == profession) then
 				local col = (visible % GRID_COLS) + 1
 				local row = math.floor(visible / GRID_COLS) + 1
 				local unlocked = def.alwaysUnlocked or unlockedSet[def.id] == true

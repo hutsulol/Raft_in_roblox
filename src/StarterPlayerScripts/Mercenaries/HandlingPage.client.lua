@@ -1313,9 +1313,11 @@ local function openHandlingPage(ctx)
 	local TILE_BOTTOM_Y = TILE_TOP_Y + SLOT_H + 20
 
 	-- Resolve the equipped weapon's rarity from ctx.equipItems when
-	-- provided; fall back to 1 star otherwise. MAIN HAND defaults
+	-- provided; fall back to the merc's defaultWeapon (e.g. Soldier
+	-- defaults to "Unarmed" so the rig's built-in pistol model shows
+	-- instead of a sword being welded over it). MAIN HAND defaults
 	-- to selected on open.
-	local equippedWeaponId = "Sword"
+	local equippedWeaponId = (theme and theme.defaultWeapon) or "Sword"
 	local equippedBackpackId = ""
 	local mercFolder = player:FindFirstChild("Mercenaries")
 	if mercFolder and ctx.mercName then
