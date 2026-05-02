@@ -164,28 +164,29 @@ local function tryAddArrow(resource)
 	local adornee = pickArrowAdornee(resource)
 	if not adornee then return end
 
-	-- Adornee's pivot is rarely at the model's visual centre — even
-	-- the bbox-closest part usually sits a stud or two off-axis (the
-	-- floating log model is built off one end). Compute the centre
-	-- in the adornee's local space and apply it as StudsOffset so the
-	-- billboard snaps to the model centre. StudsOffset is in object
-	-- space, so it stays correct as the log rolls on the waves; the
-	-- world-up Y push is layered on via StudsOffsetWorldSpace below.
+	-- Adornee's pivot is rarely at the model's visual centre — the
+	-- floating log model is built off one end. Compute the world
+	-- delta from the adornee to the bbox centre and bake it into the
+	-- world-space offset so the billboard sits on the model centre
+	-- regardless of which part we end up adornee'ing.
+	--
+	-- We *don't* use StudsOffset for this, even though it sounds
+	-- right: BillboardGui's StudsOffset is interpreted in camera /
+	-- screen space, not the adornee's object space, so feeding it a
+	-- part-local vector pushed the arrow in an unrelated direction.
+	-- StudsOffsetWorldSpace is straight world-space, so it does what
+	-- it says.
 	local centreOffset = Vector3.zero
 	if resource:IsA("Model") then
 		local bboxCF = resource:GetBoundingBox()
-		centreOffset = adornee.CFrame:PointToObjectSpace(bboxCF.Position)
+		centreOffset = bboxCF.Position - adornee.Position
 	end
 
 	local bb = Instance.new("BillboardGui")
 	bb.Name = LOG_ARROW_NAME
 	bb.Adornee = adornee
 	bb.Size = LOG_ARROW_SIZE
-	bb.StudsOffset = centreOffset
-	-- StudsOffsetWorldSpace keeps the arrow at a fixed world-Y offset
-	-- above the log so it bobs nicely with the waves instead of
-	-- spinning when the log rotates around its own axis.
-	bb.StudsOffsetWorldSpace = Vector3.new(0, LOG_ARROW_OFFSET_Y, 0)
+	bb.StudsOffsetWorldSpace = centreOffset + Vector3.new(0, LOG_ARROW_OFFSET_Y, 0)
 	bb.AlwaysOnTop = true
 	bb.LightInfluence = 0
 	bb.MaxDistance = 250
@@ -228,7 +229,9 @@ local function startLogHighlights()
 
 	-- Gentle vertical bob so the arrows visually pulse instead of
 	-- sitting dead still — easier to spot a moving indicator on a
-	-- choppy ocean. Cheap: a single sin() per arrow per frame.
+	-- choppy ocean. Cheap: a single sin() per arrow per frame. Reads
+	-- the X/Z components off the existing offset so the centre-snap
+	-- baked in by tryAddArrow stays intact while the Y wiggles.
 	if not logArrowBobConn then
 		local RunService = game:GetService("RunService")
 		logArrowBobConn = RunService.Heartbeat:Connect(function()
@@ -237,7 +240,8 @@ local function startLogHighlights()
 			for _, resource in ipairs(CollectionService:GetTagged("Resource")) do
 				local arrow = resource:FindFirstChild(LOG_ARROW_NAME)
 				if arrow and arrow:IsA("BillboardGui") then
-					arrow.StudsOffsetWorldSpace = Vector3.new(0, LOG_ARROW_OFFSET_Y + dy, 0)
+					local cur = arrow.StudsOffsetWorldSpace
+					arrow.StudsOffsetWorldSpace = Vector3.new(cur.X, LOG_ARROW_OFFSET_Y + dy, cur.Z)
 				end
 			end
 		end)
