@@ -90,11 +90,16 @@ local LOG_HIGHLIGHT_OUTLINE = Color3.fromRGB(180, 255, 140)
 
 -- Green floating arrow above each Log (added in the same lifetime as
 -- the green Highlight). Asset is the arrow_green icon the project
--- registered. Y offset puts it ~3 studs above the log so it's visible
--- without overlapping the Highlight outline.
+-- registered. Y offset puts it ~2 studs above the log so it's
+-- visible without overlapping the Highlight outline.
+--
+-- Size uses the Scale dimension of UDim2 (studs in 3D space), not
+-- Offset (fixed pixels). Stud-based sizing means the arrow shrinks
+-- with distance instead of staying at a constant screen size — at a
+-- distance the old pixel-sized 48×48 dwarfed the now-tiny log.
 local LOG_ARROW_ASSET    = "rbxassetid://74129628763110"
-local LOG_ARROW_SIZE     = UDim2.fromOffset(48, 48)
-local LOG_ARROW_OFFSET_Y = 3.5
+local LOG_ARROW_SIZE     = UDim2.fromScale(2, 2)   -- 2x2 studs
+local LOG_ARROW_OFFSET_Y = 2.0
 
 local logHighlightAddedConn   -- CollectionService:GetInstanceAddedSignal handle
 local logArrowBobConn         -- RunService:Heartbeat handle for the bob animation
@@ -123,17 +128,34 @@ local function tryHighlightLog(resource)
 	hl.Parent = resource
 end
 
--- Pick the most reasonable BasePart on a resource model to anchor the
--- arrow to. Prefers PrimaryPart; falls back to the first BasePart we
--- find. Returns nil if the resource has no BaseParts (which would be
--- a malformed resource model — skip silently).
+-- Pick the BasePart whose centre is closest to the model's bounding-
+-- box centre. Anchoring to PrimaryPart looked off because the log's
+-- PrimaryPart is usually one end-cap, not the visual middle, so the
+-- arrow rendered behind / in front of the log instead of above its
+-- centre. Returns nil for malformed resources with no BaseParts.
 local function pickArrowAdornee(resource)
 	if resource:IsA("BasePart") then return resource end
-	if resource.PrimaryPart then return resource.PrimaryPart end
-	for _, child in ipairs(resource:GetDescendants()) do
-		if child:IsA("BasePart") then return child end
+
+	local target
+	if resource:IsA("Model") then
+		local cf = resource:GetBoundingBox()
+		target = cf.Position
 	end
-	return nil
+
+	local bestPart, bestDist = nil, math.huge
+	for _, child in ipairs(resource:GetDescendants()) do
+		if child:IsA("BasePart") then
+			if target then
+				local d = (child.Position - target).Magnitude
+				if d < bestDist then
+					bestPart, bestDist = child, d
+				end
+			else
+				return child
+			end
+		end
+	end
+	return bestPart
 end
 
 local function tryAddArrow(resource)
