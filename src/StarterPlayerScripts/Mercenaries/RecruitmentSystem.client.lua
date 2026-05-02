@@ -640,8 +640,23 @@ local function findDownedPirateNearby()
 	if not hrp then return nil end
 	local playerPos = hrp.Position
 
+	-- Build the candidate set from CollectionService and workspace
+	-- top-level children. Tagged hostiles are caught regardless of
+	-- how deeply nested they are in workspace (manually-placed rigs
+	-- often live under a Folder), and the workspace pass keeps any
+	-- legacy untagged rigs working.
+	local seen = {}
+	local function consider(child, list)
+		if seen[child] or not child or not child:IsDescendantOf(workspace) then return end
+		seen[child] = true
+		list[#list + 1] = child
+	end
+	local candidates = {}
+	for _, m in CollectionService:GetTagged("HostilePirate") do consider(m, candidates) end
+	for _, m in workspace:GetChildren() do consider(m, candidates) end
+
 	local closest, closestDist = nil, 15
-	for _, child in workspace:GetChildren() do
+	for _, child in candidates do
 		-- Strict type filter: only models registered in NpcTypes count
 		-- as recruitables. This is what fixes the cross-recruitment
 		-- bug — without this, any downed humanoid (zombies, decor
@@ -650,7 +665,6 @@ local function findDownedPirateNearby()
 		local npcInfo = NpcTypes.resolve(child)
 		if npcInfo
 			and child:IsA("Model")
-			and child:FindFirstChild("HumanoidRootPart")
 			and child:FindFirstChildWhichIsA("Humanoid")
 			and not Players:GetPlayerFromCharacter(child)
 			and not CollectionService:HasTag(child, "SpawnedMercenary")
@@ -659,7 +673,9 @@ local function findDownedPirateNearby()
 			and not claimedLocally[child]
 		then
 			-- Use Torso or Head first — HumanoidRootPart can end up at a
-			-- weird position after ragdoll.
+			-- weird position after ragdoll, and some death paths destroy
+			-- it outright. Fall back to ANY BasePart in the rig so a
+			-- ragdolled corpse is still locatable.
 			local part = child:FindFirstChild("Torso")
 				or child:FindFirstChild("Head")
 				or child:FindFirstChild("HumanoidRootPart")
