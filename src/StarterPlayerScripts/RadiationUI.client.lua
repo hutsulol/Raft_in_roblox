@@ -47,13 +47,9 @@ local function notifyAll()
 end
 
 local BASE_X = 16
--- Sits 10 px above the mana bar's top edge. The mana container in
--- UIManager is anchored to the screen bottom at y=-102 with height
--- 36, so its top is at screen_bottom - 138. We want the icon's
--- bottom (anchor 0,1) at screen_bottom - 148 → 10 px gap above
--- the bar.
-local BASE_Y_OFFSET = -148
-local SLOT_STRIDE = 44 -- 36px icon + 8px gap
+local BASE_Y_OFFSET = -148   -- fallback if mana container can't be located
+local SLOT_STRIDE = 44       -- 36 px icon + 8 px gap (also a fallback)
+local ICON_GAP = 10          -- px above the mana bar's top edge
 
 -- ─── UI Setup ───
 local screenGui = Instance.new("ScreenGui")
@@ -63,36 +59,21 @@ screenGui.IgnoreGuiInset = true
 screenGui.ResetOnSpawn = false
 screenGui.Parent = playerGui
 
--- Mirror UIManager's HUD scale so the radiation icon shrinks in
--- lockstep with the mana / hunger / health bars. Without this the
--- bars scale down on narrow viewports while the icon stays at its
--- full -188 offset — the icon then floats far above the (scaled)
--- mana bar instead of sitting just above it. Constants must stay in
--- sync with UIManager.HUD_REF_WIDTH / HUD_REF_HEIGHT / clamps.
-local HUD_REF_WIDTH  = 1400
-local HUD_REF_HEIGHT = 720
-local HUD_MIN_SCALE  = 0.35
-local HUD_MAX_SCALE  = 1.0
-
-local hudScale = Instance.new("UIScale")
-hudScale.Parent = screenGui
-
-local function recomputeScale()
-	local camera = workspace.CurrentCamera
-	local vp = camera and camera.ViewportSize or Vector2.new(HUD_REF_WIDTH, HUD_REF_HEIGHT)
-	local s = math.min(vp.X / HUD_REF_WIDTH, vp.Y / HUD_REF_HEIGHT)
-	hudScale.Scale = math.clamp(s, HUD_MIN_SCALE, HUD_MAX_SCALE)
-end
-recomputeScale()
-
-local function hookCamera(cam)
-	if not cam then return end
-	cam:GetPropertyChangedSignal("ViewportSize"):Connect(recomputeScale)
-end
-hookCamera(workspace.CurrentCamera)
-workspace:GetPropertyChangedSignal("CurrentCamera"):Connect(function()
-	hookCamera(workspace.CurrentCamera)
-	recomputeScale()
+-- ─── Mana-container tracking ──────────────────────────────────────
+-- The mana / hunger / health bars live inside UIManager's ScreenGui,
+-- which carries its own UIScale tied to viewport size. Mirroring that
+-- scale on a separate ScreenGui (the previous fix) didn't cleanly
+-- track all viewports — the icon kept drifting above the bars.
+-- Drive the icon's screen position from the mana container's actual
+-- AbsolutePosition / AbsoluteSize instead, so wherever the bars end
+-- up rendered, the icon sits 10 px above the mana bar's top edge.
+local manaContainer = nil
+task.spawn(function()
+	while not manaContainer do
+		manaContainer = playerGui:FindFirstChild("ManaContainer", true)
+		if manaContainer then break end
+		task.wait(0.25)
+	end
 end)
 
 -- Radiation icon (positioned above the three stat bars)
@@ -213,6 +194,11 @@ if radiationEvent then
 end
 
 -- ─── Position refresh (slot-aware) ───
+-- Reads mana container's AbsolutePosition / AbsoluteSize so the icon
+-- always sits ICON_GAP px above the bar's top edge regardless of how
+-- the HUD's UIScale shrinks the bars. Falls back to the old fixed
+-- offset if the mana container isn't ready yet (briefly, during
+-- script init).
 local function refreshPosition()
 	local slot = getSlotIndex("radiation")
 	if slot < 0 then
@@ -221,12 +207,34 @@ local function refreshPosition()
 		return
 	end
 	icon.Visible = true
-	local x = BASE_X + slot * SLOT_STRIDE
-	icon.Position = UDim2.new(0, x, 1, BASE_Y_OFFSET)
-	tooltip.Position = UDim2.new(0, x + 36 + 8, 1, BASE_Y_OFFSET)
+
+	if manaContainer and manaContainer.Parent then
+		local mp = manaContainer.AbsolutePosition
+		local ms = manaContainer.AbsoluteSize
+		-- Match the bar's rendered scale so the icon shrinks with it.
+		local scale = ms.Y / 36   -- mana container's unscaled height = 36
+		local iconSize = math.floor(36 * scale + 0.5)
+		local stride   = math.floor(SLOT_STRIDE * scale + 0.5)
+		icon.Size = UDim2.fromOffset(iconSize, iconSize)
+		local x = math.floor(mp.X + slot * stride + 0.5)
+		local y = math.floor(mp.Y - iconSize - ICON_GAP * scale + 0.5)
+		icon.Position = UDim2.fromOffset(x, y)
+		tooltip.Size = UDim2.fromOffset(math.floor(200 * scale + 0.5), math.floor(60 * scale + 0.5))
+		tooltip.Position = UDim2.fromOffset(x + iconSize + math.floor(8 * scale + 0.5), y + iconSize)
+	else
+		local x = BASE_X + slot * SLOT_STRIDE
+		icon.Position = UDim2.new(0, x, 1, BASE_Y_OFFSET)
+		tooltip.Position = UDim2.new(0, x + 36 + 8, 1, BASE_Y_OFFSET)
+	end
 end
 
 table.insert(SLOTS.hooks, refreshPosition)
+
+-- Re-run every frame so the icon tracks the mana container even if
+-- the HUD UIScale changes (camera viewport resize) or the bars get
+-- repositioned. Cheap — just two AbsolutePosition reads + a few
+-- math.floors per frame.
+game:GetService("RunService").RenderStepped:Connect(refreshPosition)
 
 -- ─── Watch the RadiationSick attribute directly ───
 local function onRadiationChanged()
