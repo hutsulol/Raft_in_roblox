@@ -186,18 +186,13 @@ function checkandshoot()
 									velocity.Velocity = bullet.CFrame.lookVector * 500 + Vector3.new(math.random(-25,25),math.random(-25,25),0)
 									local pointlight = Instance.new("PointLight", npc["AK-47"])
 									game.Debris:AddItem(pointlight,0.1)
+									-- Damage intentionally disabled: the bullet keeps
+									-- its visual + sound (so the AI still reads as
+									-- "shooting") but does not actually hurt anyone.
+									-- Re-enable by restoring a TakeDamage call here.
 									local function damage(part)
-										local damage = math.random(10,50)
 										if part.Parent.ClassName ~= "Accessory" and part.Parent.Parent.ClassName ~= "Accessory" and part.ClassName ~= "Accessory" and part.Parent.Name ~= npc.Name and part.CanCollide == true then
 											bullet:destroy()
-											local victimhumanoid = part.Parent:findFirstChildOfClass("Humanoid")
-											if victimhumanoid then
-												if victimhumanoid.Health > damage then
-													victimhumanoid:TakeDamage(damage)
-												else
-													victimhumanoid:TakeDamage(damage)
-												end
-											end
 										end
 									end
 									game.Debris:AddItem(bullet, 0)
