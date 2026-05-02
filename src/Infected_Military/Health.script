@@ -3,21 +3,24 @@
 local REGEN_RATE = 1/100 -- Regenerate this fraction of MaxHealth per second.
 local REGEN_STEP = 1 -- Wait this long between each regeneration step.
 
--- Baseline HP for the hostile Infected Military rig. Without this the
--- rig ships at the default Humanoid.MaxHealth (100), but the rbxl
--- shipped at 0 / unset which made the rig effectively unkillable
--- (every TakeDamage clamped against MaxHealth = 0). Pirate rigs run
--- at 250 HP; Infected Military gets a bit more to match the higher
--- threat tier without becoming a damage sponge.
-local MAX_HEALTH = 350
+-- Baseline HP for the hostile Infected Military rig. The rig is
+-- intentionally fragile (1 HP) so any weapon hit drops it instantly
+-- — recruitment is the gameplay goal, not a damage check. The
+-- health bar is also hidden because a 1-HP bar adds no information
+-- and just clutters the screen.
+local MAX_HEALTH = 1
 
 --------------------------------------------------------------------------------
 
 local Character = script.Parent
 local Humanoid = Character:WaitForChild'Humanoid'
 
-Humanoid.MaxHealth = MAX_HEALTH
-Humanoid.Health    = MAX_HEALTH
+Humanoid.MaxHealth          = MAX_HEALTH
+Humanoid.Health             = MAX_HEALTH
+Humanoid.HealthDisplayType  = Enum.HumanoidHealthDisplayType.AlwaysOff
+Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+Humanoid.HealthDisplayDistance = 0
+Humanoid.NameDisplayDistance   = 0
 
 --------------------------------------------------------------------------------
 

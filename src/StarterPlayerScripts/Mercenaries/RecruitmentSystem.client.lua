@@ -839,20 +839,41 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		local npcInfo = NpcTypes.resolve(pirate)
 		local typeId  = npcInfo and npcInfo.mercName
 
-		-- Already-recruited type → free auto-blood drop (Part 6).
-		-- The injector / empty-capsule path is preserved for backward
-		-- compatibility but is no longer required: the server creates
-		-- a typed FullCapsule and stamps the correct BloodType.
+		-- Already-recruited type → injector blood-collection flow.
+		-- Studying / recruiting an NPC for the first time is a
+		-- one-shot per type; from the second downed body onward the
+		-- player extracts blood with the Injector + EmptyCapsule
+		-- combo, exactly like the original Pirate flow.
 		if typeId and recruitedTypes[typeId] then
+			local char = player.Character
+			local equipped = char and char:FindFirstChildOfClass("Tool")
+			if not equipped or equipped.Name ~= "Injector" then
+				showNotification("You need an Injector.", Color3.fromRGB(255, 200, 80))
+				return
+			end
+
+			local backpack = player:FindFirstChild("Backpack")
+			local emptyCapsule = (backpack and backpack:FindFirstChild("EmptyCapsule"))
+				or (char and char:FindFirstChild("EmptyCapsule"))
+			if not emptyCapsule then
+				showNotification("You need an Empty Capsule.", Color3.fromRGB(255, 200, 80))
+				return
+			end
+
+			local injSound = equipped:FindFirstChild("Injection")
+			if injSound and injSound:IsA("Sound") then
+				injSound:Play()
+			end
+
 			claimedLocally[pirate] = true
-			recruitEvent:FireServer("autoBloodDrop", pirate)
+			recruitEvent:FireServer("collectBlood", pirate)
 			return
 		end
 
-		-- Per-NPC-type first-defeat dialogue. The pirate intro plays
-		-- the existing voice lines; Infected Military reuses the same template
-		-- (Part 4 explicitly allows this) until type-specific lines
-		-- are recorded.
+		-- First encounter with this NPC type: play the defeat
+		-- dialogue, then open the recruit panel. firstDefeatShownByType
+		-- gates the dialogue per-type so the Pirate intro plays once
+		-- and the Infected Military intro plays once.
 		local dialogueKey = typeId or "default"
 		if not firstDefeatShownByType[dialogueKey] then
 			firstDefeatShownByType[dialogueKey] = true

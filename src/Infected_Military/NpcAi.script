@@ -2,6 +2,17 @@
 --animations are made with :lerp()
 --you can convert the model to use it in script builder
 local npc = script.Parent
+-- Self-tag so the recruitment client / server treat this rig as an
+-- "Infected Military" hostile regardless of how it entered the world
+-- (manual placement, respawn clone, or ScpGuard/InfectedMilitary
+-- spawner). Without this, manually-placed rigs whose Model.Name
+-- doesn't exactly match the registry key never open the recruit
+-- panel because NpcTypes.resolve falls back to Model.Name.
+npc:SetAttribute("NpcType", "Infected Military")
+local CollectionService = game:GetService("CollectionService")
+if not CollectionService:HasTag(npc, "HostilePirate") then
+	CollectionService:AddTag(npc, "HostilePirate")
+end
 local torso = npc.Torso
 local head = npc.Head
 local leftarm = npc["Left Arm"]

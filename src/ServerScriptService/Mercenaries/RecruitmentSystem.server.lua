@@ -32,9 +32,12 @@ local claimedPirates = {}
 -- can enumerate them. Duplicate pirate names are skipped ("max one of
 -- each type" rule).
 -- ── DEV MODE ──────────────────────────────────────────────────────────
--- Set to true to auto-grant a mercenary on join for testing.
--- Remove or set to false before shipping.
-local DEV_AUTO_GRANT = true
+-- Disabled: pre-granting "Pirate lvl1" populated player.Mercenaries on
+-- join, which made the client treat the type as "already recruited"
+-- and route every kill through the injector / blood-drop flow instead
+-- of opening the recruit panel. Real recruitment now drives the
+-- folder population end-to-end.
+local DEV_AUTO_GRANT = false
 local DEV_MERCENARY_NAME = "Pirate lvl1"
 
 local function ensureMercenariesFolder(player)
@@ -162,38 +165,22 @@ recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 		recruitEvent:FireClient(player, "failed")
 		task.spawn(fadePirate, pirate, 1.5, 1.5)
 
-	elseif action == "collectBlood" or action == "autoBloodDrop" then
+	elseif action == "collectBlood" then
+		-- Injector-driven blood collection: the player must hold an
+		-- Injector AND have an EmptyCapsule in their inventory. One
+		-- EmptyCapsule is consumed and a typed FullCapsule is given
+		-- back. The injector requirement keeps the harvesting loop
+		-- tied to the existing crafting / capsule economy instead of
+		-- handing out free samples on every kill.
 		local backpack = player:FindFirstChild("Backpack")
-
-		-- "collectBlood" is the original injector-driven flow: the
-		-- player consumes one EmptyCapsule + holds an Injector and
-		-- gets one FullCapsule back.
-		--
-		-- "autoBloodDrop" is the post-recruit shortcut (Part 6): once
-		-- the player has already recruited this NPC type, future kills
-		-- of the SAME type drop one blood capsule for free, no
-		-- consumables required. We still honour the type filter via
-		-- npcInfo so pirate kills can never drop SCP blood.
-		local mercFolder = player:FindFirstChild("Mercenaries")
-		local alreadyRecruited =
-			mercFolder and mercFolder:FindFirstChild(npcInfo.mercName) ~= nil
-
-		if action == "autoBloodDrop" then
-			if not alreadyRecruited then
-				claimedPirates[pirate] = nil
-				pirate:SetAttribute("Claimed", nil)
-				return
-			end
-		else
-			local emptyCapsule = (backpack and backpack:FindFirstChild("EmptyCapsule"))
-				or (player.Character and player.Character:FindFirstChild("EmptyCapsule"))
-			if not emptyCapsule then
-				claimedPirates[pirate] = nil
-				pirate:SetAttribute("Claimed", nil)
-				return
-			end
-			emptyCapsule:Destroy()
+		local emptyCapsule = (backpack and backpack:FindFirstChild("EmptyCapsule"))
+			or (player.Character and player.Character:FindFirstChild("EmptyCapsule"))
+		if not emptyCapsule then
+			claimedPirates[pirate] = nil
+			pirate:SetAttribute("Claimed", nil)
+			return
 		end
+		emptyCapsule:Destroy()
 
 		local template = rs:FindFirstChild("FullCapsule", true)
 		local fullCapsule

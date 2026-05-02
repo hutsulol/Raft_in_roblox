@@ -39,11 +39,31 @@ NpcTypes.Types = {
 -- Resolve an NPC type by its NpcType attribute (preferred) or, as a
 -- fallback for legacy spawns, by its Model.Name. Returns nil when the
 -- model is not a registered recruitable.
+--
+-- Name fallback is fuzzy: underscores and spaces are interchangeable
+-- ("Infected_Military" matches "Infected Military") because Rojo
+-- folder names cannot contain spaces but the rig in Studio can.
+local function normalize(s)
+	if typeof(s) ~= "string" then return nil end
+	return (s:gsub("[_%s]+", " "):lower())
+end
+
+local normalizedKeys = {}
+for k, v in pairs(NpcTypes.Types) do
+	normalizedKeys[normalize(k)] = v
+end
+
 function NpcTypes.resolve(model)
 	if typeof(model) ~= "Instance" then return nil end
 	local id = model:GetAttribute("NpcType")
 	if id and NpcTypes.Types[id] then return NpcTypes.Types[id] end
 	if NpcTypes.Types[model.Name] then return NpcTypes.Types[model.Name] end
+	local n = normalize(model.Name)
+	if n and normalizedKeys[n] then return normalizedKeys[n] end
+	if id then
+		local nid = normalize(id)
+		if nid and normalizedKeys[nid] then return normalizedKeys[nid] end
+	end
 	return nil
 end
 
