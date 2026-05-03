@@ -328,12 +328,10 @@ local MERC_THEMES = {
 		rigBuiltinWeapons = {
 			Firearm = "AK-47",
 		},
-		-- Soldier rig is taller / wider than the Pirate, so the same
-		-- pivot Y the Pirate uses (0.5) puts the head near the top of
-		-- the viewport. A negative pivot lowers the rig in world
-		-- space so the camera at (0.6, 2.3, 6.2) frames his torso
-		-- the same way it frames the Pirate's.
-		viewportPivotY = -1.0,
+		-- Soldier rig is taller / wider than the Pirate; tweaked
+		-- toward the middle so the camera at (0.6, 2.3, 6.2) frames
+		-- his torso similar to how the Pirate's is framed.
+		viewportPivotY = 0.0,
 		level       = 1,
 		xp          = 0,
 		xpMax       = 800,
