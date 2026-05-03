@@ -222,37 +222,22 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 		ragdoller:Destroy()
 	end
 
-	-- Hostile AK-47 / "NPC AI" scripts shipped with the rig need to
-	-- die before this clone reaches workspace — otherwise the merc
-	-- shoots the player on sight. Walk the whole subtree (the user's
-	-- Infected_Military_Menu rig has scripts nested under accessories
-	-- as well as at the top level).
-	local HOSTILE_SCRIPT_NAMES = {
-		["NPC AI"]    = true,
-		["NpcAi"]     = true,
-		["Zombie"]    = true,
-		["HurtScript"] = true, -- legacy aggro hook
-	}
-	for _, d in clone:GetDescendants() do
-		if (d:IsA("Script") or d:IsA("LocalScript"))
-			and HOSTILE_SCRIPT_NAMES[d.Name] then
-			d:Destroy()
-		end
-	end
+	-- Per-merc-rig scripts (NPC AI, Health, HurtScript, Respawn, etc.)
+	-- are left alone — the user authors them on the rig in Studio and
+	-- expects them to drive the merc behaviour. The legacy Ragdoller
+	-- strip above is the only blanket removal we still do, because
+	-- the old R6 ragdoll-cloning path doesn't survive the spawn flow.
 
-	-- Inject the Pirate_2 friendly AI bundle (Combat / Fishing /
-	-- HarvestResources). Pirate_2 ships with these scripts; rigs the
-	-- player added by hand (Infected_Military_Menu) don't have them,
-	-- which is why the Soldier idled aggressively, didn't fish, and
-	-- never harvested floating logs. Cloning the scripts (with their
-	-- child Animations) gives the Soldier the exact same merc
-	-- behaviour the Pirate has, gated by EquippedWeapon inside each
-	-- script. Skip if the rig already carries an authored copy so we
-	-- never double-up.
+	-- Inject the Pirate_2 mercenary behaviours that aren't expected to
+	-- be authored on every rig. The Soldier rig ships its own "NPC AI"
+	-- that plays the combat role, so we don't inject Combat — only
+	-- Fishing + HarvestResources, which are rig-agnostic and the
+	-- Soldier rig doesn't author itself. The injector skips when the
+	-- clone already carries an authored copy with the same name.
 	local pirateMercTemplate = ReplicatedStorage:FindFirstChild("Pirate_2")
 		or ReplicatedStorage:FindFirstChild("Pirate_2", true)
 	if pirateMercTemplate then
-		local MERC_SCRIPTS = { "Combat", "Fishing", "HarvestResources" }
+		local MERC_SCRIPTS = { "Fishing", "HarvestResources" }
 		for _, scriptName in MERC_SCRIPTS do
 			if not clone:FindFirstChild(scriptName) then
 				local source = pirateMercTemplate:FindFirstChild(scriptName)
