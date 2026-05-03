@@ -328,10 +328,9 @@ local MERC_THEMES = {
 		rigBuiltinWeapons = {
 			Firearm = "AK-47",
 		},
-		-- Soldier rig sits lower in the bind pose than Pirate, which
-		-- pushed the head to the bottom of the viewport. Lifting the
-		-- pivot up centres him with the camera at (0.6, 2.3, 6.2).
-		viewportPivotY = 1.8,
+		-- Match the Pirate's viewport pivot exactly so the Soldier
+		-- frames the same way across every menu page.
+		viewportPivotY = 0.5,
 		level       = 1,
 		xp          = 0,
 		xpMax       = 800,

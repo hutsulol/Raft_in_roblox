@@ -222,17 +222,48 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 		ragdoller:Destroy()
 	end
 
-	-- Strip the hostile AK-47 / "NPC AI" scripts from Infected_Military
-	-- mercenary rigs so the friendly version doesn't fire on the player.
-	-- The pirate Combat.script is role-aware and stays in place; the
-	-- Infected Military hostile AI predates the role split, so the
-	-- safest move is to remove it on the merc clone entirely. Once a
-	-- proper role-aware Combat script ships for the Soldier, this loop
-	-- can be replaced with the same "keep it alive" pattern.
-	for _, child in clone:GetChildren() do
-		if (child:IsA("Script") or child:IsA("LocalScript"))
-			and (child.Name == "NPC AI" or child.Name == "NpcAi") then
-			child:Destroy()
+	-- Hostile AK-47 / "NPC AI" scripts shipped with the rig need to
+	-- die before this clone reaches workspace — otherwise the merc
+	-- shoots the player on sight. Walk the whole subtree (the user's
+	-- Infected_Military_Menu rig has scripts nested under accessories
+	-- as well as at the top level).
+	local HOSTILE_SCRIPT_NAMES = {
+		["NPC AI"]    = true,
+		["NpcAi"]     = true,
+		["Zombie"]    = true,
+		["HurtScript"] = true, -- legacy aggro hook
+	}
+	for _, d in clone:GetDescendants() do
+		if (d:IsA("Script") or d:IsA("LocalScript"))
+			and HOSTILE_SCRIPT_NAMES[d.Name] then
+			d:Destroy()
+		end
+	end
+
+	-- Inject the Pirate_2 friendly AI bundle (Combat / Fishing /
+	-- HarvestResources). Pirate_2 ships with these scripts; rigs the
+	-- player added by hand (Infected_Military_Menu) don't have them,
+	-- which is why the Soldier idled aggressively, didn't fish, and
+	-- never harvested floating logs. Cloning the scripts (with their
+	-- child Animations) gives the Soldier the exact same merc
+	-- behaviour the Pirate has, gated by EquippedWeapon inside each
+	-- script. Skip if the rig already carries an authored copy so we
+	-- never double-up.
+	local pirateMercTemplate = ReplicatedStorage:FindFirstChild("Pirate_2")
+		or ReplicatedStorage:FindFirstChild("Pirate_2", true)
+	if pirateMercTemplate then
+		local MERC_SCRIPTS = { "Combat", "Fishing", "HarvestResources" }
+		for _, scriptName in MERC_SCRIPTS do
+			if not clone:FindFirstChild(scriptName) then
+				local source = pirateMercTemplate:FindFirstChild(scriptName)
+				if source and (source:IsA("Script") or source:IsA("LocalScript")) then
+					local wasArchivable = source.Archivable
+					source.Archivable = true
+					local copy = source:Clone()
+					source.Archivable = wasArchivable
+					copy.Parent = clone
+				end
+			end
 		end
 	end
 

@@ -531,13 +531,19 @@ local function openBodySelectPage(ctx)
 	-- detail card). buildMercViewport takes a weapon id; the backpack
 	-- visibility syncs from the merc's EquippedBackpack attribute which
 	-- we mutate directly on equip.
-	local equippedWeaponId   = "Sword"
+	local theme = ctx.theme or {}
+	local equippedWeaponId   = theme.defaultWeapon or "Sword"
 	local equippedBackpackId = ""
 	local mercFolder = player:FindFirstChild("Mercenaries")
 	if mercFolder and ctx.mercName then
 		local entry = mercFolder:FindFirstChild(ctx.mercName)
 		if entry then
-			local wep = entry:GetAttribute("EquippedBackpack")
+			-- Read the WEAPON attribute (the original code accidentally
+			-- read EquippedBackpack into equippedWeaponId, which is
+			-- why the BodySelectPage viewport showed the wrong weapon
+			-- — Pirate defaulted to Sword; Soldier silently fell back
+			-- to Unarmed because Backpack ids get sanitised down).
+			local wep = entry:GetAttribute("EquippedWeapon")
 			if wep and wep ~= "" then equippedWeaponId = wep end
 			local bp = entry:GetAttribute("EquippedBackpack")
 			if bp and bp ~= "" then equippedBackpackId = bp end
