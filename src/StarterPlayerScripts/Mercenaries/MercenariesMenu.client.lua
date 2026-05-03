@@ -351,6 +351,37 @@ local DEFAULT_THEME = {
 	charStats   = { str = 30, spd = 30, luck = 30 },
 }
 
+-- Per-merc weapon allow-list. Mirrored from
+-- MercenaryEquipment.server.ALLOWED_WEAPONS_BY_MERC; the client uses
+-- it to scrub stale EquippedWeapon attributes that point at a weapon
+-- this merc can't actually hold. Without this, a Soldier who carried
+-- "Sword" across a session before per-merc restrictedTo was enforced
+-- would keep getting ClassicSword welded onto him in every viewport.
+local ALLOWED_WEAPONS_BY_MERC = {
+	["Pirate lvl1"]       = { Sword = true, FishingRod = true, Unarmed = true },
+	["Infected Military"] = { Firearm = true, Shotgun = true, FishingRod = true, Unarmed = true },
+}
+
+-- Single source of truth for "what weapon should this merc actually
+-- hold right now": prefer the EquippedWeapon attribute, fall back to
+-- the merc's defaultWeapon, then "Sword" (legacy). Disallowed
+-- attributes are cleared in place so subsequent reads land on the
+-- default — keeps the menu / handling / body-select pages in sync
+-- without having to wait for a server-side validation round-trip.
+local function resolveMercWeapon(mercName, mercEntry, themeOverride)
+	local theme = themeOverride or MERC_THEMES[mercName] or DEFAULT_THEME
+	local default = (theme and theme.defaultWeapon) or "Sword"
+	if not mercEntry then return default end
+	local cur = mercEntry:GetAttribute("EquippedWeapon")
+	if not cur or cur == "" then return default end
+	local allowed = ALLOWED_WEAPONS_BY_MERC[mercName]
+	if allowed and not allowed[cur] then
+		mercEntry:SetAttribute("EquippedWeapon", nil)
+		return default
+	end
+	return cur
+end
+
 -- ─── Small UI helpers ───────────────────────────────────────────────────
 
 local function corner(parent, radius)
@@ -2519,9 +2550,7 @@ buildPage = function(mercNames)
 		local mercFolder = player:FindFirstChild("Mercenaries")
 		local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
 		local mercTheme = MERC_THEMES[mercName] or DEFAULT_THEME
-		local weaponId = (mercEntry and mercEntry:GetAttribute("EquippedWeapon"))
-			or mercTheme.defaultWeapon
-			or "Sword"
+		local weaponId = resolveMercWeapon(mercName, mercEntry, mercTheme)
 
 		local profession = "ASSISTANT"
 		if weaponId == "FishingRod" then
@@ -2962,6 +2991,7 @@ buildPage = function(mercNames)
 				mercNames             = mercNames,
 				theme                 = MERC_THEMES[mercName] or DEFAULT_THEME,
 				equipItems            = EQUIP_ITEMS,
+				resolveMercWeapon     = resolveMercWeapon,
 				hidePhonePanels       = hidePhonePanels,
 				detachCachedViewports = detachCachedViewports,
 				buildMercViewport     = buildMercViewport,
@@ -3155,13 +3185,11 @@ buildEquipmentPage = function(mercName, mercNames)
 
 	-- Read currently equipped weapon from attribute
 	local mercFolder = player:FindFirstChild("Mercenaries")
-	if mercFolder then
-		local entry = mercFolder:FindFirstChild(mercName)
-		if entry then
-			local eq = entry:GetAttribute("EquippedWeapon")
-			if eq then selectedItemId = eq end
-		end
-	end
+	local entry = mercFolder and mercFolder:FindFirstChild(mercName)
+	-- Use the shared resolver so a stale "Sword" attribute on the
+	-- Soldier (or any disallowed combo) gets scrubbed and the page
+	-- opens to the merc's defaultWeapon instead.
+	selectedItemId = resolveMercWeapon(mercName, entry, theme)
 
 	-- Read unlocked equipment
 	local unlockedSet = {}
@@ -3406,9 +3434,7 @@ buildEquipmentPage = function(mercName, mercNames)
 		if activeCategory ~= "Weapons" then
 			-- If browsing artifacts, show currently equipped weapon
 			local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
-			weaponToShow = (mercEntry and mercEntry:GetAttribute("EquippedWeapon"))
-				or theme.defaultWeapon
-				or "Sword"
+			weaponToShow = resolveMercWeapon(mercName, mercEntry, theme)
 		end
 		currentViewport = buildMercViewport(page, mercName, weaponToShow)
 	end
@@ -3468,9 +3494,7 @@ buildEquipmentPage = function(mercName, mercNames)
 		if activeCategory == "Artifacts" then
 			currentEquip = mercEntry and mercEntry:GetAttribute("EquippedBackpack") or ""
 		else
-			currentEquip = (mercEntry and mercEntry:GetAttribute("EquippedWeapon"))
-				or theme.defaultWeapon
-				or "Sword"
+			currentEquip = resolveMercWeapon(mercName, mercEntry, theme)
 		end
 		if currentEquip == selectedItemId then
 			equipBtn.Text = "EQUIPPED"

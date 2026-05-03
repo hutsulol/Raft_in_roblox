@@ -522,10 +522,16 @@ local function openWeaponSelectPage(ctx)
 	-- to crop the rig on this page, so the pirate renders fully.
 	-- Per Q9 we don't add any "FOR · <MERC>" label — just the model.
 	local theme = ctx.theme or {}
-	local equippedWeaponId = theme.defaultWeapon or "Sword"
+	-- Resolve via the shared helper (scrubs stale-but-disallowed
+	-- attributes in place); falls back to a local resolution if the
+	-- helper isn't threaded through ctx.
 	local mercFolder = player:FindFirstChild("Mercenaries")
-	if mercFolder and ctx.mercName then
-		local entry = mercFolder:FindFirstChild(ctx.mercName)
+	local entry = mercFolder and ctx.mercName and mercFolder:FindFirstChild(ctx.mercName)
+	local equippedWeaponId
+	if typeof(ctx.resolveMercWeapon) == "function" then
+		equippedWeaponId = ctx.resolveMercWeapon(ctx.mercName, entry, theme)
+	else
+		equippedWeaponId = theme.defaultWeapon or "Sword"
 		if entry then
 			local eq = entry:GetAttribute("EquippedWeapon")
 			if eq and eq ~= "" then equippedWeaponId = eq end

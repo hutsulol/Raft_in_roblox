@@ -532,22 +532,47 @@ local function openBodySelectPage(ctx)
 	-- visibility syncs from the merc's EquippedBackpack attribute which
 	-- we mutate directly on equip.
 	local theme = ctx.theme or {}
-	local equippedWeaponId   = theme.defaultWeapon or "Sword"
-	local equippedBackpackId = ""
+	-- Hard fallbacks by merc name so a missing / partial ctx.theme
+	-- can't bring back the legacy "default to Sword" behaviour for
+	-- the Soldier. Mirror of the server's ALLOWED_WEAPONS_BY_MERC in
+	-- MercenaryEquipment.
+	local DEFAULT_WEAPON_BY_MERC = {
+		["Pirate lvl1"]       = "Sword",
+		["Infected Military"] = "Firearm",
+	}
+	local ALLOWED_WEAPONS_BY_MERC = {
+		["Pirate lvl1"]       = { Sword = true, FishingRod = true, Unarmed = true },
+		["Infected Military"] = { Firearm = true, Shotgun = true, FishingRod = true, Unarmed = true },
+	}
+
+	local fallbackDefault = (theme and theme.defaultWeapon)
+		or DEFAULT_WEAPON_BY_MERC[ctx.mercName]
+		or "Sword"
 	local mercFolder = player:FindFirstChild("Mercenaries")
-	if mercFolder and ctx.mercName then
-		local entry = mercFolder:FindFirstChild(ctx.mercName)
+	local entry = mercFolder and ctx.mercName and mercFolder:FindFirstChild(ctx.mercName)
+	local equippedWeaponId
+	if typeof(ctx.resolveMercWeapon) == "function" then
+		-- Shared resolver from MercenariesMenu: scrubs disallowed
+		-- attributes in place + falls back to defaultWeapon.
+		equippedWeaponId = ctx.resolveMercWeapon(ctx.mercName, entry, theme)
+	else
+		equippedWeaponId = fallbackDefault
 		if entry then
-			-- Read the WEAPON attribute (the original code accidentally
-			-- read EquippedBackpack into equippedWeaponId, which is
-			-- why the BodySelectPage viewport showed the wrong weapon
-			-- — Pirate defaulted to Sword; Soldier silently fell back
-			-- to Unarmed because Backpack ids get sanitised down).
 			local wep = entry:GetAttribute("EquippedWeapon")
-			if wep and wep ~= "" then equippedWeaponId = wep end
-			local bp = entry:GetAttribute("EquippedBackpack")
-			if bp and bp ~= "" then equippedBackpackId = bp end
+			if wep and wep ~= "" then
+				local allowed = ALLOWED_WEAPONS_BY_MERC[ctx.mercName]
+				if allowed and not allowed[wep] then
+					entry:SetAttribute("EquippedWeapon", nil)
+				else
+					equippedWeaponId = wep
+				end
+			end
 		end
+	end
+	local equippedBackpackId = ""
+	if entry then
+		local bp = entry:GetAttribute("EquippedBackpack")
+		if bp and bp ~= "" then equippedBackpackId = bp end
 	end
 
 	local viewportHost = Instance.new("Frame")
