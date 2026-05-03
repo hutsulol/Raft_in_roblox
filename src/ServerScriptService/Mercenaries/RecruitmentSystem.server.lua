@@ -34,14 +34,19 @@ local claimedPirates = {}
 -- ── DEV MODE ──────────────────────────────────────────────────────────
 -- Pre-grants the player a roster of mercenaries on join so the phone
 -- menu can be tested without doing a full kill / recruit cycle every
--- session. Recruit-flow dialogue is gated client-side by a separate
+-- session. Only the Pirate is in the dev grant — the Infected Military
+-- must be earned via kill → first-defeat dialogue → brain-maze
+-- completion, otherwise testers can't actually play through that
+-- recruitment flow.
+--
+-- Recruit-flow dialogue is gated client-side by a separate
 -- session-only flag (recruitedThisSession), so pre-granting the
 -- roster here does NOT skip the first-defeat dialogue when the
 -- player actually kills one of these NPCs in the world.
 --
 -- Set to false before shipping.
 local DEV_AUTO_GRANT = true
-local DEV_MERCENARY_NAMES = { "Pirate lvl1", "Infected Military" }
+local DEV_MERCENARY_NAMES = { "Pirate lvl1" }
 
 local function ensureMercenariesFolder(player)
 	local folder = player:FindFirstChild("Mercenaries")

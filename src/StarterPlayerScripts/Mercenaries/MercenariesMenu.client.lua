@@ -331,7 +331,7 @@ local MERC_THEMES = {
 		-- Soldier rig is taller / wider than the Pirate; tweaked
 		-- toward the middle so the camera at (0.6, 2.3, 6.2) frames
 		-- his torso similar to how the Pirate's is framed.
-		viewportPivotY = 0.0,
+		viewportPivotY = 0.3,
 		level       = 1,
 		xp          = 0,
 		xpMax       = 800,
