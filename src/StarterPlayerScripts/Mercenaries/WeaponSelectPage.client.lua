@@ -744,10 +744,51 @@ local function openWeaponSelectPage(ctx)
 		end)
 	end
 
-	buildTab("Warrior",   "WARRIOR",   1)
-	buildTab("Soldier",   "SOLDIER",   2)
-	buildTab("Fisherman", "FISHERMAN", 3)
-	buildTab("Assistant", "ASSISTANT", 4)
+	-- Profession tabs are filtered per-merc: a tab only appears when
+	-- at least one weapon for that profession survives the merc's
+	-- restrictedTo filter. Pirate gets WARRIOR / FISHERMAN /
+	-- ASSISTANT (no SOLDIER tab — Firearm and Shotgun are SCP-only).
+	-- Soldier gets SOLDIER / FISHERMAN / ASSISTANT (no WARRIOR — the
+	-- Pirate Sword is restricted to Pirate). The catch-all bucket
+	-- (defs without a profession field) counts toward whichever tab
+	-- buildGrid eventually renders them under.
+	local function professionHasItemsForMerc(profession)
+		local weapons = ctx.equipItems and ctx.equipItems.Weapons or {}
+		for _, def in ipairs(weapons) do
+			if isWeaponForMerc(def)
+				and (def.profession == nil or def.profession == profession) then
+				return true
+			end
+		end
+		return false
+	end
+
+	local PROFESSION_LIST = {
+		{ id = "Warrior",   label = "WARRIOR"   },
+		{ id = "Soldier",   label = "SOLDIER"   },
+		{ id = "Fisherman", label = "FISHERMAN" },
+		{ id = "Assistant", label = "ASSISTANT" },
+	}
+	local visibleTabIndex = 0
+	for _, prof in ipairs(PROFESSION_LIST) do
+		if professionHasItemsForMerc(prof.id) then
+			visibleTabIndex = visibleTabIndex + 1
+			buildTab(prof.id, prof.label, visibleTabIndex)
+		end
+	end
+
+	-- If the active profession we computed earlier doesn't have a tab
+	-- (rare — e.g. equipped weapon's profession is filtered out for
+	-- this merc), fall back to the first visible tab so the grid has
+	-- something to render.
+	if not arsenalTabRefs[arsenalActiveProfession] then
+		for _, prof in ipairs(PROFESSION_LIST) do
+			if arsenalTabRefs[prof.id] then
+				arsenalActiveProfession = prof.id
+				break
+			end
+		end
+	end
 	refreshTabVisuals()
 
 	-- ── Arsenal weapon grid (cards) ─────────────────────────────────

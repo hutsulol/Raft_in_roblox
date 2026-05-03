@@ -328,9 +328,12 @@ local MERC_THEMES = {
 		rigBuiltinWeapons = {
 			Firearm = "AK-47",
 		},
-		-- Match the Pirate's viewport pivot exactly so the Soldier
-		-- frames the same way across every menu page.
-		viewportPivotY = 0.5,
+		-- Soldier rig is taller / wider than the Pirate, so the same
+		-- pivot Y the Pirate uses (0.5) puts the head near the top of
+		-- the viewport. A negative pivot lowers the rig in world
+		-- space so the camera at (0.6, 2.3, 6.2) frames his torso
+		-- the same way it frames the Pirate's.
+		viewportPivotY = -1.0,
 		level       = 1,
 		xp          = 0,
 		xpMax       = 800,
