@@ -1,0 +1,98 @@
+local ServerStorage = game:GetService("ServerStorage")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Workspace = game:GetService("Workspace")
+
+local npc = script.Parent
+local humanoid = npc:WaitForChild("Humanoid")
+
+local TOOL_CANDIDATES = {
+	"FishingRod ( Tool )",
+	"FishingRod",
+}
+
+local function findToolTemplate()
+	local containers = {ServerStorage, ReplicatedStorage, Workspace}
+
+	for _, container in ipairs(containers) do
+		for _, toolName in ipairs(TOOL_CANDIDATES) do
+			local candidate = container:FindFirstChild(toolName, true)
+			if candidate and candidate:IsA("Tool") then
+				return candidate
+			end
+		end
+	end
+
+	return nil
+end
+
+local function removeOldWeaponTools()
+	for _, child in ipairs(npc:GetChildren()) do
+		if child:IsA("Tool") and child.Name ~= "FishingRod ( Tool )" and child.Name ~= "FishingRod" then
+			child:Destroy()
+		end
+	end
+end
+
+local function disableFishingMechanics(rod)
+	for _, descendant in ipairs(rod:GetDescendants()) do
+		if descendant:IsA("Script") or descendant:IsA("LocalScript") then
+			descendant.Enabled = false
+		elseif descendant:IsA("RopeConstraint") then
+			descendant.Enabled = false
+			descendant.Visible = false
+		end
+	end
+end
+
+local function stabilizeRodParts(rod)
+	local handle = rod:FindFirstChild("Handle")
+	local pointer = rod:FindFirstChild("Pointer")
+
+	if not (handle and pointer and handle:IsA("BasePart") and pointer:IsA("BasePart")) then
+		return
+	end
+
+	pointer.Anchored = false
+	pointer.Massless = true
+	pointer.CanCollide = false
+	pointer.CanTouch = false
+	pointer.CanQuery = false
+	pointer.CFrame = handle.CFrame
+
+	local pointerWeld = pointer:FindFirstChild("NPCPointerWeld")
+	if not pointerWeld then
+		pointerWeld = Instance.new("WeldConstraint")
+		pointerWeld.Name = "NPCPointerWeld"
+		pointerWeld.Part0 = handle
+		pointerWeld.Part1 = pointer
+		pointerWeld.Parent = pointer
+	end
+end
+
+local function equipFishingRod()
+	local template = findToolTemplate()
+	if not template then
+		warn("[Enemy_Pirate] Fishing rod tool not found. Expected a Tool named 'FishingRod ( Tool )' or 'FishingRod'.")
+		return
+	end
+
+	removeOldWeaponTools()
+
+	local rod = template:Clone()
+	rod.CanBeDropped = false
+	-- NPC hold pose: keep rod mostly vertical like a real "standing with rod" stance.
+	-- Position slightly to the right/front of the hand, then rotate so the rod points upward.
+	rod.Grip = CFrame.new(0.1, -0.9, -0.25) * CFrame.Angles(math.rad(15), math.rad(-90), math.rad(180))
+	disableFishingMechanics(rod)
+	stabilizeRodParts(rod)
+	rod.Parent = npc
+
+	if rod:FindFirstChild("Handle") then
+		rod.RequiresHandle = true
+	end
+
+	humanoid:EquipTool(rod)
+end
+
+task.wait(0.1)
+equipFishingRod()

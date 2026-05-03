@@ -1,0 +1,70 @@
+local Players = game:GetService("Players")
+local Player = Players.LocalPlayer
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RemoteThrow = ReplicatedStorage:WaitForChild("RemoteThrow")
+local RemoteRetract = ReplicatedStorage:WaitForChild("RemoteRetract")
+local RemoteSendOwnerName = ReplicatedStorage:WaitForChild("RemoteSendOwnerName")
+local Device = script.Parent.Device
+local Pointer = script.Parent.Pointer
+local RopeConstraint = Pointer.RopeConstraint
+local mouse = Player:GetMouse()
+local onHoldReady = false
+local onHoldRelease = false
+local Tool = script.Parent
+local Speed = Tool.Speed.Value
+local PlayerCharacter = Player.Character 
+local FishEating = Tool.FishEating
+local HumanoidRootPart = PlayerCharacter:WaitForChild("HumanoidRootPart")
+local Humanoid = PlayerCharacter and PlayerCharacter:WaitForChild("Humanoid")
+local isEquipped = false
+local hasDied = false
+Player.CharacterAdded:Connect(function(char)
+	PlayerCharacter = char
+	Humanoid = PlayerCharacter:WaitForChild("Humanoid")
+	HumanoidRootPart = PlayerCharacter:WaitForChild("HumanoidRootPart")
+end)
+script.Parent.Equipped:Connect(function()
+	isEquipped = true
+end)
+script.Parent.Unequipped:Connect(function()
+	isEquipped = false
+end)
+mouse.Button1Up:Connect(function()
+	if isEquipped and not hasDied then
+		if not script.Parent.isThrown.Value then
+			if Pointer:FindFirstChild("Effect") then 
+				Pointer:FindFirstChild("Effect").Enabled = false
+				Pointer:FindFirstChild("Effect"):Destroy()
+				return
+			end
+			if Player.Character:FindFirstChild("Fish") then return end
+			RemoteThrow:FireServer(mouse.Hit, HumanoidRootPart.CFrame, script.Parent.MaxLength.Value, Speed, Player)
+			if Pointer:FindFirstChild("Effect") then 
+				Pointer:FindFirstChild("Effect"):Destroy()
+				Pointer:FindFirstChild("Effect").Enabled = false
+				return
+			end
+		else
+			RemoteRetract:FireServer(mouse.Hit, HumanoidRootPart.CFrame, Player)
+			if not FishEating.Value then 
+			 if Pointer:FindFirstChild("Effect") then 
+				Pointer:FindFirstChild("Effect").Enabled = false
+				end
+			end
+			if not FishEating.Value then return end
+			ReplicatedStorage.HaveFish:FireServer(Player,script.Parent.Name,Pointer)
+			if Pointer:FindFirstChild("Effect") then 
+				FishEating.Value = true
+				Pointer:FindFirstChild("Effect").Enabled = false
+				Pointer:FindFirstChild("Effect"):Destroy()
+				wait()
+				return
+			end
+		end
+	end
+end)
+
+
+Humanoid.Died:Connect(function()
+	hasDied = true
+end)

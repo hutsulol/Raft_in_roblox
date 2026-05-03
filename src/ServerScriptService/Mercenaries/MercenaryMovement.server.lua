@@ -1,0 +1,308 @@
+-- MercenaryMovement.server.lua
+-- Handles movement commands for spawned mercenaries and the automatic
+-- fishing catch loop for FishingRod mercenaries.
+
+local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService = game:GetService("RunService")
+
+local commandEvent = Instance.new("RemoteEvent")
+commandEvent.Name = "MercenaryCommand"
+commandEvent.Parent = ReplicatedStorage
+
+-- Remote used to tell the owning client about a catch (for the +1 popup).
+local catchNotifyEvent = Instance.new("RemoteEvent")
+catchNotifyEvent.Name = "MercFishingCatch"
+catchNotifyEvent.Parent = ReplicatedStorage
+
+local activeTokens = {} -- [model] = token
+
+-- ── Catch pools (same as the player's FishingRod) ──────────────────────
+
+local CATCH_FISH = {
+	{ inventoryName = "Blue_Fish",      weight = 3 },
+	{ inventoryName = "Carp_Fish",      weight = 3 },
+	{ inventoryName = "Tilapia_Fish",   weight = 3 },
+	{ inventoryName = "Seabass_Fish",   weight = 2 },
+	{ inventoryName = "Foil_Fish",      weight = 2 },
+	{ inventoryName = "Jelly_Fish",     weight = 2 },
+	{ inventoryName = "Fish_Bones",     weight = 2 },
+	{ inventoryName = "Legendary_Fish", weight = 1 },
+}
+
+local CATCH_ITEMS = {
+	{ inventoryName = "Log", weight = 1 },
+}
+
+local FISH_BITE_CHANCE = 0.5
+local CATCH_INTERVAL = 60 -- seconds between catches (matches animation cycle)
+
+-- Slot counts per backpack type
+local BACKPACK_SLOT_COUNTS = {
+	Backpack = 6,
+	BackPack_lvl2 = 9,
+}
+local DEFAULT_SLOTS = 6
+
+local function getSlotCount(mercEntry)
+	local bp = mercEntry:GetAttribute("EquippedBackpack") or ""
+	return BACKPACK_SLOT_COUNTS[bp] or DEFAULT_SLOTS
+end
+
+local function pickFromPool(pool)
+	local total = 0
+	for _, entry in pool do total = total + (entry.weight or 0) end
+	if total <= 0 then return nil end
+	local roll = math.random() * total
+	local acc = 0
+	for _, entry in pool do
+		acc = acc + (entry.weight or 0)
+		if roll <= acc then return entry end
+	end
+	return pool[#pool]
+end
+
+local function rollCatch()
+	local preferFish = math.random() < FISH_BITE_CHANCE
+	local primary = preferFish and CATCH_FISH or CATCH_ITEMS
+	local pick = pickFromPool(primary)
+	if not pick then
+		local fallback = preferFish and CATCH_ITEMS or CATCH_FISH
+		pick = pickFromPool(fallback)
+	end
+	return pick
+end
+
+-- ── Helpers ─────────────────────────────────────────────────────────────
+
+local function findMercenary(player, mercName)
+	for _, model in CollectionService:GetTagged("SpawnedMercenary") do
+		if model:GetAttribute("OwnerUserId") == player.UserId
+			and model:GetAttribute("MercName") == mercName
+			and model.Parent then
+			return model
+		end
+	end
+	return nil
+end
+
+local function getPlayerByUserId(userId)
+	for _, p in Players:GetPlayers() do
+		if p.UserId == userId then return p end
+	end
+	return nil
+end
+
+-- ── Mercenary backpack inventory ────────────────────────────────────────
+
+local function addToMercBackpack(mercEntry, itemName)
+	local slots = getSlotCount(mercEntry)
+	-- Try to stack on an existing slot with the same item
+	for i = 1, slots do
+		local name = mercEntry:GetAttribute("Slot" .. i .. "_Name")
+		if name == itemName then
+			local count = mercEntry:GetAttribute("Slot" .. i .. "_Count") or 0
+			mercEntry:SetAttribute("Slot" .. i .. "_Count", count + 1)
+			return true
+		end
+	end
+	-- Find an empty slot
+	for i = 1, slots do
+		local name = mercEntry:GetAttribute("Slot" .. i .. "_Name")
+		if name == nil or name == "" then
+			mercEntry:SetAttribute("Slot" .. i .. "_Name", itemName)
+			mercEntry:SetAttribute("Slot" .. i .. "_Count", 1)
+			return true
+		end
+	end
+	return false -- backpack is full
+end
+
+-- ── Fishing catch loop ─────────────────────────────────────────────────
+
+-- WeaponSelect's UI displays Fishing Speed as `base * (1 + speed/100)`;
+-- mirror that multiplier here so the catch interval actually shortens
+-- as the merc's DNA-research speed stat grows. Falls back to the raw
+-- CATCH_INTERVAL if the DNAResearch module isn't loaded yet or the
+-- player has disconnected.
+local function getFishingInterval(player, mercName)
+	local getState = _G.GetDNAResearchMercState
+	if not getState or not player or not mercName then return CATCH_INTERVAL end
+	local state = getState(player, mercName)
+	local speed = state and state.stats and tonumber(state.stats.speed) or 0
+	local mult  = 1 + speed / 100
+	if mult <= 0 then return CATCH_INTERVAL end
+	return CATCH_INTERVAL / mult
+end
+
+local function startFishingLoop(model)
+	local ownerUserId = model:GetAttribute("OwnerUserId")
+	local mercName = model:GetAttribute("MercName")
+	if not ownerUserId or not mercName then return end
+
+	task.spawn(function()
+		while model.Parent do
+			-- Resolve the owner before the wait so the interval can be
+			-- scaled by the current merc speed. Recomputed every cycle
+			-- so research completed mid-session takes effect on the
+			-- very next catch, not only at next spawn.
+			local player = getPlayerByUserId(ownerUserId)
+			task.wait(getFishingInterval(player, mercName))
+			if not model.Parent then break end
+
+			local humanoid = model:FindFirstChildOfClass("Humanoid")
+			if not humanoid or humanoid.Health <= 0 then break end
+
+			-- Roll a catch
+			local catch = rollCatch()
+			if not catch then continue end
+
+			-- Re-resolve the player after the wait in case they
+			-- (re)joined during the interval.
+			player = getPlayerByUserId(ownerUserId)
+			if not player then continue end
+			local mercFolder = player:FindFirstChild("Mercenaries")
+			local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
+			if not mercEntry then continue end
+
+			-- Only deposit into backpack if one is equipped
+			local equippedBp = mercEntry:GetAttribute("EquippedBackpack")
+			if not equippedBp or equippedBp == "" then continue end
+
+			-- Add to the mercenary's backpack
+			local added = addToMercBackpack(mercEntry, catch.inventoryName)
+			if added then
+				-- Notify the client so it can show the +1 popup and sound
+				catchNotifyEvent:FireClient(player, model, catch.inventoryName)
+			else
+				-- Backpack is full — tell the client so it can show a warning
+				catchNotifyEvent:FireClient(player, model, "__BACKPACK_FULL__")
+			end
+		end
+	end)
+end
+
+-- Start the fishing loop for any FishingRod merc that spawns
+CollectionService:GetInstanceAddedSignal("SpawnedMercenary"):Connect(function(model)
+	-- Wait a frame for attributes to be set by the spawner
+	task.defer(function()
+		local weapon = model:GetAttribute("EquippedWeapon")
+		if weapon == "FishingRod" then
+			startFishingLoop(model)
+		end
+	end)
+end)
+
+-- Also check mercs that are already tagged (in case this script loads late)
+for _, model in CollectionService:GetTagged("SpawnedMercenary") do
+	task.defer(function()
+		local weapon = model:GetAttribute("EquippedWeapon")
+		if weapon == "FishingRod" then
+			startFishingLoop(model)
+		end
+	end)
+end
+
+-- ── Rod swap ────────────────────────────────────────────────────────────
+
+local function swapToRealRod(model)
+	for _, child in model:GetChildren() do
+		if child:IsA("Tool") then
+			child:Destroy()
+		end
+	end
+	local realRod = ReplicatedStorage:FindFirstChild("FishingRod_ForPirate", true)
+	if realRod then
+		local archivable = realRod.Archivable
+		realRod.Archivable = true
+		local clone = realRod:Clone()
+		realRod.Archivable = archivable
+		clone.Parent = model
+	end
+end
+
+-- ── Walk to position ────────────────────────────────────────────────────
+
+local function walkToPosition(model, raftPart, localOffset)
+	activeTokens[model] = nil
+
+	local humanoid = model:FindFirstChildOfClass("Humanoid")
+	if not humanoid or humanoid.Health <= 0 then return end
+
+	local token = {}
+	activeTokens[model] = token
+
+	task.spawn(function()
+		while activeTokens[model] == token do
+			if not humanoid or not humanoid.Parent or humanoid.Health <= 0 then return end
+			if not raftPart or not raftPart.Parent then return end
+
+			local currentHRP = model:FindFirstChild("HumanoidRootPart")
+			if not currentHRP then return end
+
+			local worldTarget = raftPart.CFrame:PointToWorldSpace(localOffset)
+			local dist = (currentHRP.Position - worldTarget).Magnitude
+
+			if dist < 2 then break end
+
+			humanoid:MoveTo(worldTarget)
+			task.wait(0.15)
+		end
+
+		if activeTokens[model] ~= token then return end
+
+		if humanoid and humanoid.Parent then
+			local hrp = model:FindFirstChild("HumanoidRootPart")
+			if hrp then
+				humanoid:MoveTo(hrp.Position)
+			end
+		end
+
+		local equippedWeapon = model:GetAttribute("EquippedWeapon") or "Sword"
+		if equippedWeapon == "FishingRod" then
+			swapToRealRod(model)
+		end
+
+		if activeTokens[model] == token then
+			activeTokens[model] = nil
+		end
+	end)
+end
+
+-- ── Harvest floating resources ─────────────────────────────────────────
+-- The actual scan + 15s harvest happens in HarvestResources.script
+-- inside the Pirate_2 template. This file only delivers the merc to the
+-- chosen raft spot via walkToPosition; the in-pirate script then
+-- auto-harvests anything floating within 10 studs of the merc.
+
+-- ── Remote handler ──────────────────────────────────────────────────────
+
+commandEvent.OnServerEvent:Connect(function(player, action, mercName, raftPart, localOffset)
+	if typeof(action) ~= "string" then return end
+
+	if action == "setFishingLocation" or action == "setHarvestLocation" then
+		if typeof(mercName) ~= "string" then return end
+		if typeof(raftPart) ~= "Instance" or not raftPart:IsA("BasePart") then return end
+		if typeof(localOffset) ~= "Vector3" then return end
+
+		local raft = workspace:FindFirstChild("Raft")
+		if not raft or not raftPart:IsDescendantOf(raft) then return end
+
+		local model = findMercenary(player, mercName)
+		if not model then return end
+
+		walkToPosition(model, raftPart, localOffset)
+
+	elseif action == "toggleCooldownDisplay" then
+		if typeof(mercName) ~= "string" then return end
+		local model = findMercenary(player, mercName)
+		if not model then return end
+		local hidden = model:GetAttribute("CooldownHidden") == true
+		model:SetAttribute("CooldownHidden", not hidden)
+	end
+end)
+
+CollectionService:GetInstanceRemovedSignal("SpawnedMercenary"):Connect(function(model)
+	activeTokens[model] = nil
+end)

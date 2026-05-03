@@ -1,0 +1,519 @@
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Players = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
+local UserInputService = game:GetService("UserInputService")
+
+local player = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local craftEvent = ReplicatedStorage:WaitForChild("CraftItem")
+local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
+local openWorkbenchEvent = ReplicatedStorage:WaitForChild("OpenWorkbench")
+
+local inventory = {Log = 0, Stone = 0}
+local recipes = {
+	{
+		name = "Wood_Knife",
+		displayName = "Wood Knife",
+		icon = "rbxassetid://110032041583533",
+		costs = {Log = 2},
+	},
+	{
+		name = "Bed",
+		displayName = "Bed",
+		icon = "rbxassetid://85069521486600",
+		costs = {Log = 2},
+	},
+	{
+		name = "Furnace",
+		displayName = "Furnace",
+		icon = "rbxassetid://117760352651529",
+		costs = {Stone = 10, Log = 5},
+	},
+	{
+		name = "Sawmill",
+		displayName = "Sawmill",
+		icon = "rbxassetid://75858978626954",
+		costs = {Log = 1},
+	},
+	{
+		name = "SmallContainer",
+		displayName = "Small Container",
+		icon = "rbxassetid://86632287242518",
+		costs = {Log = 1},
+	},
+	{
+		name = "PlasticContainer",
+		displayName = "Plastic Container",
+		icon = "rbxassetid://98308527317479",
+		costs = {Plastic = 5},
+	},
+	{
+		name = "Anchor_part",
+		displayName = "Anchor",
+		icon = "rbxassetid://120414328052740",
+		costs = {Log = 1},
+	},
+}
+local selectedRecipe = nil
+local isOpen = false
+local screenGui = nil
+
+local LOG_ICON = "rbxassetid://110032041583533"
+
+local COST_ICONS = {
+	Log = LOG_ICON,
+	Stone = "rbxassetid://134781813180973",
+	Plastic = "rbxassetid://132919988751848",
+	Iron_Ore = "rbxassetid://73676755288746",
+	Iron_Ingot = "rbxassetid://72890243946368",
+	Plank = "rbxassetid://118108820731466",
+	Leaves = "rbxassetid://96691360298069",
+	Rope = "rbxassetid://78492721752628",
+	Sand = "rbxassetid://92407877736322",
+	Clay = "rbxassetid://129473903672183",
+	Wet_Brick = "rbxassetid://77999856849195",
+	Dry_Brick = "rbxassetid://129896663405682",
+}
+
+local function canAfford(recipe)
+	if not recipe or not recipe.costs then return false end
+	for item, amount in recipe.costs do
+		if (inventory[item] or 0) < amount then
+			return false
+		end
+	end
+	return true
+end
+
+local function closeUI()
+	if screenGui then
+		screenGui:Destroy()
+		screenGui = nil
+	end
+	isOpen = false
+	selectedRecipe = nil
+end
+
+local function updateUI()
+	if not screenGui then return end
+
+	local logCount = screenGui:FindFirstChild("LogCount", true)
+	if logCount then
+		logCount.Text = tostring(inventory.Log or 0)
+	end
+
+	local recipeList = screenGui:FindFirstChild("RecipeList", true)
+	if recipeList then
+		for _, btn in recipeList:GetChildren() do
+			if btn:IsA("TextButton") and btn:GetAttribute("RecipeName") then
+				local rName = btn:GetAttribute("RecipeName")
+				for _, r in recipes do
+					if r.name == rName then
+						local affordable = canAfford(r)
+						local costColor = affordable and Color3.fromRGB(100, 255, 100) or Color3.fromRGB(255, 80, 80)
+						for _, child in btn:GetChildren() do
+							if child.Name == "CostLabel" and child:IsA("TextLabel") then
+								child.TextColor3 = costColor
+							end
+						end
+					end
+				end
+			end
+		end
+	end
+
+	local detailPanel = screenGui:FindFirstChild("DetailPanel", true)
+	if detailPanel then
+		if selectedRecipe then
+			detailPanel.Visible = true
+			local titleLabel = detailPanel:FindFirstChild("DetailTitle")
+			if titleLabel then
+				titleLabel.Text = selectedRecipe.displayName or selectedRecipe.name
+			end
+			local detailIcon = detailPanel:FindFirstChild("DetailIcon")
+			if detailIcon then
+				detailIcon.Image = selectedRecipe.icon or ""
+			end
+			local costList = detailPanel:FindFirstChild("CostList")
+			if costList then
+				for _, child in costList:GetChildren() do
+					if child:IsA("Frame") then
+						child:Destroy()
+					end
+				end
+				local order = 0
+				for item, amount in selectedRecipe.costs do
+					order = order + 1
+					local row = Instance.new("Frame")
+					row.Name = "CostRow"
+					row.Size = UDim2.new(1, 0, 0, 28)
+					row.BackgroundTransparency = 1
+					row.LayoutOrder = order
+					row.Parent = costList
+
+					local rIcon = Instance.new("ImageLabel")
+					rIcon.Size = UDim2.new(0, 24, 0, 24)
+					rIcon.Position = UDim2.new(0, 0, 0.5, -12)
+					rIcon.BackgroundTransparency = 1
+					rIcon.Image = COST_ICONS[item] or LOG_ICON
+					rIcon.ScaleType = Enum.ScaleType.Fit
+					rIcon.Parent = row
+
+					local rLabel = Instance.new("TextLabel")
+					rLabel.Size = UDim2.new(1, -32, 1, 0)
+					rLabel.Position = UDim2.new(0, 32, 0, 0)
+					rLabel.BackgroundTransparency = 1
+					rLabel.Text = tostring(amount) .. " " .. item
+					rLabel.TextColor3 = Color3.fromRGB(255, 220, 100)
+					rLabel.TextScaled = true
+					rLabel.Font = Enum.Font.GothamBold
+					rLabel.TextXAlignment = Enum.TextXAlignment.Left
+					rLabel.Parent = row
+				end
+			end
+			local craftBtn = detailPanel:FindFirstChild("CraftButton")
+			if craftBtn then
+				local affordable = canAfford(selectedRecipe)
+				craftBtn.BackgroundColor3 = affordable and Color3.fromRGB(60, 140, 60) or Color3.fromRGB(100, 100, 100)
+			end
+		else
+			detailPanel.Visible = false
+		end
+	end
+end
+
+local function selectRecipe(recipe)
+	selectedRecipe = recipe
+	updateUI()
+end
+
+local function buildUI()
+	screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "WorkbenchGui"
+	screenGui.ResetOnSpawn = false
+	screenGui.Parent = playerGui
+
+	local main = Instance.new("Frame")
+	main.Name = "Main"
+	main.Size = UDim2.new(0, 700, 0, 450)
+	main.Position = UDim2.new(0.5, -350, 0.5, -225)
+	main.BackgroundColor3 = Color3.fromRGB(45, 45, 50)
+	main.BorderSizePixel = 0
+	main.Parent = screenGui
+
+	local mainCorner = Instance.new("UICorner")
+	mainCorner.CornerRadius = UDim.new(0, 12)
+	mainCorner.Parent = main
+
+	local mainStroke = Instance.new("UIStroke")
+	mainStroke.Color = Color3.fromRGB(80, 80, 90)
+	mainStroke.Thickness = 2
+	mainStroke.Parent = main
+
+	local topBar = Instance.new("Frame")
+	topBar.Name = "TopBar"
+	topBar.Size = UDim2.new(1, 0, 0, 50)
+	topBar.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+	topBar.BorderSizePixel = 0
+	topBar.Parent = main
+
+	local topCorner = Instance.new("UICorner")
+	topCorner.CornerRadius = UDim.new(0, 12)
+	topCorner.Parent = topBar
+
+	local topFix = Instance.new("Frame")
+	topFix.Size = UDim2.new(1, 0, 0, 12)
+	topFix.Position = UDim2.new(0, 0, 1, -12)
+	topFix.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+	topFix.BorderSizePixel = 0
+	topFix.Parent = topBar
+
+	local logIcon = Instance.new("ImageLabel")
+	logIcon.Size = UDim2.new(0, 30, 0, 30)
+	logIcon.Position = UDim2.new(0, 15, 0.5, -15)
+	logIcon.BackgroundTransparency = 1
+	logIcon.Image = LOG_ICON
+	logIcon.ScaleType = Enum.ScaleType.Fit
+	logIcon.Parent = topBar
+
+	local logCount = Instance.new("TextLabel")
+	logCount.Name = "LogCount"
+	logCount.Size = UDim2.new(0, 50, 0, 30)
+	logCount.Position = UDim2.new(0, 50, 0.5, -15)
+	logCount.BackgroundTransparency = 1
+	logCount.Text = tostring(inventory.Log or 0)
+	logCount.TextColor3 = Color3.new(1, 1, 1)
+	logCount.TextScaled = true
+	logCount.Font = Enum.Font.GothamBold
+	logCount.TextXAlignment = Enum.TextXAlignment.Left
+	logCount.Parent = topBar
+
+	local closeBtn = Instance.new("TextButton")
+	closeBtn.Name = "CloseBtn"
+	closeBtn.Size = UDim2.new(0, 40, 0, 40)
+	closeBtn.Position = UDim2.new(1, -45, 0.5, -20)
+	closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50)
+	closeBtn.Text = "X"
+	closeBtn.TextColor3 = Color3.new(1, 1, 1)
+	closeBtn.TextScaled = true
+	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.BorderSizePixel = 0
+	closeBtn.Parent = topBar
+
+	local closeBtnCorner = Instance.new("UICorner")
+	closeBtnCorner.CornerRadius = UDim.new(0, 8)
+	closeBtnCorner.Parent = closeBtn
+
+	closeBtn.MouseButton1Click:Connect(closeUI)
+
+	local leftPanel = Instance.new("Frame")
+	leftPanel.Name = "LeftPanel"
+	leftPanel.Size = UDim2.new(0, 420, 0, 380)
+	leftPanel.Position = UDim2.new(0, 15, 0, 60)
+	leftPanel.BackgroundColor3 = Color3.fromRGB(55, 55, 60)
+	leftPanel.BorderSizePixel = 0
+	leftPanel.Parent = main
+
+	local leftCorner = Instance.new("UICorner")
+	leftCorner.CornerRadius = UDim.new(0, 8)
+	leftCorner.Parent = leftPanel
+
+	local sectionTitle = Instance.new("TextLabel")
+	sectionTitle.Size = UDim2.new(1, -20, 0, 30)
+	sectionTitle.Position = UDim2.new(0, 10, 0, 5)
+	sectionTitle.BackgroundTransparency = 1
+	sectionTitle.Text = "Crafting - Level 1"
+	sectionTitle.TextColor3 = Color3.new(1, 1, 1)
+	sectionTitle.TextScaled = true
+	sectionTitle.Font = Enum.Font.GothamBold
+	sectionTitle.TextXAlignment = Enum.TextXAlignment.Left
+	sectionTitle.Parent = leftPanel
+
+	local recipeList = Instance.new("Frame")
+	recipeList.Name = "RecipeList"
+	recipeList.Size = UDim2.new(1, -20, 1, -45)
+	recipeList.Position = UDim2.new(0, 10, 0, 40)
+	recipeList.BackgroundTransparency = 1
+	recipeList.Parent = leftPanel
+
+	local grid = Instance.new("UIGridLayout")
+	grid.CellSize = UDim2.new(0, 120, 0, 130)
+	grid.CellPadding = UDim2.new(0, 10, 0, 10)
+	grid.SortOrder = Enum.SortOrder.LayoutOrder
+	grid.Parent = recipeList
+
+	for i, recipe in recipes do
+		local btn = Instance.new("TextButton")
+		btn.Name = "Recipe_" .. recipe.name
+		btn.BackgroundColor3 = Color3.fromRGB(70, 70, 75)
+		btn.Text = ""
+		btn.BorderSizePixel = 0
+		btn.LayoutOrder = i
+		btn.AutoButtonColor = true
+		btn.Parent = recipeList
+		btn:SetAttribute("RecipeName", recipe.name)
+
+		local btnCorner = Instance.new("UICorner")
+		btnCorner.CornerRadius = UDim.new(0, 6)
+		btnCorner.Parent = btn
+
+		local btnStroke = Instance.new("UIStroke")
+		btnStroke.Color = Color3.fromRGB(90, 90, 100)
+		btnStroke.Thickness = 1
+		btnStroke.Parent = btn
+
+		local iconFrame = Instance.new("ImageLabel")
+		iconFrame.Name = "Icon"
+		iconFrame.Size = UDim2.new(0, 60, 0, 60)
+		iconFrame.Position = UDim2.new(0.5, -30, 0, 10)
+		iconFrame.BackgroundTransparency = 1
+		iconFrame.Image = recipe.icon or ""
+		iconFrame.ScaleType = Enum.ScaleType.Fit
+		iconFrame.Parent = btn
+
+		local nameLabel = Instance.new("TextLabel")
+		nameLabel.Name = "NameLabel"
+		nameLabel.Size = UDim2.new(1, -10, 0, 20)
+		nameLabel.Position = UDim2.new(0, 5, 0, 72)
+		nameLabel.BackgroundTransparency = 1
+		nameLabel.Text = recipe.displayName or recipe.name
+		nameLabel.TextColor3 = Color3.new(1, 1, 1)
+		nameLabel.TextScaled = true
+		nameLabel.Font = Enum.Font.Gotham
+		nameLabel.Parent = btn
+
+		local costOffsetX = 8
+		for item, amount in recipe.costs do
+			local cIcon = Instance.new("ImageLabel")
+			cIcon.Size = UDim2.new(0, 18, 0, 18)
+			cIcon.Position = UDim2.new(0, costOffsetX, 1, -27)
+			cIcon.BackgroundTransparency = 1
+			cIcon.Image = COST_ICONS[item] or LOG_ICON
+			cIcon.ScaleType = Enum.ScaleType.Fit
+			cIcon.Parent = btn
+
+			local cLabel = Instance.new("TextLabel")
+			cLabel.Name = "CostLabel"
+			cLabel.Size = UDim2.new(0, 22, 0, 18)
+			cLabel.Position = UDim2.new(0, costOffsetX + 19, 1, -27)
+			cLabel.BackgroundTransparency = 1
+			cLabel.Text = tostring(amount)
+			cLabel.TextScaled = true
+			cLabel.Font = Enum.Font.GothamBold
+			cLabel.TextXAlignment = Enum.TextXAlignment.Left
+			cLabel.Parent = btn
+
+			costOffsetX = costOffsetX + 44
+		end
+
+		btn.MouseButton1Click:Connect(function()
+			selectRecipe(recipe)
+		end)
+	end
+
+	local detailPanel = Instance.new("Frame")
+	detailPanel.Name = "DetailPanel"
+	detailPanel.Size = UDim2.new(0, 240, 0, 380)
+	detailPanel.Position = UDim2.new(0, 445, 0, 60)
+	detailPanel.BackgroundColor3 = Color3.fromRGB(55, 55, 60)
+	detailPanel.BorderSizePixel = 0
+	detailPanel.Visible = false
+	detailPanel.Parent = main
+
+	local detailCorner = Instance.new("UICorner")
+	detailCorner.CornerRadius = UDim.new(0, 8)
+	detailCorner.Parent = detailPanel
+
+	local detailTitle = Instance.new("TextLabel")
+	detailTitle.Name = "DetailTitle"
+	detailTitle.Size = UDim2.new(1, -20, 0, 35)
+	detailTitle.Position = UDim2.new(0, 10, 0, 10)
+	detailTitle.BackgroundTransparency = 1
+	detailTitle.Text = ""
+	detailTitle.TextColor3 = Color3.new(1, 1, 1)
+	detailTitle.TextScaled = true
+	detailTitle.Font = Enum.Font.GothamBold
+	detailTitle.TextWrapped = true
+	detailTitle.Parent = detailPanel
+
+	local detailIcon = Instance.new("ImageLabel")
+	detailIcon.Name = "DetailIcon"
+	detailIcon.Size = UDim2.new(0, 120, 0, 120)
+	detailIcon.Position = UDim2.new(0.5, -60, 0, 55)
+	detailIcon.BackgroundTransparency = 1
+	detailIcon.Image = ""
+	detailIcon.ScaleType = Enum.ScaleType.Fit
+	detailIcon.Parent = detailPanel
+
+	local costList = Instance.new("Frame")
+	costList.Name = "CostList"
+	costList.Size = UDim2.new(1, -40, 0, 80)
+	costList.Position = UDim2.new(0, 20, 0, 195)
+	costList.BackgroundTransparency = 1
+	costList.Parent = detailPanel
+
+	local costLayout = Instance.new("UIListLayout")
+	costLayout.FillDirection = Enum.FillDirection.Vertical
+	costLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	costLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	costLayout.Padding = UDim.new(0, 4)
+	costLayout.Parent = costList
+
+	local craftBtn = Instance.new("TextButton")
+	craftBtn.Name = "CraftButton"
+	craftBtn.Size = UDim2.new(0, 160, 0, 45)
+	craftBtn.Position = UDim2.new(0.5, -80, 1, -65)
+	craftBtn.BackgroundColor3 = Color3.fromRGB(60, 140, 60)
+	craftBtn.Text = "Craft"
+	craftBtn.TextColor3 = Color3.new(1, 1, 1)
+	craftBtn.TextScaled = true
+	craftBtn.Font = Enum.Font.GothamBold
+	craftBtn.BorderSizePixel = 0
+	craftBtn.Parent = detailPanel
+
+	local craftBtnCorner = Instance.new("UICorner")
+	craftBtnCorner.CornerRadius = UDim.new(0, 8)
+	craftBtnCorner.Parent = craftBtn
+
+	craftBtn.MouseButton1Click:Connect(function()
+		if selectedRecipe and canAfford(selectedRecipe) then
+			craftEvent:FireServer("craft", selectedRecipe.name)
+		end
+	end)
+
+	updateUI()
+end
+
+local function openUI()
+	if isOpen then
+		closeUI()
+		return
+	end
+	isOpen = true
+	craftEvent:FireServer("requestRecipes")
+	buildUI()
+end
+
+openWorkbenchEvent.OnClientEvent:Connect(openUI)
+
+-- E / Escape closes the workbench UI. Suppress InventoryUI's deferred
+-- E toggle during the close so it can't reopen the main inventory
+-- after we tear down. Clear the flag after the defer / prompt window
+-- so a later E press behaves normally.
+UserInputService.InputBegan:Connect(function(input)
+	if not isOpen then return end
+	if input.KeyCode ~= Enum.KeyCode.E
+		and input.KeyCode ~= Enum.KeyCode.Escape then
+		return
+	end
+	_G.SuppressInventoryToggle = true
+	closeUI()
+	task.delay(0.25, function()
+		_G.SuppressInventoryToggle = false
+	end)
+end)
+
+inventoryEvent.OnClientEvent:Connect(function(inv)
+	inventory = inv
+	updateUI()
+end)
+
+craftEvent.OnClientEvent:Connect(function(action, data, inv)
+	if action == "recipes" then
+		-- Use server inventory data but keep client-side recipe list
+		if inv then
+			inventory = inv
+		end
+		if isOpen then
+			closeUI()
+			isOpen = true
+			buildUI()
+		end
+	elseif action == "success" then
+		local successGui = Instance.new("ScreenGui")
+		successGui.Parent = playerGui
+
+		local label = Instance.new("TextLabel")
+		label.Size = UDim2.new(0, 300, 0, 50)
+		label.Position = UDim2.new(0.5, -150, 0.3, 0)
+		label.BackgroundTransparency = 1
+		label.Text = "Crafted!"
+		label.TextColor3 = Color3.fromRGB(100, 255, 100)
+		label.TextStrokeTransparency = 0.5
+		label.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+		label.TextScaled = true
+		label.Font = Enum.Font.GothamBold
+		label.Parent = successGui
+
+		local tween = TweenService:Create(label, TweenInfo.new(1.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out), {
+			Position = UDim2.new(0.5, -150, 0.25, 0),
+			TextTransparency = 1,
+			TextStrokeTransparency = 1,
+		})
+		tween:Play()
+		tween.Completed:Connect(function()
+			successGui:Destroy()
+		end)
+	end
+end)

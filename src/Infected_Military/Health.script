@@ -1,0 +1,34 @@
+-- Gradually regenerates the Humanoid's Health over time.
+
+local REGEN_RATE = 1/100 -- Regenerate this fraction of MaxHealth per second.
+local REGEN_STEP = 1 -- Wait this long between each regeneration step.
+
+-- Baseline HP for the hostile Infected Military rig. The rig is
+-- intentionally fragile (1 HP) so any weapon hit drops it instantly
+-- — recruitment is the gameplay goal, not a damage check. The
+-- health bar is also hidden because a 1-HP bar adds no information
+-- and just clutters the screen.
+local MAX_HEALTH = 1
+
+--------------------------------------------------------------------------------
+
+local Character = script.Parent
+local Humanoid = Character:WaitForChild'Humanoid'
+
+Humanoid.MaxHealth          = MAX_HEALTH
+Humanoid.Health             = MAX_HEALTH
+Humanoid.HealthDisplayType  = Enum.HumanoidHealthDisplayType.AlwaysOff
+Humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+Humanoid.HealthDisplayDistance = 0
+Humanoid.NameDisplayDistance   = 0
+
+--------------------------------------------------------------------------------
+
+while true do
+	while Humanoid.Health < Humanoid.MaxHealth do
+		local dt = wait(REGEN_STEP)
+		local dh = dt*REGEN_RATE*Humanoid.MaxHealth
+		Humanoid.Health = math.min(Humanoid.Health + dh, Humanoid.MaxHealth)
+	end
+	Humanoid.HealthChanged:Wait()
+end
