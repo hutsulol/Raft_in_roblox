@@ -212,7 +212,10 @@ local function buildCard(parent, layoutOrder)
 	card.LayoutOrder = layoutOrder or 0
 	card.Size = UDim2.new(1, 0, 0, 0)   -- height auto-sized below
 	card.AutomaticSize = Enum.AutomaticSize.Y
-	card.BackgroundColor3 = COLOR_PAPER
+	-- Outer card uses the wood mid-tone so the inner Header / Objectives /
+	-- Reward panels (paper-light) read as panels-on-wood — matches the
+	-- reference mockup's two-tone layering.
+	card.BackgroundColor3 = COLOR_WOOD_BASE
 	card.BorderSizePixel = 0
 	card.ZIndex = 7
 	card.Parent = parent
@@ -248,23 +251,43 @@ local function buildCard(parent, layoutOrder)
 	cLayout.Padding = UDim.new(0, 10)
 	cLayout.Parent = card
 
-	-- ── Header row (E4) ───────────────────────────────────────────────
-	-- Icon on the left, title + body stacked on the right. Layout sits
-	-- above the objectives list so the story reads "this is the quest,
-	-- here's what to do" top-down.
+	-- ── Header card ────────────────────────────────────────────────
+	-- Paper-light pane that holds the quest icon + title + body so it
+	-- visually pairs with the Objectives / Reward panels below. The
+	-- outer card is wood-coloured (above), so this pane sits on top
+	-- as a "card-on-wood" layer.
 	local header = Instance.new("Frame")
 	header.Name = "Header"
 	header.LayoutOrder = 1
-	header.Size = UDim2.new(1, 0, 0, 60)
-	header.BackgroundTransparency = 1
+	header.Size = UDim2.new(1, 0, 0, 70)
+	header.BackgroundColor3 = COLOR_PAPER_LIGHT
+	header.BackgroundTransparency = 0.05
+	header.BorderSizePixel = 0
 	header.ZIndex = card.ZIndex + 1
 	header.Parent = card
+
+	local hCorner = Instance.new("UICorner")
+	hCorner.CornerRadius = UDim.new(0, 8)
+	hCorner.Parent = header
+
+	local hStroke = Instance.new("UIStroke")
+	hStroke.Color = COLOR_WOOD_DARK
+	hStroke.Thickness = 1
+	hStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	hStroke.Parent = header
+
+	local hPad = Instance.new("UIPadding")
+	hPad.PaddingTop    = UDim.new(0, 8)
+	hPad.PaddingBottom = UDim.new(0, 8)
+	hPad.PaddingLeft   = UDim.new(0, 10)
+	hPad.PaddingRight  = UDim.new(0, 10)
+	hPad.Parent = header
 
 	local iconImage = Instance.new("ImageLabel")
 	iconImage.Name = "Icon"
 	iconImage.AnchorPoint = Vector2.new(0, 0.5)
 	iconImage.Position = UDim2.new(0, 0, 0.5, 0)
-	iconImage.Size = UDim2.fromOffset(60, 60)
+	iconImage.Size = UDim2.fromOffset(54, 54)
 	iconImage.BackgroundTransparency = 1
 	iconImage.BorderSizePixel = 0
 	iconImage.ScaleType = Enum.ScaleType.Fit

@@ -86,9 +86,10 @@ local HEADER_HEIGHT     = 36
 local HEADER_GLYPH_SIZE = 30
 local HEADER_GLYPH_GAP  = 8
 
--- Close button (top-right of the panel). Same dimensions + recipe as
--- the OnboardingTooltip's X so the wood-style UIs read as one set.
-local CLOSE_BTN_SIZE = 26
+-- Close button (top-right of the panel). Now an illustrated wood-X
+-- asset, sized a touch larger than the legacy plain-square button so
+-- the bezel + cross have room to read.
+local CLOSE_BTN_SIZE = 36
 local CLOSE_BTN_RADIUS = 8
 
 -- ─── Tab catalog ─────────────────────────────────────────────────────
@@ -483,8 +484,14 @@ end
 -- AnchorPoint (1, 0) with positive offset moves it past the parent
 -- UIPadding so the button kisses the visual edge instead of the
 -- padded box.
+local CLOSE_BTN_ASSET = "rbxassetid://76127527205295"
+
 local function buildCloseButton(parent)
-	local close = Instance.new("TextButton")
+	-- ImageButton instead of TextButton + glyph: the close art the
+	-- user supplied is a fully self-contained illustration (wood
+	-- bezel + cream X), so we just render the asset and skip the
+	-- BackgroundColor / corner / stroke chrome we used to draw.
+	local close = Instance.new("ImageButton")
 	close.Name = "CloseButton"
 	close.AnchorPoint = Vector2.new(1, 0)
 	-- (PANEL_PAD - 8) lifts the button past the parent's 14-px
@@ -492,39 +499,19 @@ local function buildCloseButton(parent)
 	-- outer rect matches the mockup's `top: 8px; right: 8px`.
 	close.Position = UDim2.new(1, PANEL_PAD - 8, 0, -(PANEL_PAD - 8))
 	close.Size = UDim2.fromOffset(CLOSE_BTN_SIZE, CLOSE_BTN_SIZE)
-	close.BackgroundColor3 = COLOR_WOOD_MID
+	close.BackgroundTransparency = 1
 	close.BorderSizePixel = 0
 	close.AutoButtonColor = false
-	close.Text = ""
+	close.Image = CLOSE_BTN_ASSET
+	close.ScaleType = Enum.ScaleType.Fit
 	close.ZIndex = 7
 	close.Parent = parent
 
-	local cCorner = Instance.new("UICorner")
-	cCorner.CornerRadius = UDim.new(0, CLOSE_BTN_RADIUS)
-	cCorner.Parent = close
-
-	local cStroke = Instance.new("UIStroke")
-	cStroke.Color = COLOR_WOOD_DARK
-	cStroke.Thickness = 2
-	cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	cStroke.Parent = close
-
-	local glyph = Instance.new("TextLabel")
-	glyph.BackgroundTransparency = 1
-	glyph.BorderSizePixel = 0
-	glyph.Size = UDim2.fromScale(1, 1)
-	glyph.Font = Enum.Font.GothamBold
-	glyph.TextSize = 14
-	glyph.TextColor3 = COLOR_PAPER_LIGHT
-	glyph.Text = "✕"
-	glyph.ZIndex = 8
-	glyph.Parent = close
-
 	close.MouseEnter:Connect(function()
-		close.BackgroundColor3 = COLOR_WOOD_DARK
+		close.ImageTransparency = 0.15
 	end)
 	close.MouseLeave:Connect(function()
-		close.BackgroundColor3 = COLOR_WOOD_MID
+		close.ImageTransparency = 0
 	end)
 
 	close.MouseButton1Click:Connect(function()
@@ -633,7 +620,11 @@ local function ensureScreenGui()
 	screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "QuestMenuGui"
 	screenGui.ResetOnSpawn = false
-	screenGui.IgnoreGuiInset = false
+	-- IgnoreGuiInset=true so the backdrop tween covers the entire
+	-- screen, including the topbar inset area. Without this, the
+	-- top ~36px stripe shows through bright while the rest of the
+	-- screen is dimmed.
+	screenGui.IgnoreGuiInset = true
 	screenGui.DisplayOrder = SCREENGUI_DISPLAY_ORDER
 	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	screenGui.Enabled = false   -- shown only after openQuestMenu()
