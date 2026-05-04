@@ -222,6 +222,16 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 		ragdoller:Destroy()
 	end
 
+	-- Gate Soldier firearm AI exactly like Pirate role scripts:
+	-- keep NpcAi only for Firearm loadout; disable it for FishingRod/
+	-- Unarmed so HarvestResources/Fishing can own behaviour cleanly.
+	if mercName == "Infected Military" then
+		local soldierAi = clone:FindFirstChild("NpcAi") or clone:FindFirstChild("NpcAi.script") or clone:FindFirstChild("NpcAi.scrpit")
+		if soldierAi and soldierAi:IsA("Script") then
+			soldierAi.Enabled = (equippedWeapon == "Firearm")
+		end
+	end
+
 	-- Per-merc-rig scripts (NPC AI, Health, HurtScript, Respawn, etc.)
 	-- are left alone — the user authors them on the rig in Studio and
 	-- expects them to drive the merc behaviour. The legacy Ragdoller

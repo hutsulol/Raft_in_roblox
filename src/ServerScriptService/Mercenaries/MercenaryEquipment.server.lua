@@ -314,6 +314,16 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
 					-- Keep live merc model attribute in sync with the saved entry.
 					-- Combat/Fishing/Harvest scripts read this directly.
 					model:SetAttribute("EquippedWeapon", itemId)
+
+					-- Soldier AI must mirror Pirate-style role switching:
+					-- Firearm => firearm NpcAi ON, otherwise OFF so
+					-- Fishing/Harvest scripts take control.
+					if mercName == "Infected Military" then
+						local soldierAi = model:FindFirstChild("NpcAi") or model:FindFirstChild("NpcAi.script") or model:FindFirstChild("NpcAi.scrpit")
+						if soldierAi and soldierAi:IsA("Script") then
+							soldierAi.Enabled = (itemId == "Firearm")
+						end
+					end
 					if itemId == "Unarmed" then
 						for _, child in model:GetChildren() do
 							if child:IsA("Tool") then
