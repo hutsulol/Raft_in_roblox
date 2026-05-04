@@ -700,19 +700,28 @@ local function repaint(payload)
 	end
 	activeQuest = pendingReward or activeQuest or fallback
 
-	-- Always destroy + rebuild the card on each repaint. Reusing the
-	-- card across tab switches caused the auto-sized two-column body
-	-- to settle into a stale layout the second time the Story tab
-	-- was opened — full rebuild keeps the layout deterministic.
+	-- Tear down any cards that don't match the new active quest so
+	-- only the chosen one stays mounted, then reuse + repaint the
+	-- existing card if its id matches. Rebuilding on every repaint
+	-- caused the AutomaticSize layout to settle stale when state
+	-- pushes arrived while the Story tab was hidden — the new card
+	-- couldn't measure its children and the wrong sizes stuck
+	-- around when the tab became visible again.
 	for id, entry in pairs(cardsById) do
-		entry.card:Destroy()
-		cardsById[id] = nil
+		if not activeQuest or id ~= activeQuest.id then
+			entry.card:Destroy()
+			cardsById[id] = nil
+		end
 	end
 
 	if activeQuest then
-		local card, refs = buildCard(scrollFrame, 1)
-		cardsById[activeQuest.id] = { card = card, refs = refs }
-		paintCard(refs, activeQuest)
+		local entry = cardsById[activeQuest.id]
+		if not entry then
+			local card, refs = buildCard(scrollFrame, 1)
+			entry = { card = card, refs = refs }
+			cardsById[activeQuest.id] = entry
+		end
+		paintCard(entry.refs, activeQuest)
 	end
 
 	emptyState.Visible = (activeQuest == nil)
