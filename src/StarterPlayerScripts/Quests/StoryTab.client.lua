@@ -94,35 +94,46 @@ end
 -- the left, N/M on the right, thin progress bar below the row".
 -- Returned refs let E9's paint path update progress without rebuilding
 -- the row.
-local OBJ_ROW_H    = 32
+-- Compacter rows now that the progress bar is hidden — the new
+-- design uses checkmark / hollow-circle status indicators instead
+-- of a thin under-bar.
+local OBJ_ROW_H    = 22
 local OBJ_BAR_H    = 4
 local function buildObjectiveRow(parent, layoutOrder)
 	local row = Instance.new("Frame")
 	row.Name = "ObjectiveRow"
 	row.LayoutOrder = layoutOrder or 0
 	row.Size = UDim2.new(1, 0, 0, OBJ_ROW_H)
-	row.BackgroundColor3 = COLOR_PAPER_LIGHT
-	row.BackgroundTransparency = 0.35
+	row.BackgroundTransparency = 1
 	row.BorderSizePixel = 0
 	row.ZIndex = 8
 	row.Parent = parent
 
-	local rCorner = Instance.new("UICorner")
-	rCorner.CornerRadius = UDim.new(0, 6)
-	rCorner.Parent = row
+	-- No internal padding here — the parent Objectives box already
+	-- supplies padding and the status icon hugs the left edge.
 
-	local rPad = Instance.new("UIPadding")
-	rPad.PaddingTop    = UDim.new(0, 4)
-	rPad.PaddingBottom = UDim.new(0, 4)
-	rPad.PaddingLeft   = UDim.new(0, 8)
-	rPad.PaddingRight  = UDim.new(0, 8)
-	rPad.Parent = row
+	-- Status icon on the very left: filled green check when the
+	-- objective is complete, hollow circle while it's in progress.
+	-- Mirrors the reference mockup's "tick / unticked" indicators.
+	local STATUS_ICON_W = 18
+	local statusIcon = Instance.new("TextLabel")
+	statusIcon.Name = "Status"
+	statusIcon.AnchorPoint = Vector2.new(0, 0.5)
+	statusIcon.Position = UDim2.new(0, 0, 0.5, 0)
+	statusIcon.Size = UDim2.fromOffset(STATUS_ICON_W, OBJ_ROW_H)
+	statusIcon.BackgroundTransparency = 1
+	statusIcon.Font = Enum.Font.GothamBold
+	statusIcon.TextSize = 14
+	statusIcon.TextColor3 = COLOR_WOOD_DARK
+	statusIcon.Text = "○"
+	statusIcon.ZIndex = row.ZIndex + 1
+	statusIcon.Parent = row
 
 	local label = Instance.new("TextLabel")
 	label.Name = "Label"
 	label.AnchorPoint = Vector2.new(0, 0)
-	label.Position = UDim2.new(0, 0, 0, 0)
-	label.Size = UDim2.new(1, -50, 0, 14)
+	label.Position = UDim2.new(0, STATUS_ICON_W + 6, 0, 0)
+	label.Size = UDim2.new(1, -(STATUS_ICON_W + 6 + 50), 0, 14)
 	label.BackgroundTransparency = 1
 	label.Font = Enum.Font.GothamMedium
 	label.TextSize = 12
@@ -149,7 +160,9 @@ local function buildObjectiveRow(parent, layoutOrder)
 	count.ZIndex = row.ZIndex + 1
 	count.Parent = row
 
-	-- Progress bar pinned to the bottom of the row.
+	-- Progress bar — hidden on the new design but kept in the tree
+	-- so the paint path's barFill.Size assignment stays a no-op
+	-- without an extra nil-check.
 	local barTrack = Instance.new("Frame")
 	barTrack.Name = "BarTrack"
 	barTrack.AnchorPoint = Vector2.new(0, 1)
@@ -158,6 +171,7 @@ local function buildObjectiveRow(parent, layoutOrder)
 	barTrack.BackgroundColor3 = COLOR_WOOD_DARK
 	barTrack.BackgroundTransparency = 0.6
 	barTrack.BorderSizePixel = 0
+	barTrack.Visible = false
 	barTrack.ZIndex = row.ZIndex + 1
 	barTrack.Parent = row
 	local btCorner = Instance.new("UICorner")
@@ -178,10 +192,11 @@ local function buildObjectiveRow(parent, layoutOrder)
 	bfCorner.Parent = barFill
 
 	return {
-		row     = row,
-		label   = label,
-		count   = count,
-		barFill = barFill,
+		row        = row,
+		label      = label,
+		count      = count,
+		barFill    = barFill,
+		statusIcon = statusIcon,
 	}
 end
 
@@ -289,20 +304,81 @@ local function buildCard(parent, layoutOrder)
 	body.ZIndex = header.ZIndex + 1
 	body.Parent = header
 
-	-- ── Objectives list container (E5) ────────────────────────────────
-	-- Holds one Frame per objective (built in E6). UIListLayout stacks
-	-- them vertically; AutomaticSize.Y lets the container grow with
-	-- the row count so a 4-objective story takes more vertical room
-	-- than a 3-objective one. The list itself doesn't get a background
-	-- — each row will have its own subtle paper-light fill.
+	-- ── Two-column body: objectives box (left) + reward box (right) ────
+	-- Mirrors the reference mockup: tasks + progress on the left, the
+	-- chest reward on the right. Both share the same paper-light fill
+	-- so they read as paired panels.
+	local OBJ_BOX_RATIO = 0.62  -- 62% objectives column, 38% reward column
+	local BODY_GAP      = 8
+	local OBJ_BOX_PAD   = 10
+
+	local body = Instance.new("Frame")
+	body.Name = "Body"
+	body.LayoutOrder = 2
+	body.Size = UDim2.new(1, 0, 0, 0)
+	body.AutomaticSize = Enum.AutomaticSize.Y
+	body.BackgroundTransparency = 1
+	body.ZIndex = card.ZIndex + 1
+	body.Parent = card
+
+	local objBox = Instance.new("Frame")
+	objBox.Name = "Objectives"
+	objBox.AnchorPoint = Vector2.new(0, 0)
+	objBox.Position = UDim2.new(0, 0, 0, 0)
+	objBox.Size = UDim2.new(OBJ_BOX_RATIO, -BODY_GAP / 2, 1, 0)
+	objBox.AutomaticSize = Enum.AutomaticSize.Y
+	objBox.BackgroundColor3 = COLOR_PAPER_LIGHT
+	objBox.BackgroundTransparency = 0.15
+	objBox.BorderSizePixel = 0
+	objBox.ZIndex = body.ZIndex + 1
+	objBox.Parent = body
+
+	local objBoxCorner = Instance.new("UICorner")
+	objBoxCorner.CornerRadius = UDim.new(0, 8)
+	objBoxCorner.Parent = objBox
+
+	local objBoxStroke = Instance.new("UIStroke")
+	objBoxStroke.Color = COLOR_WOOD_DARK
+	objBoxStroke.Thickness = 1
+	objBoxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	objBoxStroke.Parent = objBox
+
+	local objBoxPad = Instance.new("UIPadding")
+	objBoxPad.PaddingTop    = UDim.new(0, OBJ_BOX_PAD)
+	objBoxPad.PaddingBottom = UDim.new(0, OBJ_BOX_PAD)
+	objBoxPad.PaddingLeft   = UDim.new(0, OBJ_BOX_PAD)
+	objBoxPad.PaddingRight  = UDim.new(0, OBJ_BOX_PAD)
+	objBoxPad.Parent = objBox
+
+	local objCaption = Instance.new("TextLabel")
+	objCaption.Name = "Caption"
+	objCaption.LayoutOrder = 1
+	objCaption.Size = UDim2.new(1, 0, 0, 14)
+	objCaption.BackgroundTransparency = 1
+	objCaption.Font = Enum.Font.GothamBold
+	objCaption.TextSize = 12
+	objCaption.TextColor3 = COLOR_WOOD_DARK
+	objCaption.TextXAlignment = Enum.TextXAlignment.Left
+	objCaption.Text = "Objectives"
+	objCaption.ZIndex = objBox.ZIndex + 1
+	objCaption.Parent = objBox
+
 	local objList = Instance.new("Frame")
-	objList.Name = "Objectives"
+	objList.Name = "List"
 	objList.LayoutOrder = 2
 	objList.Size = UDim2.new(1, 0, 0, 0)
 	objList.AutomaticSize = Enum.AutomaticSize.Y
 	objList.BackgroundTransparency = 1
-	objList.ZIndex = card.ZIndex + 1
-	objList.Parent = card
+	objList.ZIndex = objBox.ZIndex + 1
+	objList.Parent = objBox
+
+	local objBoxLayout = Instance.new("UIListLayout")
+	objBoxLayout.FillDirection = Enum.FillDirection.Vertical
+	objBoxLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	objBoxLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+	objBoxLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	objBoxLayout.Padding = UDim.new(0, 6)
+	objBoxLayout.Parent = objBox
 
 	local objLayout = Instance.new("UIListLayout")
 	objLayout.FillDirection = Enum.FillDirection.Vertical
@@ -312,90 +388,91 @@ local function buildCard(parent, layoutOrder)
 	objLayout.Padding = UDim.new(0, 6)
 	objLayout.Parent = objList
 
-	-- ── Footer: reward row + track button (E7) ────────────────────────
-	-- Reward block on the left ("Reward" caption + icon + count text),
-	-- track button on the right at fixed width. The button cycles
-	-- through Track / Tracking / Claim Reward states the same way the
-	-- daily cards do; E8 wires the click and E9 paints the visuals.
-	local FOOTER_H = 36
-	local footer = Instance.new("Frame")
-	footer.Name = "Footer"
-	footer.LayoutOrder = 3
-	footer.Size = UDim2.new(1, 0, 0, FOOTER_H)
-	footer.BackgroundTransparency = 1
-	footer.ZIndex = card.ZIndex + 1
-	footer.Parent = card
+	-- Reward box on the right: "Reward" caption + chest icon + name.
+	local rewardBox = Instance.new("Frame")
+	rewardBox.Name = "RewardBox"
+	rewardBox.AnchorPoint = Vector2.new(1, 0)
+	rewardBox.Position = UDim2.new(1, 0, 0, 0)
+	rewardBox.Size = UDim2.new(1 - OBJ_BOX_RATIO, -BODY_GAP / 2, 1, 0)
+	rewardBox.AutomaticSize = Enum.AutomaticSize.Y
+	rewardBox.BackgroundColor3 = COLOR_PAPER_LIGHT
+	rewardBox.BackgroundTransparency = 0.15
+	rewardBox.BorderSizePixel = 0
+	rewardBox.ZIndex = body.ZIndex + 1
+	rewardBox.Parent = body
 
-	local rewardBlock = Instance.new("Frame")
-	rewardBlock.Name = "Reward"
-	rewardBlock.AnchorPoint = Vector2.new(0, 0.5)
-	rewardBlock.Position = UDim2.new(0, 0, 0.5, 0)
-	rewardBlock.Size = UDim2.new(1, -140, 1, 0)   -- leaves 140 px for the button
-	rewardBlock.BackgroundTransparency = 1
-	rewardBlock.ZIndex = footer.ZIndex + 1
-	rewardBlock.Parent = footer
+	local rewardBoxCorner = Instance.new("UICorner")
+	rewardBoxCorner.CornerRadius = UDim.new(0, 8)
+	rewardBoxCorner.Parent = rewardBox
+
+	local rewardBoxStroke = Instance.new("UIStroke")
+	rewardBoxStroke.Color = COLOR_WOOD_DARK
+	rewardBoxStroke.Thickness = 1
+	rewardBoxStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	rewardBoxStroke.Parent = rewardBox
+
+	local rewardBoxPad = Instance.new("UIPadding")
+	rewardBoxPad.PaddingTop    = UDim.new(0, OBJ_BOX_PAD)
+	rewardBoxPad.PaddingBottom = UDim.new(0, OBJ_BOX_PAD)
+	rewardBoxPad.PaddingLeft   = UDim.new(0, OBJ_BOX_PAD)
+	rewardBoxPad.PaddingRight  = UDim.new(0, OBJ_BOX_PAD)
+	rewardBoxPad.Parent = rewardBox
 
 	local rewardCaption = Instance.new("TextLabel")
-	rewardCaption.Name = "RewardCaption"
-	rewardCaption.AnchorPoint = Vector2.new(0, 0)
-	rewardCaption.Position = UDim2.new(0, 0, 0, 0)
-	rewardCaption.Size = UDim2.new(1, 0, 0, 12)
+	rewardCaption.Name = "Caption"
+	rewardCaption.AnchorPoint = Vector2.new(0.5, 0)
+	rewardCaption.Position = UDim2.fromScale(0.5, 0)
+	rewardCaption.Size = UDim2.new(1, 0, 0, 14)
 	rewardCaption.BackgroundTransparency = 1
-	rewardCaption.Font = Enum.Font.Gotham
-	rewardCaption.TextSize = 11
-	rewardCaption.TextColor3 = COLOR_WOOD_MID
-	rewardCaption.TextXAlignment = Enum.TextXAlignment.Left
+	rewardCaption.Font = Enum.Font.GothamBold
+	rewardCaption.TextSize = 12
+	rewardCaption.TextColor3 = COLOR_WOOD_DARK
+	rewardCaption.TextXAlignment = Enum.TextXAlignment.Center
 	rewardCaption.Text = "Reward"
-	rewardCaption.ZIndex = rewardBlock.ZIndex + 1
-	rewardCaption.Parent = rewardBlock
+	rewardCaption.ZIndex = rewardBox.ZIndex + 1
+	rewardCaption.Parent = rewardBox
 
-	local rewardRow = Instance.new("Frame")
-	rewardRow.Name = "RewardRow"
-	rewardRow.AnchorPoint = Vector2.new(0, 1)
-	rewardRow.Position = UDim2.new(0, 0, 1, 0)
-	rewardRow.Size = UDim2.new(1, 0, 0, 22)
-	rewardRow.BackgroundTransparency = 1
-	rewardRow.ZIndex = rewardBlock.ZIndex + 1
-	rewardRow.Parent = rewardBlock
-
-	local rwLayout = Instance.new("UIListLayout")
-	rwLayout.FillDirection = Enum.FillDirection.Horizontal
-	rwLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
-	rwLayout.VerticalAlignment = Enum.VerticalAlignment.Center
-	rwLayout.SortOrder = Enum.SortOrder.LayoutOrder
-	rwLayout.Padding = UDim.new(0, 6)
-	rwLayout.Parent = rewardRow
-
+	local DEFAULT_REWARD_ICON = "rbxassetid://82337855669175"
 	local rewardIcon = Instance.new("ImageLabel")
-	rewardIcon.Name = "RewardIcon"
-	rewardIcon.LayoutOrder = 1
-	rewardIcon.Size = UDim2.fromOffset(22, 22)
+	rewardIcon.Name = "Icon"
+	rewardIcon.AnchorPoint = Vector2.new(0.5, 0)
+	rewardIcon.Position = UDim2.new(0.5, 0, 0, 22)
+	rewardIcon.Size = UDim2.fromOffset(56, 56)
 	rewardIcon.BackgroundTransparency = 1
+	rewardIcon.BorderSizePixel = 0
 	rewardIcon.ScaleType = Enum.ScaleType.Fit
-	rewardIcon.Image = ""
-	rewardIcon.ZIndex = rewardRow.ZIndex + 1
-	rewardIcon.Parent = rewardRow
+	rewardIcon.Image = DEFAULT_REWARD_ICON
+	rewardIcon.ZIndex = rewardBox.ZIndex + 1
+	rewardIcon.Parent = rewardBox
 
 	local rewardLabel = Instance.new("TextLabel")
-	rewardLabel.Name = "RewardLabel"
-	rewardLabel.LayoutOrder = 2
-	rewardLabel.Size = UDim2.new(0, 0, 1, 0)
-	rewardLabel.AutomaticSize = Enum.AutomaticSize.X
+	rewardLabel.Name = "Label"
+	rewardLabel.AnchorPoint = Vector2.new(0.5, 0)
+	rewardLabel.Position = UDim2.new(0.5, 0, 0, 84)
+	rewardLabel.Size = UDim2.new(1, 0, 0, 16)
 	rewardLabel.BackgroundTransparency = 1
 	rewardLabel.Font = Enum.Font.GothamBold
-	rewardLabel.TextSize = 14
+	rewardLabel.TextSize = 12
 	rewardLabel.TextColor3 = COLOR_WOOD_DARKEST
-	rewardLabel.TextXAlignment = Enum.TextXAlignment.Left
-	rewardLabel.TextYAlignment = Enum.TextYAlignment.Center
 	rewardLabel.Text = ""
-	rewardLabel.ZIndex = rewardRow.ZIndex + 1
-	rewardLabel.Parent = rewardRow
+	rewardLabel.ZIndex = rewardBox.ZIndex + 1
+	rewardLabel.Parent = rewardBox
 
+	-- Body height: tall enough for the reward-box content (caption +
+	-- 56px icon + 16px label + paddings ≈ 116). The objectives box
+	-- auto-sizes; if it's taller than the reward column, the body
+	-- still grows because both columns size to (1, 0) on Y.
+	body.Size = UDim2.new(1, 0, 0, 120)
+
+	-- ── Bottom action button: full-width "Claim Reward" / "Track" ──
+	-- Replaces the right-aligned 130-px button. The button still
+	-- cycles modes (Track / Tracking / Claim Reward) — paint path
+	-- below swaps the label and colours.
+	local CLAIM_BTN_H = 38
 	local trackBtn = Instance.new("TextButton")
-	trackBtn.Name = "TrackBtn"
-	trackBtn.AnchorPoint = Vector2.new(1, 0.5)
-	trackBtn.Position = UDim2.new(1, 0, 0.5, 0)
-	trackBtn.Size = UDim2.fromOffset(130, FOOTER_H)
+	trackBtn.Name = "ClaimBtn"
+	trackBtn.LayoutOrder = 3
+	trackBtn.Size = UDim2.new(1, 0, 0, CLAIM_BTN_H)
 	trackBtn.AutoButtonColor = false
 	trackBtn.BackgroundColor3 = COLOR_PAPER_LIGHT
 	trackBtn.BorderSizePixel = 0
@@ -403,8 +480,8 @@ local function buildCard(parent, layoutOrder)
 	trackBtn.TextSize = 14
 	trackBtn.TextColor3 = COLOR_WOOD_DARKEST
 	trackBtn.Text = "★ Track"
-	trackBtn.ZIndex = footer.ZIndex + 2
-	trackBtn.Parent = footer
+	trackBtn.ZIndex = card.ZIndex + 2
+	trackBtn.Parent = card
 	local btnCorner = Instance.new("UICorner")
 	btnCorner.CornerRadius = UDim.new(0, 8)
 	btnCorner.Parent = trackBtn
@@ -517,12 +594,18 @@ local function paintCard(refs, q)
 		row.label.Text   = obj.label or obj.eventType or "Objective"
 		row.count.Text   = string.format("%d / %d", prog, goal)
 		row.barFill.Size = UDim2.new(pct, 0, 1, 0)
-		-- Once an objective is done, dim its label slightly so the
-		-- player can scan which steps remain at a glance.
+		-- Status indicator — green check when complete, hollow circle
+		-- while in progress. Mirrors the reference mockup's tick /
+		-- unticked state. Completed objectives also dim slightly so
+		-- the player's eye lands on what's still outstanding.
 		if pct >= 1 then
-			row.label.TextColor3 = COLOR_WOOD_MID
+			row.statusIcon.Text      = "✓"
+			row.statusIcon.TextColor3 = COLOR_PROGRESS
+			row.label.TextColor3     = COLOR_WOOD_MID
 		else
-			row.label.TextColor3 = COLOR_WOOD_DARKEST
+			row.statusIcon.Text      = "○"
+			row.statusIcon.TextColor3 = COLOR_WOOD_DARK
+			row.label.TextColor3     = COLOR_WOOD_DARKEST
 		end
 	end
 	-- Trim any leftover rows from a previous repaint with more objectives.
@@ -531,23 +614,34 @@ local function paintCard(refs, q)
 		refs.objRows[i] = nil
 	end
 
-	-- Reward — same icon-as-stand-in approach as the daily cards.
-	if q.reward and q.reward.count then
-		refs.rewardIcon.Image = q.icon or ""
-		refs.rewardLabel.Text = "x" .. tostring(q.reward.count)
-	else
-		refs.rewardIcon.Image = ""
-		refs.rewardLabel.Text = ""
+	-- Reward — show the chest icon (or the quest's own icon if it
+	-- ships one) and the reward's display name. The server snapshot
+	-- may carry q.reward.label / .name; fall back to a count badge
+	-- so older quests still render something useful.
+	local rewardName
+	if q.reward then
+		rewardName = q.reward.label or q.reward.name
+		if not rewardName and q.reward.count then
+			rewardName = "x" .. tostring(q.reward.count)
+		end
+	end
+	refs.rewardLabel.Text = rewardName or "Mystery Chest"
+	-- Default is the chest asset assigned at build time; only swap
+	-- it out when the snapshot ships its own reward icon.
+	local rewardIconAsset = q.reward and (q.reward.icon or q.reward.image)
+	if rewardIconAsset and rewardIconAsset ~= "" then
+		refs.rewardIcon.Image = rewardIconAsset
 	end
 
 	refs.card:SetAttribute("QuestId", q.id or "")
 
 	-- Three-mode track button — same priority as daily: rewardPending
 	-- beats tracked beats default, because "Claim" is the action the
-	-- player should take next.
+	-- player should take next. Labels match the reference mockup
+	-- ("Claim Reward" instead of just "Claim").
 	if q.rewardPending then
 		refs.card:SetAttribute("Mode", "claim")
-		refs.trackBtn.Text = "★ Claim"
+		refs.trackBtn.Text = "Claim Reward"
 		refs.trackBtn.BackgroundColor3 = COLOR_WOOD_BASE
 		refs.trackBtn.TextColor3       = COLOR_PAPER_LIGHT
 		refs.trackBtnStroke.Color      = COLOR_WOOD_DARKEST
@@ -567,33 +661,47 @@ local function paintCard(refs, q)
 end
 
 local function repaint(payload)
-	local incoming = {}
-	local order = 1
+	-- Only ONE story quest is active at a time, per the redesign:
+	-- the player can't hold two parallel storylines. Pick the first
+	-- with a pending reward (so the player gets the Claim Reward
+	-- prompt as soon as a chapter wraps), else the tracked one,
+	-- else the first not-yet-completed story in catalog order.
+	local activeQuest
+	local fallback
+	local pendingReward
 	for _, q in ipairs(payload.quests or {}) do
 		if q.kind == "story" then
-			incoming[q.id] = true
-			local entry = cardsById[q.id]
-			if not entry then
-				local card, refs = buildCard(scrollFrame, order)
-				entry = { card = card, refs = refs }
-				cardsById[q.id] = entry
-			else
-				entry.card.LayoutOrder = order
+			if q.rewardPending and not pendingReward then
+				pendingReward = q
+			elseif q.tracked and not activeQuest then
+				activeQuest = q
+			elseif not fallback then
+				fallback = q
 			end
-			paintCard(entry.refs, q)
-			order = order + 1
 		end
 	end
-	-- Sweep cards for stories that have flipped into permanentlyCompleted
-	-- (they drop out of the snapshot once finished).
+	activeQuest = pendingReward or activeQuest or fallback
+
+	-- Tear down any cards that don't match the new active quest so
+	-- only the chosen one stays mounted.
 	for id, entry in pairs(cardsById) do
-		if not incoming[id] then
+		if not activeQuest or id ~= activeQuest.id then
 			entry.card:Destroy()
 			cardsById[id] = nil
 		end
 	end
 
-	emptyState.Visible = (next(cardsById) == nil)
+	if activeQuest then
+		local entry = cardsById[activeQuest.id]
+		if not entry then
+			local card, refs = buildCard(scrollFrame, 1)
+			entry = { card = card, refs = refs }
+			cardsById[activeQuest.id] = entry
+		end
+		paintCard(entry.refs, activeQuest)
+	end
+
+	emptyState.Visible = (activeQuest == nil)
 end
 
 questStateEvent.OnClientEvent:Connect(function(action, payload)
