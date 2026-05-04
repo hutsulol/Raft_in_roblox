@@ -3,11 +3,29 @@
 --you can convert the model to use it in script builder
 local npc = script.Parent
 
--- Soldier firearm AI should run only when an automatic firearm is equipped.
--- If the merc is Unarmed, HarvestResources.script takes over;
--- if FishingRod, Fishing.script takes over.
-local equippedWeapon = npc:GetAttribute("EquippedWeapon") or "Firearm"
-if equippedWeapon ~= "Firearm" then
+-- Soldier firearm AI should run only when the merc really has Firearm equipped.
+-- We intentionally require both:
+--   1) EquippedWeapon attribute == "Firearm"
+--   2) AK-47 rig piece currently visible (spawner/equipment toggles this)
+-- so stale attributes can't keep this AI alive for Unarmed/Fishing states.
+local function isFirearmActive()
+	if npc:GetAttribute("EquippedWeapon") ~= "Firearm" then
+		return false
+	end
+	local ak = npc:FindFirstChild("AK-47")
+	if not ak then return false end
+	if ak:IsA("BasePart") then
+		return ak.Transparency < 0.99
+	end
+	for _, d in ipairs(ak:GetDescendants()) do
+		if d:IsA("BasePart") and d.Transparency < 0.99 then
+			return true
+		end
+	end
+	return false
+end
+
+if not isFirearmActive() then
 	return
 end
 local torso = npc.Torso
@@ -106,6 +124,12 @@ function checkandshoot()
 		if saycooldown == 500 then
 			cansay = true
 			saycooldown = 0
+		end
+		if not isFirearmActive() then
+			shooting = false
+			npchumanoid.WalkSpeed = 16
+			wait(0.25)
+			continue
 		end
 		for i,v in pairs(workspace:GetChildren()) do
 			if v.ClassName == "Model" and v.Name ~= "collazio" then

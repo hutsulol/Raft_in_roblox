@@ -311,8 +311,10 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
 				if model:GetAttribute("OwnerUserId") == player.UserId
 					and model:GetAttribute("MercName") == mercName
 					and model.Parent then
+					-- Keep live merc model attribute in sync with the saved entry.
+					-- Combat/Fishing/Harvest scripts read this directly.
+					model:SetAttribute("EquippedWeapon", itemId)
 					if itemId == "Unarmed" then
-						model:SetAttribute("EquippedWeapon", "Unarmed")
 						for _, child in model:GetChildren() do
 							if child:IsA("Tool") then
 								child:Destroy()
