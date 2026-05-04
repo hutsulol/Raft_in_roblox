@@ -212,9 +212,10 @@ local function buildCard(parent, layoutOrder)
 	card.LayoutOrder = layoutOrder or 0
 	card.Size = UDim2.new(1, 0, 0, 0)   -- height auto-sized below
 	card.AutomaticSize = Enum.AutomaticSize.Y
-	-- Outer card uses the wood mid-tone so the inner Header / Objectives /
-	-- Reward panels (paper-light) read as panels-on-wood — matches the
-	-- reference mockup's two-tone layering.
+	-- Outer card uses the wood mid-tone so the Objectives / Reward
+	-- panels (paper-light) read as panels-on-wood. The header
+	-- (icon + title + body) sits directly on this wood — no panel
+	-- chrome — to match the reference mockup.
 	card.BackgroundColor3 = COLOR_WOOD_BASE
 	card.BorderSizePixel = 0
 	card.ZIndex = 7
@@ -251,37 +252,18 @@ local function buildCard(parent, layoutOrder)
 	cLayout.Padding = UDim.new(0, 10)
 	cLayout.Parent = card
 
-	-- ── Header card ────────────────────────────────────────────────
-	-- Paper-light pane that holds the quest icon + title + body so it
-	-- visually pairs with the Objectives / Reward panels below. The
-	-- outer card is wood-coloured (above), so this pane sits on top
-	-- as a "card-on-wood" layer.
+	-- ── Header row ─────────────────────────────────────────────────
+	-- Quest icon + title + body floats directly on the wood card with
+	-- no panel chrome (no fill, no corner, no stroke) — the panels
+	-- live below for Objectives / Reward / Track button only.
 	local header = Instance.new("Frame")
 	header.Name = "Header"
 	header.LayoutOrder = 1
 	header.Size = UDim2.new(1, 0, 0, 70)
-	header.BackgroundColor3 = COLOR_PAPER_LIGHT
-	header.BackgroundTransparency = 0.05
+	header.BackgroundTransparency = 1
 	header.BorderSizePixel = 0
 	header.ZIndex = card.ZIndex + 1
 	header.Parent = card
-
-	local hCorner = Instance.new("UICorner")
-	hCorner.CornerRadius = UDim.new(0, 8)
-	hCorner.Parent = header
-
-	local hStroke = Instance.new("UIStroke")
-	hStroke.Color = COLOR_WOOD_DARK
-	hStroke.Thickness = 1
-	hStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	hStroke.Parent = header
-
-	local hPad = Instance.new("UIPadding")
-	hPad.PaddingTop    = UDim.new(0, 8)
-	hPad.PaddingBottom = UDim.new(0, 8)
-	hPad.PaddingLeft   = UDim.new(0, 10)
-	hPad.PaddingRight  = UDim.new(0, 10)
-	hPad.Parent = header
 
 	local iconImage = Instance.new("ImageLabel")
 	iconImage.Name = "Icon"
@@ -295,15 +277,18 @@ local function buildCard(parent, layoutOrder)
 	iconImage.ZIndex = header.ZIndex + 1
 	iconImage.Parent = header
 
+	-- Title + body share the right-side column (icon takes the left).
+	-- Text colour goes a touch lighter than COLOR_WOOD_DARKEST so it
+	-- reads on the wood-base card without the paper backdrop.
 	local title = Instance.new("TextLabel")
 	title.Name = "Title"
 	title.AnchorPoint = Vector2.new(0, 0)
-	title.Position = UDim2.new(0, 70, 0, 2)
+	title.Position = UDim2.new(0, 70, 0, 4)
 	title.Size = UDim2.new(1, -70, 0, 22)
 	title.BackgroundTransparency = 1
 	title.Font = Enum.Font.GothamBold
 	title.TextSize = 16
-	title.TextColor3 = COLOR_WOOD_DARKEST
+	title.TextColor3 = COLOR_PAPER_LIGHT
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.TextYAlignment = Enum.TextYAlignment.Center
 	title.TextTruncate = Enum.TextTruncate.AtEnd
@@ -311,50 +296,59 @@ local function buildCard(parent, layoutOrder)
 	title.ZIndex = header.ZIndex + 1
 	title.Parent = header
 
-	local body = Instance.new("TextLabel")
-	body.Name = "Body"
-	body.AnchorPoint = Vector2.new(0, 0)
-	body.Position = UDim2.new(0, 70, 0, 26)
-	body.Size = UDim2.new(1, -70, 0, 32)
-	body.BackgroundTransparency = 1
-	body.Font = Enum.Font.Gotham
-	body.TextSize = 12
-	body.TextColor3 = COLOR_WOOD_DARK
-	body.TextXAlignment = Enum.TextXAlignment.Left
-	body.TextYAlignment = Enum.TextYAlignment.Top
-	body.TextWrapped = true
-	body.Text = ""
-	body.ZIndex = header.ZIndex + 1
-	body.Parent = header
+	local bodyText = Instance.new("TextLabel")
+	bodyText.Name = "Body"
+	bodyText.AnchorPoint = Vector2.new(0, 0)
+	bodyText.Position = UDim2.new(0, 70, 0, 28)
+	bodyText.Size = UDim2.new(1, -70, 0, 38)
+	bodyText.BackgroundTransparency = 1
+	bodyText.Font = Enum.Font.Gotham
+	bodyText.TextSize = 12
+	bodyText.TextColor3 = COLOR_PAPER
+	bodyText.TextXAlignment = Enum.TextXAlignment.Left
+	bodyText.TextYAlignment = Enum.TextYAlignment.Top
+	bodyText.TextWrapped = true
+	bodyText.Text = ""
+	bodyText.ZIndex = header.ZIndex + 1
+	bodyText.Parent = header
 
 	-- ── Two-column body: objectives box (left) + reward box (right) ────
 	-- Mirrors the reference mockup: tasks + progress on the left, the
 	-- chest reward on the right. Both share the same paper-light fill
-	-- so they read as paired panels.
+	-- so they read as paired panels. The row itself uses a horizontal
+	-- UIListLayout so it auto-sizes to the taller column — no fixed
+	-- 120-px height, no empty space.
 	local OBJ_BOX_RATIO = 0.62  -- 62% objectives column, 38% reward column
 	local BODY_GAP      = 8
 	local OBJ_BOX_PAD   = 10
 
-	local body = Instance.new("Frame")
-	body.Name = "Body"
-	body.LayoutOrder = 2
-	body.Size = UDim2.new(1, 0, 0, 0)
-	body.AutomaticSize = Enum.AutomaticSize.Y
-	body.BackgroundTransparency = 1
-	body.ZIndex = card.ZIndex + 1
-	body.Parent = card
+	local bodyRow = Instance.new("Frame")
+	bodyRow.Name = "BodyRow"
+	bodyRow.LayoutOrder = 2
+	bodyRow.Size = UDim2.new(1, 0, 0, 0)
+	bodyRow.AutomaticSize = Enum.AutomaticSize.Y
+	bodyRow.BackgroundTransparency = 1
+	bodyRow.ZIndex = card.ZIndex + 1
+	bodyRow.Parent = card
+
+	local bodyRowLayout = Instance.new("UIListLayout")
+	bodyRowLayout.FillDirection = Enum.FillDirection.Horizontal
+	bodyRowLayout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	bodyRowLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+	bodyRowLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	bodyRowLayout.Padding = UDim.new(0, BODY_GAP)
+	bodyRowLayout.Parent = bodyRow
 
 	local objBox = Instance.new("Frame")
 	objBox.Name = "Objectives"
-	objBox.AnchorPoint = Vector2.new(0, 0)
-	objBox.Position = UDim2.new(0, 0, 0, 0)
-	objBox.Size = UDim2.new(OBJ_BOX_RATIO, -BODY_GAP / 2, 1, 0)
+	objBox.LayoutOrder = 1
+	objBox.Size = UDim2.new(OBJ_BOX_RATIO, -BODY_GAP / 2, 0, 0)
 	objBox.AutomaticSize = Enum.AutomaticSize.Y
 	objBox.BackgroundColor3 = COLOR_PAPER_LIGHT
-	objBox.BackgroundTransparency = 0.15
+	objBox.BackgroundTransparency = 0.05
 	objBox.BorderSizePixel = 0
-	objBox.ZIndex = body.ZIndex + 1
-	objBox.Parent = body
+	objBox.ZIndex = bodyRow.ZIndex + 1
+	objBox.Parent = bodyRow
 
 	local objBoxCorner = Instance.new("UICorner")
 	objBoxCorner.CornerRadius = UDim.new(0, 8)
@@ -411,18 +405,19 @@ local function buildCard(parent, layoutOrder)
 	objLayout.Padding = UDim.new(0, 6)
 	objLayout.Parent = objList
 
-	-- Reward box on the right: "Reward" caption + chest icon + name.
+	-- Reward box on the right: "Reward" caption + chest icon + name,
+	-- stacked via UIListLayout so the box auto-sizes to its content
+	-- (no empty space below the label).
 	local rewardBox = Instance.new("Frame")
 	rewardBox.Name = "RewardBox"
-	rewardBox.AnchorPoint = Vector2.new(1, 0)
-	rewardBox.Position = UDim2.new(1, 0, 0, 0)
-	rewardBox.Size = UDim2.new(1 - OBJ_BOX_RATIO, -BODY_GAP / 2, 1, 0)
+	rewardBox.LayoutOrder = 2
+	rewardBox.Size = UDim2.new(1 - OBJ_BOX_RATIO, -BODY_GAP / 2, 0, 0)
 	rewardBox.AutomaticSize = Enum.AutomaticSize.Y
 	rewardBox.BackgroundColor3 = COLOR_PAPER_LIGHT
-	rewardBox.BackgroundTransparency = 0.15
+	rewardBox.BackgroundTransparency = 0.05
 	rewardBox.BorderSizePixel = 0
-	rewardBox.ZIndex = body.ZIndex + 1
-	rewardBox.Parent = body
+	rewardBox.ZIndex = bodyRow.ZIndex + 1
+	rewardBox.Parent = bodyRow
 
 	local rewardBoxCorner = Instance.new("UICorner")
 	rewardBoxCorner.CornerRadius = UDim.new(0, 8)
@@ -441,10 +436,17 @@ local function buildCard(parent, layoutOrder)
 	rewardBoxPad.PaddingRight  = UDim.new(0, OBJ_BOX_PAD)
 	rewardBoxPad.Parent = rewardBox
 
+	local rewardBoxLayout = Instance.new("UIListLayout")
+	rewardBoxLayout.FillDirection = Enum.FillDirection.Vertical
+	rewardBoxLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+	rewardBoxLayout.VerticalAlignment = Enum.VerticalAlignment.Top
+	rewardBoxLayout.SortOrder = Enum.SortOrder.LayoutOrder
+	rewardBoxLayout.Padding = UDim.new(0, 6)
+	rewardBoxLayout.Parent = rewardBox
+
 	local rewardCaption = Instance.new("TextLabel")
 	rewardCaption.Name = "Caption"
-	rewardCaption.AnchorPoint = Vector2.new(0.5, 0)
-	rewardCaption.Position = UDim2.fromScale(0.5, 0)
+	rewardCaption.LayoutOrder = 1
 	rewardCaption.Size = UDim2.new(1, 0, 0, 14)
 	rewardCaption.BackgroundTransparency = 1
 	rewardCaption.Font = Enum.Font.GothamBold
@@ -458,8 +460,7 @@ local function buildCard(parent, layoutOrder)
 	local DEFAULT_REWARD_ICON = "rbxassetid://82337855669175"
 	local rewardIcon = Instance.new("ImageLabel")
 	rewardIcon.Name = "Icon"
-	rewardIcon.AnchorPoint = Vector2.new(0.5, 0)
-	rewardIcon.Position = UDim2.new(0.5, 0, 0, 22)
+	rewardIcon.LayoutOrder = 2
 	rewardIcon.Size = UDim2.fromOffset(56, 56)
 	rewardIcon.BackgroundTransparency = 1
 	rewardIcon.BorderSizePixel = 0
@@ -470,22 +471,16 @@ local function buildCard(parent, layoutOrder)
 
 	local rewardLabel = Instance.new("TextLabel")
 	rewardLabel.Name = "Label"
-	rewardLabel.AnchorPoint = Vector2.new(0.5, 0)
-	rewardLabel.Position = UDim2.new(0.5, 0, 0, 84)
+	rewardLabel.LayoutOrder = 3
 	rewardLabel.Size = UDim2.new(1, 0, 0, 16)
 	rewardLabel.BackgroundTransparency = 1
 	rewardLabel.Font = Enum.Font.GothamBold
 	rewardLabel.TextSize = 12
 	rewardLabel.TextColor3 = COLOR_WOOD_DARKEST
+	rewardLabel.TextXAlignment = Enum.TextXAlignment.Center
 	rewardLabel.Text = ""
 	rewardLabel.ZIndex = rewardBox.ZIndex + 1
 	rewardLabel.Parent = rewardBox
-
-	-- Body height: tall enough for the reward-box content (caption +
-	-- 56px icon + 16px label + paddings ≈ 116). The objectives box
-	-- auto-sizes; if it's taller than the reward column, the body
-	-- still grows because both columns size to (1, 0) on Y.
-	body.Size = UDim2.new(1, 0, 0, 120)
 
 	-- ── Bottom action button: full-width "Claim Reward" / "Track" ──
 	-- Replaces the right-aligned 130-px button. The button still
@@ -537,7 +532,7 @@ local function buildCard(parent, layoutOrder)
 		card           = card,
 		iconImage      = iconImage,
 		title          = title,
-		body           = body,
+		body           = bodyText,
 		objList        = objList,
 		-- Per-objective rows live here, keyed by objective index. E9's
 		-- paint path adds + reuses them per snapshot to avoid rebuilding
@@ -705,23 +700,19 @@ local function repaint(payload)
 	end
 	activeQuest = pendingReward or activeQuest or fallback
 
-	-- Tear down any cards that don't match the new active quest so
-	-- only the chosen one stays mounted.
+	-- Always destroy + rebuild the card on each repaint. Reusing the
+	-- card across tab switches caused the auto-sized two-column body
+	-- to settle into a stale layout the second time the Story tab
+	-- was opened — full rebuild keeps the layout deterministic.
 	for id, entry in pairs(cardsById) do
-		if not activeQuest or id ~= activeQuest.id then
-			entry.card:Destroy()
-			cardsById[id] = nil
-		end
+		entry.card:Destroy()
+		cardsById[id] = nil
 	end
 
 	if activeQuest then
-		local entry = cardsById[activeQuest.id]
-		if not entry then
-			local card, refs = buildCard(scrollFrame, 1)
-			entry = { card = card, refs = refs }
-			cardsById[activeQuest.id] = entry
-		end
-		paintCard(entry.refs, activeQuest)
+		local card, refs = buildCard(scrollFrame, 1)
+		cardsById[activeQuest.id] = { card = card, refs = refs }
+		paintCard(refs, activeQuest)
 	end
 
 	emptyState.Visible = (activeQuest == nil)
