@@ -2,6 +2,14 @@
 --animations are made with :lerp()
 --you can convert the model to use it in script builder
 local npc = script.Parent
+
+-- Soldier firearm AI should run only when an automatic firearm is equipped.
+-- If the merc is Unarmed, HarvestResources.script takes over;
+-- if FishingRod, Fishing.script takes over.
+local equippedWeapon = npc:GetAttribute("EquippedWeapon") or "Firearm"
+if equippedWeapon ~= "Firearm" then
+	return
+end
 local torso = npc.Torso
 local head = npc.Head
 local leftarm = npc["Left Arm"]
