@@ -110,6 +110,13 @@ local function tickMercenary(merc)
 	local alive, hum = isAlive(merc)
 	if not alive or not hum then return end
 
+	-- Mirror Pirate role gating: non-combat loadouts should not engage.
+	-- FishingRod is owned by Fishing.script, Unarmed by HarvestResources.
+	local equippedWeapon = merc:GetAttribute("EquippedWeapon")
+	if equippedWeapon == "FishingRod" or equippedWeapon == "Unarmed" then
+		return
+	end
+
 	local myTorso = getTorso(merc)
 	if not myTorso then return end
 
