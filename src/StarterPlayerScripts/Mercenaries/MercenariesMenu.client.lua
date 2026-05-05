@@ -1113,28 +1113,21 @@ local function findSkinsFolder()
 	return ReplicatedStorage:FindFirstChild("Skins")
 end
 
--- Build a fresh Shirt / Pants instance whose template asset matches a
--- node under ReplicatedStorage.Skins. We don't use :Clone() because
--- the source instance may be authored Archivable=false, in which case
--- :Clone() silently returns nil on the client (the cached viewport
--- ends up wearing nothing, which is what we saw in the wardrobe).
--- Instance.new + copying the template asset id sidesteps Archivable.
-local function buildClothingFromTemplate(skinsFolder, name)
-	if not skinsFolder then return nil end
+-- Resolve the source ShirtTemplate / PantsTemplate asset ids from
+-- ReplicatedStorage.Skins. The earlier "destroy + Instance.new"
+-- approach left the rig naked when one of the two paths failed; we
+-- now mutate the rig's existing Shirt / Pants in place where possible
+-- and only fall back to creating fresh ones when they're missing.
+local function readTemplate(skinsFolder, name)
+	if not skinsFolder then return nil, nil end
 	local node = skinsFolder:FindFirstChild(name)
-	if not node then return nil end
+	if not node then return nil, nil end
 	if node:IsA("Shirt") then
-		local s = Instance.new("Shirt")
-		s.Name = node.Name
-		s.ShirtTemplate = node.ShirtTemplate
-		return s
+		return "Shirt", node.ShirtTemplate
 	elseif node:IsA("Pants") then
-		local p = Instance.new("Pants")
-		p.Name = node.Name
-		p.PantsTemplate = node.PantsTemplate
-		return p
+		return "Pants", node.PantsTemplate
 	end
-	return nil
+	return nil, nil
 end
 
 local function applySkinToCachedClone(clone, skinId)
@@ -1142,20 +1135,59 @@ local function applySkinToCachedClone(clone, skinId)
 	local def = skinCatalogCache[skinId]
 	if not def then return end
 	local skinsFolder = findSkinsFolder()
-	if not skinsFolder then return end
+	if not skinsFolder then
+		warn("[MercenariesMenu] ReplicatedStorage.Skins folder missing")
+		return
+	end
 
-	-- Wipe whatever Shirt / Pants the cached rig is currently wearing
-	-- so we don't end up with two of either class on the Humanoid.
+	local _, shirtAsset = readTemplate(skinsFolder, def.shirtName)
+	local _, pantsAsset = readTemplate(skinsFolder, def.pantsName)
+
+	if not shirtAsset and not pantsAsset then
+		warn(string.format(
+			"[MercenariesMenu] skin %q: neither %q (Shirt) nor %q (Pants) "
+				.. "resolved under ReplicatedStorage.Skins — rig will keep "
+				.. "its current clothing",
+			tostring(skinId),
+			tostring(def.shirtName),
+			tostring(def.pantsName)
+		))
+		return
+	end
+
+	-- Mutate the rig's existing Shirt / Pants in place if they're
+	-- there. Avoids the "rig ends up naked because Instance.new of
+	-- one class succeeded but the other didn't" failure mode.
+	local existingShirt, existingPants
 	for _, child in clone:GetChildren() do
-		if child:IsA("Shirt") or child:IsA("Pants") then
-			child:Destroy()
+		if child:IsA("Shirt") and not existingShirt then
+			existingShirt = child
+		elseif child:IsA("Pants") and not existingPants then
+			existingPants = child
 		end
 	end
 
-	local shirt = buildClothingFromTemplate(skinsFolder, def.shirtName)
-	if shirt then shirt.Parent = clone end
-	local pants = buildClothingFromTemplate(skinsFolder, def.pantsName)
-	if pants then pants.Parent = clone end
+	if shirtAsset then
+		if existingShirt then
+			existingShirt.ShirtTemplate = shirtAsset
+		else
+			local s = Instance.new("Shirt")
+			s.Name = def.shirtName
+			s.ShirtTemplate = shirtAsset
+			s.Parent = clone
+		end
+	end
+
+	if pantsAsset then
+		if existingPants then
+			existingPants.PantsTemplate = pantsAsset
+		else
+			local p = Instance.new("Pants")
+			p.Name = def.pantsName
+			p.PantsTemplate = pantsAsset
+			p.Parent = clone
+		end
+	end
 end
 
 task.spawn(function()
