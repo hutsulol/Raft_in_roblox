@@ -209,6 +209,19 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 		end
 	end
 
+	-- Apply the chosen skin (Shirt + Pants pair from ReplicatedStorage.Skins)
+	-- before the rig hits workspace so the player never sees a one-frame
+	-- flash of the rig's authored default clothing. _G.ApplyMercSkin is
+	-- published by MercenarySkin.server.lua; if that script hasn't loaded
+	-- yet (boot-order race) we silently fall back to the rig's authored
+	-- clothing — the live retro-fit path will catch up the next time the
+	-- player equips.
+	local equippedSkin = mercEntry and mercEntry:GetAttribute("EquippedSkin")
+	if typeof(equippedSkin) == "string" and equippedSkin ~= ""
+		and typeof(_G.ApplyMercSkin) == "function" then
+		_G.ApplyMercSkin(clone, equippedSkin)
+	end
+
 	-- Keep the ZombieScript alive on the mercenary so it can fight back
 	-- against hostile pirates — the script's SearchForTarget is now
 	-- role-aware (it checks the "SpawnedMercenary" tag and will only

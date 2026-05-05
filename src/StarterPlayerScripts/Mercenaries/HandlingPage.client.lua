@@ -1530,6 +1530,36 @@ local function openHandlingPage(ctx)
 		end)
 	end
 
+	-- SKINS tile routes into the new SkinSelectPage the same way MAIN
+	-- HAND routes into WeaponSelectPage. Closes Handling on click +
+	-- threads the same ctx fields so the BACK trip reopens us with
+	-- fresh state.
+	local function openSkinSelectFromSkins()
+		if typeof(_G.OpenSkinSelectPage) ~= "function" then
+			warn("[HandlingPage] SkinSelectPage not loaded")
+			return
+		end
+		closeHandlingPage()
+		_G.OpenSkinSelectPage({
+			screenGui             = handlingCtx.screenGui,
+			mercName              = handlingCtx.mercName,
+			theme                 = handlingCtx.theme,
+			equipItems            = handlingCtx.equipItems,
+			resolveMercWeapon     = handlingCtx.resolveMercWeapon,
+			hidePhonePanels       = handlingCtx.hidePhonePanels,
+			detachCachedViewports = handlingCtx.detachCachedViewports,
+			buildMercViewport     = handlingCtx.buildMercViewport,
+			onBack = function()
+				if typeof(_G.CloseSkinSelectPage) == "function" then
+					_G.CloseSkinSelectPage()
+				end
+				if typeof(_G.OpenHandlingPage) == "function" then
+					_G.OpenHandlingPage(handlingCtx)
+				end
+			end,
+		})
+	end
+
 	slotHandles.Skins = buildSlotTile(scaleWrap, {
 		name         = "SKINS",
 		iconBuilder  = makeGemIcon,
@@ -1537,9 +1567,23 @@ local function openHandlingPage(ctx)
 		selected     = false,
 		position     = UDim2.fromOffset(RIGHT_COL_X, TILE_TOP_Y),
 		zIndex       = 55,
-		onClick      = function() selectSlot("Skins") end,
+		onClick      = openSkinSelectFromSkins,
 	})
 	applySlotTilePreview(slotHandles.Skins, SKINS_TILE_IMAGE)
+
+	-- Hover affordance mirroring MAIN HAND / BODY: 'SKINS' → 'CHANGE'
+	-- so the tile reads as a button.
+	do
+		local skinsTile  = slotHandles.Skins.tile
+		local skinsLabel = slotHandles.Skins.label
+		local defaultLabel = slotHandles.Skins.defaultLabel or "SKINS"
+		skinsTile.MouseEnter:Connect(function()
+			skinsLabel.Text = "CHANGE"
+		end)
+		skinsTile.MouseLeave:Connect(function()
+			skinsLabel.Text = defaultLabel
+		end)
+	end
 
 	slotHandles.Artifacts = buildSlotTile(scaleWrap, {
 		name         = "ARTIFACTS",
