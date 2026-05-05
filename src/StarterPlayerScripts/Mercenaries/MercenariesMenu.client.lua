@@ -1100,6 +1100,72 @@ local function detachCachedViewports()
 	end
 end
 
+-- ─── Cached-viewport skin sync ──────────────────────────────────────
+-- The cached merc rig that powers MANAGE / Handling / SkinSelect lives
+-- inside a ViewportFrame on the client, so it isn't tagged
+-- "SpawnedMercenary" — the server's live retro-fit can't reach it.
+-- We mirror MercenarySkin's snapshot here and swap the clone's Shirt /
+-- Pants whenever a state push arrives so the centre preview always
+-- shows the equipped skin alongside the in-world rigs.
+local skinCatalogCache = {}    -- last snapshot's catalog map { id = def }
+
+local function findSkinsFolder()
+	return ReplicatedStorage:FindFirstChild("Skins")
+end
+
+local function applySkinToCachedClone(clone, skinId)
+	if not (clone and clone.Parent) then return end
+	local def = skinCatalogCache[skinId]
+	if not def then return end
+	local skinsFolder = findSkinsFolder()
+	if not skinsFolder then return end
+
+	-- Wipe whatever Shirt / Pants the cached rig is currently wearing
+	-- so we don't end up with two of either class on the Humanoid.
+	for _, child in clone:GetChildren() do
+		if child:IsA("Shirt") or child:IsA("Pants") then
+			child:Destroy()
+		end
+	end
+
+	local function cloneNamed(name, classCheck)
+		local node = skinsFolder:FindFirstChild(name)
+		if not node then return nil end
+		if classCheck and not node:IsA(classCheck) then return nil end
+		local wasArchivable = node.Archivable
+		node.Archivable = true
+		local copy = node:Clone()
+		node.Archivable = wasArchivable
+		return copy
+	end
+
+	local shirt = cloneNamed(def.shirtName, "Shirt")
+	if shirt then shirt.Parent = clone end
+	local pants = cloneNamed(def.pantsName, "Pants")
+	if pants then pants.Parent = clone end
+end
+
+task.spawn(function()
+	local skinEvent = ReplicatedStorage:WaitForChild("MercenarySkin", 30)
+	if not skinEvent then return end
+	skinEvent.OnClientEvent:Connect(function(action, payload)
+		if action ~= "state" or type(payload) ~= "table" then return end
+		if type(payload.catalog) == "table" then
+			skinCatalogCache = payload.catalog
+		end
+		local equipped = payload.equipped or {}
+		for mercName, skinId in pairs(equipped) do
+			local entry = viewportCache[mercName]
+			if entry and entry.clone then
+				applySkinToCachedClone(entry.clone, skinId)
+			end
+		end
+	end)
+	-- Ask for an initial state so the cached rigs born before the
+	-- player ever opens the wardrobe are still skinned correctly.
+	skinEvent:FireServer("getState")
+end)
+
 -- Hide all phone-menu panels (direct children of root) except the
 -- mercenaries page itself.
 local function hidePhonePanels()
