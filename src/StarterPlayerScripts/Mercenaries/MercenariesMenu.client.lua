@@ -1107,7 +1107,10 @@ end
 -- We mirror MercenarySkin's snapshot here and swap the clone's Shirt /
 -- Pants whenever a state push arrives so the centre preview always
 -- shows the equipped skin alongside the in-world rigs.
-local skinCatalogCache = {}    -- last snapshot's catalog map { id = def }
+--
+-- Catalog is required directly from the shared module so the
+-- shirtName / pantsName fields can never be lost in payload transit.
+local SkinCatalog = require(ReplicatedStorage:WaitForChild("SkinCatalog", 30))
 
 local function findSkinsFolder()
 	return ReplicatedStorage:FindFirstChild("Skins")
@@ -1133,7 +1136,7 @@ end
 
 local function applySkinToCachedClone(clone, skinId)
 	if not (clone and clone.Parent) then return end
-	local def = skinCatalogCache[skinId]
+	local def = SkinCatalog and SkinCatalog.get(skinId)
 	if not def then return end
 	local skinsFolder = findSkinsFolder()
 	if not skinsFolder then
@@ -1196,9 +1199,10 @@ task.spawn(function()
 	if not skinEvent then return end
 	skinEvent.OnClientEvent:Connect(function(action, payload)
 		if action ~= "state" or type(payload) ~= "table" then return end
-		if type(payload.catalog) == "table" then
-			skinCatalogCache = payload.catalog
-		end
+		-- Catalog is read from the shared module, not the payload, so
+		-- shirtName / pantsName are guaranteed present. We only need
+		-- the equipped map from the snapshot to know which skin to
+		-- apply per cached merc rig.
 		local equipped = payload.equipped or {}
 		for mercName, skinId in pairs(equipped) do
 			local entry = viewportCache[mercName]

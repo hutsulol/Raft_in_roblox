@@ -1,7 +1,9 @@
--- SkinCatalog.server.lua
--- Static, read-only catalog of every mercenary skin in the game.
--- Published on _G.SkinCatalog for the rest of the server (and the
--- client, via the snapshot pushed by MercenarySkin.server.lua).
+-- SkinCatalog.module.lua
+-- Shared, read-only catalog of every mercenary skin. Lives under
+-- ReplicatedStorage so both the server (MercenarySkin, MercenarySpawner
+-- via _G.ApplyMercSkin) and the client (SkinSelectPage, MercenariesMenu's
+-- cached-rig sync) require the same source of truth — no RemoteEvent
+-- payload trip needed for static metadata.
 --
 -- A skin is a (Shirt, Pants) pair living under ReplicatedStorage.Skins.
 -- The catalog ties those raw clothing instances to display metadata —
@@ -40,8 +42,6 @@ local function addSkin(entry)
 end
 
 -- ─── Pirate ─────────────────────────────────────────────────────────
--- Default crew kit. Free starter skin — granted on PlayerAdded so the
--- wardrobe is never empty for a fresh player.
 addSkin({
 	id              = "pirate_default",
 	mercName        = "Pirate lvl1",
@@ -57,9 +57,6 @@ addSkin({
 	ownedByDefault  = true,
 })
 
--- Summer drift — tropical blue shirt + sand-coloured shorts. Owned by
--- default for now (no shop yet); flip ownedByDefault to false once an
--- earn-flow exists.
 addSkin({
 	id              = "pirate_summer",
 	mercName        = "Pirate lvl1",
@@ -75,7 +72,7 @@ addSkin({
 	ownedByDefault  = true,
 })
 
--- ─── Filtered queries (used by MercenarySkin + SkinSelectPage) ──────
+-- ─── Filtered queries ───────────────────────────────────────────────
 
 local function getByMerc(mercName)
 	local out = {}
@@ -84,8 +81,7 @@ local function getByMerc(mercName)
 			table.insert(out, entry)
 		end
 	end
-	-- Stable order: rarity ascending, then displayName, so the grid
-	-- always lays out the same way across opens.
+	-- Stable order: rarity ascending, then displayName.
 	table.sort(out, function(a, b)
 		if a.rarity ~= b.rarity then return a.rarity < b.rarity end
 		return a.displayName < b.displayName
@@ -99,16 +95,13 @@ local function defaultForMerc(mercName)
 			return entry
 		end
 	end
-	-- Fall back to whatever the first catalog entry for this merc is —
-	-- never returns nil for a merc that has any skin defined, so the
-	-- spawner always has something to apply.
 	for _, entry in pairs(catalog) do
 		if entry.mercName == mercName then return entry end
 	end
 	return nil
 end
 
-_G.SkinCatalog = {
+return {
 	get            = function(id) return catalog[id] end,
 	all            = function() return catalog end,
 	getByMerc      = getByMerc,

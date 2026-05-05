@@ -27,18 +27,11 @@ local skinEvent = Instance.new("RemoteEvent")
 skinEvent.Name = "MercenarySkin"
 skinEvent.Parent = ReplicatedStorage
 
--- Wait briefly for SkinCatalog. It's a sibling Script that runs on the
--- same boot, but ordering isn't guaranteed; spin a short loop so this
--- file can survive being loaded first.
-local function getCatalog()
-	if _G.SkinCatalog then return _G.SkinCatalog end
-	local deadline = os.clock() + 5
-	while os.clock() < deadline do
-		if _G.SkinCatalog then return _G.SkinCatalog end
-		task.wait(0.1)
-	end
-	return _G.SkinCatalog
-end
+-- Catalog lives in ReplicatedStorage as a shared module so the client
+-- pages (SkinSelectPage / MercenariesMenu) require the same source of
+-- truth — no RemoteEvent serialisation in between for static metadata.
+local SkinCatalog = require(ReplicatedStorage:WaitForChild("SkinCatalog", 10))
+local function getCatalog() return SkinCatalog end
 
 -- ─── Per-player UnlockedSkins folder ─────────────────────────────────
 
