@@ -1113,6 +1113,30 @@ local function findSkinsFolder()
 	return ReplicatedStorage:FindFirstChild("Skins")
 end
 
+-- Build a fresh Shirt / Pants instance whose template asset matches a
+-- node under ReplicatedStorage.Skins. We don't use :Clone() because
+-- the source instance may be authored Archivable=false, in which case
+-- :Clone() silently returns nil on the client (the cached viewport
+-- ends up wearing nothing, which is what we saw in the wardrobe).
+-- Instance.new + copying the template asset id sidesteps Archivable.
+local function buildClothingFromTemplate(skinsFolder, name)
+	if not skinsFolder then return nil end
+	local node = skinsFolder:FindFirstChild(name)
+	if not node then return nil end
+	if node:IsA("Shirt") then
+		local s = Instance.new("Shirt")
+		s.Name = node.Name
+		s.ShirtTemplate = node.ShirtTemplate
+		return s
+	elseif node:IsA("Pants") then
+		local p = Instance.new("Pants")
+		p.Name = node.Name
+		p.PantsTemplate = node.PantsTemplate
+		return p
+	end
+	return nil
+end
+
 local function applySkinToCachedClone(clone, skinId)
 	if not (clone and clone.Parent) then return end
 	local def = skinCatalogCache[skinId]
@@ -1128,20 +1152,9 @@ local function applySkinToCachedClone(clone, skinId)
 		end
 	end
 
-	local function cloneNamed(name, classCheck)
-		local node = skinsFolder:FindFirstChild(name)
-		if not node then return nil end
-		if classCheck and not node:IsA(classCheck) then return nil end
-		local wasArchivable = node.Archivable
-		node.Archivable = true
-		local copy = node:Clone()
-		node.Archivable = wasArchivable
-		return copy
-	end
-
-	local shirt = cloneNamed(def.shirtName, "Shirt")
+	local shirt = buildClothingFromTemplate(skinsFolder, def.shirtName)
 	if shirt then shirt.Parent = clone end
-	local pants = cloneNamed(def.pantsName, "Pants")
+	local pants = buildClothingFromTemplate(skinsFolder, def.pantsName)
 	if pants then pants.Parent = clone end
 end
 
