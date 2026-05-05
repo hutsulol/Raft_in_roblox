@@ -1120,6 +1120,7 @@ end
 -- and only fall back to creating fresh ones when they're missing.
 local function readTemplate(skinsFolder, name)
 	if not skinsFolder then return nil, nil end
+	if typeof(name) ~= "string" or name == "" then return nil, nil end
 	local node = skinsFolder:FindFirstChild(name)
 	if not node then return nil, nil end
 	if node:IsA("Shirt") then

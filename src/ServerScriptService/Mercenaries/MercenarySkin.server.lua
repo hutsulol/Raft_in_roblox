@@ -153,6 +153,12 @@ local function buildCatalogPayload()
 			setName     = def.setName,
 			source      = def.source,
 			description = def.description,
+			-- Names needed by the client to look up the matching Shirt /
+			-- Pants under ReplicatedStorage.Skins for the cached merc
+			-- viewport rig (the server's live retro-fit can't reach it
+			-- because it lives inside a ViewportFrame on the client).
+			shirtName   = def.shirtName,
+			pantsName   = def.pantsName,
 		}
 	end
 	return out
