@@ -1171,39 +1171,37 @@ local function applySkinToCachedClone(clone, skinId)
 		return
 	end
 
-	-- Mutate the rig's existing Shirt / Pants in place if they're
-	-- there. Avoids the "rig ends up naked because Instance.new of
-	-- one class succeeded but the other didn't" failure mode.
-	local existingShirt, existingPants
+	-- ViewportFrames don't re-paint Shirt / Pants when their template
+	-- ids change after the model is already parented in. Detach the
+	-- rig from its current parent, do the swap with the rig in
+	-- limbo, then reparent — the viewport renders the new clothing
+	-- on re-attach. We also rebuild fresh Shirt / Pants instances
+	-- (instead of mutating in place) for the same reason: the swap
+	-- has to look like "model just gained clothing" to the renderer.
+	local previousParent = clone.Parent
+	clone.Parent = nil
+
 	for _, child in clone:GetChildren() do
-		if child:IsA("Shirt") and not existingShirt then
-			existingShirt = child
-		elseif child:IsA("Pants") and not existingPants then
-			existingPants = child
+		if child:IsA("Shirt") or child:IsA("Pants") then
+			child:Destroy()
 		end
 	end
 
 	if shirtAsset then
-		if existingShirt then
-			existingShirt.ShirtTemplate = shirtAsset
-		else
-			local s = Instance.new("Shirt")
-			s.Name = def.shirtName
-			s.ShirtTemplate = shirtAsset
-			s.Parent = clone
-		end
+		local s = Instance.new("Shirt")
+		s.Name = def.shirtName or "Shirt"
+		s.ShirtTemplate = shirtAsset
+		s.Parent = clone
 	end
 
 	if pantsAsset then
-		if existingPants then
-			existingPants.PantsTemplate = pantsAsset
-		else
-			local p = Instance.new("Pants")
-			p.Name = def.pantsName
-			p.PantsTemplate = pantsAsset
-			p.Parent = clone
-		end
+		local p = Instance.new("Pants")
+		p.Name = def.pantsName or "Pants"
+		p.PantsTemplate = pantsAsset
+		p.Parent = clone
 	end
+
+	clone.Parent = previousParent
 end
 
 task.spawn(function()
