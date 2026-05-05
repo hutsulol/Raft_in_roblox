@@ -1108,9 +1108,21 @@ end
 -- Pants whenever a state push arrives so the centre preview always
 -- shows the equipped skin alongside the in-world rigs.
 --
--- Catalog is required directly from the shared module so the
--- shirtName / pantsName fields can never be lost in payload transit.
-local SkinCatalog = require(ReplicatedStorage:WaitForChild("SkinCatalog", 30))
+-- Catalog is loaded asynchronously from the shared ReplicatedStorage
+-- module. We MUST NOT block the LocalScript's top level on it: if the
+-- module hasn't replicated yet (rare boot race), require(nil) throws
+-- and takes the whole menu down with it. Hold the reference in a
+-- nullable upvalue and short-circuit the swap when it isn't loaded —
+-- the rig will catch up the next time a "state" snapshot arrives
+-- after the require resolves.
+local SkinCatalog
+task.spawn(function()
+	local mod = ReplicatedStorage:WaitForChild("SkinCatalog", 30)
+	if mod then
+		local ok, result = pcall(require, mod)
+		if ok then SkinCatalog = result end
+	end
+end)
 
 local function findSkinsFolder()
 	return ReplicatedStorage:FindFirstChild("Skins")
