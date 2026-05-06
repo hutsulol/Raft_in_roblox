@@ -103,12 +103,43 @@ if hasShootPose then
 	end
 end
 
--- ── Cutlass / Revolver lookup ────────────────────────────────────────
+-- ── Cutlass / Revolver lookup + visibility toggle ────────────────────
+-- Both weapons are baked onto the Corsair rig (see PRESERVES_AUTHORED_
+-- LOADOUT in MercenarySpawner). At any moment only one should read as
+-- "in hand" — toggle transparency on every BasePart / Decal / Texture
+-- under the inactive tool so the player sees a single weapon. The
+-- rig's own welds keep both tools positioned; we just drop them out
+-- of the render.
 local function findTool(name)
 	local t = Self:FindFirstChild(name)
 	if t and t:IsA("Tool") then return t end
 	return nil
 end
+
+local function setToolVisible(tool, visible)
+	if not tool then return end
+	local t = visible and 0 or 1
+	for _, d in tool:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.LocalTransparencyModifier = t
+			d.Transparency = t
+		elseif d:IsA("Decal") or d:IsA("Texture") then
+			d.Transparency = t
+		end
+	end
+end
+
+local activeWeaponName  -- "Cutlass" / "Revolver" / nil
+local function setActiveWeapon(name)
+	if activeWeaponName == name then return end
+	activeWeaponName = name
+	setToolVisible(findTool(CUTLASS_NAME),  name == CUTLASS_NAME)
+	setToolVisible(findTool(REVOLVER_NAME), name == REVOLVER_NAME)
+end
+
+-- Default to the cutlass on init so a fresh rig spawns showing one
+-- weapon, not both. Distance dispatch flips this on the first attack.
+setActiveWeapon(CUTLASS_NAME)
 
 -- ── Attack animation track (melee swing fallback) ─────────────────────
 local DEFAULT_ATTACK_ID = "rbxassetid://129967390"  -- R6 toolslash
@@ -139,6 +170,23 @@ local shooting    = false   -- set by the chase loop while aiming
 local lastMelee   = 0
 local lastShot    = 0
 local saveWalkSpeed = ATTR.WALK_SPEED   -- restored when leaving aim
+
+-- Cache the rig's neutral Motor6D C0s before we ever take over the
+-- joints for the shooting pose. leaveAim() restores these values so
+-- the rig drops back into its idle / walk pose instead of standing
+-- frozen in mid-aim. Captured per-joint to survive a partial pose
+-- override (e.g. pose lerp dies mid-frame).
+local NEUTRAL_C0
+if hasShootPose then
+	NEUTRAL_C0 = {
+		root          = root.C0,
+		neck          = neck.C0,
+		leftShoulder  = leftShoulder.C0,
+		rightShoulder = rightShoulder.C0,
+		leftHip       = leftHip.C0,
+		rightHip      = rightHip.C0,
+	}
+end
 
 humanoid.Died:Connect(function() alive = false end)
 
@@ -222,6 +270,9 @@ end
 
 -- ── Melee swing (Cutlass) ─────────────────────────────────────────────
 local function meleeAttack(targetHum)
+	-- Surface the cutlass + hide the revolver before swinging; flip is
+	-- a no-op when we were already in melee mode.
+	setActiveWeapon(CUTLASS_NAME)
 	if tick() - lastMelee < ATTR.MELEE_COOLDOWN then return end
 	lastMelee = tick()
 	targetHum:TakeDamage(ATTR.MELEE_DAMAGE)
@@ -256,15 +307,45 @@ local function fireBullet(targetHead)
 	local rev, muzzle = findRevolverMuzzle()
 	if not muzzle then return end
 
-	-- Optional shoot sound child on the Revolver (mirrors AK-47.shoot
-	-- on the Soldier). Plays once per shot if present.
-	local shootSound = rev and rev:FindFirstChild("shoot")
-	if shootSound and shootSound:IsA("Sound") then
-		pcall(function() shootSound:Play() end)
+	-- Use the Revolver's own ShootSound (lives under Handle on the
+	-- user's authored Revolver tool). Falls back to a couple of
+	-- common-name variants so a future asset rename doesn't silence
+	-- the gun.
+	local function findSound(parent, names)
+		for _, n in ipairs(names) do
+			local s = parent:FindFirstChild(n, true)
+			if s and s:IsA("Sound") then return s end
+		end
+		return nil
+	end
+	if rev then
+		local s = findSound(rev, { "ShootSound", "shoot", "Shoot" })
+		if s then pcall(function() s:Play() end) end
 	end
 
-	-- Activated() lets the user wire muzzle-flash particles, custom
-	-- sounds, etc. on the Revolver tool itself.
+	-- Briefly enable the muzzle-flash effects authored on the Handle
+	-- (LightShotEffect / ShotEffect). They stay disabled at rest so
+	-- the rig isn't constantly flashing.
+	if muzzle then
+		for _, d in muzzle:GetDescendants() do
+			if d:IsA("ParticleEmitter") and (d.Name == "LightShotEffect" or d.Name == "ShotEffect") then
+				d:Emit(d.Rate > 0 and math.max(8, math.floor(d.Rate / 4)) or 12)
+			end
+		end
+		-- Some authored revolvers store the effects directly on Handle
+		-- instead of nested. Mirror the same Emit() pass on the Handle.
+		if muzzle:IsA("BasePart") then
+			for _, d in muzzle:GetChildren() do
+				if d:IsA("ParticleEmitter")
+					and (d.Name == "LightShotEffect" or d.Name == "ShotEffect") then
+					d:Emit(12)
+				end
+			end
+		end
+	end
+
+	-- Activated() lets the user wire additional logic (custom firing
+	-- script, sound effects, etc.) on the Revolver tool itself.
 	if rev then
 		pcall(function() rev:Activate() end)
 	end
@@ -324,6 +405,9 @@ local function fireBullet(targetHead)
 end
 
 local function rangedAttack(targetHead)
+	-- Swap to the revolver visually before firing; the cutlass goes
+	-- transparent. No-op if we're already in ranged mode.
+	setActiveWeapon(REVOLVER_NAME)
 	if tick() - lastShot < ATTR.RANGED_COOLDOWN then return end
 	lastShot = tick()
 	fireBullet(targetHead)
@@ -412,6 +496,18 @@ local function leaveAim()
 	if not shooting then return end
 	shooting = false
 	humanoid.WalkSpeed = saveWalkSpeed
+	-- Restore the neutral Motor6D C0s so the rig drops out of the
+	-- aim pose immediately. Without this the lerp loop's last frame
+	-- sticks on the joints and the rig appears frozen mid-aim while
+	-- the chase loop tries to walk / swing.
+	if hasShootPose and NEUTRAL_C0 then
+		root.C0          = NEUTRAL_C0.root
+		neck.C0          = NEUTRAL_C0.neck
+		leftShoulder.C0  = NEUTRAL_C0.leftShoulder
+		rightShoulder.C0 = NEUTRAL_C0.rightShoulder
+		leftHip.C0       = NEUTRAL_C0.leftHip
+		rightHip.C0      = NEUTRAL_C0.rightHip
+	end
 end
 
 print("[Corsair/Combat] AI online for " .. Self:GetFullName())
@@ -440,9 +536,12 @@ while alive and Self.Parent do
 
 		if dist <= ATTR.MELEE_RANGE then
 			-- Close: cutlass swing. Drop out of aim mode if we were
-			-- shooting; the rig sprints in for the kill.
+			-- shooting; the rig sprints in for the kill, faces the
+			-- target between swings, and the meleeAttack respects
+			-- its own cooldown so the cadence stays at ~1.6/s.
 			leaveAim()
 			humanoid:MoveTo(rootPart.Position)
+			faceTarget(tRoot)
 			meleeAttack(target)
 		elseif dist <= ATTR.RANGED_RANGE and hasLineOfSight(tRoot) then
 			-- In gun range: stop, face target, fire.
