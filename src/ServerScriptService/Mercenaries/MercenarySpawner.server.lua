@@ -144,18 +144,24 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 		or DEFAULT_WEAPON_BY_MERC[mercName]
 		or "Sword"
 
-	-- Mercs whose rig ships its full loadout authored as Tools (Corsair
-	-- carries both a Cutlass and a Revolver baked in, picked between
-	-- by his Combat.script based on distance). For these we skip the
-	-- "destroy all Tools, then add the equipped weapon" path so the
-	-- authored loadout survives the spawn.
-	local PRESERVES_AUTHORED_LOADOUT = {
-		["Corsair"] = true,
-	}
+	-- Per-merc, per-equipment-slot toggle: when does the rig spawn with
+	-- its FULL authored Tool set (Cutlass + Revolver welded on) vs the
+	-- standard "strip everything, equip the chosen weapon" path?
+	-- Today only the Corsair has an authored multi-weapon loadout, and
+	-- only for the Sword slot — that's his combat role with the hybrid
+	-- melee/ranged AI. For FishingRod / Unarmed he needs to behave like
+	-- a normal Pirate (fish or harvest), so we strip his combat tools
+	-- and let the standard path attach the FishingRod (or no tool).
+	local function preservesAuthoredLoadout(merc, weapon)
+		if merc == "Corsair" and weapon == "Sword" then return true end
+		return false
+	end
 
-	if not PRESERVES_AUTHORED_LOADOUT[mercName] then
+	if not preservesAuthoredLoadout(mercName, equippedWeapon) then
 		-- Remove all existing tools from the clone (template may have a
-		-- FishingRod, etc.) so the rig holds exactly the equipped weapon.
+		-- FishingRod, Cutlass, Revolver, etc.) so the rig holds exactly
+		-- the equipped weapon — same path Pirate uses for swapping
+		-- between Sword / FishingRod / Unarmed roles.
 		for _, child in clone:GetChildren() do
 			if child:IsA("Tool") then
 				child:Destroy()
