@@ -1,14 +1,4 @@
--- NpcAi.script (Infected_Military — hostile Soldier)
---
--- Verbatim copy of src/Infected_Military_Menu/NpcAi.script. The
--- single source of truth for both the recruited mercenary and the
--- hostile world rig — the role-aware target filter inside reads the
--- "SpawnedMercenary" tag at runtime and switches between "shoot
--- HostilePirate-tagged enemies" (merc) and "shoot non-HostilePirate"
--- (hostile). The EquippedWeapon gate never trips for the hostile
--- rig (no attribute set on it) so combat always runs here.
---
--- Header from the friendly version follows for reference:
+-- NpcAi.scrpit (Infected_Military_Menu — Soldier mercenary)
 --
 -- Clean rewrite that replaces the original Sammy123700 NpcAi. The
 -- old script ran three coroutines in parallel (random-walk, flee-
