@@ -12,10 +12,23 @@
 -- now a no-op for these names (it skips when the clone already
 -- carries an authored copy).
 
-local Players = game:GetService("Players")
+local Players           = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
-local SoundService = game:GetService("SoundService")
-local Debris = game:GetService("Debris")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService      = game:GetService("SoundService")
+local Debris            = game:GetService("Debris")
+
+-- Per-merc Speed → gather time spec from src/GameDesign/StatsSystem.md.
+-- Same module the Pirate's HarvestResources uses; keeps both rigs in
+-- sync on the doc formula.
+local MercStats
+do
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 10)
+	if mod then
+		local ok, result = pcall(require, mod)
+		if ok then MercStats = result end
+	end
+end
 
 -- Per-type break sounds. Log / Leaves ship as a child Sound inside the
 -- resource template; Plastic / Rock live in SoundService. The merc
@@ -316,24 +329,12 @@ end
 
 local lastAttack = 0
 
--- WeaponSelect's UI shows Extraction Speed as `base * (1 + speed/100)`;
--- mirror that multiplier here so the harvest cooldown actually shrinks
--- as the merc's DNA-research speed stat grows. Falls back to the raw
--- ATTACK_COOLDOWN if the DNAResearch module isn't loaded yet or the
--- owner has disconnected.
+-- Harvest cooldown = MercStats.gatherTime(merc speed) per
+-- StatsSystem.md. Soldier base speed 131 → 8 s harvest cycle.
 local function getHarvestCooldown()
-	local getState = _G.GetDNAResearchMercState
-	if not getState then return ATTACK_COOLDOWN end
-	local ownerUserId = model:GetAttribute("OwnerUserId")
-	local mercName    = model:GetAttribute("MercName")
-	if not ownerUserId or not mercName then return ATTACK_COOLDOWN end
-	local player = Players:GetPlayerByUserId(ownerUserId)
-	if not player then return ATTACK_COOLDOWN end
-	local state = getState(player, mercName)
-	local speed = state and state.stats and tonumber(state.stats.speed) or 0
-	local mult  = 1 + speed / 100
-	if mult <= 0 then return ATTACK_COOLDOWN end
-	return ATTACK_COOLDOWN / mult
+	if not MercStats then return ATTACK_COOLDOWN end
+	local stats = MercStats.statsFromRig(model)
+	return MercStats.gatherTime(stats.speed)
 end
 
 task.spawn(function()

@@ -24,9 +24,23 @@
 local CollectionService   = game:GetService("CollectionService")
 local Players             = game:GetService("Players")
 local PathfindingService  = game:GetService("PathfindingService")
+local ReplicatedStorage   = game:GetService("ReplicatedStorage")
 local RunService          = game:GetService("RunService")
 
 local Self = script.Parent
+
+-- Shared per-merc stats module. Strength drives the swing damage we
+-- apply server-side so a higher-tier merc hits proportionally harder
+-- regardless of which weapon is welded onto the rig. See
+-- src/GameDesign/StatsSystem.md and src/ReplicatedStorage/MercStats.
+local MercStats
+do
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 10)
+	if mod then
+		local ok, result = pcall(require, mod)
+		if ok then MercStats = result end
+	end
+end
 
 -- ── Tunables ──────────────────────────────────────────────────────────
 -- Reference: hostile pirates (Enemy_Pirate) ship with MaxHealth ~100 and
@@ -37,7 +51,9 @@ local ATTR = {
 	MaximumDetectionDistance = 140,
 	MaxHealth                = 250,  -- ~2.5× a hostile pirate
 	WalkSpeed                = 18,   -- slightly faster than the default 16
-	AttackDamage             = 18,   -- ~2× hostile damage
+	-- AttackDamage is now driven by MercStats.fistDamage(strength) at
+	-- attack time. The Pirate's base strength of 10 yields 5 dmg per
+	-- swing; level-10 (str 45) yields 22.5. See StatsSystem.md.
 	AttackFrequency          = 1.8,  -- swings per second (~2× hostile)
 	AttackRange              = 6,    -- studs
 	RecomputePathFrequency   = 1,
@@ -311,7 +327,13 @@ local function attack()
 	if not hrp or not tp then return end
 
 	if (hrp.Position - tp).Magnitude <= ATTR.AttackRange then
-		currentTarget:TakeDamage(ATTR.AttackDamage)
+		-- Damage = fistDamage(merc strength). Falls back to a flat 18
+		-- (the previous hardcoded value) if the MercStats module
+		-- failed to load — never silently zero-damage on an
+		-- unrelated boot-order race.
+		local strength = (MercStats and MercStats.statsFromRig(Self).strength) or 10
+		local dmg = MercStats and MercStats.fistDamage(strength) or 18
+		currentTarget:TakeDamage(dmg)
 		lastAttack = tick()
 
 		-- Play the rig's own Attack animation (loaded from script.Attack)

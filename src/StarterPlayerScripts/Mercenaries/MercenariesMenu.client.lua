@@ -293,7 +293,11 @@ local MERC_THEMES = {
 		level       = 1,
 		xp          = 0,
 		xpMax       = 500,
-		charStats   = { str = 72, spd = 48, luck = 35 },
+		-- Strength / Speed / Luck per the StatsSystem.md design doc.
+		-- Pirate is the lowest tier — base 10/10/10 on the universal
+		-- 10–200 scale. Bar fill normalises against UNIVERSAL_MAX in
+		-- refreshRight below.
+		charStats   = { str = 10, spd = 10, luck = 10 },
 		portraitIcon = ICON_PIRATE,
 	},
 	["Corsair"] = {
@@ -312,7 +316,8 @@ local MERC_THEMES = {
 		level       = 1,
 		xp          = 0,
 		xpMax       = 650,
-		charStats   = { str = 80, spd = 55, luck = 42 },
+		-- Marauder tier from StatsSystem.md (mid-rung): 30/62/35 base.
+		charStats   = { str = 30, spd = 62, luck = 35 },
 		portraitIcon = ICON_PIRATE,
 	},
 	["Infected Military"] = {
@@ -354,7 +359,8 @@ local MERC_THEMES = {
 		level       = 1,
 		xp          = 0,
 		xpMax       = 800,
-		charStats   = { str = 90, spd = 62, luck = 40 },
+		-- Military tier from StatsSystem.md: 110/131/75 base.
+		charStats   = { str = 110, spd = 131, luck = 75 },
 		portraitIcon = ICON_PIRATE,
 	},
 }
@@ -367,7 +373,10 @@ local DEFAULT_THEME = {
 	level       = 1,
 	xp          = 0,
 	xpMax       = 100,
-	charStats   = { str = 30, spd = 30, luck = 30 },
+	-- Default (Pirate-tier) stats — same 10/10/10 baseline as the
+	-- weakest registered merc. Bars + numbers normalise against the
+	-- 10–200 universal scale from StatsSystem.md.
+	charStats   = { str = 10, spd = 10, luck = 10 },
 }
 
 -- Per-merc weapon allow-list. Mirrored from
@@ -3176,11 +3185,17 @@ buildPage = function(mercNames)
 		local availablePoints = math.max(0, totalFromXp - mercSpentUpgradePoints[mercName])
 		pointsLabel.Text = string.format("UPGRADE POINTS: %d", availablePoints)
 
+		-- charStats are the doc's level-1 base values on the universal
+		-- 10–200 scale (see src/GameDesign/StatsSystem.md and the
+		-- MercStats ReplicatedStorage module). The displayed number
+		-- IS the stat value — no hidden multiplier — so the player
+		-- can correlate the menu bar with the in-rig damage / gather
+		-- time formulas applied server-side.
 		local s = theme.charStats or DEFAULT_THEME.charStats
 		for key, rec in pairs(statRefs) do
 			local base = s[key] or 0
 			local upgraded = base + (mercStatUpgrades[mercName][key] or 0)
-			local shown = upgraded * 2
+			local shown = math.floor(upgraded + 0.5)
 			rec.value.Text = tostring(shown)
 			rec.fill.Size = UDim2.new(math.clamp(shown / 200, 0, 1), 0, 1, 0)
 

@@ -1,6 +1,19 @@
 --Fully made by Sammy123700 Credits: Spidermaddy5550
 --animations are made with :lerp()
 --you can convert the model to use it in script builder
+
+-- Per-merc Strength → bullet damage (StatsSystem.md spec). Soldier
+-- base strength is 110 → 55 dmg per shot.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local MercStats
+do
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 10)
+	if mod then
+		local ok, result = pcall(require, mod)
+		if ok then MercStats = result end
+	end
+end
+
 local npc = script.Parent
 -- Self-tag so the recruitment client / server treat this rig as an
 -- "Infected Military" hostile regardless of how it entered the world
@@ -197,17 +210,32 @@ function checkandshoot()
 									velocity.Velocity = bullet.CFrame.lookVector * 500 + Vector3.new(math.random(-25,25),math.random(-25,25),0)
 									local pointlight = Instance.new("PointLight", npc["AK-47"])
 									game.Debris:AddItem(pointlight,0.1)
-									-- Damage intentionally disabled: the bullet keeps
-									-- its visual + sound (so the AI still reads as
-									-- "shooting") but does not actually hurt anyone.
-									-- Re-enable by restoring a TakeDamage call here.
+									-- Bullet damage = Strength → fistDamage formula.
+									-- Snapshot at fire time, fall back to flat 55 if
+									-- MercStats hasn't loaded.
+									local strength = (MercStats and MercStats.statsFromRig(npc).strength) or 110
+									local bulletDmg = MercStats and MercStats.fistDamage(strength) or 55
+									local consumed = false
 									local function damage(part)
-										if part.Parent.ClassName ~= "Accessory" and part.Parent.Parent.ClassName ~= "Accessory" and part.ClassName ~= "Accessory" and part.Parent.Name ~= npc.Name and part.CanCollide == true then
-											bullet:destroy()
+										if consumed or not part or not part.Parent then return end
+										if part.Parent:IsA("Accessory") then return end
+										if part.Parent.Parent and part.Parent.Parent:IsA("Accessory") then return end
+										if part.Parent == npc or (part.Parent.Parent and part.Parent.Parent == npc) then return end
+										local model = part:FindFirstAncestorOfClass("Model")
+										if model and model ~= npc then
+											local victim = model:FindFirstChildOfClass("Humanoid")
+											if victim and victim ~= npchumanoid and victim.Health > 0 then
+												victim:TakeDamage(bulletDmg)
+											end
 										end
+										consumed = true
+										bullet:Destroy()
 									end
-									game.Debris:AddItem(bullet, 0)
-									bullet.Touched:connect(damage)
+									-- Bullet needs to live long enough to travel —
+									-- the original 0-second cleanup destroyed it on
+									-- the same frame.
+									game.Debris:AddItem(bullet, 1.4)
+									bullet.Touched:Connect(damage)
 								end
 								wait()
 							end

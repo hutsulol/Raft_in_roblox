@@ -29,10 +29,25 @@
 local CollectionService  = game:GetService("CollectionService")
 local Players            = game:GetService("Players")
 local PathfindingService = game:GetService("PathfindingService")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local RunService         = game:GetService("RunService")
 local Debris             = game:GetService("Debris")
 
 local Self = script.Parent
+
+-- Per-merc Strength / Speed / Luck spec. Strength drives the swing +
+-- bullet damage we apply server-side. Corsair's base strength is 30
+-- (Marauder tier in StatsSystem.md) → 15 dmg per fist; we use that
+-- for both the cutlass swing and the revolver bullet so the merc's
+-- DPS scales with its tier instead of a hardcoded number.
+local MercStats
+do
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 10)
+	if mod then
+		local ok, result = pcall(require, mod)
+		if ok then MercStats = result end
+	end
+end
 
 -- ── Tunables ──────────────────────────────────────────────────────────
 local ATTR = {
@@ -40,8 +55,11 @@ local ATTR = {
 	MaxHealth                = 320,
 	WalkSpeed                = 16,
 
-	-- Melee (Cutlass)
-	MeleeDamage              = 22,
+	-- Melee + ranged DAMAGE values are now driven from MercStats —
+	-- both branches read fistDamage(strength) on each strike so a
+	-- maxed Corsair bites harder than a starter Pirate without the
+	-- numbers diverging from the doc. Default fallbacks (22 / 14)
+	-- match the previous hardcoded values for boot-order safety.
 	MeleeFrequency           = 1.6,
 	MeleeRange               = 6,
 
@@ -49,7 +67,6 @@ local ATTR = {
 	-- wants the rig to stay aggressive at medium distance and only
 	-- engage with the gun once it's close enough to the player to make
 	-- the shot read. Above this we just chase.
-	RangedDamage             = 14,
 	RangedFrequency          = 1.0,
 	RangedRange              = 35,
 	BulletSpeed              = 320,
@@ -501,7 +518,11 @@ local function meleeAttack()
 	if tick() - lastMelee <= 1 / ATTR.MeleeFrequency then return end
 
 	setActiveWeapon(CUTLASS_NAME)
-	currentTarget:TakeDamage(ATTR.MeleeDamage)
+	-- Strength → swing damage. Corsair base 30 → 15 dmg; falls back
+	-- to the previous flat 22 if MercStats failed to load.
+	local strength = (MercStats and MercStats.statsFromRig(Self).strength) or 30
+	local meleeDmg = MercStats and MercStats.fistDamage(strength) or 22
+	currentTarget:TakeDamage(meleeDmg)
 	lastMelee = tick()
 	if attackTrack then
 		pcall(function()
@@ -625,6 +646,12 @@ local function fireBullet()
 	Debris:AddItem(bullet, ATTR.BulletLife)
 
 	local mercRole = isFellowMercenary(Self)
+	-- Strength → bullet damage, snapshotted at fire time so each
+	-- bullet hits for the rig's strength at the moment of the shot
+	-- (captured by the closure below). Falls back to the previous
+	-- flat 14 if MercStats failed to load.
+	local strength = (MercStats and MercStats.statsFromRig(Self).strength) or 30
+	local rangedDmg = MercStats and MercStats.fistDamage(strength) or 14
 	local consumed = false
 	bullet.Touched:Connect(function(part)
 		if consumed or not part or not part.Parent then return end
@@ -648,7 +675,7 @@ local function fireBullet()
 			end
 			local victim = model:FindFirstChildOfClass("Humanoid")
 			if victim and victim ~= humanoid and victim.Health > 0 then
-				victim:TakeDamage(ATTR.RangedDamage)
+				victim:TakeDamage(rangedDmg)
 			end
 		end
 		consumed = true
