@@ -102,9 +102,45 @@ if humanoid.JumpPower == 0 and humanoid.JumpHeight == 0 then
 	humanoid.JumpPower = 50
 end
 
--- ── Cutlass / Revolver lookup + visibility toggle ─────────────────────
+-- ── Cutlass / Revolver lookup + draw / sheathe helpers ───────────────
+-- Tool swap on the rig is handled via two complementary mechanisms:
+--
+--   1. humanoid:EquipTool(tool) / UnequipTools()
+--        Moves the chosen Tool into the rig's right-hand Grip and
+--        removes the other from the hand. This is what makes the
+--        rig visibly "draw" / "sheathe" — the active tool's mesh
+--        ends up in the right hand, the inactive tool ends up in
+--        the rig's Backpack folder and is no longer rendered there.
+--   2. Transparency toggle on the OTHER tool's BaseParts
+--        Belt-and-suspenders for rigs where both tools are welded
+--        directly to the body (custom welds, not Roblox Grip), so
+--        the unequipped tool would otherwise still be rendered.
+--
+-- findTool looks both at the model's direct children AND in the
+-- character's Backpack folder, because once a tool is equipped the
+-- previous one is moved out of the model into Backpack — losing the
+-- reference there would mean we can never swap back to it.
+
+local function getBackpack()
+	-- Roblox auto-creates a "Backpack" folder on the model the first
+	-- time a Humanoid:UnequipTools() call has somewhere to put the
+	-- currently-held tool. Create one up front so the rest of the
+	-- code has a stable place to look.
+	local bp = Self:FindFirstChild("Backpack")
+	if bp and bp:IsA("Folder") then return bp end
+	bp = Instance.new("Folder")
+	bp.Name   = "Backpack"
+	bp.Parent = Self
+	return bp
+end
+local backpack = getBackpack()
+
 local function findTool(name)
+	-- Direct child of the rig (currently held).
 	local t = Self:FindFirstChild(name)
+	if t and t:IsA("Tool") then return t end
+	-- Stored in our Backpack folder (currently sheathed).
+	t = backpack:FindFirstChild(name)
 	if t and t:IsA("Tool") then return t end
 	return nil
 end
@@ -121,12 +157,48 @@ local function setToolVisible(tool, visible)
 	end
 end
 
+-- Move every Tool currently held by the rig into our Backpack folder
+-- so EquipTool below has a clean slate. Avoids the "two Tools both
+-- direct children of the model" auto-equip race that leaves the rig
+-- holding whichever loaded first.
+local function sheatheAll()
+	for _, child in Self:GetChildren() do
+		if child:IsA("Tool") then
+			child.Parent = backpack
+		end
+	end
+end
+
 local activeWeaponName  -- "Cutlass" / "Revolver" / nil
 local function setActiveWeapon(name)
 	if activeWeaponName == name then return end
 	activeWeaponName = name
-	setToolVisible(findTool(CUTLASS_NAME),  name == CUTLASS_NAME)
-	setToolVisible(findTool(REVOLVER_NAME), name == REVOLVER_NAME)
+
+	-- Move every tool out of the rig's hand first, then EquipTool the
+	-- chosen one. EquipTool also does the unequip, but doing it
+	-- explicitly avoids the case where neither Cutlass nor Revolver
+	-- is found (sheatheAll still gets us back to a known state).
+	sheatheAll()
+
+	local target = findTool(name)
+	local cutlass = findTool(CUTLASS_NAME)
+	local revolver = findTool(REVOLVER_NAME)
+
+	if target then
+		pcall(function() humanoid:EquipTool(target) end)
+	end
+
+	-- Visibility belt-and-suspenders for rigs whose Tools are welded
+	-- directly to body parts via custom welds (not the Roblox Grip):
+	-- those won't actually move when EquipTool happens, so toggle
+	-- their Transparency too.
+	setToolVisible(cutlass,  name == CUTLASS_NAME)
+	setToolVisible(revolver, name == REVOLVER_NAME)
+
+	warn(string.format("[Corsair/Combat] active weapon → %s (cutlass=%s, revolver=%s)",
+		tostring(name),
+		tostring(cutlass and "found" or "missing"),
+		tostring(revolver and "found" or "missing")))
 end
 
 -- Default to the cutlass on init so the rig spawns showing one weapon,
@@ -492,12 +564,24 @@ local function fireBullet()
 	end)
 end
 
+local rangedDebugFired = false
+local rangedDebugBlockedLOS = false
 local function rangedAttack()
 	if not targetIsValid() then return end
-	if not hasLineOfSight() then return end
+	if not hasLineOfSight() then
+		if not rangedDebugBlockedLOS then
+			rangedDebugBlockedLOS = true
+			warn("[Corsair/Combat] ranged blocked: hasLineOfSight=false (will retry silently)")
+		end
+		return
+	end
 	if tick() - lastShot <= 1 / ATTR.RangedFrequency then return end
 	setActiveWeapon(REVOLVER_NAME)
 	lastShot = tick()
+	if not rangedDebugFired then
+		rangedDebugFired = true
+		warn("[Corsair/Combat] FIRST RANGED SHOT — Revolver should now be visible")
+	end
 	fireBullet()
 end
 
