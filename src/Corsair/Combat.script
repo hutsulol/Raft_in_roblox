@@ -1,53 +1,62 @@
 -- Combat.script (Corsair — Mercenary AI)
 --
--- Hybrid melee / ranged AI built on top of two existing scripts:
---   * src/Enemy_Pirate/Zombie.script
---       — clean self-contained loop, role-based target search via
---         CollectionService tags, attack-animation fallback, tool
---         activation. Whole skeleton borrowed.
---   * src/Infected_Military/NpcAi.script
---       — Motor6D :lerp shooting pose, bullet projectile (Neon Part +
---         BodyVelocity, damage on Touched), face-target snap, walk-
---         freeze while aiming. The aiming pose + bullet + sound block
---         is borrowed verbatim and re-pointed from the AK-47 Part to
---         the Corsair's Revolver Tool.
+-- Hybrid melee / ranged AI built on top of two reference scripts:
+--   * src/Pirate_2/Combat.script — whole structure (search → recompute
+--     path → travel → jump check → attack), MERCENARY role contract,
+--     pathfinding around obstacles, line-of-sight raycast, wake-up
+--     normalisation. Borrowed verbatim except where called out.
+--   * src/Infected_Military/NpcAi.script — bullet block (Neon Part +
+--     BodyVelocity, Touched-driven damage). The aiming pose lerp from
+--     NpcAi was intentionally dropped: the original implementation
+--     froze the rig in mid-aim and stopped it approaching the player.
+--     The rig now fires while still walking toward the target, which
+--     matches the user's brief ("approach + shoot"). The Revolver
+--     tool's own ShootSound + LightShotEffect / ShotEffect emitters
+--     are triggered on every shot so the gun still reads as "firing".
 --
 -- Behaviour:
---   * dist ≤ MELEE_RANGE       → swing the Cutlass (Tool:Activate +
---                                  attack track, Pirate cadence)
---   * dist ≤ RANGED_RANGE +    → stop, face target, lerp into the
---     line of sight to target    soldier's shooting pose, fire a
---                                  bullet from the Revolver muzzle
---   * else                      → walk toward target, no attack
+--   dist ≤ MELEE_RANGE   → swing the Cutlass (Pirate cadence)
+--   dist ≤ RANGED_RANGE  → fire a Revolver bullet WHILE walking
+--   + line of sight        toward the target — does not stop
+--   else                  → walk toward target, no attack
 --
--- Same self-contained no-respawn / no Configurations contract as the
--- Pirate_2 mercenary AI. Tunables live in ATTR. Drop a child Animation
--- named "Attack" on the script to override the default toolslash.
+-- Both weapons live on the rig at once (PRESERVES_AUTHORED_LOADOUT in
+-- MercenarySpawner keeps them through the spawn). At any moment only
+-- one is rendered: setActiveWeapon flips Transparency on every
+-- BasePart / Decal / Texture under the inactive tool so the rig
+-- visibly draws / sheathes between modes.
 
-local CollectionService = game:GetService("CollectionService")
-local Players           = game:GetService("Players")
-local RunService        = game:GetService("RunService")
-local Debris            = game:GetService("Debris")
+local CollectionService  = game:GetService("CollectionService")
+local Players            = game:GetService("Players")
+local PathfindingService = game:GetService("PathfindingService")
+local RunService         = game:GetService("RunService")
+local Debris             = game:GetService("Debris")
 
 local Self = script.Parent
 
 -- ── Tunables ──────────────────────────────────────────────────────────
 local ATTR = {
-	DETECTION_RANGE   = 180,
-	MELEE_RANGE       = 6,
-	MELEE_DAMAGE      = 22,
-	MELEE_COOLDOWN    = 0.6,    -- seconds (~1.6 swings/s)
+	MaximumDetectionDistance = 160,
+	MaxHealth                = 320,
+	WalkSpeed                = 16,
 
-	RANGED_RANGE      = 70,
-	RANGED_DAMAGE     = 14,
-	RANGED_COOLDOWN   = 0.7,    -- seconds (~1.4 shots/s)
-	BULLET_SPEED      = 320,
-	BULLET_LIFE       = 1.4,
+	-- Melee (Cutlass)
+	MeleeDamage              = 22,
+	MeleeFrequency           = 1.6,
+	MeleeRange               = 6,
 
-	WALK_SPEED        = 14,
-	TICK_INTERVAL     = 0.08,   -- AI tick; the lerp loop runs on its
-	                            -- own RunService.Heartbeat thread so
-	                            -- this only governs the chase loop.
+	-- Ranged (Revolver). RangedRange is intentionally short — the user
+	-- wants the rig to stay aggressive at medium distance and only
+	-- engage with the gun once it's close enough to the player to make
+	-- the shot read. Above this we just chase.
+	RangedDamage             = 14,
+	RangedFrequency          = 1.0,
+	RangedRange              = 35,
+	BulletSpeed              = 320,
+	BulletLife               = 1.4,
+
+	RecomputePathFrequency   = 1,
+	JumpCheckFrequency       = 1,
 }
 
 local CUTLASS_NAME  = "Cutlass"
@@ -65,51 +74,35 @@ if equippedWeapon == "FishingRod" or equippedWeapon == "Unarmed" then
 end
 
 local humanoid = Self:WaitForChild("Humanoid", 5)
-local rootPart = Self:WaitForChild("HumanoidRootPart", 5)
-if not (humanoid and rootPart) then
-	warn("[Corsair/Combat] missing Humanoid / HumanoidRootPart on " .. Self:GetFullName())
+if humanoid == nil then
+	warn("[Corsair/Combat] no Humanoid — AI cannot run")
 	return
 end
 
--- Wake the rig up. Mirrors Zombie.script's normalisation.
-humanoid.WalkSpeed     = ATTR.WALK_SPEED
-humanoid.PlatformStand = false
-humanoid.Sit           = false
-rootPart.Anchored      = false
+-- Wake the rig up + apply combat stats. Belt-and-suspenders against
+-- a template saved mid-ragdoll or with weird platform-stand state.
 for _, d in Self:GetDescendants() do
 	if d:IsA("BasePart") then d.Anchored = false end
 end
-
--- ── R6 body-part references (used by the shooting Motor6D pose) ──────
--- Wrapped in pcall so a slightly-non-standard Corsair rig doesn't kill
--- the entire script — we just lose the shooting pose in that case.
-local torso       = Self:FindFirstChild("Torso")
-local head        = Self:FindFirstChild("Head")
-local rightArm    = Self:FindFirstChild("Right Arm")
-local leftArm     = Self:FindFirstChild("Left Arm")
-
-local hasShootPose = torso and head and rightArm and leftArm
-
-local neck, leftShoulder, rightShoulder, leftHip, rightHip, root
-if hasShootPose then
-	neck          = torso:FindFirstChild("Neck")
-	leftShoulder  = torso:FindFirstChild("Left Shoulder")
-	rightShoulder = torso:FindFirstChild("Right Shoulder")
-	leftHip       = torso:FindFirstChild("Left Hip")
-	rightHip      = torso:FindFirstChild("Right Hip")
-	root          = rootPart:FindFirstChild("RootJoint")
-	if not (neck and leftShoulder and rightShoulder and leftHip and rightHip and root) then
-		hasShootPose = false
-	end
+humanoid.MaxHealth     = ATTR.MaxHealth
+humanoid.Health        = ATTR.MaxHealth
+humanoid.WalkSpeed     = ATTR.WalkSpeed
+humanoid.PlatformStand = false
+humanoid.Sit           = false
+pcall(function()
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+end)
+-- Make sure the rig CAN actually jump (PathfindingService waypoints
+-- and the explicit jumpCheck below both rely on this).
+if humanoid.JumpPower == 0 and humanoid.JumpHeight == 0 then
+	humanoid.JumpPower = 50
 end
 
--- ── Cutlass / Revolver lookup + visibility toggle ────────────────────
--- Both weapons are baked onto the Corsair rig (see PRESERVES_AUTHORED_
--- LOADOUT in MercenarySpawner). At any moment only one should read as
--- "in hand" — toggle transparency on every BasePart / Decal / Texture
--- under the inactive tool so the player sees a single weapon. The
--- rig's own welds keep both tools positioned; we just drop them out
--- of the render.
+-- ── Cutlass / Revolver lookup + visibility toggle ─────────────────────
 local function findTool(name)
 	local t = Self:FindFirstChild(name)
 	if t and t:IsA("Tool") then return t end
@@ -121,7 +114,6 @@ local function setToolVisible(tool, visible)
 	local t = visible and 0 or 1
 	for _, d in tool:GetDescendants() do
 		if d:IsA("BasePart") then
-			d.LocalTransparencyModifier = t
 			d.Transparency = t
 		elseif d:IsA("Decal") or d:IsA("Texture") then
 			d.Transparency = t
@@ -137,18 +129,20 @@ local function setActiveWeapon(name)
 	setToolVisible(findTool(REVOLVER_NAME), name == REVOLVER_NAME)
 end
 
--- Default to the cutlass on init so a fresh rig spawns showing one
--- weapon, not both. Distance dispatch flips this on the first attack.
+-- Default to the cutlass on init so the rig spawns showing one weapon,
+-- not both. The first attack flips this if needed.
 setActiveWeapon(CUTLASS_NAME)
 
--- ── Attack animation track (melee swing fallback) ─────────────────────
-local DEFAULT_ATTACK_ID = "rbxassetid://129967390"  -- R6 toolslash
+-- ── Animations ───────────────────────────────────────────────────────
+-- Melee swing animation (R6 toolslash fallback if the user didn't drop
+-- a child Animation called "Attack" on the script). Same fallback
+-- the working Zombie.script uses for hostile pirates.
+local DEFAULT_ATTACK_ID = "rbxassetid://129967390"
 local animator = humanoid:FindFirstChildOfClass("Animator")
 if not animator then
 	animator = Instance.new("Animator")
 	animator.Parent = humanoid
 end
-
 local attackTrack
 do
 	local anim = script:FindFirstChild("Attack")
@@ -164,118 +158,219 @@ do
 	end
 end
 
--- ── State (shared between chase loop + lerp loop) ─────────────────────
-local alive       = true
-local shooting    = false   -- set by the chase loop while aiming
-local lastMelee   = 0
-local lastShot    = 0
-local saveWalkSpeed = ATTR.WALK_SPEED   -- restored when leaving aim
-
--- Cache the rig's neutral Motor6D C0s before we ever take over the
--- joints for the shooting pose. leaveAim() restores these values so
--- the rig drops back into its idle / walk pose instead of standing
--- frozen in mid-aim. Captured per-joint to survive a partial pose
--- override (e.g. pose lerp dies mid-frame).
-local NEUTRAL_C0
-if hasShootPose then
-	NEUTRAL_C0 = {
-		root          = root.C0,
-		neck          = neck.C0,
-		leftShoulder  = leftShoulder.C0,
-		rightShoulder = rightShoulder.C0,
-		leftHip       = leftHip.C0,
-		rightHip      = rightHip.C0,
-	}
+-- Optional ranged animation track ("AttackRanged" Animation child on
+-- the script). Loaded if present so a custom muzzle-up gun pose can
+-- play while the rig fires; we don't fight the rig's Animate script
+-- with Motor6D :lerp anymore.
+local rangedTrack
+do
+	local anim = script:FindFirstChild("AttackRanged")
+	if anim and anim:IsA("Animation") then
+		local ok, track = pcall(animator.LoadAnimation, animator, anim)
+		if ok then
+			rangedTrack = track
+			rangedTrack.Priority = Enum.AnimationPriority.Action
+		end
+	end
 end
+
+-- ── Helpers (mirror Pirate_2/Combat) ─────────────────────────────────
+local function getTorso(model)
+	return model:FindFirstChild("Torso")
+		or model:FindFirstChild("UpperTorso")
+		or model:FindFirstChild("HumanoidRootPart")
+end
+
+local function getHRP()
+	return Self:FindFirstChild("HumanoidRootPart")
+end
+
+local function isPlayerCharacter(model)
+	return Players:GetPlayerFromCharacter(model) ~= nil
+end
+
+local function isFellowMercenary(model)
+	return CollectionService:HasTag(model, "SpawnedMercenary")
+end
+
+-- ── State ────────────────────────────────────────────────────────────
+local currentTarget    = nil
+local pathCoords       = {}
+local currentNode      = nil
+local currentNodeIndex = 1
+local autoRecompute    = true
+local recomputing      = false
+local lastPathTime     = 0
+local lastJumpCheck    = 0
+local lastMelee        = 0
+local lastShot         = 0
+local alive            = true
 
 humanoid.Died:Connect(function() alive = false end)
 
-local function isMercenary()
-	return CollectionService:HasTag(Self, "SpawnedMercenary")
-end
+-- ── Target search ────────────────────────────────────────────────────
+-- Mercenary contract: any Humanoid that isn't a player and isn't
+-- another mercenary is fair game. Hostile rigs (no SpawnedMercenary
+-- tag) target players + mercs instead.
+local function searchForTarget()
+	local hrp = getHRP()
+	if not hrp then return end
+	local myPos = hrp.Position
+	local mercRole = isFellowMercenary(Self)
 
-local function rootOf(humanoidInst)
-	if not humanoidInst then return nil end
-	local rp = humanoidInst.RootPart
-	if rp and rp:IsA("BasePart") then return rp end
-	if humanoidInst.Torso and humanoidInst.Torso:IsA("BasePart") then
-		return humanoidInst.Torso
-	end
-	local model = humanoidInst.Parent
-	return model and model:FindFirstChild("HumanoidRootPart") or nil
-end
+	local closestHum, closestDist = nil, math.huge
 
--- ── Target search (role-aware, copied from Zombie.script) ─────────────
-local function nearestFrom(humanoids)
-	local myPos = rootPart.Position
-	local bestHum, bestDist = nil, ATTR.DETECTION_RANGE
-	for _, hum in ipairs(humanoids) do
-		if hum and hum ~= humanoid and hum.Health > 0 then
-			local part = rootOf(hum)
-			if part then
-				local d = (part.Position - myPos).Magnitude
-				if d < bestDist then
-					bestHum, bestDist = hum, d
+	for _, model in workspace:GetDescendants() do
+		if model:IsA("Humanoid") and model ~= humanoid and model.Health > 0 then
+			local parent = model.Parent
+			if not parent or parent == Self then continue end
+			local valid = false
+			if mercRole then
+				-- Mercenaries hunt anything that's NOT a player and NOT
+				-- another mercenary (Pirate_2/Combat contract).
+				valid = (not isPlayerCharacter(parent)) and (not isFellowMercenary(parent))
+			else
+				-- Hostile rigs hunt players + mercenaries.
+				valid = isPlayerCharacter(parent) or isFellowMercenary(parent)
+			end
+			if valid then
+				local torso = getTorso(parent)
+				if torso and torso:IsA("BasePart") then
+					local d = (torso.Position - myPos).Magnitude
+					if d < ATTR.MaximumDetectionDistance and d < closestDist then
+						closestHum, closestDist = model, d
+					end
 				end
 			end
 		end
 	end
-	return bestHum
+
+	currentTarget = closestHum
 end
 
-local function findTarget()
-	local mercRole = isMercenary()
-	local candidates = {}
-
-	if mercRole then
-		for _, pirate in CollectionService:GetTagged("HostilePirate") do
-			if pirate:IsDescendantOf(workspace) and pirate ~= Self then
-				local hum = pirate:FindFirstChildOfClass("Humanoid")
-				if hum then table.insert(candidates, hum) end
-			end
-		end
-	else
-		for _, player in ipairs(Players:GetPlayers()) do
-			local char = player.Character
-			if char then
-				local hum = char:FindFirstChildOfClass("Humanoid")
-				if hum then table.insert(candidates, hum) end
-			end
-		end
-		for _, merc in CollectionService:GetTagged("SpawnedMercenary") do
-			if merc:IsDescendantOf(workspace) and merc ~= Self then
-				local hum = merc:FindFirstChildOfClass("Humanoid")
-				if hum then table.insert(candidates, hum) end
-			end
-		end
-	end
-
-	return nearestFrom(candidates)
+local function targetIsValid()
+	if currentTarget == nil then return false end
+	if currentTarget.Health <= 0 then return false end
+	local torso = currentTarget.Parent and getTorso(currentTarget.Parent)
+	return torso ~= nil and torso:IsA("BasePart")
 end
 
--- ── Line of sight check ───────────────────────────────────────────────
--- Copy of Pirate_2/Combat's hasLineOfSight, but parameterised so we
--- can call it with whatever target part the chase loop already has in
--- hand instead of looking it up twice.
-local function hasLineOfSight(targetPart)
-	if not targetPart then return false end
+local function getTargetPosition()
+	if not targetIsValid() then return nil end
+	return getTorso(currentTarget.Parent).Position
+end
+
+-- ── Pathfinding (mirrors Pirate_2/Combat) ────────────────────────────
+local function hasLineOfSight()
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return false end
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	local exclusions = { Self }
-	if targetPart.Parent then table.insert(exclusions, targetPart.Parent) end
-	params.FilterDescendantsInstances = exclusions
-	local result = workspace:Raycast(rootPart.Position, targetPart.Position - rootPart.Position, params)
+	params.FilterDescendantsInstances = { Self, currentTarget.Parent }
+	local result = workspace:Raycast(hrp.Position, tp - hrp.Position, params)
 	return result == nil
 end
 
--- ── Melee swing (Cutlass) ─────────────────────────────────────────────
-local function meleeAttack(targetHum)
-	-- Surface the cutlass + hide the revolver before swinging; flip is
-	-- a no-op when we were already in melee mode.
+local function recomputePath()
+	if recomputing then return end
+	if not targetIsValid() then return end
+
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+
+	if hasLineOfSight() then
+		autoRecompute    = true
+		pathCoords       = { hrp.Position, tp }
+		currentNode      = nil
+		currentNodeIndex = 2
+		lastPathTime     = tick()
+		return
+	end
+
+	recomputing  = true
+	autoRecompute = false
+
+	local ok, path = pcall(function()
+		return PathfindingService:CreatePath({
+			AgentRadius = 2,
+			AgentHeight = 5,
+			AgentCanJump = true,
+		})
+	end)
+	if not ok or not path then
+		recomputing = false
+		return
+	end
+	local computeOk = pcall(function()
+		path:ComputeAsync(hrp.Position, tp)
+	end)
+	if computeOk and path.Status == Enum.PathStatus.Success then
+		pathCoords = {}
+		for _, wp in path:GetWaypoints() do
+			table.insert(pathCoords, wp.Position)
+		end
+		currentNode      = nil
+		currentNodeIndex = 1
+	else
+		pathCoords = { hrp.Position, tp }
+		currentNode      = nil
+		currentNodeIndex = 2
+	end
+
+	recomputing  = false
+	lastPathTime = tick()
+end
+
+local function tryRecomputePath()
+	if autoRecompute or tick() - lastPathTime > 1 / ATTR.RecomputePathFrequency then
+		recomputePath()
+	end
+end
+
+-- ── Jump check (rubber-band over small obstacles) ────────────────────
+-- Identical to Pirate_2/Combat. Without this the rig walks face-first
+-- into beach rocks / log piles between itself and the target.
+local function jumpCheck()
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+	local checkVector = (tp - hrp.Position)
+	if checkVector.Magnitude < 0.1 then return end
+	checkVector = checkVector.Unit * 2
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { Self }
+	local result = workspace:Raycast(
+		hrp.Position + Vector3.new(0, -2.4, 0),
+		checkVector,
+		params
+	)
+	if result and currentTarget.Parent and not result.Instance:IsDescendantOf(currentTarget.Parent) then
+		humanoid.Jump = true
+	end
+	lastJumpCheck = tick()
+end
+
+local function tryJumpCheck()
+	if tick() - lastJumpCheck > 1 / ATTR.JumpCheckFrequency then
+		jumpCheck()
+	end
+end
+
+-- ── Melee branch (Cutlass swing) ─────────────────────────────────────
+local function meleeAttack()
+	if not targetIsValid() then return end
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+	if (hrp.Position - tp).Magnitude > ATTR.MeleeRange then return end
+	if tick() - lastMelee <= 1 / ATTR.MeleeFrequency then return end
+
 	setActiveWeapon(CUTLASS_NAME)
-	if tick() - lastMelee < ATTR.MELEE_COOLDOWN then return end
+	currentTarget:TakeDamage(ATTR.MeleeDamage)
 	lastMelee = tick()
-	targetHum:TakeDamage(ATTR.MELEE_DAMAGE)
 	if attackTrack then
 		pcall(function()
 			attackTrack:Stop(0)
@@ -288,12 +383,12 @@ local function meleeAttack(targetHum)
 	end
 end
 
--- ── Bullet (ranged) ───────────────────────────────────────────────────
--- Spawns a Neon bullet from the Revolver's barrel aimed at the target
--- head. Direct port of NpcAi.script's bullet block, with the AK-47
--- reference swapped for the Revolver Tool, the damage line restored,
--- and accessory / fellow-mercenary / player filters threaded so we
--- never hit our own rig.
+-- ── Ranged branch (Revolver bullet) ──────────────────────────────────
+-- Spawns a Neon bullet from the Revolver muzzle aimed at the target's
+-- head. Damage is applied in Touched, with our own rig + accessories
+-- + fellow mercs / players excluded. Plays the user's authored
+-- ShootSound + LightShotEffect / ShotEffect particle emitters so the
+-- shot reads even without any custom Tool.Activated handler.
 local function findRevolverMuzzle()
 	local rev = findTool(REVOLVER_NAME)
 	if not rev then return nil, nil end
@@ -303,53 +398,43 @@ local function findRevolverMuzzle()
 	return rev, muzzle
 end
 
-local function fireBullet(targetHead)
+local function findSound(parent, names)
+	for _, n in ipairs(names) do
+		local s = parent:FindFirstChild(n, true)
+		if s and s:IsA("Sound") then return s end
+	end
+	return nil
+end
+
+local function emitMuzzleEffects(muzzle)
+	if not muzzle then return end
+	for _, d in muzzle:GetDescendants() do
+		if d:IsA("ParticleEmitter")
+			and (d.Name == "LightShotEffect" or d.Name == "ShotEffect") then
+			d:Emit(12)
+		end
+	end
+end
+
+local function fireBullet()
+	if not targetIsValid() then return end
 	local rev, muzzle = findRevolverMuzzle()
 	if not muzzle then return end
+	local tp = getTargetPosition()
+	if not tp then return end
 
-	-- Use the Revolver's own ShootSound (lives under Handle on the
-	-- user's authored Revolver tool). Falls back to a couple of
-	-- common-name variants so a future asset rename doesn't silence
-	-- the gun.
-	local function findSound(parent, names)
-		for _, n in ipairs(names) do
-			local s = parent:FindFirstChild(n, true)
-			if s and s:IsA("Sound") then return s end
-		end
-		return nil
-	end
-	if rev then
-		local s = findSound(rev, { "ShootSound", "shoot", "Shoot" })
-		if s then pcall(function() s:Play() end) end
+	local sound = rev and findSound(rev, { "ShootSound", "shoot", "Shoot" })
+	if sound then pcall(function() sound:Play() end) end
+	emitMuzzleEffects(muzzle)
+	if rev then pcall(function() rev:Activate() end) end
+	if rangedTrack then
+		pcall(function()
+			rangedTrack:Stop(0)
+			rangedTrack:Play(0.1)
+		end)
 	end
 
-	-- Briefly enable the muzzle-flash effects authored on the Handle
-	-- (LightShotEffect / ShotEffect). They stay disabled at rest so
-	-- the rig isn't constantly flashing.
-	if muzzle then
-		for _, d in muzzle:GetDescendants() do
-			if d:IsA("ParticleEmitter") and (d.Name == "LightShotEffect" or d.Name == "ShotEffect") then
-				d:Emit(d.Rate > 0 and math.max(8, math.floor(d.Rate / 4)) or 12)
-			end
-		end
-		-- Some authored revolvers store the effects directly on Handle
-		-- instead of nested. Mirror the same Emit() pass on the Handle.
-		if muzzle:IsA("BasePart") then
-			for _, d in muzzle:GetChildren() do
-				if d:IsA("ParticleEmitter")
-					and (d.Name == "LightShotEffect" or d.Name == "ShotEffect") then
-					d:Emit(12)
-				end
-			end
-		end
-	end
-
-	-- Activated() lets the user wire additional logic (custom firing
-	-- script, sound effects, etc.) on the Revolver tool itself.
-	if rev then
-		pcall(function() rev:Activate() end)
-	end
-
+	local origin = muzzle.Position
 	local bullet = Instance.new("Part")
 	bullet.Name      = "CorsairBullet"
 	bullet.Size      = Vector3.new(0.3, 0.3, 3.5)
@@ -357,215 +442,134 @@ local function fireBullet(targetHead)
 	bullet.Color     = Color3.fromRGB(255, 220, 130)
 	bullet.CanCollide = false
 	bullet.CanQuery   = false
+	bullet.CFrame    = CFrame.new(origin, tp)
 	bullet.Parent    = workspace
-	bullet.CFrame    = CFrame.new(muzzle.Position) * CFrame.new(0, 0, -1.5)
 
-	local velocity = Instance.new("BodyVelocity")
-	velocity.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
-	bullet.CFrame    = CFrame.new(bullet.Position, targetHead.Position)
-	velocity.Velocity = bullet.CFrame.LookVector * ATTR.BULLET_SPEED
+	local bv = Instance.new("BodyVelocity")
+	bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+	bv.Velocity = bullet.CFrame.LookVector * ATTR.BulletSpeed
 		+ Vector3.new(math.random(-12, 12), math.random(-12, 12), 0)
-	velocity.Parent  = bullet
+	bv.Parent   = bullet
 
-	-- Brief muzzle flash (PointLight on the muzzle), 0.1 s.
+	-- Brief muzzle flash. Mirrors NpcAi.script's PointLight pulse.
 	local flash = Instance.new("PointLight")
 	flash.Color      = Color3.fromRGB(255, 220, 140)
 	flash.Brightness = 4
 	flash.Range      = 6
 	flash.Parent     = muzzle
 	Debris:AddItem(flash, 0.1)
+	Debris:AddItem(bullet, ATTR.BulletLife)
 
-	Debris:AddItem(bullet, ATTR.BULLET_LIFE)
-
+	local mercRole = isFellowMercenary(Self)
 	local consumed = false
 	bullet.Touched:Connect(function(part)
 		if consumed or not part or not part.Parent then return end
 		if part:IsDescendantOf(Self) then return end
-		-- Skip accessories (hats / hair / backpack handles) so the
-		-- bullet doesn't dud on a crew hat.
 		if part.Parent:IsA("Accessory") then return end
 		if part.Parent.Parent and part.Parent.Parent:IsA("Accessory") then return end
 
 		local model = part:FindFirstAncestorOfClass("Model")
 		if model then
-			-- Don't friendly-fire fellow mercenaries / players.
-			if isMercenary() then
+			-- Don't friendly-fire fellow mercs / players when this rig
+			-- is the merc; symmetrically don't fire on fellow hostiles
+			-- when this rig is hostile (avoids the gun griefing other
+			-- pirates the player hasn't engaged yet).
+			if mercRole then
 				if Players:GetPlayerFromCharacter(model) then return end
-				if CollectionService:HasTag(model, "SpawnedMercenary") and model ~= Self then return end
+				if isFellowMercenary(model) and model ~= Self then return end
+			else
+				if not (Players:GetPlayerFromCharacter(model) or isFellowMercenary(model)) then
+					return
+				end
 			end
 			local victim = model:FindFirstChildOfClass("Humanoid")
 			if victim and victim ~= humanoid and victim.Health > 0 then
-				victim:TakeDamage(ATTR.RANGED_DAMAGE)
+				victim:TakeDamage(ATTR.RangedDamage)
 			end
 		end
-
 		consumed = true
 		bullet:Destroy()
 	end)
 end
 
-local function rangedAttack(targetHead)
-	-- Swap to the revolver visually before firing; the cutlass goes
-	-- transparent. No-op if we're already in ranged mode.
+local function rangedAttack()
+	if not targetIsValid() then return end
+	if not hasLineOfSight() then return end
+	if tick() - lastShot <= 1 / ATTR.RangedFrequency then return end
 	setActiveWeapon(REVOLVER_NAME)
-	if tick() - lastShot < ATTR.RANGED_COOLDOWN then return end
 	lastShot = tick()
-	fireBullet(targetHead)
+	fireBullet()
 end
 
--- ── Shooting pose (Motor6D :lerp, copied from NpcAi.script) ──────────
--- Two-keyframe pose: aim left → aim right → repeat. Driven on a
--- separate Heartbeat thread so the chase loop doesn't have to yield
--- through the lerp animation. Only kicks in while `shooting` is true;
--- otherwise we leave the rig's joints alone so the standard Animate
--- script (or the rig's own idle pose) keeps control.
-local SHOOT_POSE_RIGHT = {
-	root          = CFrame.new(0, 0, 0, 0.173648223, 0, -0.98480773, 0, 1, 0, 0.98480773, 0, 0.173648223),
-	rightShoulder = CFrame.new(1.21384871, 0.500000477, -0.879925251, 0.342019856, 0.939692438, -1.49501886e-08, 1.94707184e-07, -2.68220873e-07, -0.999999821, -0.939692438, 0.342020035, -3.76157232e-07),
-	leftShoulder  = CFrame.new(-1.59201181, 0.470158577, -0.794548988, 0.271118939, 0.181368172, 0.945304275, 0.902039766, -0.390578717, -0.18377316, 0.335885108, 0.902526498, -0.269494623),
-	leftHip       = CFrame.new(-0.681244373, -2.07163191, 0, 0.98480773, 0.173648283, 0, -0.173648283, 0.98480767, 0, 0, -1.86264515e-09, 0.99999994),
-	rightHip      = CFrame.new(0.681244612, -2.07163191, -4.76837158e-07, 0.98480773, -0.173648283, 0, 0.173648283, 0.98480767, 0, 0, 1.86264515e-09, 0.99999994),
-	neck          = CFrame.new(0.0296957493, 1.49240398, -0.0815882683, 0.336824059, 0.059391167, 0.939692557, -0.173648164, 0.98480773, -7.4505806e-09, -0.925416589, -0.163175896, 0.342020094),
-}
-local SHOOT_POSE_LEFT = {
-	root          = SHOOT_POSE_RIGHT.root,
-	rightShoulder = CFrame.new(1.60777056, 0.499999523, -0.81046629, 0.342019439, 0.939691842, 1.55550936e-07, 4.10554577e-08, -3.93739697e-07, -0.999999464, -0.939691901, 0.342019975, -4.77612389e-07),
-	leftShoulder  = CFrame.new(-1.10000956, 0.482372284, -0.926761627, 0.27112025, 0.263066441, 0.925899446, 0.902039289, -0.405109912, -0.149033815, 0.335885197, 0.875603914, -0.347129732),
-	leftHip       = SHOOT_POSE_RIGHT.leftHip,
-	rightHip      = SHOOT_POSE_RIGHT.rightHip,
-	neck          = CFrame.new(0.121206045, 1.4753027, -0.0450725555, 0.336823881, 0.221664757, 0.915103495, -0.173648164, 0.969846308, -0.171010077, -0.925416648, -0.101305753, 0.365159094),
-}
+-- ── Attack dispatch ──────────────────────────────────────────────────
+-- Picks melee vs ranged on distance. Both branches respect their own
+-- cooldown so a target sitting at exactly MELEE_RANGE doesn't get hit
+-- by both swings AND shots in the same tick. The rig keeps walking
+-- toward the target throughout — the ranged branch does NOT stop the
+-- rig (the user complained earlier that the rig stood still during
+-- ranged engagement, which is what we're explicitly avoiding here).
+local function tryAttack()
+	local hrp = getHRP()
+	local tp  = getTargetPosition()
+	if not hrp or not tp then return end
+	local dist = (hrp.Position - tp).Magnitude
+	if dist <= ATTR.MeleeRange then
+		meleeAttack()
+	elseif dist <= ATTR.RangedRange then
+		rangedAttack()
+	end
+	-- > RangedRange: no attack; outer travelPath is busy chasing.
+end
 
-if hasShootPose then
-	-- Initialise the C1 offsets to zero so :lerp on C0 reads as the
-	-- soldier-pose CFrame directly. Mirrors NpcAi.script's setup block.
-	pcall(function()
-		neck.C1          = CFrame.new(0, 0, 0)
-		leftShoulder.C1  = CFrame.new(0, 0, 0)
-		rightShoulder.C1 = CFrame.new(0, 0, 0)
-		leftHip.C1       = CFrame.new(0, 0, 0)
-		rightHip.C1      = CFrame.new(0, 0, 0)
-		root.C1          = CFrame.new(0, 0, 0)
-	end)
+-- ── Path travel (mirrors Pirate_2/Combat) ────────────────────────────
+local function travelPath()
+	if #pathCoords == 0 then return end
+	local hrp = getHRP()
+	if not hrp then return end
+	local myPos = hrp.Position
 
-	task.spawn(function()
-		local LERP_RATE = 0.45
-		while alive and Self.Parent do
-			if shooting then
-				local pose = SHOOT_POSE_RIGHT
-				for _ = 1, 2 do
-					if not (alive and shooting) then break end
-					for i = 0.2, 0.8, 0.45 do
-						if not (alive and shooting) then break end
-						root.C0          = root.C0:Lerp(pose.root, i)
-						rightShoulder.C0 = rightShoulder.C0:Lerp(pose.rightShoulder, i)
-						leftShoulder.C0  = leftShoulder.C0:Lerp(pose.leftShoulder, i)
-						leftHip.C0       = leftHip.C0:Lerp(pose.leftHip, i)
-						rightHip.C0      = rightHip.C0:Lerp(pose.rightHip, i)
-						neck.C0          = neck.C0:Lerp(pose.neck, i)
-						RunService.Heartbeat:Wait()
-					end
-					pose = (pose == SHOOT_POSE_RIGHT) and SHOOT_POSE_LEFT or SHOOT_POSE_RIGHT
-				end
+	local skipCurrent = currentNode ~= nil and (currentNode - myPos).Magnitude < 3
+
+	local closest, closestDist, closestIdx = nil, math.huge, nil
+	for i = currentNodeIndex, #pathCoords do
+		local c = pathCoords[i]
+		if not (skipCurrent and c == currentNode) then
+			local d = (c - myPos).Magnitude
+			if d < closestDist then
+				closest, closestDist, closestIdx = c, d, i
 			else
-				RunService.Heartbeat:Wait()
+				break
 			end
-			-- LERP_RATE retained for tuning; it's referenced by the loop
-			-- step above (0.45) so a small change here ripples cleanly.
-			local _ = LERP_RATE
 		end
-	end)
-end
+	end
 
--- ── Aim helpers ───────────────────────────────────────────────────────
-local function faceTarget(targetPart)
-	if humanoid.PlatformStand then return end
-	local tp = targetPart.Position
-	local flat = Vector3.new(tp.X, rootPart.Position.Y, tp.Z)
-	rootPart.CFrame = CFrame.new(rootPart.Position, flat)
-end
+	if closest then
+		currentNode      = closest
+		currentNodeIndex = closestIdx
+		humanoid:MoveTo(closest)
 
-local function enterAim()
-	if shooting then return end
-	shooting = true
-	saveWalkSpeed = humanoid.WalkSpeed
-	humanoid.WalkSpeed = 0
-end
+		if humanoid.Health > 0 and targetIsValid() then
+			tryJumpCheck()
+			tryAttack()
+		end
 
-local function leaveAim()
-	if not shooting then return end
-	shooting = false
-	humanoid.WalkSpeed = saveWalkSpeed
-	-- Restore the neutral Motor6D C0s so the rig drops out of the
-	-- aim pose immediately. Without this the lerp loop's last frame
-	-- sticks on the joints and the rig appears frozen mid-aim while
-	-- the chase loop tries to walk / swing.
-	if hasShootPose and NEUTRAL_C0 then
-		root.C0          = NEUTRAL_C0.root
-		neck.C0          = NEUTRAL_C0.neck
-		leftShoulder.C0  = NEUTRAL_C0.leftShoulder
-		rightShoulder.C0 = NEUTRAL_C0.rightShoulder
-		leftHip.C0       = NEUTRAL_C0.leftHip
-		rightHip.C0      = NEUTRAL_C0.rightHip
+		if closestIdx == #pathCoords then
+			autoRecompute = true
+		end
 	end
 end
 
 print("[Corsair/Combat] AI online for " .. Self:GetFullName())
 
 -- ── Main loop ────────────────────────────────────────────────────────
-while alive and Self.Parent do
-	local ok, err = pcall(function()
-		if humanoid.Health <= 0 then
-			alive = false
-			return
-		end
-
-		local target = findTarget()
-		if not target then
-			leaveAim()
-			return
-		end
-
-		local tRoot = rootOf(target)
-		if not tRoot then
-			leaveAim()
-			return
-		end
-
-		local dist = (rootPart.Position - tRoot.Position).Magnitude
-
-		if dist <= ATTR.MELEE_RANGE then
-			-- Close: cutlass swing. Drop out of aim mode if we were
-			-- shooting; the rig sprints in for the kill, faces the
-			-- target between swings, and the meleeAttack respects
-			-- its own cooldown so the cadence stays at ~1.6/s.
-			leaveAim()
-			humanoid:MoveTo(rootPart.Position)
-			faceTarget(tRoot)
-			meleeAttack(target)
-		elseif dist <= ATTR.RANGED_RANGE and hasLineOfSight(tRoot) then
-			-- In gun range: stop, face target, fire.
-			enterAim()
-			humanoid:MoveTo(rootPart.Position)
-			faceTarget(tRoot)
-			-- Aim at the head (visual: gun pointed up at face) but
-			-- keep the bullet's destination on the head too — the
-			-- bullet path is governed by the soldier-style direction
-			-- snap inside fireBullet().
-			local targetHead = target.Parent and target.Parent:FindFirstChild("Head") or tRoot
-			rangedAttack(targetHead)
-		else
-			-- Out of range: chase. Ordinary MoveTo drives the standard
-			-- Animate script (if any) so the rig walks normally.
-			leaveAim()
-			humanoid:MoveTo(tRoot.Position)
-		end
-	end)
-	if not ok then
-		warn("[Corsair/Combat] tick error: " .. tostring(err))
+while alive and Self.Parent and humanoid.Health > 0 do
+	searchForTarget()
+	if targetIsValid() then
+		tryRecomputePath()
+		travelPath()
 	end
-	task.wait(ATTR.TICK_INTERVAL)
+	RunService.Heartbeat:Wait()
 end
 
 if attackTrack then attackTrack:Stop(0) end
-leaveAim()
+if rangedTrack then rangedTrack:Stop(0) end
