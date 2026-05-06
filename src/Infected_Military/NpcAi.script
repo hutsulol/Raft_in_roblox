@@ -26,9 +26,20 @@ local npc = script.Parent
 -- panel because NpcTypes.resolve falls back to Model.Name.
 npc:SetAttribute("NpcType", "Infected Military")
 local CollectionService = game:GetService("CollectionService")
+local Players = game:GetService("Players")
 if not CollectionService:HasTag(npc, "HostilePirate") then
 	CollectionService:AddTag(npc, "HostilePirate")
 end
+
+-- Same EquippedWeapon gate the friendly Infected_Military_Menu rig
+-- uses. Hostiles never have this attribute set so the early-return
+-- never trips for them — the gate exists so the script behaves
+-- identically across both rigs without per-rig branches.
+local equippedWeapon = npc:GetAttribute("EquippedWeapon")
+if equippedWeapon == "FishingRod" or equippedWeapon == "Unarmed" then
+	return
+end
+
 local torso = npc.Torso
 local head = npc.Head
 local leftarm = npc["Left Arm"]
@@ -126,11 +137,23 @@ function checkandshoot()
 			cansay = true
 			saycooldown = 0
 		end
+		-- Role-aware target filter (mirrors NpcAi.scrpit):
+		--   merc role   → only HostilePirate-tagged enemies
+		--   hostile rig → original "shoot anything that's not me" behaviour,
+		--                 with a same-team filter so two patrolling
+		--                 hostiles don't fight each other.
+		local mercRole = CollectionService:HasTag(npc, "SpawnedMercenary")
 		for i,v in pairs(workspace:GetChildren()) do
 			if v.ClassName == "Model" and v.Name ~= "collazio" then
 				local victimhumanoid = v:findFirstChildOfClass("Humanoid")
 				local victimhead = v:findFirstChild("Head")
-				if victimhumanoid and victimhead and v.Name ~= npc.Name then
+				local validTarget
+				if mercRole then
+					validTarget = CollectionService:HasTag(v, "HostilePirate")
+				else
+					validTarget = not CollectionService:HasTag(v, "HostilePirate")
+				end
+				if victimhumanoid and victimhead and v.Name ~= npc.Name and validTarget then
 					if (victimhead.Position - head.Position).magnitude < sight then
 						if victimhumanoid.Name == "Blackout" and cansay then
 						

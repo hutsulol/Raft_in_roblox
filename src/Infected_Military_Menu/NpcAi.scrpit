@@ -19,6 +19,20 @@ task.spawn(function()
 end)
 
 local npc = script.Parent
+
+-- Gate the entire combat AI on EquippedWeapon. The same MercenarySpawner
+-- inject pass that ships Fishing.script + HarvestResources.script onto
+-- the rig means non-combat loadouts have their own scripts driving the
+-- rig, and we MUST NOT have NpcAi.scrpit running its shoot / pose / move
+-- coroutines alongside them — they fight for movement control and the
+-- AK loop fires randomly even when there's no target.
+--   FishingRod / Unarmed → Fishing.script / HarvestResources.script run
+--   Firearm / Shotgun / nil (hostile rig) → this NpcAi runs
+local equippedWeapon = npc:GetAttribute("EquippedWeapon")
+if equippedWeapon == "FishingRod" or equippedWeapon == "Unarmed" then
+	return
+end
+
 local torso = npc.Torso
 local head = npc.Head
 local leftarm = npc["Left Arm"]
@@ -116,27 +130,34 @@ function checkandshoot()
 			cansay = true
 			saycooldown = 0
 		end
-		-- Role-aware target filter. The same NpcAi script ships on the
-		-- HOSTILE rig (Infected_Military) and on the recruited
-		-- mercenary rig (Infected_Military_Menu). When the rig is
-		-- tagged "SpawnedMercenary" by MercenarySpawner we MUST skip
-		-- players (the rig's owner) and fellow mercenaries — without
-		-- this filter the recruited Soldier would empty his AK into
-		-- the player who recruited him. Hostile rigs (no tag) keep
-		-- the original "shoot anything that isn't yourself" behaviour.
+		-- Role-aware target filter. Same NpcAi ships on both the hostile
+		-- rig and the recruited merc, so the filter has to read the
+		-- "SpawnedMercenary" tag at runtime to decide who's a valid
+		-- target. The original "anything-but-myself" rule was too broad:
+		-- the friendly Soldier was firing into empty space because
+		-- random workspace models with a Humanoid (training dummies,
+		-- quest givers, etc.) tripped the trigger.
+		--
+		--   merc role   → only shoot HostilePirate-tagged enemies. The
+		--                 same tag the hostile pirate / soldier rigs add
+		--                 to themselves on init, so the friendly Soldier
+		--                 protects the player by engaging them.
+		--   hostile rig → original behaviour. Shoots any humanoid model
+		--                 in sight that isn't the rig itself, but skips
+		--                 fellow hostiles so two patrolling soldiers
+		--                 don't open up on each other.
 		local mercRole = CollectionService:HasTag(npc, "SpawnedMercenary")
 		for i,v in pairs(workspace:GetChildren()) do
 			if v.ClassName == "Model" and v.Name ~= "collazio" then
 				local victimhumanoid = v:findFirstChildOfClass("Humanoid")
 				local victimhead = v:findFirstChild("Head")
-				if victimhumanoid and victimhead and v.Name ~= npc.Name
-					-- For the friendly soldier: never shoot a player
-					-- (LocalPlayer's character is the obvious case;
-					-- any other player on the same server too) and
-					-- never shoot a fellow merc.
-					and not (mercRole and Players:GetPlayerFromCharacter(v))
-					and not (mercRole and CollectionService:HasTag(v, "SpawnedMercenary"))
-				then
+				local validTarget
+				if mercRole then
+					validTarget = CollectionService:HasTag(v, "HostilePirate")
+				else
+					validTarget = not CollectionService:HasTag(v, "HostilePirate")
+				end
+				if victimhumanoid and victimhead and v.Name ~= npc.Name and validTarget then
 					if (victimhead.Position - head.Position).magnitude < sight then
 						if victimhumanoid.Name == "Blackout" and cansay then
 
