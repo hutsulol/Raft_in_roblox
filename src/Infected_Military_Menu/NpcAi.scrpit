@@ -4,15 +4,19 @@
 
 -- Per-merc Strength → bullet damage (StatsSystem.md spec). Soldier
 -- ("Infected Military") base strength is 110 → 55 dmg per shot.
+-- Async require so init never blocks if ReplicatedStorage replication
+-- hasn't caught up yet — fireBullet falls back to a flat 55.
+local CollectionService = game:GetService("CollectionService")
+local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MercStats
-do
-	local mod = ReplicatedStorage:WaitForChild("MercStats", 10)
+task.spawn(function()
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 30)
 	if mod then
 		local ok, result = pcall(require, mod)
 		if ok then MercStats = result end
 	end
-end
+end)
 
 local npc = script.Parent
 local torso = npc.Torso
@@ -112,11 +116,27 @@ function checkandshoot()
 			cansay = true
 			saycooldown = 0
 		end
+		-- Role-aware target filter. The same NpcAi script ships on the
+		-- HOSTILE rig (Infected_Military) and on the recruited
+		-- mercenary rig (Infected_Military_Menu). When the rig is
+		-- tagged "SpawnedMercenary" by MercenarySpawner we MUST skip
+		-- players (the rig's owner) and fellow mercenaries — without
+		-- this filter the recruited Soldier would empty his AK into
+		-- the player who recruited him. Hostile rigs (no tag) keep
+		-- the original "shoot anything that isn't yourself" behaviour.
+		local mercRole = CollectionService:HasTag(npc, "SpawnedMercenary")
 		for i,v in pairs(workspace:GetChildren()) do
 			if v.ClassName == "Model" and v.Name ~= "collazio" then
 				local victimhumanoid = v:findFirstChildOfClass("Humanoid")
 				local victimhead = v:findFirstChild("Head")
-				if victimhumanoid and victimhead and v.Name ~= npc.Name then
+				if victimhumanoid and victimhead and v.Name ~= npc.Name
+					-- For the friendly soldier: never shoot a player
+					-- (LocalPlayer's character is the obvious case;
+					-- any other player on the same server too) and
+					-- never shoot a fellow merc.
+					and not (mercRole and Players:GetPlayerFromCharacter(v))
+					and not (mercRole and CollectionService:HasTag(v, "SpawnedMercenary"))
+				then
 					if (victimhead.Position - head.Position).magnitude < sight then
 						if victimhumanoid.Name == "Blackout" and cansay then
 

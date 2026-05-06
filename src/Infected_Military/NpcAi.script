@@ -3,16 +3,19 @@
 --you can convert the model to use it in script builder
 
 -- Per-merc Strength → bullet damage (StatsSystem.md spec). Soldier
--- base strength is 110 → 55 dmg per shot.
+-- base strength is 110 → 55 dmg per shot. Required asynchronously
+-- so a slow ReplicatedStorage replication never blocks the rig's
+-- init below — fireBullet falls back to a flat 55 if the module
+-- hasn't loaded by the time the trigger pulls.
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local MercStats
-do
-	local mod = ReplicatedStorage:WaitForChild("MercStats", 10)
+task.spawn(function()
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 30)
 	if mod then
 		local ok, result = pcall(require, mod)
 		if ok then MercStats = result end
 	end
-end
+end)
 
 local npc = script.Parent
 -- Self-tag so the recruitment client / server treat this rig as an

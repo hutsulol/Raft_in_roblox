@@ -33,14 +33,16 @@ local Self = script.Parent
 -- apply server-side so a higher-tier merc hits proportionally harder
 -- regardless of which weapon is welded onto the rig. See
 -- src/GameDesign/StatsSystem.md and src/ReplicatedStorage/MercStats.
+-- Required asynchronously so a slow ReplicatedStorage replication
+-- never blocks the rig's combat loop init below.
 local MercStats
-do
-	local mod = ReplicatedStorage:WaitForChild("MercStats", 10)
+task.spawn(function()
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 30)
 	if mod then
 		local ok, result = pcall(require, mod)
 		if ok then MercStats = result end
 	end
-end
+end)
 
 -- ── Tunables ──────────────────────────────────────────────────────────
 -- Reference: hostile pirates (Enemy_Pirate) ship with MaxHealth ~100 and

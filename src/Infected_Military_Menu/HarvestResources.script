@@ -20,15 +20,15 @@ local Debris            = game:GetService("Debris")
 
 -- Per-merc Speed → gather time spec from src/GameDesign/StatsSystem.md.
 -- Same module the Pirate's HarvestResources uses; keeps both rigs in
--- sync on the doc formula.
+-- sync on the doc formula. Async require so init never blocks.
 local MercStats
-do
-	local mod = ReplicatedStorage:WaitForChild("MercStats", 10)
+task.spawn(function()
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 30)
 	if mod then
 		local ok, result = pcall(require, mod)
 		if ok then MercStats = result end
 	end
-end
+end)
 
 -- Per-type break sounds. Log / Leaves ship as a child Sound inside the
 -- resource template; Plastic / Rock live in SoundService. The merc

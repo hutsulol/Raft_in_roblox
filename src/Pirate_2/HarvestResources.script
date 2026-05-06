@@ -6,15 +6,18 @@ local Debris            = game:GetService("Debris")
 
 -- Per-merc Speed → gather time spec from src/GameDesign/StatsSystem.md.
 -- Replaces the previous ad-hoc 1+speed/100 multiplier with the doc's
--- linear formula (15 s @ speed 10, 4 s @ speed 200).
+-- linear formula (15 s @ speed 10, 4 s @ speed 200). Required
+-- asynchronously so the harvest loop kicks off immediately even if
+-- the module hasn't replicated yet — getHarvestCooldown falls back
+-- to ATTACK_COOLDOWN until MercStats is available.
 local MercStats
-do
-	local mod = ReplicatedStorage:WaitForChild("MercStats", 10)
+task.spawn(function()
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 30)
 	if mod then
 		local ok, result = pcall(require, mod)
 		if ok then MercStats = result end
 	end
-end
+end)
 
 -- Per-type break sounds. Log / Leaves ship as a child Sound inside the
 -- resource template; Plastic / Rock live in SoundService. The merc

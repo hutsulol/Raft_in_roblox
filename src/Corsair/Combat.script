@@ -40,14 +40,17 @@ local Self = script.Parent
 -- (Marauder tier in StatsSystem.md) → 15 dmg per fist; we use that
 -- for both the cutlass swing and the revolver bullet so the merc's
 -- DPS scales with its tier instead of a hardcoded number.
+-- Required asynchronously so a slow ReplicatedStorage replication
+-- never blocks the AI loop init below — meleeAttack / fireBullet
+-- fall back to flat values until the module loads.
 local MercStats
-do
-	local mod = ReplicatedStorage:WaitForChild("MercStats", 10)
+task.spawn(function()
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 30)
 	if mod then
 		local ok, result = pcall(require, mod)
 		if ok then MercStats = result end
 	end
-end
+end)
 
 -- ── Tunables ──────────────────────────────────────────────────────────
 local ATTR = {
