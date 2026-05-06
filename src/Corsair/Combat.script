@@ -103,44 +103,16 @@ if humanoid.JumpPower == 0 and humanoid.JumpHeight == 0 then
 end
 
 -- ── Cutlass / Revolver lookup + draw / sheathe helpers ───────────────
--- Tool swap on the rig is handled via two complementary mechanisms:
---
---   1. humanoid:EquipTool(tool) / UnequipTools()
---        Moves the chosen Tool into the rig's right-hand Grip and
---        removes the other from the hand. This is what makes the
---        rig visibly "draw" / "sheathe" — the active tool's mesh
---        ends up in the right hand, the inactive tool ends up in
---        the rig's Backpack folder and is no longer rendered there.
---   2. Transparency toggle on the OTHER tool's BaseParts
---        Belt-and-suspenders for rigs where both tools are welded
---        directly to the body (custom welds, not Roblox Grip), so
---        the unequipped tool would otherwise still be rendered.
---
--- findTool looks both at the model's direct children AND in the
--- character's Backpack folder, because once a tool is equipped the
--- previous one is moved out of the model into Backpack — losing the
--- reference there would mean we can never swap back to it.
-
-local function getBackpack()
-	-- Roblox auto-creates a "Backpack" folder on the model the first
-	-- time a Humanoid:UnequipTools() call has somewhere to put the
-	-- currently-held tool. Create one up front so the rest of the
-	-- code has a stable place to look.
-	local bp = Self:FindFirstChild("Backpack")
-	if bp and bp:IsA("Folder") then return bp end
-	bp = Instance.new("Folder")
-	bp.Name   = "Backpack"
-	bp.Parent = Self
-	return bp
-end
-local backpack = getBackpack()
-
+-- IMPORTANT: do NOT call humanoid:EquipTool / Tool:Activate on these
+-- tools. Doing so caused the Revolver to be transferred into the
+-- nearby player's UI (scope crosshair + locked input) on test runs —
+-- presumably because the authored Tool ships with auto-pickup or
+-- Equipped-event logic that latches onto the first player it finds.
+-- Both weapons are welded onto the rig by the user's custom welds, so
+-- positioning is already handled. We treat each Tool as a passive
+-- visual prop and only toggle its Transparency to swap weapons.
 local function findTool(name)
-	-- Direct child of the rig (currently held).
 	local t = Self:FindFirstChild(name)
-	if t and t:IsA("Tool") then return t end
-	-- Stored in our Backpack folder (currently sheathed).
-	t = backpack:FindFirstChild(name)
 	if t and t:IsA("Tool") then return t end
 	return nil
 end
@@ -157,53 +129,19 @@ local function setToolVisible(tool, visible)
 	end
 end
 
--- Move every Tool currently held by the rig into our Backpack folder
--- so EquipTool below has a clean slate. Avoids the "two Tools both
--- direct children of the model" auto-equip race that leaves the rig
--- holding whichever loaded first.
-local function sheatheAll()
-	for _, child in Self:GetChildren() do
-		if child:IsA("Tool") then
-			child.Parent = backpack
-		end
-	end
-end
-
 local activeWeaponName  -- "Cutlass" / "Revolver" / nil
 local function setActiveWeapon(name)
 	if activeWeaponName == name then return end
 	activeWeaponName = name
-
-	-- Move every tool out of the rig's hand first, then EquipTool the
-	-- chosen one. EquipTool also does the unequip, but doing it
-	-- explicitly avoids the case where neither Cutlass nor Revolver
-	-- is found (sheatheAll still gets us back to a known state).
-	sheatheAll()
-
-	local target = findTool(name)
-	local cutlass = findTool(CUTLASS_NAME)
-	local revolver = findTool(REVOLVER_NAME)
-
-	if target then
-		pcall(function() humanoid:EquipTool(target) end)
-	end
-
-	-- Visibility belt-and-suspenders for rigs whose Tools are welded
-	-- directly to body parts via custom welds (not the Roblox Grip):
-	-- those won't actually move when EquipTool happens, so toggle
-	-- their Transparency too.
-	setToolVisible(cutlass,  name == CUTLASS_NAME)
-	setToolVisible(revolver, name == REVOLVER_NAME)
-
-	warn(string.format("[Corsair/Combat] active weapon → %s (cutlass=%s, revolver=%s)",
-		tostring(name),
-		tostring(cutlass and "found" or "missing"),
-		tostring(revolver and "found" or "missing")))
+	setToolVisible(findTool(CUTLASS_NAME),  name == CUTLASS_NAME)
+	setToolVisible(findTool(REVOLVER_NAME), name == REVOLVER_NAME)
 end
 
--- Default to the cutlass on init so the rig spawns showing one weapon,
--- not both. The first attack flips this if needed.
-setActiveWeapon(CUTLASS_NAME)
+-- Per the user's brief: spawn with the Revolver in hand. The first
+-- time the rig closes to MELEE_RANGE, setActiveWeapon flips to the
+-- Cutlass, and it stays there until the target moves out of melee
+-- range again (handled in tryAttack below).
+setActiveWeapon(REVOLVER_NAME)
 
 -- ── Animations ───────────────────────────────────────────────────────
 -- Melee swing animation (R6 toolslash fallback if the user didn't drop
@@ -449,10 +387,11 @@ local function meleeAttack()
 			attackTrack:Play(0.1)
 		end)
 	end
-	local cutlass = findTool(CUTLASS_NAME)
-	if cutlass then
-		pcall(function() cutlass:Activate() end)
-	end
+	-- Intentionally NOT calling Cutlass:Activate(). The user's Tool
+	-- ships with authored client/server scripts whose Activated logic
+	-- latched onto the nearest player when triggered — we damage the
+	-- target manually above and play the swing animation; the Tool
+	-- itself stays a passive visual.
 end
 
 -- ── Ranged branch (Revolver bullet) ──────────────────────────────────
@@ -498,7 +437,12 @@ local function fireBullet()
 	local sound = rev and findSound(rev, { "ShootSound", "shoot", "Shoot" })
 	if sound then pcall(function() sound:Play() end) end
 	emitMuzzleEffects(muzzle)
-	if rev then pcall(function() rev:Activate() end) end
+	-- Intentionally NOT calling Revolver:Activate(). The authored
+	-- Tool ships with client/server scripts whose Activated logic
+	-- transferred ownership to the nearby player (player saw a scope
+	-- HUD + lost inventory access). We spawn the bullet, play the
+	-- ShootSound, and emit the muzzle particles ourselves so the
+	-- Tool itself stays a passive visual.
 	if rangedTrack then
 		pcall(function()
 			rangedTrack:Stop(0)
