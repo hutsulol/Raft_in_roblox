@@ -104,16 +104,61 @@ end
 
 -- ── Cutlass / Revolver lookup + draw / sheathe helpers ───────────────
 -- IMPORTANT: do NOT call humanoid:EquipTool / Tool:Activate on these
--- tools. Doing so caused the Revolver to be transferred into the
--- nearby player's UI (scope crosshair + locked input) on test runs —
--- presumably because the authored Tool ships with auto-pickup or
--- Equipped-event logic that latches onto the first player it finds.
--- Both weapons are welded onto the rig by the user's custom welds, so
--- positioning is already handled. We treat each Tool as a passive
--- visual prop and only toggle its Transparency to swap weapons.
+-- tools. The authored Revolver Server script crashes on NPCs
+-- (it indexes MyPlayer.Character with MyPlayer = nil) and routes the
+-- mouse-icon / scope HUD to the nearest player. We treat each Tool
+-- as a passive visual prop and fire bullets ourselves below.
+--
+-- Tool name resolution is trickier than it looks. The authored
+-- Revolver Server script renames the Tool every frame to embed the
+-- ammo count (e.g. "Revolver" → "Revolver (6)"), so a name-based
+-- FindFirstChild stops working after the first tick. Resolve by the
+-- stable Values.GunOriginalName StringValue child where present, and
+-- fall back to a name-prefix match (the leading word of the renamed
+-- tool still equals its original name).
+local toolRefs = {}   -- ["Revolver"] = Tool, ["Cutlass"] = Tool
+
+local function originalNameOf(tool)
+	local values = tool:FindFirstChild("Values")
+	local origName = values and values:FindFirstChild("GunOriginalName")
+	if origName and origName:IsA("StringValue") and origName.Value ~= "" then
+		return origName.Value
+	end
+	-- Fall back to first word of current Name. "Revolver (6)" → "Revolver".
+	local n = tool.Name:match("^(%S+)") or tool.Name
+	return n
+end
+
+local function resolveToolRefs()
+	table.clear(toolRefs)
+	for _, child in Self:GetChildren() do
+		if child:IsA("Tool") then
+			local key = originalNameOf(child)
+			if key and key ~= "" then
+				toolRefs[key] = child
+			end
+		end
+	end
+end
+
+resolveToolRefs()
+
+-- Re-scan whenever Tools are added or removed so we never hold a
+-- stale reference (the rig may shed / regain a Tool over its
+-- lifetime). Heartbeat-cheap because it only fires on child changes.
+Self.ChildAdded:Connect(function(child)
+	if child:IsA("Tool") then resolveToolRefs() end
+end)
+Self.ChildRemoved:Connect(function(child)
+	if child:IsA("Tool") then resolveToolRefs() end
+end)
+
 local function findTool(name)
-	local t = Self:FindFirstChild(name)
-	if t and t:IsA("Tool") then return t end
+	local t = toolRefs[name]
+	if t and t.Parent then return t end
+	resolveToolRefs()
+	t = toolRefs[name]
+	if t and t.Parent then return t end
 	return nil
 end
 
@@ -149,9 +194,44 @@ local function applyDesired(tool)
 	end
 end
 
+-- Generic "draw weapon" sound, played each time we swap. Pulls from
+-- the relevant Tool when an authored sound is available (Revolver
+-- ships ReloadSound), otherwise falls back to a stock Roblox swoosh
+-- so the swap always reads audibly.
+local SWAP_SOUND_FALLBACK = "rbxassetid://130113322"   -- generic blade-draw
+
+local function playSwapSound(forName)
+	local tool = forName == REVOLVER_NAME and findTool(REVOLVER_NAME)
+		or findTool(CUTLASS_NAME)
+	-- Look for a likely swap-cue sound on the new weapon: Reload /
+	-- Equip / Draw — anything authored on the rig. Fall back to a
+	-- Roblox stock id parented to the Head so the cue still plays
+	-- even on a rig with bare-bones tools.
+	local s
+	if tool then
+		for _, name in ipairs({ "ReloadSound", "EquipSound", "DrawSound" }) do
+			local cand = tool:FindFirstChild(name, true)
+			if cand and cand:IsA("Sound") then s = cand; break end
+		end
+	end
+	if s then
+		pcall(function() s:Play() end)
+		return
+	end
+	local head = Self:FindFirstChild("Head")
+	if not head then return end
+	local fallback = Instance.new("Sound")
+	fallback.SoundId = SWAP_SOUND_FALLBACK
+	fallback.Volume  = 1.4
+	fallback.Parent  = head
+	fallback:Play()
+	Debris:AddItem(fallback, 1)
+end
+
 local activeWeaponName  -- "Cutlass" / "Revolver" / nil
 local function setActiveWeapon(name)
 	if activeWeaponName == name then return end
+	local previousName = activeWeaponName
 	activeWeaponName = name
 	local cutlass  = findTool(CUTLASS_NAME)
 	local revolver = findTool(REVOLVER_NAME)
@@ -161,6 +241,12 @@ local function setActiveWeapon(name)
 	-- before the Heartbeat enforcer wakes up.
 	if cutlass  then applyDesired(cutlass)  end
 	if revolver then applyDesired(revolver) end
+	-- Only play the swap sfx on actual transitions (not the initial
+	-- nil → revolver setup at script load) so the rig doesn't ring
+	-- its draw sound the moment it spawns.
+	if previousName then
+		playSwapSound(name)
+	end
 end
 
 -- Per the user's brief: spawn with the Revolver in hand. The first
@@ -474,15 +560,25 @@ local function fireBullet()
 	if sound then pcall(function() sound:Play() end) end
 	emitMuzzleEffects(muzzle)
 	-- Intentionally NOT calling Revolver:Activate(). The authored
-	-- Tool ships with client/server scripts whose Activated logic
-	-- transferred ownership to the nearby player (player saw a scope
-	-- HUD + lost inventory access). We spawn the bullet, play the
-	-- ShootSound, and emit the muzzle particles ourselves so the
-	-- Tool itself stays a passive visual.
+	-- Tool ships a Server BulletScript that crashes for NPCs (its
+	-- OnActivated indexes MyPlayer.Character with MyPlayer = nil).
+	-- We mirror its visual side-effects ourselves below.
 	if rangedTrack then
 		pcall(function()
 			rangedTrack:Stop(0)
 			rangedTrack:Play(0.1)
+		end)
+	end
+
+	-- LightShotEffect on the Handle is a ParticleEmitter or PointLight
+	-- the user authored for the muzzle flash. The Server BulletScript
+	-- does .Enabled = true for 0.25 s and then .Enabled = false. Mirror
+	-- that here so the Corsair's shots flash exactly like the player's.
+	local lightShot = muzzle:FindFirstChild("LightShotEffect")
+	if lightShot then
+		pcall(function() lightShot.Enabled = true end)
+		task.delay(0.25, function()
+			if lightShot then pcall(function() lightShot.Enabled = false end) end
 		end)
 	end
 
@@ -497,13 +593,29 @@ local function fireBullet()
 	bullet.CFrame    = CFrame.new(origin, tp)
 	bullet.Parent    = workspace
 
+	-- Attachment on the bullet so the gun's ShotEffect Beam can hook
+	-- a visual line from Handle.Attachment0 to this bullet for the
+	-- shot duration. Mirrors the Server BulletScript's path.
+	local bulletAttach = Instance.new("Attachment")
+	bulletAttach.Name   = "Attachment1"
+	bulletAttach.Parent = bullet
+
+	local shotEffect = muzzle:FindFirstChild("ShotEffect")
+	if shotEffect and (shotEffect:IsA("Beam") or shotEffect:IsA("Trail")) then
+		pcall(function() shotEffect.Attachment1 = bulletAttach end)
+		task.delay(0.25, function()
+			if shotEffect then pcall(function() shotEffect.Attachment1 = nil end) end
+		end)
+	end
+
 	local bv = Instance.new("BodyVelocity")
 	bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
 	bv.Velocity = bullet.CFrame.LookVector * ATTR.BulletSpeed
 		+ Vector3.new(math.random(-12, 12), math.random(-12, 12), 0)
 	bv.Parent   = bullet
 
-	-- Brief muzzle flash. Mirrors NpcAi.script's PointLight pulse.
+	-- Brief muzzle flash PointLight on top of the LightShotEffect, in
+	-- case the authored effect is a ParticleEmitter (no light pulse).
 	local flash = Instance.new("PointLight")
 	flash.Color      = Color3.fromRGB(255, 220, 140)
 	flash.Brightness = 4
