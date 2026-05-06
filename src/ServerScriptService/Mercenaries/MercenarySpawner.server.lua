@@ -144,35 +144,47 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 		or DEFAULT_WEAPON_BY_MERC[mercName]
 		or "Sword"
 
-	-- Remove all existing tools from the clone (template may have a FishingRod, etc.)
-	for _, child in clone:GetChildren() do
-		if child:IsA("Tool") then
-			child:Destroy()
-		end
-	end
+	-- Mercs whose rig ships its full loadout authored as Tools (Corsair
+	-- carries both a Cutlass and a Revolver baked in, picked between
+	-- by his Combat.script based on distance). For these we skip the
+	-- "destroy all Tools, then add the equipped weapon" path so the
+	-- authored loadout survives the spawn.
+	local PRESERVES_AUTHORED_LOADOUT = {
+		["Corsair"] = true,
+	}
 
-	-- Equip the chosen weapon from ReplicatedStorage.
-	-- FishingRod mercs spawn with a fake (visual-only) rod so they can walk
-	-- around holding it. The real rod is swapped in by MercenaryMovement
-	-- when the pirate reaches the fishing spot.
-	if equippedWeapon ~= "Unarmed" then
-		local weaponName = equippedWeapon
-		if weaponName == "Sword" then
-			weaponName = "ClassicSword"
-		elseif weaponName == "FishingRod" then
-			weaponName = "FishingRod_Fake"
+	if not PRESERVES_AUTHORED_LOADOUT[mercName] then
+		-- Remove all existing tools from the clone (template may have a
+		-- FishingRod, etc.) so the rig holds exactly the equipped weapon.
+		for _, child in clone:GetChildren() do
+			if child:IsA("Tool") then
+				child:Destroy()
+			end
 		end
 
-		local weaponTemplate = ReplicatedStorage:FindFirstChild(weaponName)
-			or ReplicatedStorage:FindFirstChild(weaponName, true)
-			or ReplicatedStorage:FindFirstChild(equippedWeapon)
-			or ReplicatedStorage:FindFirstChild(equippedWeapon, true)
-		if weaponTemplate and weaponTemplate:IsA("Tool") then
-			local wArchivable = weaponTemplate.Archivable
-			weaponTemplate.Archivable = true
-			local weaponClone = weaponTemplate:Clone()
-			weaponTemplate.Archivable = wArchivable
-			weaponClone.Parent = clone
+		-- Equip the chosen weapon from ReplicatedStorage.
+		-- FishingRod mercs spawn with a fake (visual-only) rod so they
+		-- can walk around holding it. The real rod is swapped in by
+		-- MercenaryMovement when the pirate reaches the fishing spot.
+		if equippedWeapon ~= "Unarmed" then
+			local weaponName = equippedWeapon
+			if weaponName == "Sword" then
+				weaponName = "ClassicSword"
+			elseif weaponName == "FishingRod" then
+				weaponName = "FishingRod_Fake"
+			end
+
+			local weaponTemplate = ReplicatedStorage:FindFirstChild(weaponName)
+				or ReplicatedStorage:FindFirstChild(weaponName, true)
+				or ReplicatedStorage:FindFirstChild(equippedWeapon)
+				or ReplicatedStorage:FindFirstChild(equippedWeapon, true)
+			if weaponTemplate and weaponTemplate:IsA("Tool") then
+				local wArchivable = weaponTemplate.Archivable
+				weaponTemplate.Archivable = true
+				local weaponClone = weaponTemplate:Clone()
+				weaponTemplate.Archivable = wArchivable
+				weaponClone.Parent = clone
+			end
 		end
 	end
 

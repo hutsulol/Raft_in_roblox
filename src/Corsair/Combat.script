@@ -1,0 +1,464 @@
+-- Combat.script (Corsair — Mercenary AI)
+--
+-- Hybrid melee / ranged AI for the Corsair mercenary. Mirrors the
+-- Pirate_2 Combat loop (SearchForTarget → TryRecomputePath → TravelPath
+-- → TryJumpCheck → TryAttack) but the attack step picks between two
+-- baked-in weapons depending on how far the target is:
+--
+--   close (≤ MELEE_RANGE):    swing the Cutlass — same melee feel as
+--                              Pirate, fast cadence, decent damage.
+--   far  (≤ RANGED_RANGE):    fire the Revolver — bullet projectile
+--                              spawned from the gun's barrel, lower
+--                              cadence, lower damage. Modeled on the
+--                              Soldier rig's bullet logic but
+--                              decoupled from "AK-47" naming.
+--
+-- The rig itself ships with both Tools (Cutlass + Revolver) authored
+-- as direct children of the model. MercenarySpawner is wired to
+-- preserve those tools instead of stripping them. We toggle the
+-- visual + the Activated() call between the two depending on the
+-- chosen attack type, so the rig never holds two visible weapons at
+-- once.
+--
+-- Same self-contained / no-respawn / no Configurations dependency
+-- contract as Pirate_2/Combat.script. Drop animations as direct
+-- children of this script (named "AttackMelee", "AttackRanged",
+-- "Idle") to make the rig actually animate the swing / shot.
+
+local CollectionService  = game:GetService("CollectionService")
+local Players            = game:GetService("Players")
+local PathfindingService = game:GetService("PathfindingService")
+local RunService         = game:GetService("RunService")
+local Debris             = game:GetService("Debris")
+
+local Self = script.Parent
+
+-- ── Tunables ──────────────────────────────────────────────────────────
+local ATTR = {
+	MaximumDetectionDistance = 160,
+	MaxHealth                = 320,
+	WalkSpeed                = 13,
+
+	-- Melee (Cutlass) — swung when target is within MELEE_RANGE.
+	MeleeDamage              = 22,
+	MeleeFrequency           = 1.6,   -- swings per second
+	MeleeRange               = 6,
+
+	-- Ranged (Revolver) — fired when target is between MELEE_RANGE and
+	-- RangedRange. Lower cadence + lower per-hit damage than melee, but
+	-- works at distance. The Corsair will keep moving toward the target
+	-- while shooting (no stop-and-aim), so the volume is intentional.
+	RangedDamage             = 14,
+	RangedFrequency          = 1.0,   -- shots per second
+	RangedRange              = 70,
+	BulletSpeed              = 320,   -- studs per second
+
+	RecomputePathFrequency   = 1,
+	JumpCheckFrequency       = 1,
+}
+
+local CUTLASS_NAME    = "Cutlass"
+local REVOLVER_NAME   = "Revolver"
+
+-- ── Wait for the rig to be in the world ───────────────────────────────
+while not Self:IsDescendantOf(workspace) do
+	Self.AncestryChanged:Wait()
+end
+
+-- ── Skip combat for non-weapon mercenaries ────────────────────────────
+-- Mirrors Pirate_2/Combat: FishingRod mercs fish, Unarmed mercs harvest.
+local equippedWeapon = Self:GetAttribute("EquippedWeapon") or "Sword"
+if equippedWeapon == "FishingRod" or equippedWeapon == "Unarmed" then
+	return
+end
+
+local humanoid = Self:FindFirstChildOfClass("Humanoid")
+local waited = 0
+while humanoid == nil and waited < 5 do
+	task.wait(0.1)
+	waited = waited + 0.1
+	humanoid = Self:FindFirstChildOfClass("Humanoid")
+end
+if humanoid == nil then
+	warn("[Corsair/Combat] no Humanoid — AI cannot run")
+	return
+end
+
+local function loadAnim(name)
+	local anim = script:FindFirstChild(name)
+	if not (anim and anim:IsA("Animation")) then return nil end
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = humanoid
+	end
+	local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
+	return ok and track or nil
+end
+
+local meleeTrack  = loadAnim("AttackMelee")
+local rangedTrack = loadAnim("AttackRanged")
+
+-- ── Stat init ─────────────────────────────────────────────────────────
+for _, d in Self:GetDescendants() do
+	if d:IsA("BasePart") then d.Anchored = false end
+end
+humanoid.MaxHealth     = ATTR.MaxHealth
+humanoid.Health        = ATTR.MaxHealth
+humanoid.WalkSpeed     = ATTR.WalkSpeed
+humanoid.PlatformStand = false
+humanoid.Sit           = false
+pcall(function()
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
+end)
+
+-- ── Helpers ───────────────────────────────────────────────────────────
+
+local function getTorso(model)
+	return model:FindFirstChild("Torso")
+		or model:FindFirstChild("UpperTorso")
+		or model:FindFirstChild("HumanoidRootPart")
+end
+
+local function getHRP()
+	return Self:FindFirstChild("HumanoidRootPart")
+end
+
+local function isPlayerCharacter(model)
+	return Players:GetPlayerFromCharacter(model) ~= nil
+end
+
+local function isFellowMercenary(model)
+	return CollectionService:HasTag(model, "SpawnedMercenary")
+end
+
+-- Resolve the muzzle / barrel point of the Revolver. Falls back to the
+-- tool's PrimaryPart, then to its first BasePart, then to the rig's
+-- right-hand position so we always have *some* origin to fire from.
+local function getRevolverMuzzle()
+	local revolver = Self:FindFirstChild(REVOLVER_NAME)
+	if not revolver then return nil end
+	local muzzle = revolver:FindFirstChild("Muzzle")
+		or revolver:FindFirstChild("Handle")
+		or revolver:FindFirstChildWhichIsA("BasePart", true)
+	if muzzle and muzzle:IsA("BasePart") then return muzzle end
+	return nil
+end
+
+-- ── State ─────────────────────────────────────────────────────────────
+local currentTarget    = nil
+local pathCoords       = {}
+local currentNode      = nil
+local currentNodeIndex = 1
+local autoRecompute    = true
+local recomputing      = false
+local lastPathTime     = 0
+local lastJumpCheck    = 0
+local lastMelee        = 0
+local lastShot         = 0
+
+-- ── Target search ─────────────────────────────────────────────────────
+-- Same mercenary contract as Pirate_2: any Humanoid that isn't a
+-- player and isn't another mercenary is fair game. Detection range is
+-- bumped a little since the Corsair can act on targets at longer
+-- distances via the Revolver.
+local function searchForTarget()
+	local hrp = getHRP()
+	if not hrp then return end
+	local myPos = hrp.Position
+
+	local closestHum, closestDist = nil, math.huge
+
+	for _, model in workspace:GetDescendants() do
+		if model:IsA("Humanoid") and model ~= humanoid and model.Health > 0 then
+			local parent = model.Parent
+			if parent
+				and not isPlayerCharacter(parent)
+				and not isFellowMercenary(parent)
+				and parent ~= Self
+			then
+				local torso = getTorso(parent)
+				if torso and torso:IsA("BasePart") then
+					local d = (torso.Position - myPos).Magnitude
+					if d < ATTR.MaximumDetectionDistance and d < closestDist then
+						closestHum, closestDist = model, d
+					end
+				end
+			end
+		end
+	end
+
+	currentTarget = closestHum
+end
+
+local function targetIsValid()
+	if currentTarget == nil then return false end
+	if currentTarget.Health <= 0 then return false end
+	local torso = currentTarget.Parent and getTorso(currentTarget.Parent)
+	return torso ~= nil and torso:IsA("BasePart")
+end
+
+local function getTargetPosition()
+	if not targetIsValid() then return nil end
+	return getTorso(currentTarget.Parent).Position
+end
+
+-- ── Pathfinding (mirrors Pirate_2) ────────────────────────────────────
+local function hasLineOfSight()
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return false end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { Self, currentTarget.Parent }
+	local result = workspace:Raycast(hrp.Position, tp - hrp.Position, params)
+	return result == nil
+end
+
+local function recomputePath()
+	if recomputing then return end
+	if not targetIsValid() then return end
+
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+
+	if hasLineOfSight() then
+		autoRecompute    = true
+		pathCoords       = { hrp.Position, tp }
+		currentNode      = nil
+		currentNodeIndex = 2
+		lastPathTime     = tick()
+		return
+	end
+
+	recomputing  = true
+	autoRecompute = false
+
+	local ok, path = pcall(function()
+		return PathfindingService:CreatePath({
+			AgentRadius = 2,
+			AgentHeight = 5,
+			AgentCanJump = true,
+		})
+	end)
+	if not ok or not path then
+		recomputing = false
+		return
+	end
+
+	local computeOk = pcall(function()
+		path:ComputeAsync(hrp.Position, tp)
+	end)
+	if computeOk and path.Status == Enum.PathStatus.Success then
+		pathCoords = {}
+		for _, wp in path:GetWaypoints() do
+			table.insert(pathCoords, wp.Position)
+		end
+		currentNode      = nil
+		currentNodeIndex = 1
+	else
+		pathCoords = { hrp.Position, tp }
+		currentNode      = nil
+		currentNodeIndex = 2
+	end
+
+	recomputing  = false
+	lastPathTime = tick()
+end
+
+local function tryRecomputePath()
+	if autoRecompute or tick() - lastPathTime > 1 / ATTR.RecomputePathFrequency then
+		recomputePath()
+	end
+end
+
+-- ── Jump check ───────────────────────────────────────────────────────
+local function jumpCheck()
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+	local checkVector = (tp - hrp.Position)
+	if checkVector.Magnitude < 0.1 then return end
+	checkVector = checkVector.Unit * 2
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { Self }
+	local result = workspace:Raycast(
+		hrp.Position + Vector3.new(0, -2.4, 0),
+		checkVector,
+		params
+	)
+	if result and currentTarget.Parent and not result.Instance:IsDescendantOf(currentTarget.Parent) then
+		humanoid.Jump = true
+	end
+	lastJumpCheck = tick()
+end
+
+local function tryJumpCheck()
+	if tick() - lastJumpCheck > 1 / ATTR.JumpCheckFrequency then
+		jumpCheck()
+	end
+end
+
+-- ── Attack: melee branch (Cutlass) ───────────────────────────────────
+local function meleeAttack()
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+	if (hrp.Position - tp).Magnitude > ATTR.MeleeRange then return end
+
+	currentTarget:TakeDamage(ATTR.MeleeDamage)
+	lastMelee = tick()
+	if meleeTrack then meleeTrack:Play() end
+
+	local cutlass = Self:FindFirstChild(CUTLASS_NAME)
+	if cutlass and cutlass:IsA("Tool") then
+		pcall(function() cutlass:Activate() end)
+	end
+end
+
+-- ── Attack: ranged branch (Revolver) ─────────────────────────────────
+-- Spawns a bullet from the Revolver muzzle aimed at the target. Damage
+-- is applied on Touched (filters out the shooter and accessories so
+-- the bullet doesn't hit the rig itself / hat). Bullet is auto-cleaned
+-- after a short lifetime so we don't leak parts.
+local function rangedAttack()
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+
+	local muzzle = getRevolverMuzzle()
+	if not muzzle then return end
+
+	-- Face the target so the bullet starts on a sane vector even if the
+	-- humanoid hasn't pivoted yet.
+	if hrp and not humanoid.PlatformStand then
+		local flatTarget = Vector3.new(tp.X, hrp.Position.Y, tp.Z)
+		hrp.CFrame = CFrame.new(hrp.Position, flatTarget)
+	end
+
+	lastShot = tick()
+	if rangedTrack then rangedTrack:Play() end
+
+	-- Try the tool's Activated event in case the user authored a sound /
+	-- muzzle-flash particle on the Revolver itself.
+	local revolver = Self:FindFirstChild(REVOLVER_NAME)
+	if revolver and revolver:IsA("Tool") then
+		pcall(function() revolver:Activate() end)
+	end
+
+	local origin    = muzzle.Position + muzzle.CFrame.LookVector * 1.2
+	local direction = (tp - origin)
+	if direction.Magnitude < 0.1 then return end
+	direction = direction.Unit
+
+	local bullet = Instance.new("Part")
+	bullet.Name           = "CorsairBullet"
+	bullet.Size           = Vector3.new(0.25, 0.25, 1.4)
+	bullet.Material       = Enum.Material.Neon
+	bullet.Color          = Color3.fromRGB(255, 220, 130)
+	bullet.CanCollide     = false
+	bullet.CanQuery       = false
+	bullet.CanTouch       = true
+	bullet.CFrame         = CFrame.new(origin, origin + direction)
+	bullet.Parent         = workspace
+
+	local bv = Instance.new("BodyVelocity")
+	bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+	bv.Velocity = direction * ATTR.BulletSpeed
+	bv.Parent   = bullet
+
+	Debris:AddItem(bullet, 1.2)
+
+	local consumed = false
+	bullet.Touched:Connect(function(hit)
+		if consumed or not hit or not hit.Parent then return end
+		-- Skip our own rig + accessories.
+		if hit:IsDescendantOf(Self) then return end
+		local model = hit:FindFirstAncestorOfClass("Model")
+		if model and isFellowMercenary(model) then return end
+		if model and isPlayerCharacter(model) then return end
+
+		-- Land hits on Humanoid-bearing models only — props don't take
+		-- damage, they just stop the bullet.
+		local victim = model and model:FindFirstChildOfClass("Humanoid")
+		if victim and victim ~= humanoid and victim.Health > 0 then
+			victim:TakeDamage(ATTR.RangedDamage)
+		end
+		consumed = true
+		bullet:Destroy()
+	end)
+end
+
+-- ── Attack dispatch ───────────────────────────────────────────────────
+-- Picks melee vs. ranged purely on distance. Both branches respect
+-- their own cooldown so a target sitting at MELEE_RANGE doesn't get
+-- hit by both swings AND shots in the same tick.
+local function tryAttack()
+	local hrp = getHRP()
+	local tp  = getTargetPosition()
+	if not hrp or not tp then return end
+
+	local dist = (hrp.Position - tp).Magnitude
+
+	if dist <= ATTR.MeleeRange then
+		if tick() - lastMelee > 1 / ATTR.MeleeFrequency then
+			meleeAttack()
+		end
+	elseif dist <= ATTR.RangedRange and hasLineOfSight() then
+		if tick() - lastShot > 1 / ATTR.RangedFrequency then
+			rangedAttack()
+		end
+	end
+end
+
+-- ── Path travel ───────────────────────────────────────────────────────
+local function travelPath()
+	if #pathCoords == 0 then return end
+	local hrp = getHRP()
+	if not hrp then return end
+	local myPos = hrp.Position
+
+	local skipCurrent = currentNode ~= nil and (currentNode - myPos).Magnitude < 3
+
+	local closest, closestDist, closestIdx = nil, math.huge, nil
+	for i = currentNodeIndex, #pathCoords do
+		local c = pathCoords[i]
+		if not (skipCurrent and c == currentNode) then
+			local d = (c - myPos).Magnitude
+			if d < closestDist then
+				closest, closestDist, closestIdx = c, d, i
+			else
+				break
+			end
+		end
+	end
+
+	if closest then
+		currentNode      = closest
+		currentNodeIndex = closestIdx
+		humanoid:MoveTo(closest)
+
+		if humanoid.Health > 0 and targetIsValid() then
+			tryJumpCheck()
+			tryAttack()
+		end
+
+		if closestIdx == #pathCoords then
+			autoRecompute = true
+		end
+	end
+end
+
+-- ── Main loop ─────────────────────────────────────────────────────────
+while Self.Parent and humanoid.Health > 0 do
+	searchForTarget()
+	if targetIsValid() then
+		tryRecomputePath()
+		travelPath()
+	end
+	RunService.Heartbeat:Wait()
+end
