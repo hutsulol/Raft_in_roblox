@@ -129,19 +129,55 @@ local function setToolVisible(tool, visible)
 	end
 end
 
+-- Sticky transparency. The authored Revolver Tool ships with its own
+-- Server / Client scripts that appear to reset Handle.Transparency
+-- back to 0 on internal events (the user reported the revolver stayed
+-- visible even after we set Transparency=1). Re-apply our intended
+-- transparency every Heartbeat so our swap always wins. Cheap to
+-- run — just two BasePart children plus their decorative descendants.
+local desiredTransparency = {}   -- [tool] = 0 or 1
+
+local function applyDesired(tool)
+	local t = desiredTransparency[tool]
+	if t == nil then return end
+	for _, d in tool:GetDescendants() do
+		if d:IsA("BasePart") then
+			if d.Transparency ~= t then d.Transparency = t end
+		elseif d:IsA("Decal") or d:IsA("Texture") then
+			if d.Transparency ~= t then d.Transparency = t end
+		end
+	end
+end
+
 local activeWeaponName  -- "Cutlass" / "Revolver" / nil
 local function setActiveWeapon(name)
 	if activeWeaponName == name then return end
 	activeWeaponName = name
-	setToolVisible(findTool(CUTLASS_NAME),  name == CUTLASS_NAME)
-	setToolVisible(findTool(REVOLVER_NAME), name == REVOLVER_NAME)
+	local cutlass  = findTool(CUTLASS_NAME)
+	local revolver = findTool(REVOLVER_NAME)
+	if cutlass  then desiredTransparency[cutlass]  = (name == CUTLASS_NAME)  and 0 or 1 end
+	if revolver then desiredTransparency[revolver] = (name == REVOLVER_NAME) and 0 or 1 end
+	-- Apply once immediately so the swap is visible this frame even
+	-- before the Heartbeat enforcer wakes up.
+	if cutlass  then applyDesired(cutlass)  end
+	if revolver then applyDesired(revolver) end
 end
 
 -- Per the user's brief: spawn with the Revolver in hand. The first
--- time the rig closes to MELEE_RANGE, setActiveWeapon flips to the
--- Cutlass, and it stays there until the target moves out of melee
--- range again (handled in tryAttack below).
+-- time the rig closes to MELEE_THRESHOLD, the state machine flips
+-- to Cutlass mode; once the target backs away again it flips back
+-- to Revolver and the rig kites.
 setActiveWeapon(REVOLVER_NAME)
+
+-- Heartbeat sticky-transparency enforcer. Beats any Tool-authored
+-- script that tries to make the inactive weapon visible again.
+RunService.Heartbeat:Connect(function()
+	if not Self.Parent then return end
+	local cutlass  = findTool(CUTLASS_NAME)
+	local revolver = findTool(REVOLVER_NAME)
+	if cutlass  then applyDesired(cutlass)  end
+	if revolver then applyDesired(revolver) end
+end)
 
 -- ── Animations ───────────────────────────────────────────────────────
 -- Melee swing animation (R6 toolslash fallback if the user didn't drop
@@ -529,28 +565,11 @@ local function rangedAttack()
 	fireBullet()
 end
 
--- ── Attack dispatch ──────────────────────────────────────────────────
--- Picks melee vs ranged on distance. Both branches respect their own
--- cooldown so a target sitting at exactly MELEE_RANGE doesn't get hit
--- by both swings AND shots in the same tick. The rig keeps walking
--- toward the target throughout — the ranged branch does NOT stop the
--- rig (the user complained earlier that the rig stood still during
--- ranged engagement, which is what we're explicitly avoiding here).
-local function tryAttack()
-	local hrp = getHRP()
-	local tp  = getTargetPosition()
-	if not hrp or not tp then return end
-	local dist = (hrp.Position - tp).Magnitude
-	if dist <= ATTR.MeleeRange then
-		meleeAttack()
-	elseif dist <= ATTR.RangedRange then
-		rangedAttack()
-	end
-	-- > RangedRange: no attack; outer travelPath is busy chasing.
-end
-
--- ── Path travel (mirrors Pirate_2/Combat) ────────────────────────────
-local function travelPath()
+-- ── Cutlass-mode path travel (mirrors Pirate_2/Combat) ──────────────
+-- Used only while the state machine is in CUTLASS mode. Walks the
+-- pathfinding-or-LOS waypoints toward the target, jumps over short
+-- obstacles, and triggers the cutlass swing when in melee range.
+local function travelCutlassPath()
 	if #pathCoords == 0 then return end
 	local hrp = getHRP()
 	if not hrp then return end
@@ -578,7 +597,9 @@ local function travelPath()
 
 		if humanoid.Health > 0 and targetIsValid() then
 			tryJumpCheck()
-			tryAttack()
+			-- In cutlass mode only the melee branch fires; we skip the
+			-- ranged dispatch entirely so the rig commits to the rush.
+			meleeAttack()
 		end
 
 		if closestIdx == #pathCoords then
@@ -587,14 +608,116 @@ local function travelPath()
 	end
 end
 
+-- ── Revolver-mode behaviour (kite + fire) ───────────────────────────
+-- The user's brief: "When he's holding a revolver, he tries to move
+-- away from the player, but doesn't stand still. He moves, but
+-- doesn't approach". So: keep distance, fire while strafing.
+--
+--   dist < KITE_RADIUS     → step away from the target (back-pedal)
+--   dist > APPROACH_RADIUS → walk toward the target so we don't
+--                            lose them, but only just within range
+--   between the two        → strafe in place (small lateral steps)
+--                            so the rig isn't a static target
+local KITE_RADIUS     = 18   -- below this, back-pedal away from target
+local APPROACH_RADIUS = 30   -- above this, walk closer to maintain LOS
+local STRAFE_PERIOD   = 1.6  -- seconds per strafe direction flip
+
+local strafeFlipAt   = 0
+local strafeSign     = 1
+
+local function revolverStep()
+	if not targetIsValid() then return end
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+
+	local dist = (hrp.Position - tp).Magnitude
+
+	-- Face the target so the muzzle (and bullet) point the right way.
+	if not humanoid.PlatformStand then
+		local flat = Vector3.new(tp.X, hrp.Position.Y, tp.Z)
+		hrp.CFrame = CFrame.new(hrp.Position, flat)
+	end
+
+	-- Movement vector relative to the rig's facing.
+	local toTarget = (tp - hrp.Position)
+	local flatDir
+	if toTarget.Magnitude > 0.1 then
+		flatDir = Vector3.new(toTarget.X, 0, toTarget.Z).Unit
+	else
+		flatDir = Vector3.new(0, 0, 1)
+	end
+	local rightDir = Vector3.new(flatDir.Z, 0, -flatDir.X) -- 90° clockwise
+
+	-- Flip strafe direction periodically so the rig doesn't drift in
+	-- one straight line forever.
+	if tick() - strafeFlipAt > STRAFE_PERIOD then
+		strafeFlipAt = tick()
+		strafeSign   = (math.random() < 0.5) and -1 or 1
+	end
+
+	local moveTo
+	if dist < KITE_RADIUS then
+		-- Too close: back-pedal away while strafing sideways so the
+		-- player can't predict the path with a straight aim.
+		moveTo = hrp.Position + (-flatDir) * 6 + rightDir * (4 * strafeSign)
+	elseif dist > APPROACH_RADIUS then
+		-- Too far: walk toward target. We don't sprint — the goal is
+		-- to maintain ranged engagement, not close to melee.
+		moveTo = hrp.Position + flatDir * 6 + rightDir * (3 * strafeSign)
+	else
+		-- Sweet spot: hold ground but strafe so we read as moving.
+		moveTo = hrp.Position + rightDir * (5 * strafeSign)
+	end
+	humanoid:MoveTo(moveTo)
+
+	-- Fire while moving. rangedAttack handles its own cooldown +
+	-- LOS check and only triggers when the bullet would actually
+	-- have a chance to land.
+	if dist <= ATTR.RangedRange then
+		rangedAttack()
+	end
+end
+
+-- ── State machine ──────────────────────────────────────────────────
+-- "revolver" (default) — kite + shoot from range.
+-- "cutlass" — rush in and swing.
+-- Hysteresis on the threshold so the rig doesn't oscillate at the
+-- boundary: switch to cutlass at dist ≤ 8, switch back to revolver
+-- at dist > 14 (gap of 6 studs, ~0.4 s of player movement at the
+-- default WalkSpeed).
+local CUTLASS_THRESHOLD = 8
+local REVOLVER_THRESHOLD = 14
+
+local mode = "revolver"
+
 print("[Corsair/Combat] AI online for " .. Self:GetFullName())
 
--- ── Main loop ────────────────────────────────────────────────────────
 while alive and Self.Parent and humanoid.Health > 0 do
 	searchForTarget()
 	if targetIsValid() then
-		tryRecomputePath()
-		travelPath()
+		local hrp = getHRP()
+		local tp  = getTargetPosition()
+		if hrp and tp then
+			local dist = (hrp.Position - tp).Magnitude
+
+			-- State transitions
+			if mode == "revolver" and dist <= CUTLASS_THRESHOLD then
+				mode = "cutlass"
+				setActiveWeapon(CUTLASS_NAME)
+			elseif mode == "cutlass" and dist > REVOLVER_THRESHOLD then
+				mode = "revolver"
+				setActiveWeapon(REVOLVER_NAME)
+			end
+
+			-- State action
+			if mode == "cutlass" then
+				tryRecomputePath()
+				travelCutlassPath()
+			else
+				revolverStep()
+			end
+		end
 	end
 	RunService.Heartbeat:Wait()
 end
