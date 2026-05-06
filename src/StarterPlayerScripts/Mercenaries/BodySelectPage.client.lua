@@ -538,10 +538,12 @@ local function openBodySelectPage(ctx)
 	-- MercenaryEquipment.
 	local DEFAULT_WEAPON_BY_MERC = {
 		["Pirate lvl1"]       = "Sword",
+		["Corsair"]           = "Sword",
 		["Infected Military"] = "Firearm",
 	}
 	local ALLOWED_WEAPONS_BY_MERC = {
 		["Pirate lvl1"]       = { Sword = true, FishingRod = true, Unarmed = true },
+		["Corsair"]           = { Sword = true, FishingRod = true, Unarmed = true },
 		["Infected Military"] = { Firearm = true, Shotgun = true, FishingRod = true, Unarmed = true },
 	}
 

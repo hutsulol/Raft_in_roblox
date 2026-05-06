@@ -23,6 +23,17 @@ NpcTypes.Types = {
 		displayName = "Pirate",
 		dialogueId  = "pirate",
 	},
+	["Corsair"] = {
+		-- Mid-tier sea raider — slots between the Pirate and the
+		-- Soldier in roster order. Same internal-id-matches-rig
+		-- contract: "Corsair" is the rig template name in
+		-- ReplicatedStorage AND the player.Mercenaries entry name.
+		mercName    = "Corsair",
+		bloodType   = "Corsair",
+		bloodLabel  = "Corsair Blood",
+		displayName = "Corsair",
+		dialogueId  = "corsair",
+	},
 	["Infected Military"] = {
 		-- Internal id ("Infected Military") matches the rig name in
 		-- ReplicatedStorage and the player.Mercenaries entry. The UI

@@ -19,6 +19,7 @@ spawnEvent.Parent = ReplicatedStorage
 -- are separate models and live in their own spawners.
 local SPAWN_MAP = {
 	["Pirate lvl1"]       = "Pirate_2",
+	["Corsair"]           = "Corsair",
 	["Infected Military"] = "Infected_Military_Menu",
 }
 
@@ -27,6 +28,12 @@ local SPAWN_MAP = {
 -- without hand-editing every rig template. nil entries leave the
 -- rig's authored values untouched.
 local SPAWN_STAT_OVERRIDES = {
+	["Corsair"] = {
+		-- Tougher than the Pirate but lighter than the Soldier; matches
+		-- the MERC_THEMES card stats so the spawned rig doesn't lie.
+		MaxHealth = 320,
+		WalkSpeed = 13,
+	},
 	["Infected Military"] = {
 		MaxHealth = 420,
 		WalkSpeed = 14,
@@ -40,6 +47,7 @@ local SPAWN_STAT_OVERRIDES = {
 -- of a sword.
 local DEFAULT_WEAPON_BY_MERC = {
 	["Pirate lvl1"]       = "Sword",
+	["Corsair"]           = "Sword",
 	["Infected Military"] = "Firearm",
 }
 

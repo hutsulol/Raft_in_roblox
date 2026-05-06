@@ -129,6 +129,7 @@ local AUTO_UNLOCK_BY_MERC = {
 -- from a pre-T45 session).
 local ALLOWED_WEAPONS_BY_MERC = {
 	["Pirate lvl1"]       = { Sword = true, FishingRod = true, Unarmed = true },
+	["Corsair"]           = { Sword = true, FishingRod = true, Unarmed = true },
 	["Infected Military"] = { Firearm = true, Shotgun = true, FishingRod = true, Unarmed = true },
 }
 

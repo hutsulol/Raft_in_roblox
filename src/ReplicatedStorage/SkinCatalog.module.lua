@@ -72,6 +72,27 @@ addSkin({
 	ownedByDefault  = true,
 })
 
+-- ─── Corsair ────────────────────────────────────────────────────────
+-- Placeholder default kit so the wardrobe page has something to render
+-- the moment the player recruits a Corsair. Reuses the Pirate's
+-- default clothing assets — swap shirtName / pantsName here once the
+-- user drops a dedicated Corsair shirt + pants under
+-- ReplicatedStorage.Skins.
+addSkin({
+	id              = "corsair_default",
+	mercName        = "Corsair",
+	displayName     = "Privateer's Coat",
+	rarity          = 2,
+	category        = "Crew",
+	palette         = { "#3A2A1E", "#A07235", "#1F1B17" },
+	setName         = "Corsair",
+	source          = "Recruited Outfit",
+	description     = "Heavy seafarer's coat — stitched leather and brass fittings.",
+	shirtName       = "Clothing_Default_top",
+	pantsName       = "Clothing_Default_under",
+	ownedByDefault  = true,
+})
+
 -- ─── Filtered queries ───────────────────────────────────────────────
 
 local function getByMerc(mercName)

@@ -296,6 +296,25 @@ local MERC_THEMES = {
 		charStats   = { str = 72, spd = 48, luck = 35 },
 		portraitIcon = ICON_PIRATE,
 	},
+	["Corsair"] = {
+		-- Mid-tier sea raider — between the basic Pirate (1★) and the
+		-- Soldier (2★). Same Pirate-family loadout (Sword / FishingRod
+		-- / Unarmed) so the existing weapon restrictedTo lists keep
+		-- working without per-merc plumbing.
+		accent      = Color3.fromRGB(230, 175, 55),
+		displayName = "Corsair",
+		stars       = 2,
+		role        = "Sea Raider · Melee",
+		stats       = { hp = 320, damage = 24, mana = "25/min" },
+		spawnModel  = "Corsair",
+		defaultWeapon = "Sword",
+		viewportPivotY = 0.4,
+		level       = 1,
+		xp          = 0,
+		xpMax       = 650,
+		charStats   = { str = 80, spd = 55, luck = 42 },
+		portraitIcon = ICON_PIRATE,
+	},
 	["Infected Military"] = {
 		-- Internal id stays "Infected Military" so it matches the
 		-- ReplicatedStorage rig and the player.Mercenaries entry.
@@ -359,6 +378,7 @@ local DEFAULT_THEME = {
 -- would keep getting ClassicSword welded onto him in every viewport.
 local ALLOWED_WEAPONS_BY_MERC = {
 	["Pirate lvl1"]       = { Sword = true, FishingRod = true, Unarmed = true },
+	["Corsair"]           = { Sword = true, FishingRod = true, Unarmed = true },
 	["Infected Military"] = { Firearm = true, Shotgun = true, FishingRod = true, Unarmed = true },
 }
 
@@ -3233,8 +3253,10 @@ EQUIP_ITEMS = {
 			baseAttack    = 10,
 			description   = "A basic pirate cutlass. Short range but reliable in close combat.",
 			alwaysUnlocked = true,
-			-- Pirate-only — Soldier never sees this in the arsenal grid.
-			restrictedTo  = { "Pirate lvl1" },
+			-- Pirate-family weapon — Soldier never sees this in the
+			-- arsenal grid. Corsair shares the Pirate's melee loadout so
+			-- it appears on his arsenal too.
+			restrictedTo  = { "Pirate lvl1", "Corsair" },
 		},
 		{
 			id            = "FishingRod",
