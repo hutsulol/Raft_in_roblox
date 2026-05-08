@@ -91,6 +91,10 @@ local TOOL_ICONS = {
 	["Shovel"] = "rbxassetid://91548954831391",
 	["Hook"] = "rbxassetid://110032041583533",
 	["Axe"] = "rbxassetid://110032041583533",
+	-- Stone_Axe inherits the Pick-Axe icon as a placeholder until a
+	-- dedicated axe asset lands; the equipped Tool's TextureId
+	-- override on line 775 takes precedence in the hotbar anyway.
+	["Stone_Axe"] = "rbxassetid://89809613033816",
 	["[GRAPES]"] = "rbxassetid://137478230275649",
 	["Grapes"] = "rbxassetid://137478230275649",
 	["FishingRod"] = "rbxassetid://105180666555503",
@@ -320,6 +324,7 @@ local DISPLAY_NAMES = {
 	WorkBench = "Workbench",
 
 	Wood_Knife = "Wood Knife",
+	Stone_Axe = "Stone Axe",
 }
 
 local function getDisplayName(data)
@@ -2504,6 +2509,25 @@ inventoryCraftEvent.OnClientEvent:Connect(function(action, data, inv)
 				craftType = "tool",
 				category = "Tools",
 				description = "A pickaxe for mining rocks on islands to collect stone.",
+			})
+		end
+		-- Inject Stone_Axe recipe if not present (StoneAxeSystem
+		-- handles crafting via its own InventoryCraft listener; the
+		-- recipe metadata only needs to reach the menu so the player
+		-- can SEE + click the entry).
+		local hasStoneAxe = false
+		for _, r in recipes do
+			if r.name == "Stone_Axe" then hasStoneAxe = true break end
+		end
+		if not hasStoneAxe then
+			table.insert(recipes, {
+				name = "Stone_Axe",
+				displayName = "Stone Axe",
+				icon = "rbxassetid://89809613033816",
+				costs = {Log = 1, Stone = 3, Rope = 1},
+				craftType = "tool",
+				category = "Tools",
+				description = "A stone-bladed axe for chopping palm and banana trees on islands. Yields logs.",
 			})
 		end
 		if inv then inventory = inv end
