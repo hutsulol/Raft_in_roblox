@@ -1,0 +1,112 @@
+-- Stone_Axe LocalScript
+-- Stays inside the Stone_Axe Tool. Handles the swing animation +
+-- swing-sound playback when the tool is Activated, mirroring the
+-- structure of the user's reference Sword/Hatchet LocalScript so
+-- the tool is self-contained: any future tool-only changes
+-- (different swing sound, different anim) live here, not in the
+-- StoneAxeClient logic file under StarterPlayerScripts.
+--
+-- The actual tree-chopping game logic (raycast for choppable
+-- trees + ChopTree RemoteEvent) lives in
+-- StarterPlayerScripts/StoneAxeClient.client.lua. That client now
+-- defers to this script for animation playback so we never double-
+-- play the swing on a single click.
+
+local Tool = script.Parent
+Tool.Enabled = true
+
+local Handle = Tool:WaitForChild("Handle")
+
+-- Optional swing sound. Some authored Stone_Axe tools ship a Swing
+-- Sound under the Handle (mirrors the reference Sword); others
+-- don't. Look it up softly so the script keeps working either way.
+local function findSound(parent, names)
+	for _, n in ipairs(names) do
+		local s = parent:FindFirstChild(n, true)
+		if s and s:IsA("Sound") then return s end
+	end
+	return nil
+end
+local SwingSound = findSound(Handle, { "Swing", "SwingSound", "Whoosh" })
+
+local Services = {
+	Players = game:GetService("Players"),
+	Debris  = game:GetService("Debris"),
+}
+
+local SWING_COOLDOWN = 0.8   -- per the user's brief; matches StoneAxeClient
+
+local Animations = {}
+local events = {}
+local Player, Character, Humanoid
+
+-- Swing-cooldown lock kept LOCAL to this script — StoneAxeClient
+-- enforces its own cooldown for the RemoteEvent fire, so the two
+-- locks operate independently and an attempt to spam the click only
+-- ever produces one swing per 0.8 s window.
+local function Activated()
+	if not Tool.Enabled or not Humanoid or Humanoid.Health <= 0 then return end
+	Tool.Enabled = false
+	task.delay(SWING_COOLDOWN, function()
+		Tool.Enabled = true
+	end)
+
+	local track = Animations.ChopAnim
+	if track then
+		pcall(function()
+			track:Stop(0)
+			track:Play(0.05)
+		end)
+	end
+	if SwingSound then
+		pcall(function() SwingSound:Play() end)
+	end
+end
+
+-- Loads the chop animation once per equip. Prefers the user-
+-- authored "HitTreeR6" child (asset id rbxassetid://82172717244396)
+-- exactly as the user authored it; falls back to a class-match
+-- search so a future "HitTreeR15" rename ships without a code
+-- change.
+local function loadChopAnim()
+	if not Humanoid or not Tool then return nil end
+
+	local anim = Tool:FindFirstChild("HitTree" .. Humanoid.RigType.Name)
+		or Tool:FindFirstChild("HitTreeR6")
+		or Tool:FindFirstChildWhichIsA("Animation", true)
+	if not anim or not anim:IsA("Animation") then return nil end
+
+	local ok, track = pcall(function() return Humanoid:LoadAnimation(anim) end)
+	if ok and track then
+		track.Priority = Enum.AnimationPriority.Action
+		return track
+	end
+	return nil
+end
+
+local function Equipped()
+	Character = Tool.Parent
+	Player    = Services.Players:GetPlayerFromCharacter(Character)
+	Humanoid  = Character:FindFirstChildOfClass("Humanoid")
+	if not Humanoid or Humanoid.Health <= 0 then return end
+
+	Animations.ChopAnim = loadChopAnim()
+
+	events[#events + 1] = Tool.Activated:Connect(Activated)
+end
+
+local function Unequipped()
+	for i = 1, #events do
+		if events[i] then
+			events[i]:Disconnect()
+			events[i] = nil
+		end
+	end
+	if Animations.ChopAnim then
+		pcall(function() Animations.ChopAnim:Stop(0) end)
+		Animations.ChopAnim = nil
+	end
+end
+
+Tool.Equipped:Connect(Equipped)
+Tool.Unequipped:Connect(Unequipped)

@@ -34,8 +34,13 @@ local axeEquipped     = false
 local currentTool     = nil
 local highlightedTree = nil
 local highlightBox    = nil
-local chopAnimTrack   = nil
 local choppingCooldown = false
+
+-- Animation playback now lives inside the Stone_Axe tool itself
+-- (src/Stone_Axe ( Tool )/LocalScript) — that LocalScript loads
+-- HitTreeR6 on equip and plays it on Tool.Activated, matching the
+-- user's reference Sword/Hatchet pattern. This file only owns the
+-- chop game logic (raycast → fire ChopTree).
 
 -- ─── Hint UI (matches PickAxeClient styling so the two tools share a
 -- consistent on-screen affordance) ───────────────────────────────────
@@ -113,38 +118,6 @@ local function findChoppableTree(instance)
 	return nil
 end
 
--- ─── HitTreeR6 animation track (loaded once per equip) ────────────
-local function ensureChopAnimation()
-	if chopAnimTrack then return chopAnimTrack end
-	local char = player.Character
-	if not char then return nil end
-	local humanoid = char:FindFirstChildWhichIsA("Humanoid")
-	if not humanoid or not currentTool then return nil end
-
-	-- Prefer the user-authored HitTreeR6 child of the Stone_Axe tool.
-	-- Fall back to any Animation under the tool so a future asset
-	-- rename doesn't silently disable the swing.
-	local anim = currentTool:FindFirstChild("HitTreeR6")
-		or currentTool:FindFirstChildWhichIsA("Animation", true)
-	if not anim or not anim:IsA("Animation") then return nil end
-
-	local ok, track = pcall(function() return humanoid:LoadAnimation(anim) end)
-	if ok and track then
-		chopAnimTrack = track
-		track.Priority = Enum.AnimationPriority.Action
-	end
-	return chopAnimTrack
-end
-
-local function playChopAnimation()
-	local track = ensureChopAnimation()
-	if not track then return end
-	pcall(function()
-		track:Stop(0)
-		track:Play(0.05)
-	end)
-end
-
 -- ─── Per-frame highlight update ───────────────────────────────────
 local function updateHighlight()
 	if not axeEquipped then
@@ -183,7 +156,6 @@ local function onToolEquipped(tool)
 	if tool.Name == "Stone_Axe" then
 		axeEquipped = true
 		currentTool = tool
-		chopAnimTrack = nil   -- reload for the new instance
 		createHighlight()
 		hintLabel.Visible = true
 	end
@@ -193,10 +165,6 @@ local function onToolUnequipped(tool)
 	if tool.Name == "Stone_Axe" then
 		axeEquipped = false
 		currentTool = nil
-		if chopAnimTrack then
-			pcall(function() chopAnimTrack:Stop(0) end)
-		end
-		chopAnimTrack = nil
 		clearHighlight()
 		hintLabel.Visible = false
 	end
@@ -230,13 +198,15 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ─── Click → chop (0.8 s cooldown matches the brief) ──────────────
+-- The animation + swing-sound playback fire from the in-tool
+-- LocalScript on Tool.Activated; this handler only owns the chop
+-- game logic (raycast → fire ChopTree).
 mouse.Button1Down:Connect(function()
 	if not axeEquipped then return end
 	if choppingCooldown then return end
 	if not highlightedTree then return end
 
 	choppingCooldown = true
-	playChopAnimation()
 	chopTreeEvent:FireServer(highlightedTree)
 
 	task.delay(CHOP_COOLDOWN, function()
