@@ -102,7 +102,7 @@ local recipes = {
 	{
 		name = "Wet_Brick",
 		displayName = "Wet Brick",
-		icon = "rbxassetid://122295013823946",
+		icon = "rbxassetid://77999856849195",
 		costs = {Sand = 2, Clay = 2},
 		craftType = "placeable",
 		category = "Resources",

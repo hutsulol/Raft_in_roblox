@@ -18,14 +18,19 @@ local PLASTIC_ICON = "rbxassetid://132919988751848"
 local STONE_ICON = "rbxassetid://134781813180973"
 local IRON_ORE_ICON = "rbxassetid://73676755288746"
 local IRON_INGOT_ICON = "rbxassetid://72890243946368"
-local LEAVES_ICON = "rbxassetid://78493803156432"
+-- Leaves / Sand / Clay / Wet_Brick / Dry_Brick had asset ids that were
+-- updated in WorkbenchUI but never propagated here, so the inventory's
+-- crafting panel kept rendering the old artwork while every other UI
+-- (workbench, furnace, mining highlight, resource pull) showed the
+-- new one. Synced to the WorkbenchUI ids below.
+local LEAVES_ICON = "rbxassetid://96691360298069"
 
 local PLANK_ICON = "rbxassetid://118108820731466"
 local ROPE_ICON = "rbxassetid://78492721752628"
-local SAND_ICON = "rbxassetid://96142393982330"
-local CLAY_ICON = "rbxassetid://70464196671282"
-local WET_BRICK_ICON = "rbxassetid://122295013823946"
-local DRY_BRICK_ICON = "rbxassetid://97609326528615"
+local SAND_ICON = "rbxassetid://92407877736322"
+local CLAY_ICON = "rbxassetid://129473903672183"
+local WET_BRICK_ICON = "rbxassetid://77999856849195"
+local DRY_BRICK_ICON = "rbxassetid://129896663405682"
 local BAG_EMPTY_ICON = "rbxassetid://89398456198664"
 local BAG_WITH_CLAY_ICON = "rbxassetid://126238050436106"
 local BAG_WITH_SAND_ICON = "rbxassetid://77748685223141"
