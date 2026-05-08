@@ -420,7 +420,19 @@ _G.SendInventory = function(player)
 	inventoryEvent:FireClient(player, inv)
 end
 
-_G.AddResourceToInventory = function(player, itemName, amount, dropPosition)
+-- Inventory-add notification. Fires the "InventoryNotify" RemoteEvent
+-- so a generic client UI (StarterPlayerScripts/InventoryNotify) can
+-- render bottom-right "+N item" cards. Container takeouts pass
+-- silent=true to skip — see SmallContainerSystem / PlasticContainerSystem
+-- / MercenaryEquipment for those call sites.
+local notifyEvent = ReplicatedStorage:FindFirstChild("InventoryNotify")
+if not notifyEvent then
+	notifyEvent = Instance.new("RemoteEvent")
+	notifyEvent.Name = "InventoryNotify"
+	notifyEvent.Parent = ReplicatedStorage
+end
+
+_G.AddResourceToInventory = function(player, itemName, amount, dropPosition, silent)
 	if type(itemName) ~= "string" or itemName == "" then return 0, 0 end
 	amount = tonumber(amount) or 0
 	if amount <= 0 then return 0, 0 end
@@ -437,6 +449,12 @@ _G.AddResourceToInventory = function(player, itemName, amount, dropPosition)
 	if toAdd > 0 then
 		inv[itemName] = (inv[itemName] or 0) + toAdd
 		addPendingDelta(player, itemName, toAdd)
+		-- Generic "+N item" notification. Skipped for container /
+		-- merc-backpack takeouts (silent flag) so chest extraction
+		-- doesn't spam the corner with cards.
+		if not silent then
+			notifyEvent:FireClient(player, itemName, toAdd)
+		end
 	end
 
 	if overflow > 0 and _G.SpawnResourceDrop then

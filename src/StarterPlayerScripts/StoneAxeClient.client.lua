@@ -34,26 +34,6 @@ local CHOP_AIM_RANGE = 200     -- studs of mouse-ray raycast
 local CURSOR_AXE_ASSET = "rbxassetid://102927945165446"
 local CURSOR_AXE_SIZE  = 40
 
--- ─── Resource icons + display names (mirrors InventoryUI) ──────────
--- Local copy to avoid the cross-script dependency. The five tree-drop
--- resources are the only ones that show up in our notifications, so
--- the small duplication is cheap. If a notification fires for a
--- resource we don't have an icon for the row simply renders text-only.
-local RESOURCE_ICONS = {
-	Log     = "rbxassetid://110032041583533",
-	Leaves  = "rbxassetid://96691360298069",
-	Plank   = "rbxassetid://118108820731466",
-}
-
-local DISPLAY_NAMES = {
-	Log     = "Log",
-	Leaves  = "Leaves",
-	Plank   = "Plank",
-	Sapling = "Sapling",
-	Banana  = "Banana",
-	Coconut = "Coconut",
-}
-
 -- ─── State ────────────────────────────────────────────────────────────
 local axeEquipped     = false
 local currentTool     = nil
@@ -111,113 +91,13 @@ local hintCorner = Instance.new("UICorner")
 hintCorner.CornerRadius = UDim.new(0, 8)
 hintCorner.Parent = hintLabel
 
--- ─── Drop-notification stack (Raft-style, bottom-right) ───────────
--- Each notification is a small wood-toned card with "+N | icon |
--- name". Up to ~6 are visible at once; older ones fade and slide
--- off the bottom as new ones come in. UIListLayout handles the
--- vertical stacking and shifting; per-card task.delay handles the
--- fade-out + cleanup.
-local NOTIF_LIFETIME = 3.0    -- seconds before fade
-local NOTIF_FADE     = 0.5    -- fade duration after lifetime
-local NOTIF_HEIGHT   = 30
-local NOTIF_WIDTH    = 170
-local NOTIF_GAP      = 4
-
-local notifContainer = Instance.new("Frame")
-notifContainer.Name = "DropNotifications"
-notifContainer.AnchorPoint = Vector2.new(1, 1)
-notifContainer.Position = UDim2.new(1, -16, 1, -110)  -- above the hotbar
-notifContainer.Size = UDim2.fromOffset(NOTIF_WIDTH, 380)
-notifContainer.BackgroundTransparency = 1
-notifContainer.Parent = hintGui
-
-local notifLayout = Instance.new("UIListLayout")
-notifLayout.FillDirection = Enum.FillDirection.Vertical
-notifLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
-notifLayout.VerticalAlignment   = Enum.VerticalAlignment.Bottom
-notifLayout.SortOrder = Enum.SortOrder.LayoutOrder
-notifLayout.Padding   = UDim.new(0, NOTIF_GAP)
-notifLayout.Parent = notifContainer
-
-local notifOrder = 0
-
-local function showDropNotif(resourceName, count)
-	if (count or 0) <= 0 then return end
-	notifOrder = notifOrder + 1
-
-	local card = Instance.new("Frame")
-	card.Name = "Drop_" .. resourceName
-	card.Size = UDim2.fromOffset(NOTIF_WIDTH, NOTIF_HEIGHT)
-	card.BackgroundColor3 = Color3.fromRGB(48, 36, 24)
-	card.BackgroundTransparency = 0.1
-	card.BorderSizePixel = 0
-	card.LayoutOrder = notifOrder
-	card.Parent = notifContainer
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 3)
-	corner.Parent = card
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(140, 105, 60)
-	stroke.Thickness = 1
-	stroke.Parent = card
-
-	-- "+N" prefix in green (positive feedback colour, matches the
-	-- in-game inventory affordable-cost colour).
-	local countLabel = Instance.new("TextLabel")
-	countLabel.Position = UDim2.fromOffset(6, 0)
-	countLabel.Size = UDim2.fromOffset(28, NOTIF_HEIGHT)
-	countLabel.BackgroundTransparency = 1
-	countLabel.Text = "+" .. tostring(count)
-	countLabel.TextColor3 = Color3.fromRGB(170, 230, 130)
-	countLabel.TextSize = 14
-	countLabel.Font = Enum.Font.GothamBold
-	countLabel.TextXAlignment = Enum.TextXAlignment.Left
-	countLabel.Parent = card
-
-	-- Resource icon. Empty image for resources we don't have an
-	-- asset id for (Sapling / Banana / Coconut today) — they still
-	-- render the count + name correctly.
-	local iconBox = Instance.new("ImageLabel")
-	iconBox.Position = UDim2.fromOffset(36, 3)
-	iconBox.Size = UDim2.fromOffset(NOTIF_HEIGHT - 6, NOTIF_HEIGHT - 6)
-	iconBox.BackgroundTransparency = 1
-	iconBox.Image = RESOURCE_ICONS[resourceName] or ""
-	iconBox.ScaleType = Enum.ScaleType.Fit
-	iconBox.Parent = card
-
-	-- Resource name (right of the icon).
-	local nameLabel = Instance.new("TextLabel")
-	-- Pin the name to a fixed offset matching the new icon position +
-	-- size; the icon ends at 36 + (NOTIF_HEIGHT - 6), then 6 px gap.
-	local nameOffsetX = 36 + (NOTIF_HEIGHT - 6) + 6
-	nameLabel.Position = UDim2.fromOffset(nameOffsetX, 0)
-	nameLabel.Size = UDim2.fromOffset(NOTIF_WIDTH - nameOffsetX - 6, NOTIF_HEIGHT)
-	nameLabel.BackgroundTransparency = 1
-	nameLabel.Text = DISPLAY_NAMES[resourceName] or resourceName
-	nameLabel.TextColor3 = Color3.fromRGB(245, 230, 200)
-	nameLabel.TextSize = 13
-	nameLabel.Font = Enum.Font.Gotham
-	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
-	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	nameLabel.Parent = card
-
-	task.delay(NOTIF_LIFETIME, function()
-		local steps = 10
-		for i = 0, steps do
-			if not card.Parent then return end
-			local a = i / steps
-			card.BackgroundTransparency = 0.1 + a * 0.9
-			stroke.Transparency        = a
-			countLabel.TextTransparency = a
-			nameLabel.TextTransparency  = a
-			iconBox.ImageTransparency   = a
-			task.wait(NOTIF_FADE / steps)
-		end
-		if card.Parent then card:Destroy() end
-	end)
-end
+-- Drop notifications now live in StarterPlayerScripts/InventoryNotify.
+-- That file listens to the InventoryNotify RemoteEvent which the
+-- server fires from inside _G.AddResourceToInventory, so every pickup
+-- (tree chop / stone mine / ocean pull / shovel / floor pickup)
+-- gets the same Raft-style bottom-right card without per-tool
+-- duplication. Stone_Axe just calls the inventory-add helper for each
+-- drop and the cards appear automatically.
 
 -- ─── Highlight (green outline so it reads as "wood" not "rock") ───
 local function createHighlight()
@@ -360,32 +240,21 @@ mouse.Button1Down:Connect(function()
 	end)
 end)
 
--- ─── Server feedback → notifications ──────────────────────────────
--- Server sends a per-hit drops table { resourceName = count, ... }
--- plus the post-hit health (0 means the tree just fell). Render one
--- notification per resource so the player sees them stack in the
--- bottom right Raft-style.
-chopTreeEvent.OnClientEvent:Connect(function(action, drops, healthLeft)
-	if action == "drops" then
-		if type(drops) == "table" then
-			for resourceName, count in pairs(drops) do
-				showDropNotif(resourceName, count)
-			end
-		end
-
-		if (healthLeft or 0) <= 0 then
-			-- Tree felled — clear the highlight, play wood-break SFX
-			-- on top of the per-hit one for a satisfying final
-			-- sound. Mirrors the Pick-Axe Rock_Crush flourish.
-			clearHighlight()
-			local logTemplate = ReplicatedStorage:FindFirstChild("Log")
-			local woodBreak = logTemplate and logTemplate:FindFirstChild("Wood Break", true)
-			if woodBreak and woodBreak:IsA("Sound") then
-				local clone = woodBreak:Clone()
-				clone.Parent = SoundService
-				clone:Play()
-				Debris:AddItem(clone, 5)
-			end
+-- ─── Server feedback → tree-fell SFX + highlight clear ───────────
+-- Drop notifications now come through InventoryNotify (server fires
+-- one event per inventory add inside _G.AddResourceToInventory).
+-- We keep this listener only for the felled-tree polish: a final
+-- wood-break sound + highlight clear when health reaches 0.
+chopTreeEvent.OnClientEvent:Connect(function(action, _, healthLeft)
+	if action == "drops" and (healthLeft or 0) <= 0 then
+		clearHighlight()
+		local logTemplate = ReplicatedStorage:FindFirstChild("Log")
+		local woodBreak = logTemplate and logTemplate:FindFirstChild("Wood Break", true)
+		if woodBreak and woodBreak:IsA("Sound") then
+			local clone = woodBreak:Clone()
+			clone.Parent = SoundService
+			clone:Play()
+			Debris:AddItem(clone, 5)
 		end
 	end
 end)

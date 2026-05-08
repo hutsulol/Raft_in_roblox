@@ -356,7 +356,9 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
 		if typeof(count) ~= "number" or count <= 0 then return end
 
 		if _G.AddResourceToInventory then
-			_G.AddResourceToInventory(player, itemName, count, nil)
+			-- silent=true: pulling out of a merc's backpack is a
+			-- container transfer like a chest, no "+N item" card.
+			_G.AddResourceToInventory(player, itemName, count, nil, true)
 		end
 
 		-- Clear the slot
