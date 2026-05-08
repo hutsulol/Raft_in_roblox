@@ -1,16 +1,21 @@
 -- StoneAxeSystem.server.lua
--- Handles Stone_Axe crafting (1 Log + 3 Stone + 1 Rope) and tree
--- chopping on islands. Mirrors the Pick-Axe / rock-mining pipeline:
---   * `Choppable` + `TreeHealth` attributes get stamped on every Palm
---     Tree / Banana Tree under any "Island_*" model in workspace.
---   * The "ChopTree" RemoteEvent receives a tree Model from the
---     client; the server validates the equip + range, decrements
---     TreeHealth, plays a wood-break sound, and on the 5th hit
---     awards 2-4 Logs and destroys the tree.
---   * Crafting hooks the shared "InventoryCraft" remote — the same
---     event Pick-Axe / Hammer / Machete use — and consumes the
---     three resources atomically before handing the player a fresh
---     Stone_Axe Tool from ReplicatedStorage.
+-- Handles Stone_Axe crafting (1 Log + 3 Stone + 1 Rope) and
+-- progressive tree chopping on islands.
+--
+-- Per-hit drop model (Raft-style):
+--   * Each tree pre-rolls a drop pool the first time it's hit
+--     (Log / Leaves / Sapling / Fruit). Per the user's brief the
+--     pool is constrained to 1-2 saplings and 1-2 fruits per tree;
+--     logs and leaves are bulk drops with no hard cap.
+--   * Each subsequent hit dispenses a fraction of the remaining
+--     pool, so the player sees items dribble out across the 5
+--     swings instead of one big payout at the end.
+--   * Fruit species depends on tree: Banana Tree → "Banana",
+--     Palm Tree → "Coconut".
+--
+-- The "ChopTree" RemoteEvent now sends a per-hit drops table back
+-- to the client (e.g. { Log=2, Leaves=1 }) so StoneAxeClient can
+-- show a Raft-style bottom-right notification stack.
 
 local rs      = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
@@ -18,30 +23,31 @@ local Debris  = game:GetService("Debris")
 
 -- ─── Config ───
 local CHOP_HITS_REQUIRED = 5
-local LOG_REWARD_MIN     = 2
-local LOG_REWARD_MAX     = 4
 local CHOP_RANGE         = 15
 
--- Tree species we treat as choppable. Match by exact Model.Name to
--- avoid sweeping up decorative shrubs / pineapple leaves on the same
--- island. Adding a new species is a single-line change here.
 local CHOPPABLE_TREE_NAMES = {
 	["Palm Tree"]   = true,
 	["Banana Tree"] = true,
 }
 
--- Bananas drop alongside logs when a Banana Tree falls so the species
--- distinction reads in-game. Palm trees just give logs. Reward shape
--- per tree species: { resource = name, min, max }.
-local EXTRA_REWARDS = {
-	["Banana Tree"] = { resource = "Banana", min = 1, max = 2 },
+-- Per-tree drop budgets. The same budget keys hang on the tree as
+-- attributes once the pool is rolled; each hit decrements them.
+--   range = { min, max }
+local DROP_BUDGETS = {
+	Log     = { 5, 9 },
+	Leaves  = { 2, 4 },
+	Sapling = { 1, 2 },   -- per user brief: 1-2 seeds per tree
+	Fruit   = { 1, 2 },   -- per user brief: 1-2 fruits per tree
 }
 
--- ─── Wood-break sound (reuse the resource-pull / pirate-harvest one) ─
--- The "Wood Break" Sound ships as a child of the Log resource template
--- in ReplicatedStorage. Clone it onto a temporary Attachment at the
--- tree's position so the sound replicates spatially even after the
--- tree Model is destroyed on the final hit.
+-- Fruit species varies with tree species. Default = Coconut.
+local FRUIT_BY_TREE = {
+	["Banana Tree"] = "Banana",
+	["Palm Tree"]   = "Coconut",
+}
+local DEFAULT_FRUIT = "Coconut"
+
+-- ─── Wood-break sound (Log resource template's "Wood Break") ─────
 local function playChopSound(atPosition)
 	if not atPosition then return end
 	local logTemplate = rs:FindFirstChild("Log")
@@ -68,11 +74,7 @@ chopTreeEvent.Parent = rs
 
 local inventoryCraftEvent = rs:WaitForChild("InventoryCraft")
 
--- ─── Tag choppable trees ───
--- We tag the Tree MODEL (not its handle BasePart) because trees ship
--- as multi-part models — leaves, trunk, fruit. The Model is what
--- the client raycast resolves to via FindFirstAncestorOfClass, and
--- destroying it on the final hit cleans every child up at once.
+-- ─── Tag choppable tree models ───
 local function tagTreesInModel(rootModel)
 	for _, descendant in rootModel:GetDescendants() do
 		if descendant:IsA("Model") and CHOPPABLE_TREE_NAMES[descendant.Name] then
@@ -82,8 +84,6 @@ local function tagTreesInModel(rootModel)
 	end
 end
 
--- Watch for new islands as they enter the world (initial save-load,
--- procedural placement). Same pattern PickAxeSystem uses for rocks.
 workspace.ChildAdded:Connect(function(child)
 	if child:IsA("Model") and child.Name:match("^Island") then
 		task.wait(0.1)
@@ -91,14 +91,59 @@ workspace.ChildAdded:Connect(function(child)
 	end
 end)
 
--- Tag any islands already in the world at script init.
 for _, child in workspace:GetChildren() do
 	if child:IsA("Model") and child.Name:match("^Island") then
 		tagTreesInModel(child)
 	end
 end
 
--- ─── Stone_Axe crafting ───
+-- ─── Drop pool helpers ──────────────────────────────────────────────
+local function ensureDropPool(treeModel)
+	if treeModel:GetAttribute("DropPoolReady") then return end
+	treeModel:SetAttribute("DropPoolReady", true)
+
+	for kind, range in pairs(DROP_BUDGETS) do
+		treeModel:SetAttribute("Drop" .. kind, math.random(range[1], range[2]))
+	end
+
+	-- Resolve fruit species once; client doesn't need to know.
+	local fruitName = FRUIT_BY_TREE[treeModel.Name] or DEFAULT_FRUIT
+	treeModel:SetAttribute("DropFruitName", fruitName)
+end
+
+-- Take a fair-but-randomised chunk out of each remaining pool. The
+-- partition is `ceil(remaining / hitsLeft)` ± 1 so every hit feels
+-- like a different mix instead of an even slice every time. The
+-- final hit dumps anything still in the pool so total drops match
+-- what was rolled.
+local function dispensePool(treeModel, hitsLeftIncludingThis)
+	local drops = {}
+	for kind, _ in pairs(DROP_BUDGETS) do
+		local poolKey  = "Drop" .. kind
+		local remaining = treeModel:GetAttribute(poolKey) or 0
+		if remaining > 0 then
+			local thisHit
+			if hitsLeftIncludingThis <= 1 then
+				thisHit = remaining
+			else
+				local fair = math.ceil(remaining / hitsLeftIncludingThis)
+				local lo   = math.max(0, fair - 1)
+				local hi   = math.min(remaining, fair + 1)
+				thisHit    = math.random(lo, hi)
+			end
+			if thisHit > 0 then
+				local resName = (kind == "Fruit")
+					and treeModel:GetAttribute("DropFruitName")
+					or kind
+				drops[resName] = thisHit
+				treeModel:SetAttribute(poolKey, remaining - thisHit)
+			end
+		end
+	end
+	return drops
+end
+
+-- ─── Stone_Axe crafting ─────────────────────────────────────────────
 inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	if action ~= "craft" or data ~= "Stone_Axe" then return end
 
@@ -123,9 +168,6 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 		return
 	end
 
-	-- Mirror the Pick-Axe pattern: clone the template; if it landed
-	-- as a Model (some user-authored rigs ship that way), wrap it in
-	-- a Tool so the player can equip it.
 	local cloned = template:Clone()
 	local tool
 	if cloned:IsA("Tool") then
@@ -164,7 +206,7 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	inventoryCraftEvent:FireClient(player, "success", "Stone_Axe")
 end)
 
--- ─── Tree chopping ───
+-- ─── Tree chopping ──────────────────────────────────────────────────
 chopTreeEvent.OnServerEvent:Connect(function(player, treeModel)
 	if not treeModel or not treeModel:IsA("Model") then return end
 	if not treeModel:GetAttribute("Choppable") then return end
@@ -175,48 +217,42 @@ chopTreeEvent.OnServerEvent:Connect(function(player, treeModel)
 	local tool = char:FindFirstChildWhichIsA("Tool")
 	if not tool or tool.Name ~= "Stone_Axe" then return end
 
-	-- Range check (server-authoritative, matches the client cooldown's
-	-- intent so a hand-crafted RemoteEvent can't farm trees from
-	-- across the map).
+	-- Range check
 	local hrp = char:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 	local treePos = treeModel:GetPivot().Position
 	local dist = (hrp.Position - treePos).Magnitude
 	if dist > CHOP_RANGE then return end
 
-	-- Decrement hit counter
-	local health = treeModel:GetAttribute("TreeHealth") or CHOP_HITS_REQUIRED
-	health = health - 1
-	treeModel:SetAttribute("TreeHealth", health)
+	-- Decrement tree health + ensure the drop pool exists for this tree.
+	local healthBefore = treeModel:GetAttribute("TreeHealth") or CHOP_HITS_REQUIRED
+	ensureDropPool(treeModel)
+	local healthAfter = healthBefore - 1
+	treeModel:SetAttribute("TreeHealth", healthAfter)
 
-	-- Wood-break sound on every successful hit (so the player gets
-	-- audible feedback even for the in-progress 4 swings).
+	-- Pull a slice out of the pool for THIS hit. hitsLeftIncludingThis
+	-- counts the current hit, so on the final swing (healthAfter == 0)
+	-- it equals 1 and dispensePool dumps the remainder.
+	local hitsLeftIncludingThis = healthAfter + 1
+	local drops = dispensePool(treeModel, hitsLeftIncludingThis)
+
+	-- Award drops + run quest hooks per resource.
+	for resName, count in pairs(drops) do
+		_G.AddResourceToInventory(player, resName, count, treePos)
+		if _G.OnQuestResource then
+			_G.OnQuestResource(player, resName, count)
+		end
+	end
+
+	-- Wood-break SFX every hit so swings always feel weighty.
 	playChopSound(treePos)
 
-	if health <= 0 then
-		-- Tree felled. Award logs + any species-specific extras.
-		local logAmount = math.random(LOG_REWARD_MIN, LOG_REWARD_MAX)
-		_G.AddResourceToInventory(player, "Log", logAmount, treePos)
-		if _G.OnQuestResource then
-			_G.OnQuestResource(player, "Log", logAmount)
-		end
+	-- Notify the client so it can render bottom-right notifications +
+	-- "N hits left" hint text. drops may be empty for an unlucky
+	-- swing — the client filters that out.
+	chopTreeEvent:FireClient(player, "drops", drops, healthAfter)
 
-		local extras = EXTRA_REWARDS[treeModel.Name]
-		local extraInfo
-		if extras and extras.resource then
-			local n = math.random(extras.min or 1, extras.max or 1)
-			if n > 0 then
-				_G.AddResourceToInventory(player, extras.resource, n, treePos)
-				if _G.OnQuestResource then
-					_G.OnQuestResource(player, extras.resource, n)
-				end
-				extraInfo = { resource = extras.resource, count = n }
-			end
-		end
-
-		chopTreeEvent:FireClient(player, "destroyed", logAmount, extraInfo)
+	if healthAfter <= 0 then
 		treeModel:Destroy()
-	else
-		chopTreeEvent:FireClient(player, "hit", health)
 	end
 end)

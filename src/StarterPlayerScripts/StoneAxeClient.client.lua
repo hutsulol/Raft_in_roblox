@@ -1,17 +1,13 @@
 -- StoneAxeClient.client.lua
--- Client-side Stone_Axe tool: highlights choppable trees on hover,
--- handles click-to-chop, plays the HitTreeR6 animation and shows
--- mining-style "+N Log / hits left" feedback.
+-- Client-side glue for the Stone_Axe tool: highlights choppable
+-- trees on hover, swaps the mouse cursor to the axe icon while
+-- aiming, fires "ChopTree" on click under a 0.8 s cooldown, and
+-- renders Raft-style item-drop notifications in the bottom-right
+-- as the server dispenses drops on every swing.
 --
--- Mirrors the Pick-Axe / rock-mining client almost line-for-line so
--- the two tools feel identical to the player. Differences:
---   * Tree models are MODELS (not BaseParts) — raycasts walk the
---     parent chain to find the Choppable Model.
---   * Cooldown matches the user's brief: 0.8 s between swings.
---   * Animation comes from the user-authored HitTreeR6 child of
---     Stone_Axe (asset id rbxassetid://82172717244396).
---   * Highlight reads green to differentiate "wood" from the
---     yellow rock outline.
+-- Animation is handled by the in-tool Script
+-- (src/Stone_Axe ( Tool )/Script). This file owns ONLY the chop
+-- game logic + client-side HUD.
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -29,6 +25,32 @@ local chopTreeEvent = ReplicatedStorage:WaitForChild("ChopTree")
 local CHOP_COOLDOWN  = 0.8     -- per the user's brief
 local CHOP_AIM_RANGE = 200     -- studs of mouse-ray raycast
 
+-- Mouse cursor icons. The axe icon swaps in only while the cursor is
+-- actively over a Choppable tree (per user request — replaces the
+-- default circle with an axe so the player reads "I can chop this").
+local CURSOR_AXE     = "rbxassetid://102927945165446"
+local CURSOR_DEFAULT = ""    -- empty = Roblox default cursor
+
+-- ─── Resource icons + display names (mirrors InventoryUI) ──────────
+-- Local copy to avoid the cross-script dependency. The five tree-drop
+-- resources are the only ones that show up in our notifications, so
+-- the small duplication is cheap. If a notification fires for a
+-- resource we don't have an icon for the row simply renders text-only.
+local RESOURCE_ICONS = {
+	Log     = "rbxassetid://110032041583533",
+	Leaves  = "rbxassetid://96691360298069",
+	Plank   = "rbxassetid://118108820731466",
+}
+
+local DISPLAY_NAMES = {
+	Log     = "Log",
+	Leaves  = "Leaves",
+	Plank   = "Plank",
+	Sapling = "Sapling",
+	Banana  = "Banana",
+	Coconut = "Coconut",
+}
+
 -- ─── State ────────────────────────────────────────────────────────────
 local axeEquipped     = false
 local currentTool     = nil
@@ -36,21 +58,16 @@ local highlightedTree = nil
 local highlightBox    = nil
 local choppingCooldown = false
 
--- Animation playback now lives inside the Stone_Axe tool itself
--- (src/Stone_Axe ( Tool )/LocalScript) — that LocalScript loads
--- HitTreeR6 on equip and plays it on Tool.Activated, matching the
--- user's reference Sword/Hatchet pattern. This file only owns the
--- chop game logic (raycast → fire ChopTree).
-
--- ─── Hint UI (matches PickAxeClient styling so the two tools share a
--- consistent on-screen affordance) ───────────────────────────────────
+-- ─── HUD root ────────────────────────────────────────────────────────
 local playerGui = player:WaitForChild("PlayerGui")
 local hintGui = Instance.new("ScreenGui")
-hintGui.Name = "StoneAxeHint"
+hintGui.Name = "StoneAxeHud"
 hintGui.DisplayOrder = 51
 hintGui.IgnoreGuiInset = true
+hintGui.ResetOnSpawn = false
 hintGui.Parent = playerGui
 
+-- "Aim at trees / Click to chop" hint at the bottom centre.
 local hintLabel = Instance.new("TextLabel")
 hintLabel.Name = "HintText"
 hintLabel.AnchorPoint = Vector2.new(0.5, 1)
@@ -69,21 +86,112 @@ local hintCorner = Instance.new("UICorner")
 hintCorner.CornerRadius = UDim.new(0, 8)
 hintCorner.Parent = hintLabel
 
--- "+2 Log" / "Chopping… (3 hits left)" floater
-local feedbackLabel = Instance.new("TextLabel")
-feedbackLabel.Name = "ChopFeedback"
-feedbackLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-feedbackLabel.Position = UDim2.new(0.5, 0, 0.45, 0)
-feedbackLabel.Size = UDim2.new(0, 260, 0, 36)
-feedbackLabel.BackgroundTransparency = 1
-feedbackLabel.Text = ""
-feedbackLabel.TextColor3 = Color3.fromRGB(180, 240, 130)
-feedbackLabel.TextSize = 22
-feedbackLabel.Font = Enum.Font.GothamBold
-feedbackLabel.TextStrokeTransparency = 0.5
-feedbackLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-feedbackLabel.Visible = false
-feedbackLabel.Parent = hintGui
+-- ─── Drop-notification stack (Raft-style, bottom-right) ───────────
+-- Each notification is a small wood-toned card with "+N | icon |
+-- name". Up to ~6 are visible at once; older ones fade and slide
+-- off the bottom as new ones come in. UIListLayout handles the
+-- vertical stacking and shifting; per-card task.delay handles the
+-- fade-out + cleanup.
+local NOTIF_LIFETIME = 3.5    -- seconds before fade
+local NOTIF_FADE     = 0.6    -- fade duration after lifetime
+local NOTIF_HEIGHT   = 38
+local NOTIF_WIDTH    = 220
+local NOTIF_GAP      = 6
+
+local notifContainer = Instance.new("Frame")
+notifContainer.Name = "DropNotifications"
+notifContainer.AnchorPoint = Vector2.new(1, 1)
+notifContainer.Position = UDim2.new(1, -16, 1, -110)  -- above the hotbar
+notifContainer.Size = UDim2.fromOffset(NOTIF_WIDTH, 380)
+notifContainer.BackgroundTransparency = 1
+notifContainer.Parent = hintGui
+
+local notifLayout = Instance.new("UIListLayout")
+notifLayout.FillDirection = Enum.FillDirection.Vertical
+notifLayout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+notifLayout.VerticalAlignment   = Enum.VerticalAlignment.Bottom
+notifLayout.SortOrder = Enum.SortOrder.LayoutOrder
+notifLayout.Padding   = UDim.new(0, NOTIF_GAP)
+notifLayout.Parent = notifContainer
+
+local notifOrder = 0
+
+local function showDropNotif(resourceName, count)
+	if (count or 0) <= 0 then return end
+	notifOrder = notifOrder + 1
+
+	local card = Instance.new("Frame")
+	card.Name = "Drop_" .. resourceName
+	card.Size = UDim2.fromOffset(NOTIF_WIDTH, NOTIF_HEIGHT)
+	card.BackgroundColor3 = Color3.fromRGB(38, 28, 20)
+	card.BackgroundTransparency = 0.15
+	card.BorderSizePixel = 0
+	card.LayoutOrder = notifOrder
+	card.Parent = notifContainer
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 4)
+	corner.Parent = card
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = Color3.fromRGB(180, 140, 80)
+	stroke.Thickness = 1
+	stroke.Parent = card
+
+	-- "+N" prefix in green (positive feedback colour, matches the
+	-- in-game inventory affordable-cost colour).
+	local countLabel = Instance.new("TextLabel")
+	countLabel.Position = UDim2.fromOffset(8, 0)
+	countLabel.Size = UDim2.fromOffset(40, NOTIF_HEIGHT)
+	countLabel.BackgroundTransparency = 1
+	countLabel.Text = "+" .. tostring(count)
+	countLabel.TextColor3 = Color3.fromRGB(180, 240, 130)
+	countLabel.TextSize = 18
+	countLabel.Font = Enum.Font.GothamBold
+	countLabel.TextXAlignment = Enum.TextXAlignment.Left
+	countLabel.Parent = card
+
+	-- Resource icon. Empty image for resources we don't have an
+	-- asset id for (Sapling / Banana / Coconut today) — they still
+	-- render the count + name correctly.
+	local iconBox = Instance.new("ImageLabel")
+	iconBox.Position = UDim2.fromOffset(50, 4)
+	iconBox.Size = UDim2.fromOffset(NOTIF_HEIGHT - 8, NOTIF_HEIGHT - 8)
+	iconBox.BackgroundTransparency = 1
+	iconBox.Image = RESOURCE_ICONS[resourceName] or ""
+	iconBox.ScaleType = Enum.ScaleType.Fit
+	iconBox.Parent = card
+
+	-- Resource name (right of the icon).
+	local nameLabel = Instance.new("TextLabel")
+	nameLabel.Position = UDim2.fromOffset(NOTIF_HEIGHT - 8 + 56, 0)
+	nameLabel.Size = UDim2.fromOffset(
+		NOTIF_WIDTH - (NOTIF_HEIGHT - 8 + 56) - 8,
+		NOTIF_HEIGHT)
+	nameLabel.BackgroundTransparency = 1
+	nameLabel.Text = DISPLAY_NAMES[resourceName] or resourceName
+	nameLabel.TextColor3 = Color3.fromRGB(255, 240, 220)
+	nameLabel.TextSize = 14
+	nameLabel.Font = Enum.Font.Gotham
+	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	nameLabel.Parent = card
+
+	task.delay(NOTIF_LIFETIME, function()
+		local steps = 12
+		for i = 0, steps do
+			if not card.Parent then return end
+			local a = i / steps
+			card.BackgroundTransparency = 0.15 + a * 0.85
+			stroke.Transparency        = a
+			countLabel.TextTransparency = a
+			nameLabel.TextTransparency  = a
+			iconBox.ImageTransparency   = a
+			task.wait(NOTIF_FADE / steps)
+		end
+		if card.Parent then card:Destroy() end
+	end)
+end
 
 -- ─── Highlight (green outline so it reads as "wood" not "rock") ───
 local function createHighlight()
@@ -96,16 +204,11 @@ local function createHighlight()
 end
 
 local function clearHighlight()
-	if highlightBox then
-		highlightBox.Adornee = nil
-	end
+	if highlightBox then highlightBox.Adornee = nil end
 	highlightedTree = nil
 end
 
 -- ─── Resolve a Choppable tree from the raycast hit ────────────────
--- Trees are multi-part Models (trunk + leaves + fruit). The raycast
--- almost always lands on a leaf or a trunk part; walk up the parent
--- chain until we hit the Model that carries the "Choppable" attribute.
 local function findChoppableTree(instance)
 	if not instance then return nil end
 	local current = instance
@@ -118,10 +221,11 @@ local function findChoppableTree(instance)
 	return nil
 end
 
--- ─── Per-frame highlight update ───────────────────────────────────
+-- ─── Per-frame highlight + cursor update ─────────────────────────
 local function updateHighlight()
 	if not axeEquipped then
 		clearHighlight()
+		mouse.Icon = CURSOR_DEFAULT
 		return
 	end
 
@@ -137,9 +241,8 @@ local function updateHighlight()
 		local tree = findChoppableTree(result.Instance)
 		if tree then
 			highlightedTree = tree
-			if highlightBox then
-				highlightBox.Adornee = tree
-			end
+			if highlightBox then highlightBox.Adornee = tree end
+			mouse.Icon = CURSOR_AXE
 			hintLabel.Text = "Click to chop tree"
 			hintLabel.Visible = true
 			return
@@ -147,6 +250,7 @@ local function updateHighlight()
 	end
 
 	clearHighlight()
+	mouse.Icon = CURSOR_DEFAULT
 	hintLabel.Text = "Aim at trees on islands to chop"
 	hintLabel.Visible = true
 end
@@ -166,6 +270,7 @@ local function onToolUnequipped(tool)
 		axeEquipped = false
 		currentTool = nil
 		clearHighlight()
+		mouse.Icon = CURSOR_DEFAULT
 		hintLabel.Visible = false
 	end
 end
@@ -190,17 +295,13 @@ local char = player.Character
 if char then setupCharacter(char) end
 player.CharacterAdded:Connect(setupCharacter)
 
--- ─── Frame loop ───────────────────────────────────────────────────
 RunService.RenderStepped:Connect(function()
 	if axeEquipped then
 		updateHighlight()
 	end
 end)
 
--- ─── Click → chop (0.8 s cooldown matches the brief) ──────────────
--- The animation + swing-sound playback fire from the in-tool
--- LocalScript on Tool.Activated; this handler only owns the chop
--- game logic (raycast → fire ChopTree).
+-- ─── Click → chop (0.8 s cooldown) ────────────────────────────────
 mouse.Button1Down:Connect(function()
 	if not axeEquipped then return end
 	if choppingCooldown then return end
@@ -214,48 +315,32 @@ mouse.Button1Down:Connect(function()
 	end)
 end)
 
--- ─── Server feedback ──────────────────────────────────────────────
-chopTreeEvent.OnClientEvent:Connect(function(action, value, extra)
-	if action == "destroyed" then
-		local text = "+" .. tostring(value) .. " Log"
-		if extra and extra.resource and extra.count and extra.count > 0 then
-			text = text .. "  +" .. tostring(extra.count) .. " " .. extra.resource
-		end
-		feedbackLabel.Text = text
-		feedbackLabel.Visible = true
-		feedbackLabel.TextTransparency = 0
-		clearHighlight()
-
-		-- Wood Break SFX, mirrors the rock-crush sound on Pick-Axe.
-		local logTemplate = ReplicatedStorage:FindFirstChild("Log")
-		local woodBreak = logTemplate and logTemplate:FindFirstChild("Wood Break", true)
-		if woodBreak and woodBreak:IsA("Sound") then
-			local clone = woodBreak:Clone()
-			clone.Parent = SoundService
-			clone:Play()
-			Debris:AddItem(clone, 5)
+-- ─── Server feedback → notifications ──────────────────────────────
+-- Server sends a per-hit drops table { resourceName = count, ... }
+-- plus the post-hit health (0 means the tree just fell). Render one
+-- notification per resource so the player sees them stack in the
+-- bottom right Raft-style.
+chopTreeEvent.OnClientEvent:Connect(function(action, drops, healthLeft)
+	if action == "drops" then
+		if type(drops) == "table" then
+			for resourceName, count in pairs(drops) do
+				showDropNotif(resourceName, count)
+			end
 		end
 
-		task.spawn(function()
-			task.wait(1)
-			for i = 0, 10 do
-				feedbackLabel.TextTransparency = i / 10
-				feedbackLabel.TextStrokeTransparency = 0.5 + (i / 10) * 0.5
-				task.wait(0.05)
+		if (healthLeft or 0) <= 0 then
+			-- Tree felled — clear the highlight, play wood-break SFX
+			-- on top of the per-hit one for a satisfying final
+			-- sound. Mirrors the Pick-Axe Rock_Crush flourish.
+			clearHighlight()
+			local logTemplate = ReplicatedStorage:FindFirstChild("Log")
+			local woodBreak = logTemplate and logTemplate:FindFirstChild("Wood Break", true)
+			if woodBreak and woodBreak:IsA("Sound") then
+				local clone = woodBreak:Clone()
+				clone.Parent = SoundService
+				clone:Play()
+				Debris:AddItem(clone, 5)
 			end
-			feedbackLabel.Visible = false
-			feedbackLabel.TextTransparency = 0
-			feedbackLabel.TextStrokeTransparency = 0.5
-		end)
-	elseif action == "hit" then
-		feedbackLabel.Text = "Chopping... (" .. tostring(value) .. " hits left)"
-		feedbackLabel.Visible = true
-		feedbackLabel.TextTransparency = 0
-		task.spawn(function()
-			task.wait(0.8)
-			if feedbackLabel.Text:find("Chopping") then
-				feedbackLabel.Visible = false
-			end
-		end)
+		end
 	end
 end)
