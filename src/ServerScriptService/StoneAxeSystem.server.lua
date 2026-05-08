@@ -30,15 +30,22 @@ local CHOPPABLE_TREE_NAMES = {
 	["Banana Tree"] = true,
 }
 
--- Per-tree drop budgets. The same budget keys hang on the tree as
--- attributes once the pool is rolled; each hit decrements them.
+-- Per-tree drop budgets. Sized so the total pool stays ≤ 10 items —
+-- with the 2-items-per-swing cap below, 5 swings × 2 = 10 is the
+-- maximum we can dispense without leaving anything behind on the
+-- final hit.
 --   range = { min, max }
 local DROP_BUDGETS = {
-	Log     = { 5, 9 },
-	Leaves  = { 2, 4 },
+	Log     = { 2, 4 },
+	Leaves  = { 1, 2 },
 	Sapling = { 1, 2 },   -- per user brief: 1-2 seeds per tree
 	Fruit   = { 1, 2 },   -- per user brief: 1-2 fruits per tree
 }
+
+-- Hard cap on items dispensed in a single swing — per user request:
+-- "максимум 2 одновременно". The pool budgets above are tuned so the
+-- pool empties cleanly within 5 swings × 2 cap.
+local MAX_DROPS_PER_HIT = 2
 
 -- Fruit species varies with tree species. Default = Coconut.
 local FRUIT_BY_TREE = {
@@ -111,35 +118,50 @@ local function ensureDropPool(treeModel)
 	treeModel:SetAttribute("DropFruitName", fruitName)
 end
 
--- Take a fair-but-randomised chunk out of each remaining pool. The
--- partition is `ceil(remaining / hitsLeft)` ± 1 so every hit feels
--- like a different mix instead of an even slice every time. The
--- final hit dumps anything still in the pool so total drops match
--- what was rolled.
+-- Pulls AT MOST `MAX_DROPS_PER_HIT` items from the remaining pool —
+-- one per distinct resource bucket (Log / Leaves / Sapling / Fruit).
+-- Picks buckets that are "behind schedule" (more remaining vs hits
+-- left) preferentially, so the pool empties evenly across the 5
+-- swings instead of all-saplings then all-logs. On the final swing
+-- (hitsLeftIncludingThis == 1) we still respect the 2-cap, so any
+-- pool that grew past 10 will leave items behind by design.
 local function dispensePool(treeModel, hitsLeftIncludingThis)
 	local drops = {}
+
+	-- Collect non-empty buckets along with their "pressure" — a
+	-- ratio of how much the pool needs to release this swing to
+	-- finish on time. ceil(remaining / hitsLeft) is the per-swing
+	-- pace; high pressure = forced to drop, low = optional.
+	local buckets = {}
 	for kind, _ in pairs(DROP_BUDGETS) do
 		local poolKey  = "Drop" .. kind
 		local remaining = treeModel:GetAttribute(poolKey) or 0
 		if remaining > 0 then
-			local thisHit
-			if hitsLeftIncludingThis <= 1 then
-				thisHit = remaining
-			else
-				local fair = math.ceil(remaining / hitsLeftIncludingThis)
-				local lo   = math.max(0, fair - 1)
-				local hi   = math.min(remaining, fair + 1)
-				thisHit    = math.random(lo, hi)
-			end
-			if thisHit > 0 then
-				local resName = (kind == "Fruit")
-					and treeModel:GetAttribute("DropFruitName")
-					or kind
-				drops[resName] = thisHit
-				treeModel:SetAttribute(poolKey, remaining - thisHit)
-			end
+			local pressure = math.ceil(remaining / math.max(1, hitsLeftIncludingThis))
+			-- Tiny random jitter so equal-pressure buckets don't
+			-- always pick in the same alphabetical order.
+			pressure = pressure + math.random() * 0.5
+			table.insert(buckets, { kind = kind, pressure = pressure })
 		end
 	end
+
+	if #buckets == 0 then return drops end
+
+	-- Sort highest-pressure first so each swing prioritises whatever
+	-- pool is most behind schedule.
+	table.sort(buckets, function(a, b) return a.pressure > b.pressure end)
+
+	for i = 1, math.min(MAX_DROPS_PER_HIT, #buckets) do
+		local kind     = buckets[i].kind
+		local poolKey  = "Drop" .. kind
+		local remaining = treeModel:GetAttribute(poolKey)
+		local resName  = (kind == "Fruit")
+			and treeModel:GetAttribute("DropFruitName")
+			or kind
+		drops[resName] = 1
+		treeModel:SetAttribute(poolKey, remaining - 1)
+	end
+
 	return drops
 end
 

@@ -14,6 +14,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local SoundService      = game:GetService("SoundService")
 local Debris            = game:GetService("Debris")
 local RunService        = game:GetService("RunService")
+local UserInputService  = game:GetService("UserInputService")
 
 local player = Players.LocalPlayer
 local mouse  = player:GetMouse()
@@ -25,11 +26,13 @@ local chopTreeEvent = ReplicatedStorage:WaitForChild("ChopTree")
 local CHOP_COOLDOWN  = 0.8     -- per the user's brief
 local CHOP_AIM_RANGE = 200     -- studs of mouse-ray raycast
 
--- Mouse cursor icons. The axe icon swaps in only while the cursor is
--- actively over a Choppable tree (per user request — replaces the
--- default circle with an axe so the player reads "I can chop this").
-local CURSOR_AXE     = "rbxassetid://102927945165446"
-local CURSOR_DEFAULT = ""    -- empty = Roblox default cursor
+-- Custom axe cursor. mouse.Icon would render the asset at its
+-- native upload size (huge), so we hide the system cursor while
+-- aiming at a tree and draw our own size-controlled ImageLabel
+-- that follows the mouse position. 40×40 pixels — small enough to
+-- not obscure the tree, big enough to read as an axe.
+local CURSOR_AXE_ASSET = "rbxassetid://102927945165446"
+local CURSOR_AXE_SIZE  = 40
 
 -- ─── Resource icons + display names (mirrors InventoryUI) ──────────
 -- Local copy to avoid the cross-script dependency. The five tree-drop
@@ -67,6 +70,28 @@ hintGui.IgnoreGuiInset = true
 hintGui.ResetOnSpawn = false
 hintGui.Parent = playerGui
 
+-- Separate ScreenGui for the axe cursor with IgnoreGuiInset = false
+-- so its (0, 0) lines up with mouse.X / mouse.Y exactly. The cursor
+-- needs to track the system cursor pixel-accurately, so we don't
+-- want the topbar inset shifting it.
+local cursorGui = Instance.new("ScreenGui")
+cursorGui.Name = "StoneAxeCursor"
+cursorGui.DisplayOrder = 1000
+cursorGui.IgnoreGuiInset = false
+cursorGui.ResetOnSpawn = false
+cursorGui.Parent = playerGui
+
+local axeCursor = Instance.new("ImageLabel")
+axeCursor.Name = "AxeIcon"
+axeCursor.AnchorPoint = Vector2.new(0.5, 0.5)
+axeCursor.Size = UDim2.fromOffset(CURSOR_AXE_SIZE, CURSOR_AXE_SIZE)
+axeCursor.BackgroundTransparency = 1
+axeCursor.Image = CURSOR_AXE_ASSET
+axeCursor.ScaleType = Enum.ScaleType.Fit
+axeCursor.Visible = false
+axeCursor.ZIndex = 100
+axeCursor.Parent = cursorGui
+
 -- "Aim at trees / Click to chop" hint at the bottom centre.
 local hintLabel = Instance.new("TextLabel")
 hintLabel.Name = "HintText"
@@ -92,11 +117,11 @@ hintCorner.Parent = hintLabel
 -- off the bottom as new ones come in. UIListLayout handles the
 -- vertical stacking and shifting; per-card task.delay handles the
 -- fade-out + cleanup.
-local NOTIF_LIFETIME = 3.5    -- seconds before fade
-local NOTIF_FADE     = 0.6    -- fade duration after lifetime
-local NOTIF_HEIGHT   = 38
-local NOTIF_WIDTH    = 220
-local NOTIF_GAP      = 6
+local NOTIF_LIFETIME = 3.0    -- seconds before fade
+local NOTIF_FADE     = 0.5    -- fade duration after lifetime
+local NOTIF_HEIGHT   = 30
+local NOTIF_WIDTH    = 170
+local NOTIF_GAP      = 4
 
 local notifContainer = Instance.new("Frame")
 notifContainer.Name = "DropNotifications"
@@ -123,30 +148,30 @@ local function showDropNotif(resourceName, count)
 	local card = Instance.new("Frame")
 	card.Name = "Drop_" .. resourceName
 	card.Size = UDim2.fromOffset(NOTIF_WIDTH, NOTIF_HEIGHT)
-	card.BackgroundColor3 = Color3.fromRGB(38, 28, 20)
-	card.BackgroundTransparency = 0.15
+	card.BackgroundColor3 = Color3.fromRGB(48, 36, 24)
+	card.BackgroundTransparency = 0.1
 	card.BorderSizePixel = 0
 	card.LayoutOrder = notifOrder
 	card.Parent = notifContainer
 
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 4)
+	corner.CornerRadius = UDim.new(0, 3)
 	corner.Parent = card
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(180, 140, 80)
+	stroke.Color = Color3.fromRGB(140, 105, 60)
 	stroke.Thickness = 1
 	stroke.Parent = card
 
 	-- "+N" prefix in green (positive feedback colour, matches the
 	-- in-game inventory affordable-cost colour).
 	local countLabel = Instance.new("TextLabel")
-	countLabel.Position = UDim2.fromOffset(8, 0)
-	countLabel.Size = UDim2.fromOffset(40, NOTIF_HEIGHT)
+	countLabel.Position = UDim2.fromOffset(6, 0)
+	countLabel.Size = UDim2.fromOffset(28, NOTIF_HEIGHT)
 	countLabel.BackgroundTransparency = 1
 	countLabel.Text = "+" .. tostring(count)
-	countLabel.TextColor3 = Color3.fromRGB(180, 240, 130)
-	countLabel.TextSize = 18
+	countLabel.TextColor3 = Color3.fromRGB(170, 230, 130)
+	countLabel.TextSize = 14
 	countLabel.Font = Enum.Font.GothamBold
 	countLabel.TextXAlignment = Enum.TextXAlignment.Left
 	countLabel.Parent = card
@@ -155,8 +180,8 @@ local function showDropNotif(resourceName, count)
 	-- asset id for (Sapling / Banana / Coconut today) — they still
 	-- render the count + name correctly.
 	local iconBox = Instance.new("ImageLabel")
-	iconBox.Position = UDim2.fromOffset(50, 4)
-	iconBox.Size = UDim2.fromOffset(NOTIF_HEIGHT - 8, NOTIF_HEIGHT - 8)
+	iconBox.Position = UDim2.fromOffset(36, 3)
+	iconBox.Size = UDim2.fromOffset(NOTIF_HEIGHT - 6, NOTIF_HEIGHT - 6)
 	iconBox.BackgroundTransparency = 1
 	iconBox.Image = RESOURCE_ICONS[resourceName] or ""
 	iconBox.ScaleType = Enum.ScaleType.Fit
@@ -164,25 +189,26 @@ local function showDropNotif(resourceName, count)
 
 	-- Resource name (right of the icon).
 	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Position = UDim2.fromOffset(NOTIF_HEIGHT - 8 + 56, 0)
-	nameLabel.Size = UDim2.fromOffset(
-		NOTIF_WIDTH - (NOTIF_HEIGHT - 8 + 56) - 8,
-		NOTIF_HEIGHT)
+	-- Pin the name to a fixed offset matching the new icon position +
+	-- size; the icon ends at 36 + (NOTIF_HEIGHT - 6), then 6 px gap.
+	local nameOffsetX = 36 + (NOTIF_HEIGHT - 6) + 6
+	nameLabel.Position = UDim2.fromOffset(nameOffsetX, 0)
+	nameLabel.Size = UDim2.fromOffset(NOTIF_WIDTH - nameOffsetX - 6, NOTIF_HEIGHT)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text = DISPLAY_NAMES[resourceName] or resourceName
-	nameLabel.TextColor3 = Color3.fromRGB(255, 240, 220)
-	nameLabel.TextSize = 14
+	nameLabel.TextColor3 = Color3.fromRGB(245, 230, 200)
+	nameLabel.TextSize = 13
 	nameLabel.Font = Enum.Font.Gotham
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	nameLabel.Parent = card
 
 	task.delay(NOTIF_LIFETIME, function()
-		local steps = 12
+		local steps = 10
 		for i = 0, steps do
 			if not card.Parent then return end
 			local a = i / steps
-			card.BackgroundTransparency = 0.15 + a * 0.85
+			card.BackgroundTransparency = 0.1 + a * 0.9
 			stroke.Transparency        = a
 			countLabel.TextTransparency = a
 			nameLabel.TextTransparency  = a
@@ -221,13 +247,32 @@ local function findChoppableTree(instance)
 	return nil
 end
 
+-- ─── Cursor swap helper ──────────────────────────────────────────
+-- showAxeCursor(true)  → hide the system cursor and follow the
+--                        mouse with our 40×40 axe ImageLabel
+-- showAxeCursor(false) → restore the system cursor + hide our icon
+local function showAxeCursor(show)
+	if show then
+		UserInputService.MouseIconEnabled = false
+		axeCursor.Position = UDim2.fromOffset(mouse.X, mouse.Y)
+		axeCursor.Visible = true
+	else
+		UserInputService.MouseIconEnabled = true
+		axeCursor.Visible = false
+	end
+end
+
 -- ─── Per-frame highlight + cursor update ─────────────────────────
 local function updateHighlight()
 	if not axeEquipped then
 		clearHighlight()
-		mouse.Icon = CURSOR_DEFAULT
+		showAxeCursor(false)
 		return
 	end
+
+	-- Always track the mouse position so the moment we DO show the
+	-- axe cursor it lands at the right pixel without a stale frame.
+	axeCursor.Position = UDim2.fromOffset(mouse.X, mouse.Y)
 
 	local unitRay = camera:ViewportPointToRay(mouse.X, mouse.Y)
 	local params = RaycastParams.new()
@@ -242,7 +287,7 @@ local function updateHighlight()
 		if tree then
 			highlightedTree = tree
 			if highlightBox then highlightBox.Adornee = tree end
-			mouse.Icon = CURSOR_AXE
+			showAxeCursor(true)
 			hintLabel.Text = "Click to chop tree"
 			hintLabel.Visible = true
 			return
@@ -250,7 +295,7 @@ local function updateHighlight()
 	end
 
 	clearHighlight()
-	mouse.Icon = CURSOR_DEFAULT
+	showAxeCursor(false)
 	hintLabel.Text = "Aim at trees on islands to chop"
 	hintLabel.Visible = true
 end
@@ -270,7 +315,7 @@ local function onToolUnequipped(tool)
 		axeEquipped = false
 		currentTool = nil
 		clearHighlight()
-		mouse.Icon = CURSOR_DEFAULT
+		showAxeCursor(false)
 		hintLabel.Visible = false
 	end
 end
