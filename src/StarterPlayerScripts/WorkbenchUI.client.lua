@@ -6,23 +6,16 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
+-- Timeouts on the WaitForChild calls silence Roblox's "Infinite
+-- yield possible" warning during cold loads when the server scripts
+-- haven't created these events yet. We DO NOT bail out if any are
+-- nil — the script keeps building its UI and the missing event
+-- references will surface as a real error at use-time rather than
+-- silently disabling the entire workbench menu (which is what was
+-- happening when I early-returned here in T94).
 local craftEvent = ReplicatedStorage:WaitForChild("CraftItem", 30)
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate", 30)
--- Hard timeout on OpenWorkbench so a no-bench load doesn't print
--- "Infinite yield possible". WorkBench/WorkBenchPrompt.server.lua
--- creates this event only when a WorkBench is in the world, and the
--- new src/ServerScriptService/EventBootstrap.server.lua creates it
--- unconditionally — either path is fine; the timeout keeps us
--- bail-safe.
 local openWorkbenchEvent = ReplicatedStorage:WaitForChild("OpenWorkbench", 30)
-if not openWorkbenchEvent then
-	warn("[WorkbenchUI] OpenWorkbench missing after 30 s — workbench UI disabled")
-	return
-end
-if not craftEvent or not inventoryEvent then
-	warn("[WorkbenchUI] core craft events missing — UI disabled")
-	return
-end
 
 local inventory = {Log = 0, Stone = 0}
 local recipes = {
