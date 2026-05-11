@@ -68,9 +68,9 @@ hud.Parent = playerGui
 
 local NOTIF_LIFETIME = 3.0
 local NOTIF_FADE     = 0.5
-local NOTIF_HEIGHT   = 30
-local NOTIF_WIDTH    = 170
-local NOTIF_GAP      = 4
+local NOTIF_HEIGHT   = 40
+local NOTIF_WIDTH    = 210
+local NOTIF_GAP      = 2
 
 local container = Instance.new("Frame")
 container.Name = "Stack"
@@ -111,53 +111,68 @@ local function showNotif(rawName, count)
 
 	notifOrder = notifOrder + 1
 
+	-- Reference layout (from the user's screenshot): wide beige
+	-- parchment card, tight stacking, "+N" in big bold cream on the
+	-- LEFT, icon centred horizontally inside the card, item name in
+	-- the wider right column with text wrapping for long names like
+	-- "Пальмовый лист".
 	local card = Instance.new("Frame")
 	card.Name = "Drop_" .. rawName
 	card.Size = UDim2.fromOffset(NOTIF_WIDTH, NOTIF_HEIGHT)
-	card.BackgroundColor3 = Color3.fromRGB(48, 36, 24)
-	card.BackgroundTransparency = 0.1
+	card.BackgroundColor3 = Color3.fromRGB(176, 148, 102)
+	card.BackgroundTransparency = 0.05
 	card.BorderSizePixel = 0
 	card.LayoutOrder = notifOrder
 	card.Parent = container
 
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 3)
+	corner.CornerRadius = UDim.new(0, 4)
 	corner.Parent = card
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(140, 105, 60)
-	stroke.Thickness = 1
+	stroke.Color = Color3.fromRGB(92, 64, 36)
+	stroke.Thickness = 1.4
 	stroke.Parent = card
 
+	-- "+N" prefix on the left — large bold cream, matches the
+	-- reference. ~36 px wide column.
 	local countLabel = Instance.new("TextLabel")
-	countLabel.Position = UDim2.fromOffset(6, 0)
-	countLabel.Size = UDim2.fromOffset(28, NOTIF_HEIGHT)
+	countLabel.Position = UDim2.fromOffset(8, 0)
+	countLabel.Size = UDim2.fromOffset(36, NOTIF_HEIGHT)
 	countLabel.BackgroundTransparency = 1
 	countLabel.Text = "+" .. tostring(count)
-	countLabel.TextColor3 = Color3.fromRGB(170, 230, 130)
-	countLabel.TextSize = 14
+	countLabel.TextColor3 = Color3.fromRGB(250, 240, 215)
+	countLabel.TextSize = 18
 	countLabel.Font = Enum.Font.GothamBold
 	countLabel.TextXAlignment = Enum.TextXAlignment.Left
+	countLabel.TextYAlignment = Enum.TextYAlignment.Center
 	countLabel.Parent = card
 
+	-- Icon column — chunky 30x30 box centred between the "+N" and
+	-- the name. Falls back to text-only when no asset id exists.
+	local ICON_SIZE = NOTIF_HEIGHT - 10   -- 30 px in a 40 px card
 	local iconBox = Instance.new("ImageLabel")
-	iconBox.Position = UDim2.fromOffset(36, 3)
-	iconBox.Size = UDim2.fromOffset(NOTIF_HEIGHT - 6, NOTIF_HEIGHT - 6)
+	iconBox.Position = UDim2.fromOffset(48, (NOTIF_HEIGHT - ICON_SIZE) / 2)
+	iconBox.Size = UDim2.fromOffset(ICON_SIZE, ICON_SIZE)
 	iconBox.BackgroundTransparency = 1
 	iconBox.Image = iconFor(rawName)
 	iconBox.ScaleType = Enum.ScaleType.Fit
 	iconBox.Parent = card
 
-	local nameOffsetX = 36 + (NOTIF_HEIGHT - 6) + 6
+	-- Name column — wide, cream, wraps to two lines for long names
+	-- ("Пальмовый лист" / "Iron Ingot" / "Legendary Fish" etc.).
+	local nameOffsetX = 48 + ICON_SIZE + 8
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.Position = UDim2.fromOffset(nameOffsetX, 0)
-	nameLabel.Size = UDim2.fromOffset(NOTIF_WIDTH - nameOffsetX - 6, NOTIF_HEIGHT)
+	nameLabel.Size = UDim2.fromOffset(NOTIF_WIDTH - nameOffsetX - 8, NOTIF_HEIGHT)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text = displayName(rawName)
-	nameLabel.TextColor3 = Color3.fromRGB(245, 230, 200)
-	nameLabel.TextSize = 13
+	nameLabel.TextColor3 = Color3.fromRGB(250, 240, 215)
+	nameLabel.TextSize = 16
 	nameLabel.Font = Enum.Font.Gotham
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	nameLabel.TextYAlignment = Enum.TextYAlignment.Center
+	nameLabel.TextWrapped = true
 	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	nameLabel.Parent = card
 
@@ -183,7 +198,7 @@ local function showNotif(rawName, count)
 		for i = 0, steps do
 			if not card.Parent then return end
 			local a = i / steps
-			card.BackgroundTransparency = 0.1 + a * 0.9
+			card.BackgroundTransparency = 0.05 + a * 0.95
 			stroke.Transparency        = a
 			countLabel.TextTransparency = a
 			nameLabel.TextTransparency  = a
