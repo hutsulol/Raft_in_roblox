@@ -21,66 +21,29 @@ local promptBillboard = nil
 -- Shared flag: when true, InventoryUI should NOT toggle on E press
 _G.SuppressInventoryToggle = false
 
--- Find dropped item under mouse cursor.
--- The first raycast can get blocked by tall-grass / decoration meshes
--- that physically sit between the camera and a dropped item lying
--- inside foliage. To let the player still pick those items up we run
--- a constrained x-ray loop: at most a few iterations, ONLY skipping
--- past parts that aren't collidable (grass / leaves / decoration —
--- the player walks through them anyway), and ONLY within pickup
--- range of the character. Anything solid (wall, raft floor, rock)
--- stops the search as before, so we don't accidentally lock onto a
--- dropped item far across the map and end up gluing
--- _G.SuppressInventoryToggle to true — which would silently disable
--- the inventory, crafting and Q-drop until the mouse moved off.
-local PICKUP_QUERY_DISTANCE = 25  -- a bit more than the server's 15-stud cap
-local MAX_XRAY_ITERATIONS   = 4
-
+-- Find dropped item under mouse cursor
 local function getDroppedItemUnderMouse()
 	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
-	local filter = {}
 	if player.Character then
-		table.insert(filter, player.Character)
+		params.FilterDescendantsInstances = {player.Character}
 	end
-	params.FilterDescendantsInstances = filter
 
-	local charPart = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
-	local charPos  = charPart and charPart.Position
+	local result = workspace:Raycast(ray.Origin, ray.Direction * 200, params)
+	if not result or not result.Instance then
+		return nil, nil
+	end
 
-	for _ = 1, MAX_XRAY_ITERATIONS do
-		local result = workspace:Raycast(ray.Origin, ray.Direction * 200, params)
-		if not result or not result.Instance then
-			return nil, nil
-		end
+	local hit = result.Instance
 
-		-- Outside the character's pickup envelope — give up immediately
-		-- instead of probing further into the world.
-		if charPos and (result.Position - charPos).Magnitude > PICKUP_QUERY_DISTANCE then
-			return nil, nil
-		end
+	if CollectionService:HasTag(hit, "DroppedItem") then
+		return hit, hit
+	end
 
-		local hit = result.Instance
-
-		if CollectionService:HasTag(hit, "DroppedItem") then
-			return hit, hit
-		end
-
-		local model = hit:FindFirstAncestorOfClass("Model")
-		if model and CollectionService:HasTag(model, "DroppedItem") then
-			return model, hit
-		end
-
-		-- Only skip past decoration (non-collidable). A solid wall or
-		-- raft floor between the camera and a dropped item is a real
-		-- obstruction and shouldn't be x-rayed through.
-		if hit.CanCollide then
-			return nil, nil
-		end
-
-		table.insert(filter, model or hit)
-		params.FilterDescendantsInstances = filter
+	local model = hit:FindFirstAncestorOfClass("Model")
+	if model and CollectionService:HasTag(model, "DroppedItem") then
+		return model, hit
 	end
 
 	return nil, nil
@@ -251,16 +214,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	-- Q key drop from hovered hotbar slot
 	if processed then return end
 	if input.KeyCode == Enum.KeyCode.Q then
-		-- While a full-screen overlay (e.g. the phone) is up the Q
-		-- key is reserved for that overlay's own binding — the BACK
-		-- hotkey on every phone sub-page uses Q. Dropping the hovered
-		-- hotbar item when the player is navigating the phone menu
-		-- is the bug this guard prevents.
-		local phone = _G.PhoneScreenGui
-		if phone and phone:IsA("ScreenGui") and phone.Enabled then
-			return
-		end
-
 		local slotIndex = getHoveredHotbarSlot()
 		if not slotIndex then return end
 
@@ -283,46 +236,5 @@ UserInputService.InputBegan:Connect(function(input, processed)
 			local dropPos = getMouseWorldPosition()
 			dropEvent:FireServer(data.toolName, 1, dropPos)
 		end
-	end
-end)
-
--- ─── "Inventory full!" popup ───
-local fullGui = Instance.new("ScreenGui")
-fullGui.Name = "InventoryFullHint"
-fullGui.DisplayOrder = 60
-fullGui.IgnoreGuiInset = true
-fullGui.Parent = playerGui
-
-local fullLabel = Instance.new("TextLabel")
-fullLabel.Name = "FullText"
-fullLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-fullLabel.Position = UDim2.new(0.5, 0, 0.4, 0)
-fullLabel.Size = UDim2.new(0, 280, 0, 40)
-fullLabel.BackgroundTransparency = 1
-fullLabel.Text = "Inventory full!"
-fullLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
-fullLabel.TextSize = 24
-fullLabel.Font = Enum.Font.GothamBold
-fullLabel.TextStrokeTransparency = 0.4
-fullLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-fullLabel.Visible = false
-fullLabel.Parent = fullGui
-
-pickupEvent.OnClientEvent:Connect(function(action)
-	if action == "inventoryFull" then
-		fullLabel.Visible = true
-		fullLabel.TextTransparency = 0
-		fullLabel.TextStrokeTransparency = 0.4
-		task.spawn(function()
-			task.wait(1.2)
-			for i = 0, 10 do
-				fullLabel.TextTransparency = i / 10
-				fullLabel.TextStrokeTransparency = 0.4 + (i / 10) * 0.6
-				task.wait(0.04)
-			end
-			fullLabel.Visible = false
-			fullLabel.TextTransparency = 0
-			fullLabel.TextStrokeTransparency = 0.4
-		end)
 	end
 end)
