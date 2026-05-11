@@ -146,26 +146,23 @@ local function showNotif(rawName, count)
 	local NAME_GAP   = 6
 	local PAD_RIGHT  = 6
 
-	-- "+N" prefix on the left — bold cream, sized by TextScaled so it
-	-- adapts to the box (single-digit fills the column comfortably;
-	-- triple-digit still fits without overflow). TextSizeConstraint
-	-- keeps a single-digit "+1" from ballooning to absurd size.
+	-- Fixed text sizes (not TextScaled) so every card reads the
+	-- same regardless of name length. The user complained the
+	-- previous TextScaled path produced unreadable "Log" when a
+	-- longer name in another card pulled the auto-scaled size
+	-- down. 26 px for "+N", 22 px for the name — both safely
+	-- readable at the 48 px card height.
 	local countLabel = Instance.new("TextLabel")
-	countLabel.Position = UDim2.fromOffset(PAD_LEFT, 4)
-	countLabel.Size = UDim2.fromOffset(COUNT_W, NOTIF_HEIGHT - 8)
+	countLabel.Position = UDim2.fromOffset(PAD_LEFT, 0)
+	countLabel.Size = UDim2.fromOffset(COUNT_W, NOTIF_HEIGHT)
 	countLabel.BackgroundTransparency = 1
 	countLabel.Text = "+" .. tostring(count)
 	countLabel.TextColor3 = Color3.fromRGB(250, 240, 215)
-	countLabel.TextScaled = true
+	countLabel.TextSize = 26
 	countLabel.Font = Enum.Font.GothamBold
 	countLabel.TextXAlignment = Enum.TextXAlignment.Left
 	countLabel.TextYAlignment = Enum.TextYAlignment.Center
 	countLabel.Parent = card
-
-	local countSizeCap = Instance.new("UITextSizeConstraint")
-	countSizeCap.MinTextSize = 10
-	countSizeCap.MaxTextSize = 28
-	countSizeCap.Parent = countLabel
 
 	-- Icon column — vertically centred 30x30 box.
 	local iconX = PAD_LEFT + COUNT_W + ICON_GAP
@@ -177,30 +174,25 @@ local function showNotif(rawName, count)
 	iconBox.ScaleType = Enum.ScaleType.Fit
 	iconBox.Parent = card
 
-	-- Name column — fills the remaining width. TextScaled = true so
-	-- the text adapts to whatever room the column gives it (short
-	-- "Log" reads large, long "Пальмовый лист" shrinks down inside
-	-- the same rectangle instead of pushing the box wider). The
-	-- size constraint stops the text from going either microscopic
-	-- or oversized.
+	-- Name column — fixed 22 px so the text is always readable.
+	-- Wraps to two lines if a long name like "Пальмовый лист" or
+	-- "Legendary Fish" can't fit a single 22 px line in the
+	-- column. The 48 px card height comfortably hosts two 22 px
+	-- lines with breathing room.
 	local nameX = iconX + ICON_SIZE + NAME_GAP
 	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Position = UDim2.fromOffset(nameX, 4)
-	nameLabel.Size = UDim2.fromOffset(NOTIF_WIDTH - nameX - PAD_RIGHT, NOTIF_HEIGHT - 8)
+	nameLabel.Position = UDim2.fromOffset(nameX, 0)
+	nameLabel.Size = UDim2.fromOffset(NOTIF_WIDTH - nameX - PAD_RIGHT, NOTIF_HEIGHT)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text = displayName(rawName)
 	nameLabel.TextColor3 = Color3.fromRGB(250, 240, 215)
-	nameLabel.TextScaled = true
-	nameLabel.Font = Enum.Font.Gotham
+	nameLabel.TextSize = 22
+	nameLabel.Font = Enum.Font.GothamSemibold
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 	nameLabel.TextYAlignment = Enum.TextYAlignment.Center
-	nameLabel.TextWrapped = false
+	nameLabel.TextWrapped = true
+	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 	nameLabel.Parent = card
-
-	local nameSizeCap = Instance.new("UITextSizeConstraint")
-	nameSizeCap.MinTextSize = 10
-	nameSizeCap.MaxTextSize = 26
-	nameSizeCap.Parent = nameLabel
 
 	local rec = {
 		card       = card,
