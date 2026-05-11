@@ -22,12 +22,20 @@ local promptBillboard = nil
 _G.SuppressInventoryToggle = false
 
 -- Find dropped item under mouse cursor.
--- Iterative "x-ray" raycast: foliage / grass / decoration meshes can sit
--- between the camera and a dropped Stone or crate and physically block the
--- first hit, so a single raycast misses pickable items lying inside tall
--- grass. We keep firing raycasts, adding any non-DroppedItem hit to the
--- exclusion filter, until we either find a DroppedItem or the ray exits
--- the world. Capped at 8 iterations so a pathological scene can't loop.
+-- The first raycast can get blocked by tall-grass / decoration meshes
+-- that physically sit between the camera and a dropped item lying
+-- inside foliage. To let the player still pick those items up we run
+-- a constrained x-ray loop: at most a few iterations, ONLY skipping
+-- past parts that aren't collidable (grass / leaves / decoration —
+-- the player walks through them anyway), and ONLY within pickup
+-- range of the character. Anything solid (wall, raft floor, rock)
+-- stops the search as before, so we don't accidentally lock onto a
+-- dropped item far across the map and end up gluing
+-- _G.SuppressInventoryToggle to true — which would silently disable
+-- the inventory, crafting and Q-drop until the mouse moved off.
+local PICKUP_QUERY_DISTANCE = 25  -- a bit more than the server's 15-stud cap
+local MAX_XRAY_ITERATIONS   = 4
+
 local function getDroppedItemUnderMouse()
 	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
 	local params = RaycastParams.new()
@@ -38,9 +46,18 @@ local function getDroppedItemUnderMouse()
 	end
 	params.FilterDescendantsInstances = filter
 
-	for _ = 1, 8 do
+	local charPart = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+	local charPos  = charPart and charPart.Position
+
+	for _ = 1, MAX_XRAY_ITERATIONS do
 		local result = workspace:Raycast(ray.Origin, ray.Direction * 200, params)
 		if not result or not result.Instance then
+			return nil, nil
+		end
+
+		-- Outside the character's pickup envelope — give up immediately
+		-- instead of probing further into the world.
+		if charPos and (result.Position - charPos).Magnitude > PICKUP_QUERY_DISTANCE then
 			return nil, nil
 		end
 
@@ -55,9 +72,13 @@ local function getDroppedItemUnderMouse()
 			return model, hit
 		end
 
-		-- Not a dropped item — skip past whatever was hit (top-level model
-		-- if any, otherwise the part) and keep searching deeper along the
-		-- same ray.
+		-- Only skip past decoration (non-collidable). A solid wall or
+		-- raft floor between the camera and a dropped item is a real
+		-- obstruction and shouldn't be x-rayed through.
+		if hit.CanCollide then
+			return nil, nil
+		end
+
 		table.insert(filter, model or hit)
 		params.FilterDescendantsInstances = filter
 	end
