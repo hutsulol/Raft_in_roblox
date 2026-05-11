@@ -7,8 +7,11 @@ local Debris = game:GetService("Debris")
 
 -- ─── Config ───
 local MINE_HITS_REQUIRED = 5
-local STONE_REWARD_MIN = 1
-local STONE_REWARD_MAX = 3
+-- Per-hit drop chance: each swing independently rolls for one Stone, so
+-- the player sees the resource arrive gradually across the rock's
+-- lifetime (mirrors how tree-chopping dispenses 1-2 items per swing).
+-- 0.75 averages to ~3.75 stones per rock, with 0..5 possible.
+local STONE_DROP_CHANCE = 0.75
 local MINE_RANGE = 15
 
 -- ─── Dig sound (from Shovel tool) ───
@@ -163,23 +166,32 @@ mineRockEvent.OnServerEvent:Connect(function(player, rockPart)
 	-- Play Dig sound on each successful hit
 	playDigSound(rockPart)
 
+	-- Per-hit Stone reward: 75% chance for 1 Stone per swing. The
+	-- InventoryNotify system handles the visual "+1 Stone" card from
+	-- _G.AddResourceToInventory, so the player sees each successful
+	-- chip-off in real time.
+	local gained = 0
+	if math.random() < STONE_DROP_CHANCE then
+		gained = 1
+		_G.AddResourceToInventory(player, "Stone", 1, rockPart.Position)
+		if _G.OnQuestResource then
+			_G.OnQuestResource(player, "Stone", 1)
+		end
+	end
+
+	-- Track cumulative drops on the rock so the "destroyed" feedback
+	-- can show the run total.
+	local totalDropped = (rockPart:GetAttribute("StoneDropped") or 0) + gained
+	rockPart:SetAttribute("StoneDropped", totalDropped)
+
 	-- Shrinking is handled by MiningShrink.server.lua via MineHealth attribute
 
-	-- Rock destroyed
+	-- Rock destroyed on the final swing — no extra batch reward, the
+	-- per-hit rolls already covered everything.
 	if health <= 0 then
-		local stoneAmount = math.random(STONE_REWARD_MIN, STONE_REWARD_MAX)
-
-		_G.AddResourceToInventory(player, "Stone", stoneAmount, rockPart.Position)
-		if _G.OnQuestResource then
-			_G.OnQuestResource(player, "Stone", stoneAmount)
-		end
-
-		-- Feedback to client
-		mineRockEvent:FireClient(player, "destroyed", stoneAmount)
-
-		-- Destroy the rock
+		mineRockEvent:FireClient(player, "destroyed", totalDropped)
 		rockPart:Destroy()
 	else
-		mineRockEvent:FireClient(player, "hit", health)
+		mineRockEvent:FireClient(player, "hit", health, gained)
 	end
 end)

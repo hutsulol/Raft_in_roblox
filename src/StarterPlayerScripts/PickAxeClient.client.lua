@@ -220,9 +220,12 @@ mouse.Button1Down:Connect(function()
 end)
 
 -- ─── Server feedback ───
-mineRockEvent.OnClientEvent:Connect(function(action, value)
+mineRockEvent.OnClientEvent:Connect(function(action, value, extra)
 	if action == "destroyed" then
-		feedbackLabel.Text = "+" .. value .. " Stone"
+		-- value here is the cumulative Stones the rock dropped across all
+		-- 5 hits (server tallies via the per-hit 75% rolls).
+		feedbackLabel.Text = "Rock mined — +" .. value .. " Stone"
+		feedbackLabel.TextColor3 = Color3.fromRGB(255, 220, 100)
 		feedbackLabel.Visible = true
 		feedbackLabel.TextTransparency = 0
 		clearHighlight()
@@ -249,13 +252,24 @@ mineRockEvent.OnClientEvent:Connect(function(action, value)
 			feedbackLabel.TextStrokeTransparency = 0.5
 		end)
 	elseif action == "hit" then
-		feedbackLabel.Text = "Mining... (" .. value .. " hits left)"
+		-- extra: 1 if this swing rolled a Stone, 0 if it missed. Color-code
+		-- the centre-screen blurb so the player gets immediate "got one /
+		-- whiffed" feedback on top of the bottom-right InventoryNotify
+		-- card (which only renders on gains).
+		local gained = tonumber(extra) or 0
+		if gained > 0 then
+			feedbackLabel.Text = "+1 Stone — (" .. value .. " hits left)"
+			feedbackLabel.TextColor3 = Color3.fromRGB(180, 240, 160)
+		else
+			feedbackLabel.Text = "No Stone — (" .. value .. " hits left)"
+			feedbackLabel.TextColor3 = Color3.fromRGB(220, 220, 220)
+		end
 		feedbackLabel.Visible = true
 		feedbackLabel.TextTransparency = 0
 
 		task.spawn(function()
 			task.wait(0.8)
-			if feedbackLabel.Text:find("Mining") then
+			if feedbackLabel.Text:find("hits left") then
 				feedbackLabel.Visible = false
 			end
 		end)

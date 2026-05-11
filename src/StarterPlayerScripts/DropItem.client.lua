@@ -21,29 +21,45 @@ local promptBillboard = nil
 -- Shared flag: when true, InventoryUI should NOT toggle on E press
 _G.SuppressInventoryToggle = false
 
--- Find dropped item under mouse cursor
+-- Find dropped item under mouse cursor.
+-- Iterative "x-ray" raycast: foliage / grass / decoration meshes can sit
+-- between the camera and a dropped Stone or crate and physically block the
+-- first hit, so a single raycast misses pickable items lying inside tall
+-- grass. We keep firing raycasts, adding any non-DroppedItem hit to the
+-- exclusion filter, until we either find a DroppedItem or the ray exits
+-- the world. Capped at 8 iterations so a pathological scene can't loop.
 local function getDroppedItemUnderMouse()
 	local ray = camera:ScreenPointToRay(mouse.X, mouse.Y)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
+	local filter = {}
 	if player.Character then
-		params.FilterDescendantsInstances = {player.Character}
+		table.insert(filter, player.Character)
 	end
+	params.FilterDescendantsInstances = filter
 
-	local result = workspace:Raycast(ray.Origin, ray.Direction * 200, params)
-	if not result or not result.Instance then
-		return nil, nil
-	end
+	for _ = 1, 8 do
+		local result = workspace:Raycast(ray.Origin, ray.Direction * 200, params)
+		if not result or not result.Instance then
+			return nil, nil
+		end
 
-	local hit = result.Instance
+		local hit = result.Instance
 
-	if CollectionService:HasTag(hit, "DroppedItem") then
-		return hit, hit
-	end
+		if CollectionService:HasTag(hit, "DroppedItem") then
+			return hit, hit
+		end
 
-	local model = hit:FindFirstAncestorOfClass("Model")
-	if model and CollectionService:HasTag(model, "DroppedItem") then
-		return model, hit
+		local model = hit:FindFirstAncestorOfClass("Model")
+		if model and CollectionService:HasTag(model, "DroppedItem") then
+			return model, hit
+		end
+
+		-- Not a dropped item — skip past whatever was hit (top-level model
+		-- if any, otherwise the part) and keep searching deeper along the
+		-- same ray.
+		table.insert(filter, model or hit)
+		params.FilterDescendantsInstances = filter
 	end
 
 	return nil, nil
