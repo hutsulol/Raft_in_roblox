@@ -68,8 +68,8 @@ hud.Parent = playerGui
 
 local NOTIF_LIFETIME = 3.0
 local NOTIF_FADE     = 0.5
-local NOTIF_HEIGHT   = 40
-local NOTIF_WIDTH    = 175
+local NOTIF_HEIGHT   = 48
+local NOTIF_WIDTH    = 220
 local NOTIF_GAP      = 2
 
 local container = Instance.new("Frame")
@@ -122,8 +122,8 @@ local function showNotif(rawName, count)
 	local card = Instance.new("Frame")
 	card.Name = "Drop_" .. rawName
 	card.Size = UDim2.fromOffset(NOTIF_WIDTH, NOTIF_HEIGHT)
-	card.BackgroundColor3 = Color3.fromRGB(176, 148, 102)
-	card.BackgroundTransparency = 0.25
+	card.BackgroundColor3 = Color3.fromRGB(126, 100, 68)
+	card.BackgroundTransparency = 0.2
 	card.BorderSizePixel = 0
 	card.LayoutOrder = notifOrder
 	card.Parent = container
@@ -134,14 +134,15 @@ local function showNotif(rawName, count)
 	stroke.Transparency = 0.1
 	stroke.Parent = card
 
-	-- Tight three-column layout: "+N" • icon • name. Each column hugs
-	-- its content, with the name filling whatever's left. Padding
-	-- between columns kept minimal so the card never has a big
-	-- right-side gap when the name is short ("Log", "Stone").
-	local PAD_LEFT   = 6
-	local COUNT_W    = 28
+	-- Tight three-column layout: "+N" • icon • name. The name
+	-- column gets a large MaxTextSize so short names ("Log",
+	-- "Stone") grow with TextScaled to fill the column without
+	-- leaving a big empty gap on the right — the user explicitly
+	-- asked for "no empty space at all".
+	local PAD_LEFT   = 8
+	local COUNT_W    = 32
 	local ICON_GAP   = 4
-	local ICON_SIZE  = NOTIF_HEIGHT - 10   -- 30 px in a 40 px card
+	local ICON_SIZE  = NOTIF_HEIGHT - 12   -- 36 px in a 48 px card
 	local NAME_GAP   = 6
 	local PAD_RIGHT  = 6
 
@@ -163,7 +164,7 @@ local function showNotif(rawName, count)
 
 	local countSizeCap = Instance.new("UITextSizeConstraint")
 	countSizeCap.MinTextSize = 10
-	countSizeCap.MaxTextSize = 20
+	countSizeCap.MaxTextSize = 28
 	countSizeCap.Parent = countLabel
 
 	-- Icon column — vertically centred 30x30 box.
@@ -198,7 +199,7 @@ local function showNotif(rawName, count)
 
 	local nameSizeCap = Instance.new("UITextSizeConstraint")
 	nameSizeCap.MinTextSize = 10
-	nameSizeCap.MaxTextSize = 18
+	nameSizeCap.MaxTextSize = 26
 	nameSizeCap.Parent = nameLabel
 
 	local rec = {
@@ -223,7 +224,7 @@ local function showNotif(rawName, count)
 		for i = 0, steps do
 			if not card.Parent then return end
 			local a = i / steps
-			card.BackgroundTransparency = 0.25 + a * 0.75
+			card.BackgroundTransparency = 0.2 + a * 0.8
 			stroke.Transparency        = 0.1 + a * 0.9
 			countLabel.TextTransparency = a
 			nameLabel.TextTransparency  = a
