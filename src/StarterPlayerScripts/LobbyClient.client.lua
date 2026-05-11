@@ -6,14 +6,26 @@ local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
 
--- Only run in the lobby place, NOT in the ocean sub-place
-local OCEAN_PLACE_ID = 128626393517258
+-- Only run in the lobby place, NOT in the ocean sub-place. The
+-- constant must match LobbyServer's OCEAN_PLACE_ID exactly — when
+-- it didn't, this script never early-returned in the ocean place
+-- and the WaitForChild below yielded forever (server-side
+-- LobbyServer also early-returns in the ocean place, so the event
+-- is never created there).
+local OCEAN_PLACE_ID = 77272676169005
 if game.PlaceId == OCEAN_PLACE_ID then return end
 
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local lobbyEvent = ReplicatedStorage:WaitForChild("LobbyEvent")
+-- Hard timeout on the event so a misconfiguration never prints
+-- the "Infinite yield possible on LobbyEvent" warning. If it isn't
+-- around within 30 s we bail gracefully.
+local lobbyEvent = ReplicatedStorage:WaitForChild("LobbyEvent", 30)
+if not lobbyEvent then
+	warn("[LobbyClient] LobbyEvent missing after 30 s — lobby UI disabled")
+	return
+end
 
 -- ─── State ───
 local currentPad = nil

@@ -6,9 +6,23 @@ local UserInputService = game:GetService("UserInputService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local craftEvent = ReplicatedStorage:WaitForChild("CraftItem")
-local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
-local openWorkbenchEvent = ReplicatedStorage:WaitForChild("OpenWorkbench")
+local craftEvent = ReplicatedStorage:WaitForChild("CraftItem", 30)
+local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate", 30)
+-- Hard timeout on OpenWorkbench so a no-bench load doesn't print
+-- "Infinite yield possible". WorkBench/WorkBenchPrompt.server.lua
+-- creates this event only when a WorkBench is in the world, and the
+-- new src/ServerScriptService/EventBootstrap.server.lua creates it
+-- unconditionally — either path is fine; the timeout keeps us
+-- bail-safe.
+local openWorkbenchEvent = ReplicatedStorage:WaitForChild("OpenWorkbench", 30)
+if not openWorkbenchEvent then
+	warn("[WorkbenchUI] OpenWorkbench missing after 30 s — workbench UI disabled")
+	return
+end
+if not craftEvent or not inventoryEvent then
+	warn("[WorkbenchUI] core craft events missing — UI disabled")
+	return
+end
 
 local inventory = {Log = 0, Stone = 0}
 local recipes = {
