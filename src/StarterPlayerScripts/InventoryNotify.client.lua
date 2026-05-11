@@ -69,7 +69,7 @@ hud.Parent = playerGui
 local NOTIF_LIFETIME = 3.0
 local NOTIF_FADE     = 0.5
 local NOTIF_HEIGHT   = 40
-local NOTIF_WIDTH    = 210
+local NOTIF_WIDTH    = 175
 local NOTIF_GAP      = 2
 
 local container = Instance.new("Frame")
@@ -111,70 +111,95 @@ local function showNotif(rawName, count)
 
 	notifOrder = notifOrder + 1
 
-	-- Reference layout (from the user's screenshot): wide beige
+	-- Reference layout (from the user's screenshot): wide-ish beige
 	-- parchment card, tight stacking, "+N" in big bold cream on the
 	-- LEFT, icon centred horizontally inside the card, item name in
-	-- the wider right column with text wrapping for long names like
-	-- "Пальмовый лист".
+	-- the right column. Sharp corners (no UICorner), partly
+	-- transparent from the start so the cards layer over the world
+	-- like the reference, and text rendered with TextScaled so the
+	-- content adapts to a fixed-size rectangle (the user's brief:
+	-- "адаптация текста под прямоугольник, не наоборот").
 	local card = Instance.new("Frame")
 	card.Name = "Drop_" .. rawName
 	card.Size = UDim2.fromOffset(NOTIF_WIDTH, NOTIF_HEIGHT)
 	card.BackgroundColor3 = Color3.fromRGB(176, 148, 102)
-	card.BackgroundTransparency = 0.05
+	card.BackgroundTransparency = 0.25
 	card.BorderSizePixel = 0
 	card.LayoutOrder = notifOrder
 	card.Parent = container
 
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 4)
-	corner.Parent = card
-
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Color3.fromRGB(92, 64, 36)
 	stroke.Thickness = 1.4
+	stroke.Transparency = 0.1
 	stroke.Parent = card
 
-	-- "+N" prefix on the left — large bold cream, matches the
-	-- reference. ~36 px wide column.
+	-- Tight three-column layout: "+N" • icon • name. Each column hugs
+	-- its content, with the name filling whatever's left. Padding
+	-- between columns kept minimal so the card never has a big
+	-- right-side gap when the name is short ("Log", "Stone").
+	local PAD_LEFT   = 6
+	local COUNT_W    = 28
+	local ICON_GAP   = 4
+	local ICON_SIZE  = NOTIF_HEIGHT - 10   -- 30 px in a 40 px card
+	local NAME_GAP   = 6
+	local PAD_RIGHT  = 6
+
+	-- "+N" prefix on the left — bold cream, sized by TextScaled so it
+	-- adapts to the box (single-digit fills the column comfortably;
+	-- triple-digit still fits without overflow). TextSizeConstraint
+	-- keeps a single-digit "+1" from ballooning to absurd size.
 	local countLabel = Instance.new("TextLabel")
-	countLabel.Position = UDim2.fromOffset(8, 0)
-	countLabel.Size = UDim2.fromOffset(36, NOTIF_HEIGHT)
+	countLabel.Position = UDim2.fromOffset(PAD_LEFT, 4)
+	countLabel.Size = UDim2.fromOffset(COUNT_W, NOTIF_HEIGHT - 8)
 	countLabel.BackgroundTransparency = 1
 	countLabel.Text = "+" .. tostring(count)
 	countLabel.TextColor3 = Color3.fromRGB(250, 240, 215)
-	countLabel.TextSize = 18
+	countLabel.TextScaled = true
 	countLabel.Font = Enum.Font.GothamBold
 	countLabel.TextXAlignment = Enum.TextXAlignment.Left
 	countLabel.TextYAlignment = Enum.TextYAlignment.Center
 	countLabel.Parent = card
 
-	-- Icon column — chunky 30x30 box centred between the "+N" and
-	-- the name. Falls back to text-only when no asset id exists.
-	local ICON_SIZE = NOTIF_HEIGHT - 10   -- 30 px in a 40 px card
+	local countSizeCap = Instance.new("UITextSizeConstraint")
+	countSizeCap.MinTextSize = 10
+	countSizeCap.MaxTextSize = 20
+	countSizeCap.Parent = countLabel
+
+	-- Icon column — vertically centred 30x30 box.
+	local iconX = PAD_LEFT + COUNT_W + ICON_GAP
 	local iconBox = Instance.new("ImageLabel")
-	iconBox.Position = UDim2.fromOffset(48, (NOTIF_HEIGHT - ICON_SIZE) / 2)
+	iconBox.Position = UDim2.fromOffset(iconX, (NOTIF_HEIGHT - ICON_SIZE) / 2)
 	iconBox.Size = UDim2.fromOffset(ICON_SIZE, ICON_SIZE)
 	iconBox.BackgroundTransparency = 1
 	iconBox.Image = iconFor(rawName)
 	iconBox.ScaleType = Enum.ScaleType.Fit
 	iconBox.Parent = card
 
-	-- Name column — wide, cream, wraps to two lines for long names
-	-- ("Пальмовый лист" / "Iron Ingot" / "Legendary Fish" etc.).
-	local nameOffsetX = 48 + ICON_SIZE + 8
+	-- Name column — fills the remaining width. TextScaled = true so
+	-- the text adapts to whatever room the column gives it (short
+	-- "Log" reads large, long "Пальмовый лист" shrinks down inside
+	-- the same rectangle instead of pushing the box wider). The
+	-- size constraint stops the text from going either microscopic
+	-- or oversized.
+	local nameX = iconX + ICON_SIZE + NAME_GAP
 	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Position = UDim2.fromOffset(nameOffsetX, 0)
-	nameLabel.Size = UDim2.fromOffset(NOTIF_WIDTH - nameOffsetX - 8, NOTIF_HEIGHT)
+	nameLabel.Position = UDim2.fromOffset(nameX, 4)
+	nameLabel.Size = UDim2.fromOffset(NOTIF_WIDTH - nameX - PAD_RIGHT, NOTIF_HEIGHT - 8)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text = displayName(rawName)
 	nameLabel.TextColor3 = Color3.fromRGB(250, 240, 215)
-	nameLabel.TextSize = 16
+	nameLabel.TextScaled = true
 	nameLabel.Font = Enum.Font.Gotham
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 	nameLabel.TextYAlignment = Enum.TextYAlignment.Center
-	nameLabel.TextWrapped = true
-	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
+	nameLabel.TextWrapped = false
 	nameLabel.Parent = card
+
+	local nameSizeCap = Instance.new("UITextSizeConstraint")
+	nameSizeCap.MinTextSize = 10
+	nameSizeCap.MaxTextSize = 18
+	nameSizeCap.Parent = nameLabel
 
 	local rec = {
 		card       = card,
@@ -198,8 +223,8 @@ local function showNotif(rawName, count)
 		for i = 0, steps do
 			if not card.Parent then return end
 			local a = i / steps
-			card.BackgroundTransparency = 0.05 + a * 0.95
-			stroke.Transparency        = a
+			card.BackgroundTransparency = 0.25 + a * 0.75
+			stroke.Transparency        = 0.1 + a * 0.9
 			countLabel.TextTransparency = a
 			nameLabel.TextTransparency  = a
 			iconBox.ImageTransparency   = a
