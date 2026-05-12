@@ -1291,6 +1291,15 @@ closeUI = function()
 	if not screenGui or not isOpen then return end
 	isOpen = false
 
+	-- Release the search TextBox if it ended up focused. Without this,
+	-- closing the workbench leaves the focus chain pointed at the
+	-- hidden TextBox — every subsequent keystroke (R for rotation, T
+	-- for chat, etc.) is captured as text input, gameProcessed=true,
+	-- and the in-world keybinds silently stop working.
+	if searchBox then
+		pcall(function() searchBox:ReleaseFocus() end)
+	end
+
 	for _, t in ipairs(fadeTargets or {}) do
 		if t.inst.Parent then
 			TweenService:Create(t.inst, CLOSE_INFO, { [t.prop] = 1 }):Play()
