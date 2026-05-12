@@ -38,22 +38,20 @@ local function findSound(names)
 end
 local RowSound = findSound({ "Rowing", "Row", "RowSound", "Swing", "Whoosh" })
 
--- Per the user's brief on the Stone_Axe (matches the PaddleController
--- client cooldown of 1.0 s). Keep this in sync with the client's
--- COOLDOWN so the animation/sound and the actual paddle stroke share
--- the same rhythm.
-local SWING_COOLDOWN = 1.0
+-- NOTE: cooldown + validation (water under cursor, player facing the
+-- water) are owned by PaddleController.client.lua. That script keeps
+-- Tool.Enabled in sync with the live conditions, so Tool.Activated
+-- only fires when a stroke is actually valid. We deliberately do not
+-- touch Tool.Enabled here — racing two writers (client gate + this
+-- server-side cooldown delay) led to dead-key states where the gate
+-- saw Enabled=true but the Tool Script had just set it to false.
 
 local Animations = {}
 local events = {}
 local Player, Character, Humanoid
 
 local function Activated()
-	if not Tool.Enabled or not Humanoid or Humanoid.Health <= 0 then return end
-	Tool.Enabled = false
-	delay(SWING_COOLDOWN, function()
-		Tool.Enabled = true
-	end)
+	if not Humanoid or Humanoid.Health <= 0 then return end
 
 	local track = Animations.RowAnim
 	if track then
