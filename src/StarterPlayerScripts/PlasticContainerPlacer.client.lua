@@ -85,6 +85,7 @@ end
 
 local PLACED_NAMES = {
 	WorkBench = true, Purifier = true, Garden = true,
+	Bed_Garden_For_Tree = true,
 	Bed = true, Destitalor = true, bush = true,
 	Furnace = true, Sawmill = true,
 	SmallContainer = true, PlasticContainer = true,

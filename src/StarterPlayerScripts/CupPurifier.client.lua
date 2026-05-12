@@ -20,6 +20,7 @@ local placingPurifier = false
 local placingBush = false
 local placingWorkbench = false
 local placingGarden = false
+local placingBedGardenForTree = false
 local placingBed = false
 local placingSawmill = false
 local lastGhostValid = false
@@ -71,6 +72,12 @@ local function updateHint()
 	-- Garden placement hint
 	if placingGarden then
 		hintLabel.Text = "Click on raft to place garden bed | [R] Rotate"
+		hintLabel.Visible = true
+		return
+	end
+
+	if placingBedGardenForTree then
+		hintLabel.Text = "Click on raft to place tree garden bed | [R] Rotate"
 		hintLabel.Visible = true
 		return
 	end
@@ -220,6 +227,7 @@ local function isPlacementBlocked(placeCF, ghostSize)
 	-- Known placed object names to check against
 	local placedObjectNames = {
 		WorkBench = true, Purifier = true, Garden = true,
+		Bed_Garden_For_Tree = true,
 		Bed = true, Destitalor = true, bush = true, Sawmill = true,
 	}
 
@@ -373,13 +381,24 @@ local function onToolEquipped(tool)
 		placingBush = false
 		placingWorkbench = false
 		placingBed = false
+		placingBedGardenForTree = false
 		createGhost("Garden")
+	elseif tool.Name == "Bed_Garden_For_Tree" then
+		placingBedGardenForTree = true
+		placingGarden = false
+		placingPurifier = false
+		placingBush = false
+		placingWorkbench = false
+		placingBed = false
+		placingSawmill = false
+		createGhost("Bed_Garden_For_Tree")
 	elseif tool.Name == "Bed" then
 		placingBed = true
 		placingPurifier = false
 		placingBush = false
 		placingWorkbench = false
 		placingGarden = false
+		placingBedGardenForTree = false
 		placingSawmill = false
 		createGhost("Bed")
 	elseif tool.Name == "Sawmill" then
@@ -388,6 +407,7 @@ local function onToolEquipped(tool)
 		placingBush = false
 		placingWorkbench = false
 		placingGarden = false
+		placingBedGardenForTree = false
 		placingBed = false
 		createGhost("Sawmill")
 	else
@@ -395,6 +415,7 @@ local function onToolEquipped(tool)
 		placingBush = false
 		placingWorkbench = false
 		placingGarden = false
+		placingBedGardenForTree = false
 		placingBed = false
 		placingSawmill = false
 		destroyGhost()
@@ -415,6 +436,7 @@ local function onToolUnequipped()
 	placingBush = false
 	placingWorkbench = false
 	placingGarden = false
+	placingBedGardenForTree = false
 	placingBed = false
 	placingSawmill = false
 	destroyGhost()
@@ -450,7 +472,7 @@ player.CharacterAdded:Connect(setupCharacter)
 
 -- ─── Update ghost every frame ───
 RunService.RenderStepped:Connect(function()
-	if (placingPurifier or placingBush or placingWorkbench or placingGarden or placingBed or placingSawmill) and ghost then
+	if (placingPurifier or placingBush or placingWorkbench or placingGarden or placingBedGardenForTree or placingBed or placingSawmill) and ghost then
 		updateGhost()
 	end
 end)
@@ -458,7 +480,7 @@ end)
 -- ─── R key to rotate placement ───
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if UserInputService:GetFocusedTextBox() then return end
-	if input.KeyCode == Enum.KeyCode.R and (placingPurifier or placingWorkbench or placingGarden or placingBed or placingBush or placingSawmill) then
+	if input.KeyCode == Enum.KeyCode.R and (placingPurifier or placingWorkbench or placingGarden or placingBedGardenForTree or placingBed or placingBush or placingSawmill) then
 		rotationAngle = rotationAngle + math.rad(90)
 	end
 end)
@@ -510,6 +532,16 @@ mouse.Button1Down:Connect(function()
 		playPlaceSound()
 		destroyGhost()
 		placingGarden = false
+		return
+	end
+
+	-- Tree garden bed placement (bigger variant)
+	if placingBedGardenForTree and ghost then
+		if not lastGhostValid or not lastGhostRaftOffset then return end
+		gardenActionEvent:FireServer("placeBedGardenForTree", lastGhostRaftOffset)
+		playPlaceSound()
+		destroyGhost()
+		placingBedGardenForTree = false
 		return
 	end
 

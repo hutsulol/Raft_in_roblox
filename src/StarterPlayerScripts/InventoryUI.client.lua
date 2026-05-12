@@ -86,6 +86,7 @@ local TOOL_ICONS = {
 	["WorkBench"] = "rbxassetid://116083064101694",
 	["Bed"] = "rbxassetid://85069521486600",
 	["Garden"] = "rbxassetid://137766871451752",
+	["Bed_Garden_For_Tree"] = "rbxassetid://137766871451752",
 	["Paddle"] = "rbxassetid://93358108538106",
 	["Sawmill"] = "rbxassetid://75858978626954",
 	["Shovel"] = "rbxassetid://123765089142597",

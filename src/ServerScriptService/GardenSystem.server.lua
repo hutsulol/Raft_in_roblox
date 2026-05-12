@@ -203,63 +203,65 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 	local char = player.Character
 	if not char then return end
 
-	if action == "placeGarden" then
+	-- Both action handlers below share the same place-a-static-bed-on-
+	-- the-raft flow; only the tool name, ReplicatedStorage template,
+	-- and post-place model Name differ.
+	local function placeBedTemplate(toolName, templateName, finalName, extraAttributes)
 		local tool = char:FindFirstChildWhichIsA("Tool")
-		if not tool or tool.Name ~= "Garden" then return end
+		if not tool or tool.Name ~= toolName then return end
 
 		local raft = workspace:FindFirstChild("Raft")
 		if not raft or not raft.PrimaryPart then return end
 
 		if typeof(target) ~= "CFrame" then return end
 
-		-- Convert raft-relative offset to world space
 		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
 
-		local template = rs:FindFirstChild("Garden")
+		local template = rs:FindFirstChild(templateName)
 		if not template then
-			warn("GardenSystem: Garden template not found in ReplicatedStorage")
+			warn("GardenSystem: template not found in ReplicatedStorage: " .. templateName)
 			return
 		end
 
-		local garden = template:Clone()
-		garden.Name = "Garden"
-		garden:SetAttribute("IsGarden", true)
-		garden:SetAttribute("IsWatered", false)
-		garden:SetAttribute("PlacedBy", player.UserId)
+		local placed = template:Clone()
+		placed.Name = finalName
+		placed:SetAttribute("PlacedBy", player.UserId)
+		if extraAttributes then
+			for k, v in pairs(extraAttributes) do
+				placed:SetAttribute(k, v)
+			end
+		end
 
 		-- Remove scripts from the clone
-		for _, desc in garden:GetDescendants() do
+		for _, desc in placed:GetDescendants() do
 			if desc:IsA("Script") or desc:IsA("LocalScript") then
 				desc:Destroy()
 			end
 		end
 
 		-- Reset WorldPivot to bounding box center with identity rotation
-		if garden:IsA("Model") then
-			local bbCF = garden:GetBoundingBox()
-			garden.WorldPivot = CFrame.new(bbCF.Position)
+		if placed:IsA("Model") then
+			local bbCF = placed:GetBoundingBox()
+			placed.WorldPivot = CFrame.new(bbCF.Position)
 		end
 
-		garden:PivotTo(worldCF)
-		garden.Parent = raft
+		placed:PivotTo(worldCF)
+		placed.Parent = raft
 
-		-- T13/T15/T16/T19: snapshot raft velocity, force-anchor every
-		-- part (templates may be authored unanchored), weld while
-		-- anchored, then unanchor in a third pass so the new parts
-		-- inherit the raft's velocity through the rigid weld instead
-		-- of starting at zero. Without this, placing the garden bed
-		-- drains enough momentum out of the assembly to kick the
-		-- buoyancy spring into a sustained vertical bob.
+		-- Same 3-pass weld pattern used by the regular Garden / Bed /
+		-- WorkBench placements: snapshot raft velocity, anchor, weld
+		-- while anchored, unanchor, restore velocity. Without this the
+		-- placement kicks the buoyancy spring into a vertical bob.
 		local primary = raft.PrimaryPart
 		local linVel = primary.AssemblyLinearVelocity
 		local angVel = primary.AssemblyAngularVelocity
 
-		for _, part in garden:GetDescendants() do
+		for _, part in placed:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.Anchored = true
 			end
 		end
-		for _, part in garden:GetDescendants() do
+		for _, part in placed:GetDescendants() do
 			if part:IsA("BasePart") then
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
@@ -267,7 +269,7 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 				weld.Parent = part
 			end
 		end
-		for _, part in garden:GetDescendants() do
+		for _, part in placed:GetDescendants() do
 			if part:IsA("BasePart") then
 				part.Anchored = false
 			end
@@ -278,6 +280,23 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		-- Remove tool from player
 		tool:Destroy()
+	end
+
+	if action == "placeGarden" then
+		placeBedTemplate("Garden", "Garden", "Garden", {
+			IsGarden  = true,
+			IsWatered = false,
+		})
+
+	elseif action == "placeBedGardenForTree" then
+		-- Larger tree-sized garden bed. Uses the same on-raft welding
+		-- flow as the regular garden but carries a different name +
+		-- IsBedGardenForTree attribute so downstream systems (future
+		-- tree-planting logic) can distinguish it from a regular
+		-- bush-hosting garden.
+		placeBedTemplate("Bed_Garden_For_Tree", "Bed_Garden_For_Tree", "Bed_Garden_For_Tree", {
+			IsBedGardenForTree = true,
+		})
 
 	elseif action == "waterGarden" then
 		-- Player presses E while looking at a garden bed with fresh water cup

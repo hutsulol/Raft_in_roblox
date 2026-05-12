@@ -73,6 +73,20 @@ local recipes = {
 		description = "A garden bed for planting bushes. Water it with fresh water to let your plants bear fruit.",
 	},
 	{
+		-- Larger variant of the regular Garden Bed, sized to host a
+		-- tree. Same placement / R-rotate / raft-weld flow as Garden;
+		-- the server handler lives alongside the regular garden in
+		-- GardenSystem.server.lua and clones the Bed_Garden_For_Tree
+		-- template from ReplicatedStorage.
+		name = "Bed_Garden_For_Tree",
+		displayName = "Tree Garden Bed",
+		icon = "rbxassetid://137766871451752",
+		costs = {Log = 10},
+		craftType = "placeable",
+		category = "Technology",
+		description = "A larger garden bed sized for growing a tree. Takes up more space on the raft than a regular garden.",
+	},
+	{
 		name = "bush",
 		displayName = "Grape Bush",
 		icon = "rbxassetid://93957489757544",
