@@ -29,7 +29,7 @@ local PLANK_ICON = "rbxassetid://118108820731466"
 local ROPE_ICON = "rbxassetid://78492721752628"
 local SAND_ICON = "rbxassetid://92407877736322"
 local CLAY_ICON = "rbxassetid://129473903672183"
-local WET_BRICK_ICON = "rbxassetid://77999856849195"
+local WET_BRICK_ICON = "rbxassetid://139059474647090"
 local DRY_BRICK_ICON = "rbxassetid://97609326528615"
 local BAG_EMPTY_ICON = "rbxassetid://89398456198664"
 local BAG_WITH_CLAY_ICON = "rbxassetid://126238050436106"
@@ -75,17 +75,17 @@ local RESOURCE_ICONS = {
 
 local TOOL_ICONS = {
 	["Hammer"] = "rbxassetid://72168072336946",
-	["Pick-Axe"] = "rbxassetid://89809613033816",
+	["Pick-Axe"] = "rbxassetid://102411845666126",
 	["Cup"] = "rbxassetid://99673504095026",
 	["Destitalor"] = "rbxassetid://90221080738714",
 	["Furnace"] = "rbxassetid://117760352651529",
-	["bush"] = "rbxassetid://100755665041729",
+	["bush"] = "rbxassetid://93957489757544",
 
 	["Machete"] = "rbxassetid://92926554091794",
 	["Wood_Knife"] = "rbxassetid://110032041583533",
 	["WorkBench"] = "rbxassetid://116083064101694",
 	["Bed"] = "rbxassetid://85069521486600",
-	["Garden"] = "rbxassetid://77159786623285",
+	["Garden"] = "rbxassetid://137766871451752",
 	["Paddle"] = "rbxassetid://93358108538106",
 	["Sawmill"] = "rbxassetid://75858978626954",
 	["Shovel"] = "rbxassetid://123765089142597",
@@ -94,7 +94,7 @@ local TOOL_ICONS = {
 	-- Stone_Axe inherits the Pick-Axe icon as a placeholder until a
 	-- dedicated axe asset lands; the equipped Tool's TextureId
 	-- override on line 775 takes precedence in the hotbar anyway.
-	["Stone_Axe"] = "rbxassetid://89809613033816",
+	["Stone_Axe"] = "rbxassetid://112306255674133",
 	["[GRAPES]"] = "rbxassetid://137478230275649",
 	["Grapes"] = "rbxassetid://137478230275649",
 	["FishingRod"] = "rbxassetid://105180666555503",
@@ -2504,7 +2504,7 @@ inventoryCraftEvent.OnClientEvent:Connect(function(action, data, inv)
 			table.insert(recipes, {
 				name = "Pick-Axe",
 				displayName = "Pick-Axe",
-				icon = "rbxassetid://89809613033816",
+				icon = "rbxassetid://102411845666126",
 				costs = {Log = 2},
 				craftType = "tool",
 				category = "Tools",
@@ -2523,7 +2523,7 @@ inventoryCraftEvent.OnClientEvent:Connect(function(action, data, inv)
 			table.insert(recipes, {
 				name = "Stone_Axe",
 				displayName = "Stone Axe",
-				icon = "rbxassetid://89809613033816",
+				icon = "rbxassetid://112306255674133",
 				costs = {Log = 1, Stone = 3, Rope = 1},
 				craftType = "tool",
 				category = "Tools",

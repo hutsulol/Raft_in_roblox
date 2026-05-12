@@ -66,7 +66,7 @@ local recipes = {
 	{
 		name = "Garden",
 		displayName = "Garden Bed",
-		icon = "rbxassetid://77159786623285",
+		icon = "rbxassetid://137766871451752",
 		costs = {Log = 4},
 		craftType = "placeable",
 		category = "Technology",
@@ -75,7 +75,7 @@ local recipes = {
 	{
 		name = "bush",
 		displayName = "Grape Bush",
-		icon = "rbxassetid://100755665041729",
+		icon = "rbxassetid://93957489757544",
 		costs = {Log = 1},
 		craftType = "placeable",
 		category = "Technology",
@@ -102,7 +102,7 @@ local recipes = {
 	{
 		name = "Wet_Brick",
 		displayName = "Wet Brick",
-		icon = "rbxassetid://77999856849195",
+		icon = "rbxassetid://139059474647090",
 		costs = {Sand = 2, Clay = 2},
 		craftType = "placeable",
 		category = "Resources",
