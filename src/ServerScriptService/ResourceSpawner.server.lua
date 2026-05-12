@@ -328,6 +328,27 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 		rootPart.AssemblyLinearVelocity = driftVel
 	end
 
+	-- Explicit buoyancy: Roblox's native terrain-water buoyancy turned
+	-- out unreliable here (the items dropped straight to the seabed
+	-- regardless of density). Attach a VectorForce that mirrors the
+	-- raft's spring-damper to a captured water Y for the part's
+	-- assembly. Y is locked, XZ stays free so driftVel still works.
+	if rootPart then
+		local attach = Instance.new("Attachment")
+		attach.Name = "FloatAttach"
+		attach.Parent = rootPart
+
+		local force = Instance.new("VectorForce")
+		force.Name = "FloatForce"
+		force.Attachment0 = attach
+		force.RelativeTo = Enum.ActuatorRelativeTo.World
+		force.ApplyAtCenterOfMass = true
+		force.Force = Vector3.zero
+		force.Parent = rootPart
+
+		rootPart:SetAttribute("FloatTargetY", waterY)
+	end
+
 	CollectionService:AddTag(clone, "Resource")
 
 	-- Set up collision damage so the raft can crush resources
@@ -340,6 +361,32 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 		end
 	end)
 end
+
+-- ─── Per-frame buoyancy for every tagged Resource ───
+-- Single Heartbeat that walks all tagged Resources and updates their
+-- FloatForce. Cheaper than spawning one connection per resource, and
+-- robust to resources that were tagged but didn't go through
+-- spawnResource (e.g. loaded from a save).
+local FLOAT_STIFFNESS = 8
+local FLOAT_DAMPING   = 3
+local game_RunService = game:GetService("RunService")
+game_RunService.Heartbeat:Connect(function()
+	for _, resource in CollectionService:GetTagged("Resource") do
+		local rootPart = resource:IsA("BasePart") and resource or resource.PrimaryPart
+		if not rootPart or not rootPart.Parent then continue end
+		local force = rootPart:FindFirstChild("FloatForce")
+		if not force or not force:IsA("VectorForce") then continue end
+		local targetY = rootPart:GetAttribute("FloatTargetY")
+		if not targetY then continue end
+
+		local mass = rootPart.AssemblyMass
+		local yError = targetY - rootPart.Position.Y
+		local yVel = rootPart.AssemblyLinearVelocity.Y
+		local gravityComp = mass * workspace.Gravity
+		local springForce = (yError * FLOAT_STIFFNESS - yVel * FLOAT_DAMPING) * mass
+		force.Force = Vector3.new(0, gravityComp + springForce, 0)
+	end
+end)
 
 while true do
 	task.wait(3)

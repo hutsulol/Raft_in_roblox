@@ -59,9 +59,16 @@ local primaryPart = boat.PrimaryPart
 -- forever). With a live probe the raft naturally falls under gravity
 -- when it's off-water and snaps to the surface the moment it drifts
 -- back over the ocean.
+-- Whitelist filter against workspace.Terrain only. The earlier
+-- "Exclude {boat}" approach kept getting blocked by players standing
+-- on the raft and by floating resources / mercenaries the ray
+-- happened to pass through — every non-terrain hit short-circuits
+-- the Material.Water check below and pretended the raft was over
+-- land, which silently disabled gravity compensation and left the
+-- raft on whatever it last collided with.
 local oceanRayParams = RaycastParams.new()
-oceanRayParams.FilterType = Enum.RaycastFilterType.Exclude
-oceanRayParams.FilterDescendantsInstances = {boat}
+oceanRayParams.FilterType = Enum.RaycastFilterType.Include
+oceanRayParams.FilterDescendantsInstances = {workspace.Terrain}
 oceanRayParams.IgnoreWater = false
 
 local function probeWaterY(x, z)
