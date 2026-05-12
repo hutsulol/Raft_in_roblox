@@ -1,4 +1,4 @@
-local SPEED = 15
+local SPEED = 25
 local PADDLE_BOOST = 5 -- extra m/s added to base speed during a paddle stroke
 local PADDLE_DECAY = 1.5 -- seconds for paddle boost to decay
 local PADDLE_COURSE_NUDGE = math.rad(3) -- max course rotation per paddle stroke
@@ -7,24 +7,12 @@ local PADDLE_COURSE_NUDGE = math.rad(3) -- max course rotation per paddle stroke
 -- bow-aligned target velocity faster (kills sideways drift more aggressively).
 local VELOCITY_GAIN = 6
 
--- Custom buoyancy: fully counteracts gravity so the raft hovers at the
--- water surface (probed live each frame — see probeWaterY below), then
--- a spring-damper corrects any displacement. Without gravity
+-- Custom buoyancy: fully counteracts gravity so the raft hovers at waterY,
+-- then a spring-damper corrects any displacement. Without gravity
 -- compensation, the spring alone would need enormous stiffness to fight
 -- the 196.2 studs/s² gravity — at stiffness 8 the raft sinks ~25 studs.
-local BUOYANCY_STIFFNESS = 10 -- spring correction for displacement from water surface
+local BUOYANCY_STIFFNESS = 10 -- spring correction for displacement from waterY
 local BUOYANCY_DAMPING = 6    -- damping to prevent vertical oscillation
-
--- Wave bobbing. Small enough to read as "the raft is alive on the
--- water" without making it nauseating to stand on. Vertical bob is
--- additive on top of the water-surface target; roll/pitch are
--- composed onto the AlignOrientation target each frame.
-local BOB_AMPLITUDE   = 0.35 -- studs of vertical sinusoid
-local BOB_FREQ        = 0.45 -- Hz
-local ROLL_AMPLITUDE  = math.rad(2.2)
-local ROLL_FREQ       = 0.35
-local PITCH_AMPLITUDE = math.rad(1.6)
-local PITCH_FREQ      = 0.28
 
 -- ─── Wind event ───
 -- Wind only starts once the players have survived past the 5th day, then
@@ -50,39 +38,9 @@ end
 
 local primaryPart = boat.PrimaryPart
 
--- Probe the actual terrain water surface beneath the raft every
--- frame. Capturing primaryPart.Position.Y once at boot is wrong as
--- soon as the raft drifts to a region where the water surface is at
--- a different Y (rare in this game, but more importantly the raft
--- can spawn on top of an island — capturing that island-top Y would
--- make the buoyancy spring lock the raft to flying above the water
--- forever). With a live probe the raft naturally falls under gravity
--- when it's off-water and snaps to the surface the moment it drifts
--- back over the ocean.
--- Whitelist filter against workspace.Terrain only. The earlier
--- "Exclude {boat}" approach kept getting blocked by players standing
--- on the raft and by floating resources / mercenaries the ray
--- happened to pass through — every non-terrain hit short-circuits
--- the Material.Water check below and pretended the raft was over
--- land, which silently disabled gravity compensation and left the
--- raft on whatever it last collided with.
-local oceanRayParams = RaycastParams.new()
-oceanRayParams.FilterType = Enum.RaycastFilterType.Include
-oceanRayParams.FilterDescendantsInstances = {workspace.Terrain}
-oceanRayParams.IgnoreWater = false
-
-local function probeWaterY(x, z)
-	local origin = Vector3.new(x, 1000, z)
-	local result = workspace:Raycast(origin, Vector3.new(0, -2000, 0), oceanRayParams)
-	if result and result.Material == Enum.Material.Water then
-		return result.Position.Y
-	end
-	return nil
-end
-
--- Initial probe so the boot frame already targets a real surface (or
--- the spawn Y as a sane fallback for places without terrain water).
-local waterY = probeWaterY(primaryPart.Position.X, primaryPart.Position.Z) or primaryPart.Position.Y
+-- Capture water surface Y while the raft is still anchored at its placed
+-- position. This is the target height for the buoyancy spring.
+local waterY = primaryPart.Position.Y
 
 -- Collision groups (T29/T34). Floating resources (logs / leaves /
 -- plastic canisters) are kept in "FloatingResource" so they drift
@@ -461,37 +419,15 @@ RunService.Heartbeat:Connect(function(dt)
 	local velocityError = desiredVelocity - flatVelocity
 	local horizontalForce = velocityError * totalMass * VELOCITY_GAIN
 
-	-- Live-probe the water surface beneath the raft. If we're over
-	-- water, buoyancy locks the raft to it (with a small sinusoidal
-	-- bob layered on top). If we're over land — e.g. the player just
-	-- pushed the raft onto an island shore — we deliberately DO NOT
-	-- compensate gravity, so the raft falls under physics rather than
-	-- hovering in the air at its old waterY. That gives the "raft
-	-- finds its footing on the water" behaviour: it can't fly.
-	local pos = primaryPart.Position
-	local probed = probeWaterY(pos.X, pos.Z)
-	local onWater = probed ~= nil
-	if onWater then
-		waterY = probed
-	end
-
-	local now = tick()
-	local bobOffset = math.sin(now * BOB_FREQ * 2 * math.pi) * BOB_AMPLITUDE
-	local targetY = waterY + bobOffset
-
+	-- Custom buoyancy: first counteract gravity entirely so the raft is
+	-- weightless, then apply a spring-damper to lock it at waterY.
+	-- gravityCompensation alone makes the raft hover; the spring corrects
+	-- any drift above or below the water surface.
+	local gravityCompensation = totalMass * workspace.Gravity
+	local yError = waterY - primaryPart.Position.Y
 	local yVelocity = currentVelocity.Y
-	local buoyancyForce
-	if onWater then
-		local gravityCompensation = totalMass * workspace.Gravity
-		local yError = targetY - pos.Y
-		local springForce = (yError * BUOYANCY_STIFFNESS - yVelocity * BUOYANCY_DAMPING) * totalMass
-		buoyancyForce = gravityCompensation + springForce
-	else
-		-- No water under the raft — gravity does its job; we just damp
-		-- the vertical velocity slightly so the descent isn't a brutal
-		-- freefall onto an island.
-		buoyancyForce = -yVelocity * totalMass * 0.5
-	end
+	local springForce = (yError * BUOYANCY_STIFFNESS - yVelocity * BUOYANCY_DAMPING) * totalMass
+	local buoyancyForce = gravityCompensation + springForce
 
 	vectorForce.Force = Vector3.new(horizontalForce.X, buoyancyForce, horizontalForce.Z)
 
@@ -499,23 +435,16 @@ RunService.Heartbeat:Connect(function(dt)
 	alignOrientation.MaxTorque = totalMass * 500
 	-- Compose the target rotation from the initial rotation + a world-Y yaw
 	-- change. This avoids the Euler gimbal lock at 90° pitch that made
-	-- CFrame.fromEulerAnglesYXZ(π/2, yaw, 0) unstable. Onto that we layer
-	-- a gentle sinusoidal roll/pitch (only when actually floating on
-	-- water) so the raft visibly rides the waves instead of standing
-	-- statue-still on the ocean.
+	-- CFrame.fromEulerAnglesYXZ(π/2, yaw, 0) unstable.
 	local yawDelta = lockedYaw - initialYaw
 	local targetRotation = CFrame.Angles(0, yawDelta, 0) * initialRotation
-	if onWater then
-		local rollOffset  = math.sin(now * ROLL_FREQ  * 2 * math.pi)        * ROLL_AMPLITUDE
-		local pitchOffset = math.sin(now * PITCH_FREQ * 2 * math.pi + 1.57) * PITCH_AMPLITUDE
-		targetRotation = targetRotation * CFrame.Angles(pitchOffset, 0, rollOffset)
-	end
 	alignOrientation.CFrame = targetRotation
 
 	-- Update RestCFrame so building systems use the current yaw. Use the
 	-- live pos.Y (not a captured init-time value) so the rest frame always
 	-- tracks the raft's real vertical position, even if the raft spawned
 	-- above or below its settled water-level Y.
+	local pos = primaryPart.Position
 	primaryPart:SetAttribute("RestCFrame", CFrame.new(pos) * targetRotation)
 	primaryPart:SetAttribute("RestYaw", lockedYaw)
 

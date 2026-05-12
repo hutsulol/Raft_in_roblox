@@ -174,28 +174,9 @@ local function setupResourceCollision(resource, maxHP)
 	end
 end
 
--- ─── Water-surface probe ───
--- Used by spawnResource to land each item directly on the terrain
--- water surface at its own X/Z instead of inheriting the raft's
--- bobbing Y (which could even be the island Y if the raft is currently
--- beached). Without this, items spawn above or below the real water
--- and visibly "fall down" instead of bobbing on the ocean.
-local oceanProbeParams = RaycastParams.new()
-oceanProbeParams.FilterType = Enum.RaycastFilterType.Include
-oceanProbeParams.FilterDescendantsInstances = {workspace.Terrain}
-oceanProbeParams.IgnoreWater = false
-
-local function probeOceanSurfaceY(x, z)
-	local origin = Vector3.new(x, 1000, z)
-	local result = workspace:Raycast(origin, Vector3.new(0, -2000, 0), oceanProbeParams)
-	if result and result.Material == Enum.Material.Water then
-		return result.Position.Y
-	end
-	return nil
-end
-
 local function spawnResource(templateName, resourceType, resourceAmount, boat)
 	local root = boat.PrimaryPart
+	local waterY = root.Position.Y
 	-- Use raft's actual movement direction so resources always spawn ahead
 	local velocity = root.AssemblyLinearVelocity
 	local flatVel = Vector3.new(velocity.X, 0, velocity.Z)
@@ -207,14 +188,11 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 		local rawForward = root.CFrame.LookVector
 		forward = Vector3.new(rawForward.X, 0, rawForward.Z).Unit
 	end
-	local spawnX = root.Position.X + forward.X * math.random(300, 450) + math.random(-75, 75)
-	local spawnZ = root.Position.Z + forward.Z * math.random(300, 450) + math.random(-75, 75)
-	-- Spawn exactly on the terrain water surface. If the probe finds
-	-- no water below this XZ (over an island, or off-map), bail — the
-	-- spawn would have visibly dropped onto land otherwise.
-	local waterY = probeOceanSurfaceY(spawnX, spawnZ)
-	if not waterY then return end
-	local spawnPos = Vector3.new(spawnX, waterY, spawnZ)
+	local spawnPos = Vector3.new(
+		root.Position.X + forward.X * math.random(300, 450) + math.random(-75, 75),
+		waterY,
+		root.Position.Z + forward.Z * math.random(300, 450) + math.random(-75, 75)
+	)
 
 	-- Don't spawn resources on islands
 	local islandPositions = _G.IslandPositions or {}
@@ -294,19 +272,9 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 	-- CanCollide = true so Roblox terrain water buoyancy keeps them
 	-- floating, and Touched still fires for the pickup + raft-collision
 	-- damage paths.
-	-- Density < 1 is required for Roblox terrain water buoyancy to
-	-- lift a part above the surface; the default 0.7 from the template
-	-- isn't always honoured if a Mesh or a CustomPhysicalProperties
-	-- attribute is missing, and we saw items belly-flop straight
-	-- through the water and sink. Set it explicitly on every spawned
-	-- part so floating is guaranteed regardless of how the template
-	-- was authored.
-	local floatProps = PhysicalProperties.new(0.4, 0.3, 0.5, 1, 1)
-
 	if clone:IsA("BasePart") then
 		clone.Anchored = false
 		clone.CollisionGroup = "FloatingResource"
-		clone.CustomPhysicalProperties = floatProps
 		clone:SetNetworkOwner(nil)
 	end
 
@@ -314,7 +282,6 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 		if part:IsA("BasePart") then
 			part.Anchored = false
 			part.CollisionGroup = "FloatingResource"
-			part.CustomPhysicalProperties = floatProps
 			part:SetNetworkOwner(nil)
 		end
 	end
@@ -326,27 +293,6 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 	local rootPart = clone:IsA("BasePart") and clone or clone.PrimaryPart
 	if rootPart then
 		rootPart.AssemblyLinearVelocity = driftVel
-	end
-
-	-- Explicit buoyancy: Roblox's native terrain-water buoyancy turned
-	-- out unreliable here (the items dropped straight to the seabed
-	-- regardless of density). Attach a VectorForce that mirrors the
-	-- raft's spring-damper to a captured water Y for the part's
-	-- assembly. Y is locked, XZ stays free so driftVel still works.
-	if rootPart then
-		local attach = Instance.new("Attachment")
-		attach.Name = "FloatAttach"
-		attach.Parent = rootPart
-
-		local force = Instance.new("VectorForce")
-		force.Name = "FloatForce"
-		force.Attachment0 = attach
-		force.RelativeTo = Enum.ActuatorRelativeTo.World
-		force.ApplyAtCenterOfMass = true
-		force.Force = Vector3.zero
-		force.Parent = rootPart
-
-		rootPart:SetAttribute("FloatTargetY", waterY)
 	end
 
 	CollectionService:AddTag(clone, "Resource")
@@ -361,32 +307,6 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 		end
 	end)
 end
-
--- ─── Per-frame buoyancy for every tagged Resource ───
--- Single Heartbeat that walks all tagged Resources and updates their
--- FloatForce. Cheaper than spawning one connection per resource, and
--- robust to resources that were tagged but didn't go through
--- spawnResource (e.g. loaded from a save).
-local FLOAT_STIFFNESS = 8
-local FLOAT_DAMPING   = 3
-local game_RunService = game:GetService("RunService")
-game_RunService.Heartbeat:Connect(function()
-	for _, resource in CollectionService:GetTagged("Resource") do
-		local rootPart = resource:IsA("BasePart") and resource or resource.PrimaryPart
-		if not rootPart or not rootPart.Parent then continue end
-		local force = rootPart:FindFirstChild("FloatForce")
-		if not force or not force:IsA("VectorForce") then continue end
-		local targetY = rootPart:GetAttribute("FloatTargetY")
-		if not targetY then continue end
-
-		local mass = rootPart.AssemblyMass
-		local yError = targetY - rootPart.Position.Y
-		local yVel = rootPart.AssemblyLinearVelocity.Y
-		local gravityComp = mass * workspace.Gravity
-		local springForce = (yError * FLOAT_STIFFNESS - yVel * FLOAT_DAMPING) * mass
-		force.Force = Vector3.new(0, gravityComp + springForce, 0)
-	end
-end)
 
 while true do
 	task.wait(3)
