@@ -37,9 +37,18 @@ local function enableBushGrapes(garden)
 end
 
 -- ─── Model Swap (dry ↔ watered, like purifier) ───
+-- Dry / wet template names live on the garden as attributes so the
+-- swap function can handle both the regular Garden (Garden ↔
+-- Garden_watered) and the tree-sized variant (Bed_Garden_For_Tree ↔
+-- Bed_Garden_For_Tree_Wet) without forking the function.
 local function swapGardenModel(garden, watered)
-	local templateName = watered and "Garden_watered" or "Garden"
+	local dryName = garden:GetAttribute("DryTemplate") or "Garden"
+	local wetName = garden:GetAttribute("WetTemplate") or "Garden_watered"
+	local templateName = watered and wetName or dryName
 	local template = rs:FindFirstChild(templateName)
+		or rs:FindFirstChild(templateName, true)
+		or workspace:FindFirstChild(templateName)
+		or workspace:FindFirstChild(templateName, true)
 	if not template then
 		warn("GardenSystem: model not found: " .. templateName)
 		return
@@ -156,7 +165,10 @@ local function swapGardenModel(garden, watered)
 	garden:SetAttribute("IsGarden", true)
 	garden:SetAttribute("IsWatered", watered)
 	garden:SetAttribute("PlacedBy", placedBy)
-	garden.Name = "Garden"
+	-- Restore the canonical dry name so external systems (save / load,
+	-- placement overlap, find-by-name) keep matching. Tree-sized beds
+	-- stay named Bed_Garden_For_Tree regardless of wet state.
+	garden.Name = garden:GetAttribute("DryTemplate") or "Garden"
 
 	-- If just watered, enable grapes on any bushes
 	if watered then
@@ -299,18 +311,25 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 	if action == "placeGarden" then
 		placeBedTemplate("Garden", "Garden", "Garden", {
-			IsGarden  = true,
-			IsWatered = false,
+			IsGarden     = true,
+			IsWatered    = false,
+			DryTemplate  = "Garden",
+			WetTemplate  = "Garden_watered",
 		})
 
 	elseif action == "placeBedGardenForTree" then
-		-- Larger tree-sized garden bed. Uses the same on-raft welding
-		-- flow as the regular garden but carries a different name +
-		-- IsBedGardenForTree attribute so downstream systems (future
-		-- tree-planting logic) can distinguish it from a regular
-		-- bush-hosting garden.
+		-- Larger tree-sized garden bed. Same on-raft welding flow +
+		-- watering flow as the regular garden (IsGarden = true so the
+		-- shared waterGarden path picks it up), just with its own dry /
+		-- wet template pair: Bed_Garden_For_Tree ↔ Bed_Garden_For_Tree_Wet.
+		-- IsBedGardenForTree stays for future tree-planting logic that
+		-- needs to distinguish the two bed kinds.
 		placeBedTemplate("Bed_Garden_For_Tree", "Bed_Garden_For_Tree", "Bed_Garden_For_Tree", {
+			IsGarden           = true,
+			IsWatered          = false,
 			IsBedGardenForTree = true,
+			DryTemplate        = "Bed_Garden_For_Tree",
+			WetTemplate        = "Bed_Garden_For_Tree_Wet",
 		})
 
 	elseif action == "waterGarden" then
