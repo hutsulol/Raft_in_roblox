@@ -637,7 +637,11 @@ local function findDownedPirateNearby()
 	for _, m in CollectionService:GetTagged("HostilePirate") do consider(m, candidates) end
 	for _, m in workspace:GetChildren() do consider(m, candidates) end
 
-	local closest, closestDist = nil, 15
+	-- 25 studs — the previous 15-stud radius required the player to be
+	-- standing almost on top of the body, which was confusing after a
+	-- shotgun kill at range. CollectionService:HasTag still gates the
+	-- candidate set so we won't pick up unrelated rigs further out.
+	local closest, closestDist = nil, 25
 	for _, child in candidates do
 		-- Strict type filter: only models registered in NpcTypes count
 		-- as recruitables. This is what fixes the cross-recruitment
@@ -825,7 +829,12 @@ local function openRecruitPanel(pirate)
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
+	-- GetFocusedTextBox() is the strict "user is actively typing"
+	-- check. The broader `processed` guard also went true any time a
+	-- GuiObject in the focus chain claimed the keyboard for other
+	-- reasons (e.g. the workbench Search TextBox lingering in the
+	-- focus chain after close), which silently killed E-to-recruit.
+	if UserInputService:GetFocusedTextBox() then return end
 	if input.KeyCode ~= Enum.KeyCode.E then return end
 	if defeatDialogueOpen then return end
 
