@@ -1,4 +1,4 @@
-local SPEED = 3
+local SPEED = 15
 local PADDLE_BOOST = 5 -- extra m/s added to base speed during a paddle stroke
 local PADDLE_DECAY = 1.5 -- seconds for paddle boost to decay
 local PADDLE_COURSE_NUDGE = math.rad(3) -- max course rotation per paddle stroke
