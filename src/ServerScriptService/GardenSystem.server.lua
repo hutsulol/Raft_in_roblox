@@ -208,7 +208,14 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 	-- and post-place model Name differ.
 	local function placeBedTemplate(toolName, templateName, finalName, extraAttributes)
 		local tool = char:FindFirstChildWhichIsA("Tool")
-		if not tool or tool.Name ~= toolName then return end
+		if not tool or tool.Name ~= toolName then
+			warn(("GardenSystem[%s]: no equipped Tool named %s (got %s)"):format(
+				toolName,
+				toolName,
+				tool and tool.Name or "<none>"
+			))
+			return
+		end
 
 		local raft = workspace:FindFirstChild("Raft")
 		if not raft or not raft.PrimaryPart then return end
@@ -217,9 +224,17 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
 
+		-- Template lookup: ReplicatedStorage (direct then recursive),
+		-- then Workspace (direct then recursive) as a fallback so a
+		-- Studio-placed master template that wasn't moved to
+		-- ReplicatedStorage still works. We Clone() either way so the
+		-- original isn't destroyed when the player places one.
 		local template = rs:FindFirstChild(templateName)
+			or rs:FindFirstChild(templateName, true)
+			or workspace:FindFirstChild(templateName)
+			or workspace:FindFirstChild(templateName, true)
 		if not template then
-			warn("GardenSystem: template not found in ReplicatedStorage: " .. templateName)
+			warn(("GardenSystem[%s]: template not found (looked in ReplicatedStorage + Workspace, recursive). Move the Model named %q into ReplicatedStorage to fix."):format(toolName, templateName))
 			return
 		end
 
