@@ -635,7 +635,25 @@ local function findDownedPirateNearby()
 	end
 	local candidates = {}
 	for _, m in CollectionService:GetTagged("HostilePirate") do consider(m, candidates) end
+	-- Top-level workspace pass for legacy untagged rigs.
 	for _, m in workspace:GetChildren() do consider(m, candidates) end
+	-- Pirates can also be authored inside scenery models (e.g. Island_1
+	-- in Studio): they live as children of the island Model, not as
+	-- direct workspace children, and the spawner that would normally
+	-- stamp HostilePirate hasn't run on them. Walk one level deeper
+	-- through every Model in workspace and pick up any descendant
+	-- Model that has a Humanoid — that's enough of a pre-filter to
+	-- avoid scanning the whole workspace while still catching island-
+	-- nested pirates.
+	for _, top in workspace:GetChildren() do
+		if top:IsA("Model") then
+			for _, inner in top:GetDescendants() do
+				if inner:IsA("Model") and inner:FindFirstChildWhichIsA("Humanoid") then
+					consider(inner, candidates)
+				end
+			end
+		end
+	end
 
 	-- 25 studs — the previous 15-stud radius required the player to be
 	-- standing almost on top of the body, which was confusing after a
