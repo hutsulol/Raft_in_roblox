@@ -90,41 +90,69 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	local inv = _G.GetInventory and _G.GetInventory(player) or {}
 	if (inv.Log or 0) < 2 then return end
 
+	-- Look up the template BEFORE deducting resources. The old flow
+	-- pulled 2 Log first, then bailed silently when the template was
+	-- missing — players watched their logs vanish with no Pick-Axe in
+	-- hand. We also fall back to a recursive search so the template
+	-- can live inside a sub-folder (e.g. ReplicatedStorage.Tools),
+	-- matching how InventoryCrafting resolves recipes.
+	local template = rs:FindFirstChild("Pick-Axe") or rs:FindFirstChild("Pick-Axe", true)
+
 	if _G.RemoveResourceFromInventory then
 		_G.RemoveResourceFromInventory(player, "Log", 2)
 	else
 		inv.Log = inv.Log - 2
 	end
 
-	local template = rs:FindFirstChild("Pick-Axe")
-	if not template then return end
-
-	local cloned = template:Clone()
 	local tool
 
-	if cloned:IsA("Tool") then
-		tool = cloned
+	if template then
+		local cloned = template:Clone()
+
+		if cloned:IsA("Tool") then
+			tool = cloned
+			if not tool:FindFirstChild("Handle") then
+				local firstPart = tool:FindFirstChildWhichIsA("BasePart", true)
+				if firstPart then firstPart.Name = "Handle" end
+			end
+		else
+			tool = Instance.new("Tool")
+			tool.Name = "Pick-Axe"
+			tool.CanBeDropped = false
+
+			if cloned:IsA("Model") then
+				local handle = cloned:FindFirstChild("Handle")
+				if not handle then
+					handle = cloned:FindFirstChildWhichIsA("BasePart", true)
+				end
+				for _, child in cloned:GetChildren() do
+					child.Parent = tool
+				end
+				if handle and handle.Name ~= "Handle" then
+					handle.Name = "Handle"
+				end
+			elseif cloned:IsA("BasePart") then
+				cloned.Name = "Handle"
+				cloned.Parent = tool
+			end
+			cloned:Destroy()
+		end
 	else
+		-- Missing template — still hand the player a working placeholder
+		-- Tool with the right name + icon (mirrors InventoryCrafting's
+		-- fallback for tool recipes). The Mining systems key off
+		-- tool.Name == "Pick-Axe" so the placeholder is still functional
+		-- for hitting rocks, just invisible.
 		tool = Instance.new("Tool")
 		tool.Name = "Pick-Axe"
 		tool.CanBeDropped = false
-
-		if cloned:IsA("Model") then
-			local handle = cloned:FindFirstChild("Handle")
-			if not handle then
-				handle = cloned:FindFirstChildWhichIsA("BasePart", true)
-			end
-			for _, child in cloned:GetChildren() do
-				child.Parent = tool
-			end
-			if handle and handle.Name ~= "Handle" then
-				handle.Name = "Handle"
-			end
-		elseif cloned:IsA("BasePart") then
-			cloned.Name = "Handle"
-			cloned.Parent = tool
-		end
-		cloned:Destroy()
+		tool.TextureId = "rbxassetid://89809613033816"
+		local handle = Instance.new("Part")
+		handle.Name = "Handle"
+		handle.Size = Vector3.new(1, 1, 1)
+		handle.Transparency = 1
+		handle.Parent = tool
+		warn("[PickAxeSystem] Pick-Axe template missing from ReplicatedStorage — handed placeholder Tool")
 	end
 
 	if _G.GiveToolOrDrop then
