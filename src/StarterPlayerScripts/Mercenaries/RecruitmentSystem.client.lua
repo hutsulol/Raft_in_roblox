@@ -642,39 +642,83 @@ local function findDownedPirateNearby()
 	-- shotgun kill at range. CollectionService:HasTag still gates the
 	-- candidate set so we won't pick up unrelated rigs further out.
 	local closest, closestDist = nil, 25
+
+	-- Debug breadcrumbs. When the prompt isn't appearing it's almost
+	-- always one of the gates below silently rejecting the body — the
+	-- prints let the user (or me) see which one fired in the Studio
+	-- output without having to instrument blindly.
+	local DEBUG = true
+	local rejected = {}
+
 	for _, child in candidates do
-		-- Strict type filter: only models registered in NpcTypes count
-		-- as recruitables. This is what fixes the cross-recruitment
-		-- bug — without this, any downed humanoid (zombies, decor
-		-- ragdolls, even other-mercenary models) could open the
-		-- "Recruit Pirate?" panel.
+		local why
 		local npcInfo = NpcTypes.resolve(child)
-		if npcInfo
-			and child:IsA("Model")
-			and child:FindFirstChildWhichIsA("Humanoid")
-			and not Players:GetPlayerFromCharacter(child)
-			and not CollectionService:HasTag(child, "SpawnedMercenary")
-			and isModelDowned(child)
-			and not child:GetAttribute("Claimed")
-			and not claimedLocally[child]
-		then
+		-- Permissive fallback: if the rig still carries the HostilePirate
+		-- tag we treat it as recruitable even when NpcTypes.resolve
+		-- fails (e.g. cloned ragdoll missing the NpcType attribute on
+		-- some Roblox versions). The tag is set by the spawner and
+		-- preserved through clones in current Roblox.
+		local hostileTag = CollectionService:HasTag(child, "HostilePirate")
+
+		if not npcInfo and not hostileTag then
+			why = "no NpcType + no HostilePirate tag"
+		elseif not child:IsA("Model") then
+			why = "not a Model"
+		elseif not child:FindFirstChildWhichIsA("Humanoid") then
+			why = "no Humanoid"
+		elseif Players:GetPlayerFromCharacter(child) then
+			why = "is a player character"
+		elseif CollectionService:HasTag(child, "SpawnedMercenary") then
+			why = "is SpawnedMercenary"
+		elseif not isModelDowned(child) then
+			why = "not downed"
+		elseif child:GetAttribute("Claimed") then
+			why = "Claimed"
+		elseif claimedLocally[child] then
+			why = "claimedLocally"
+		end
+
+		if not why then
 			-- Use Torso or Head first — HumanoidRootPart can end up at a
 			-- weird position after ragdoll, and some death paths destroy
 			-- it outright. Fall back to ANY BasePart in the rig so a
 			-- ragdolled corpse is still locatable.
 			local part = child:FindFirstChild("Torso")
+				or child:FindFirstChild("UpperTorso")
 				or child:FindFirstChild("Head")
 				or child:FindFirstChild("HumanoidRootPart")
 				or child:FindFirstChildWhichIsA("BasePart", true)
-			if part then
+			if not part then
+				why = "no BasePart"
+			else
 				local d = (playerPos - part.Position).Magnitude
-				if d < closestDist then
+				if d >= closestDist then
+					why = string.format("too far (%.1f studs)", d)
+				else
 					closest = child
 					closestDist = d
 				end
 			end
 		end
+
+		if DEBUG and why then
+			rejected[#rejected + 1] = string.format("%s: %s", child:GetFullName(), why)
+		end
 	end
+
+	if DEBUG and not closest and #rejected > 0 then
+		-- Only print once every ~2s when nothing close was found, so the
+		-- output isn't a wall of text every RenderStepped tick. Uses an
+		-- attribute on the script for the throttle stamp.
+		local now = os.clock()
+		local lastPrint = script:GetAttribute("LastNoMatchPrint") or 0
+		if now - lastPrint > 2 then
+			script:SetAttribute("LastNoMatchPrint", now)
+			print("[Recruit] No downed pirate found nearby; rejected candidates:")
+			for _, r in ipairs(rejected) do print("  ", r) end
+		end
+	end
+
 	return closest
 end
 
