@@ -1,0 +1,115 @@
+-- Paddle Script
+-- Lives inside the Paddle Tool as a regular (server-side) Script,
+-- mirroring the Stone_Axe + Machete pattern. Plays the row animation
+-- ("RowR15" / "RowR6") and the "Rowing" sound when the player clicks
+-- to paddle. Steering itself stays in PaddleController.client.lua →
+-- PaddleAction RemoteEvent → BoatForwardMovement.server.lua; this
+-- script only handles the visual + audio swing feedback so the same
+-- animation reads correctly for every nearby player (Humanoid:Load-
+-- Animation replicates via the rig's Animator).
+--
+-- Asset names this script looks for inside the Tool:
+--   • Animation: "Row<RigType>"  (RowR15 for the modern rig)
+--                 fallback: any Animation child
+--   • Sound:     "Rowing"        (placed under Tool or under Handle)
+--                 fallback: any Sound named "Swing" / "Whoosh"
+
+local Tool = script.Parent
+Tool.Enabled = true
+
+local Handle = Tool:WaitForChild("Handle")
+
+local Services = {
+	Players = game:GetService("Players"),
+}
+
+-- ─── Sound lookup ───
+-- Rowing is authored inside the Tool itself per the user's screenshot;
+-- some older templates ship the swing sound under the Handle. Search
+-- both so we don't depend on a specific layout.
+local function findSound(names)
+	for _, n in ipairs(names) do
+		local s = Tool:FindFirstChild(n, true)
+		if s and s:IsA("Sound") then return s end
+		s = Handle:FindFirstChild(n, true)
+		if s and s:IsA("Sound") then return s end
+	end
+	return nil
+end
+local RowSound = findSound({ "Rowing", "Row", "RowSound", "Swing", "Whoosh" })
+
+-- Per the user's brief on the Stone_Axe (matches the PaddleController
+-- client cooldown of 1.0 s). Keep this in sync with the client's
+-- COOLDOWN so the animation/sound and the actual paddle stroke share
+-- the same rhythm.
+local SWING_COOLDOWN = 1.0
+
+local Animations = {}
+local events = {}
+local Player, Character, Humanoid
+
+local function Activated()
+	if not Tool.Enabled or not Humanoid or Humanoid.Health <= 0 then return end
+	Tool.Enabled = false
+	delay(SWING_COOLDOWN, function()
+		Tool.Enabled = true
+	end)
+
+	local track = Animations.RowAnim
+	if track then
+		pcall(function()
+			track:Stop(0)
+			track:Play(0.05)
+		end)
+	end
+	if RowSound then
+		pcall(function() RowSound:Play() end)
+	end
+end
+
+-- Loads the row animation once per equip. Tries the rig-specific name
+-- first ("RowR15" / "RowR6"), then any Animation child so the tool
+-- keeps working if the asset is renamed.
+local function loadRowAnim()
+	if not Humanoid or not Tool then return nil end
+
+	local anim = Tool:FindFirstChild("Row" .. Humanoid.RigType.Name)
+		or Tool:FindFirstChild("RowR15")
+		or Tool:FindFirstChild("RowR6")
+		or Tool:FindFirstChildWhichIsA("Animation", true)
+	if not anim or not anim:IsA("Animation") then return nil end
+
+	local ok, track = pcall(function() return Humanoid:LoadAnimation(anim) end)
+	if ok and track then
+		track.Priority = Enum.AnimationPriority.Action
+		return track
+	end
+	return nil
+end
+
+local function Equipped()
+	Character = Tool.Parent
+	Player    = Services.Players:GetPlayerFromCharacter(Character)
+	Humanoid  = Character:FindFirstChildOfClass("Humanoid")
+	if not Humanoid or Humanoid.Health <= 0 then return end
+
+	Animations.RowAnim = loadRowAnim()
+
+	events[#events + 1] = Tool.Activated:Connect(Activated)
+end
+
+local function Unequipped()
+	for i = 1, #events do
+		if events[i] then
+			events[i]:Disconnect()
+			events[i] = nil
+		end
+	end
+	if Animations.RowAnim then
+		pcall(function() Animations.RowAnim:Stop(0) end)
+		Animations.RowAnim = nil
+	end
+end
+
+Tool.Equipped:Connect(Equipped)
+Tool.Unequipped:Connect(Unequipped)
