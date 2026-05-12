@@ -13,10 +13,10 @@ StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local inventoryCraftEvent = ReplicatedStorage:WaitForChild("InventoryCraft")
 
-local LOG_ICON = "rbxassetid://110032041583533"
+local LOG_ICON = "rbxassetid://116178347748793"
 local PLASTIC_ICON = "rbxassetid://132919988751848"
-local STONE_ICON = "rbxassetid://134781813180973"
-local IRON_ORE_ICON = "rbxassetid://73676755288746"
+local STONE_ICON = "rbxassetid://96450657403376"
+local IRON_ORE_ICON = "rbxassetid://78456892304314"
 local IRON_INGOT_ICON = "rbxassetid://72890243946368"
 -- Leaves / Sand / Clay / Wet_Brick / Dry_Brick had asset ids that were
 -- updated in WorkbenchUI but never propagated here, so the inventory's
@@ -30,7 +30,7 @@ local ROPE_ICON = "rbxassetid://78492721752628"
 local SAND_ICON = "rbxassetid://92407877736322"
 local CLAY_ICON = "rbxassetid://129473903672183"
 local WET_BRICK_ICON = "rbxassetid://77999856849195"
-local DRY_BRICK_ICON = "rbxassetid://129896663405682"
+local DRY_BRICK_ICON = "rbxassetid://97609326528615"
 local BAG_EMPTY_ICON = "rbxassetid://89398456198664"
 local BAG_WITH_CLAY_ICON = "rbxassetid://126238050436106"
 local BAG_WITH_SAND_ICON = "rbxassetid://77748685223141"
@@ -74,7 +74,7 @@ local RESOURCE_ICONS = {
 }
 
 local TOOL_ICONS = {
-	["Hammer"] = "rbxassetid://96978301002259",
+	["Hammer"] = "rbxassetid://72168072336946",
 	["Pick-Axe"] = "rbxassetid://89809613033816",
 	["Cup"] = "rbxassetid://99673504095026",
 	["Destitalor"] = "rbxassetid://90221080738714",
@@ -83,12 +83,12 @@ local TOOL_ICONS = {
 
 	["Machete"] = "rbxassetid://92926554091794",
 	["Wood_Knife"] = "rbxassetid://110032041583533",
-	["WorkBench"] = "rbxassetid://104306543647624",
+	["WorkBench"] = "rbxassetid://116083064101694",
 	["Bed"] = "rbxassetid://85069521486600",
 	["Garden"] = "rbxassetid://77159786623285",
 	["Paddle"] = "rbxassetid://93358108538106",
 	["Sawmill"] = "rbxassetid://75858978626954",
-	["Shovel"] = "rbxassetid://91548954831391",
+	["Shovel"] = "rbxassetid://123765089142597",
 	["Hook"] = "rbxassetid://110032041583533",
 	["Axe"] = "rbxassetid://110032041583533",
 	-- Stone_Axe inherits the Pick-Axe icon as a placeholder until a
@@ -101,7 +101,7 @@ local TOOL_ICONS = {
 	["Injector"] = "rbxassetid://81132472504693",
 	["EmptyCapsule"] = "rbxassetid://116714708119585",
 	["FullCapsule"] = "rbxassetid://132749498016835",
-	["Phone"] = "rbxassetid://122333372049252",
+	["Phone"] = "rbxassetid://123703470055474",
 	["Anchor_part"] = "rbxassetid://120414328052740",
 	["bag_empty_2"] = BAG_EMPTY_ICON,
 }
