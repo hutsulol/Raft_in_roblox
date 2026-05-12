@@ -139,9 +139,14 @@ local function showNotif(rawName, count)
 	-- "Stone") grow with TextScaled to fill the column without
 	-- leaving a big empty gap on the right — the user explicitly
 	-- asked for "no empty space at all".
+	-- COUNT_W was tuned for single-digit "+N" originally; once
+	-- bursts started accumulating into "+30" / "+99" the count text
+	-- overflowed its column and clipped into the icon. Widened to
+	-- comfortably fit 3 digits at 26 px with breathing room before
+	-- the icon.
 	local PAD_LEFT   = 8
-	local COUNT_W    = 32
-	local ICON_GAP   = 4
+	local COUNT_W    = 52
+	local ICON_GAP   = 8
 	local ICON_SIZE  = NOTIF_HEIGHT - 12   -- 36 px in a 48 px card
 	local NAME_GAP   = 6
 	local PAD_RIGHT  = 6
