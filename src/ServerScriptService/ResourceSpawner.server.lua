@@ -174,9 +174,31 @@ local function setupResourceCollision(resource, maxHP)
 	end
 end
 
+-- ─── Water-surface probe ───
+-- Roblox terrain-water buoyancy turned out unreliable in this place
+-- (every spawned resource sank straight through the surface regardless
+-- of density). To keep the visuals working without touching the raft
+-- physics, we anchor each spawned resource exactly on the probed
+-- terrain water surface. Anchored parts still fire Touched against
+-- the moving raft, so collision damage and clicks both continue to
+-- work — the only thing we lose is physics-based drift, which wasn't
+-- visible at the spawn distance anyway.
+local oceanProbeParams = RaycastParams.new()
+oceanProbeParams.FilterType = Enum.RaycastFilterType.Include
+oceanProbeParams.FilterDescendantsInstances = {workspace.Terrain}
+oceanProbeParams.IgnoreWater = false
+
+local function probeOceanSurfaceY(x, z)
+	local origin = Vector3.new(x, 1000, z)
+	local result = workspace:Raycast(origin, Vector3.new(0, -2000, 0), oceanProbeParams)
+	if result and result.Material == Enum.Material.Water then
+		return result.Position.Y
+	end
+	return nil
+end
+
 local function spawnResource(templateName, resourceType, resourceAmount, boat)
 	local root = boat.PrimaryPart
-	local waterY = root.Position.Y
 	-- Use raft's actual movement direction so resources always spawn ahead
 	local velocity = root.AssemblyLinearVelocity
 	local flatVel = Vector3.new(velocity.X, 0, velocity.Z)
@@ -188,11 +210,14 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 		local rawForward = root.CFrame.LookVector
 		forward = Vector3.new(rawForward.X, 0, rawForward.Z).Unit
 	end
-	local spawnPos = Vector3.new(
-		root.Position.X + forward.X * math.random(300, 450) + math.random(-75, 75),
-		waterY,
-		root.Position.Z + forward.Z * math.random(300, 450) + math.random(-75, 75)
-	)
+	local spawnX = root.Position.X + forward.X * math.random(300, 450) + math.random(-75, 75)
+	local spawnZ = root.Position.Z + forward.Z * math.random(300, 450) + math.random(-75, 75)
+	-- Probe the actual water surface at the spawn XZ. If there's no
+	-- water below (over an island / off-map), bail rather than dropping
+	-- a log into the air.
+	local waterY = probeOceanSurfaceY(spawnX, spawnZ)
+	if not waterY then return end
+	local spawnPos = Vector3.new(spawnX, waterY, spawnZ)
 
 	-- Don't spawn resources on islands
 	local islandPositions = _G.IslandPositions or {}
@@ -286,13 +311,14 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 		end
 	end
 
-	-- Give resources a small random drift so they move visibly on the water
-	local driftAngle = math.random() * math.pi * 2
-	local driftSpeed = math.random(2, 5)
-	local driftVel = Vector3.new(math.cos(driftAngle) * driftSpeed, 0, math.sin(driftAngle) * driftSpeed)
+	-- Anchor the root part on the probed water surface. Roblox's terrain-
+	-- water buoyancy is unreliable in this place — without anchoring the
+	-- items dive straight through the surface to the seabed. Anchored
+	-- parts still fire Touched against the moving raft, so the click-to-
+	-- collect path and the raft-collision-damage path both keep working.
 	local rootPart = clone:IsA("BasePart") and clone or clone.PrimaryPart
 	if rootPart then
-		rootPart.AssemblyLinearVelocity = driftVel
+		rootPart.Anchored = true
 	end
 
 	CollectionService:AddTag(clone, "Resource")
