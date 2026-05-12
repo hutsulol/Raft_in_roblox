@@ -30,6 +30,12 @@ local mouse = player:GetMouse()
 local camera = workspace.CurrentCamera
 
 local COOLDOWN = 1.0 -- seconds between paddle strokes
+-- Maximum stud distance from the character to the water hit point.
+-- Without this the paddle would still register valid as long as the
+-- cursor was over water somewhere — the player could stand in the
+-- middle of the raft and still "paddle" the edge from far away.
+-- Tightened so the player has to actually be near the water's edge.
+local MAX_REACH = 6
 local lastPaddleTime = 0
 local currentTool = nil
 
@@ -65,6 +71,10 @@ local function canPaddleNow()
 	local hitPoint = result.Position
 	local toClick = Vector3.new(hitPoint.X - hrp.Position.X, 0, hitPoint.Z - hrp.Position.Z)
 	if toClick.Magnitude < 1 then return false end
+	-- Reach gate: the water point must be within arm's length of the
+	-- character. Standing in the middle of the raft and clicking a
+	-- distant patch of ocean should NOT count as a valid paddle.
+	if toClick.Magnitude > MAX_REACH then return false end
 	local forward = hrp.CFrame.LookVector
 	local flatForward = Vector3.new(forward.X, 0, forward.Z)
 	if flatForward.Magnitude < 0.01 then return false end
