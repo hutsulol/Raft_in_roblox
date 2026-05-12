@@ -214,7 +214,7 @@ end)
 
 -- ─── R key to rotate ───
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
+	if UserInputService:GetFocusedTextBox() then return end
 	if input.KeyCode == Enum.KeyCode.R and placing then
 		rotationAngle = rotationAngle + math.rad(90)
 	end

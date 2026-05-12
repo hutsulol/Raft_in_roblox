@@ -211,7 +211,12 @@ RunService.RenderStepped:Connect(function()
 end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
+	-- Only block R when an actual TextBox has the focus (chat, search
+	-- field, etc.). The broader `gameProcessed` guard was also true
+	-- when any GUI element claimed the keyboard for *other* reasons,
+	-- which broke ghost rotation after the workbench's Search TextBox
+	-- entered the focus chain.
+	if UserInputService:GetFocusedTextBox() then return end
 	if input.KeyCode == Enum.KeyCode.R and placing then
 		rotationAngle = rotationAngle + math.rad(90)
 	end

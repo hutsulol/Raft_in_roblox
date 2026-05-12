@@ -457,7 +457,7 @@ end)
 
 -- ─── R key to rotate placement ───
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
+	if UserInputService:GetFocusedTextBox() then return end
 	if input.KeyCode == Enum.KeyCode.R and (placingPurifier or placingWorkbench or placingGarden or placingBed or placingBush or placingSawmill) then
 		rotationAngle = rotationAngle + math.rad(90)
 	end
