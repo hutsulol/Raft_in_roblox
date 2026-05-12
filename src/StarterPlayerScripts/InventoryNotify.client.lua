@@ -139,14 +139,9 @@ local function showNotif(rawName, count)
 	-- "Stone") grow with TextScaled to fill the column without
 	-- leaving a big empty gap on the right — the user explicitly
 	-- asked for "no empty space at all".
-	-- COUNT_W was tuned for single-digit "+N" originally; once
-	-- bursts started accumulating into "+30" / "+99" the count text
-	-- overflowed its column and clipped into the icon. Widened to
-	-- comfortably fit 3 digits at 26 px with breathing room before
-	-- the icon.
 	local PAD_LEFT   = 8
-	local COUNT_W    = 52
-	local ICON_GAP   = 8
+	local COUNT_W    = 36
+	local ICON_GAP   = 4
 	local ICON_SIZE  = NOTIF_HEIGHT - 12   -- 36 px in a 48 px card
 	local NAME_GAP   = 6
 	local PAD_RIGHT  = 6
@@ -157,17 +152,26 @@ local function showNotif(rawName, count)
 	-- longer name in another card pulled the auto-scaled size
 	-- down. 26 px for "+N", 22 px for the name — both safely
 	-- readable at the 48 px card height.
+	-- Count uses TextScaled so the number adapts to the column:
+	-- "+1" renders at full 26 px, "+30" / "+999" shrink down to fit
+	-- without bleeding into the icon. The size constraint caps the
+	-- upper end so short text doesn't blow up into a giant glyph.
 	local countLabel = Instance.new("TextLabel")
 	countLabel.Position = UDim2.fromOffset(PAD_LEFT, 0)
 	countLabel.Size = UDim2.fromOffset(COUNT_W, NOTIF_HEIGHT)
 	countLabel.BackgroundTransparency = 1
 	countLabel.Text = "+" .. tostring(count)
 	countLabel.TextColor3 = Color3.fromRGB(250, 240, 215)
-	countLabel.TextSize = 26
+	countLabel.TextScaled = true
 	countLabel.Font = Enum.Font.GothamBold
 	countLabel.TextXAlignment = Enum.TextXAlignment.Left
 	countLabel.TextYAlignment = Enum.TextYAlignment.Center
 	countLabel.Parent = card
+
+	local countSizeCap = Instance.new("UITextSizeConstraint")
+	countSizeCap.MaxTextSize = 26
+	countSizeCap.MinTextSize = 12
+	countSizeCap.Parent = countLabel
 
 	-- Icon column — vertically centred 30x30 box.
 	local iconX = PAD_LEFT + COUNT_W + ICON_GAP
