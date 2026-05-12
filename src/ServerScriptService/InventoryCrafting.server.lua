@@ -81,7 +81,7 @@ local recipes = {
 		name = "Bed_Garden_For_Tree",
 		displayName = "Tree Garden Bed",
 		icon = "rbxassetid://137766871451752",
-		costs = {Log = 10},
+		costs = {Log = 1},
 		craftType = "placeable",
 		category = "Technology",
 		description = "A larger garden bed sized for growing a tree. Takes up more space on the raft than a regular garden.",
