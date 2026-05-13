@@ -476,6 +476,10 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 		if not lowerName:find("_seed") then return end
 
 		local seedName = tool.Name
+		-- Mark the Tool as consumed BEFORE destroying so the seed-Tool
+		-- refund hook in SeedToolSystem treats this as a successful
+		-- spend (no resource refund) rather than an unequip.
+		tool:SetAttribute("Consumed", true)
 		tool:Destroy()
 
 		target:SetAttribute("PlantedSeed", seedName)

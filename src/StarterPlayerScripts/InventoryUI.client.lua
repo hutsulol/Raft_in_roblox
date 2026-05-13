@@ -13,6 +13,28 @@ StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local inventoryCraftEvent = ReplicatedStorage:WaitForChild("InventoryCraft")
 
+-- Equip-seed-as-tool RemoteEvent. The seed resources (Banana_Seed,
+-- Coconut_Seed, Pineapple_Seed) stack in the inventory like any
+-- other resource, but the player can also "take one in hand" by
+-- clicking the slot — the server clones a matching Tool template,
+-- decrements the stack by 1, and refunds back if the Tool leaves
+-- the character without being planted. Lookup once, soft-wait so
+-- the event is available by the time the click handlers fire.
+local equipSeedEvent = ReplicatedStorage:FindFirstChild("EquipSeedAsTool")
+if not equipSeedEvent then
+	equipSeedEvent = ReplicatedStorage:WaitForChild("EquipSeedAsTool", 5)
+end
+
+-- Resource names that should trigger the seed-as-tool flow instead of
+-- the standard tool-equip path when the player clicks / presses the
+-- hotbar number. Keep in sync with SEED_RESOURCE_TO_TOOL on the
+-- server (ServerScriptService/SeedToolSystem.server.lua).
+local SEED_RESOURCE_SET = {
+	Banana_Seed    = true,
+	Coconut_Seed   = true,
+	Pineapple_Seed = true,
+}
+
 local LOG_ICON = "rbxassetid://116178347748793"
 local PLASTIC_ICON = "rbxassetid://132919988751848"
 local STONE_ICON = "rbxassetid://96450657403376"
@@ -2041,6 +2063,12 @@ local function buildHotbar()
 				equipToolByName(data.toolName)
 				task.wait(0.1)
 				renderAllSlots()
+			elseif data and data.type == "resource" and data.name and SEED_RESOURCE_SET[data.name] and equipSeedEvent then
+				-- Seed resource: ask the server to spawn a matching
+				-- Tool in the character's hand and decrement the stack.
+				-- Server handles the refund if the Tool is unequipped
+				-- without being used.
+				equipSeedEvent:FireServer(data.name)
 			end
 		end)
 	end
@@ -2467,6 +2495,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			equipToolByName(data.toolName)
 			task.wait(0.1)
 			renderAllSlots()
+		elseif data and data.type == "resource" and data.name and SEED_RESOURCE_SET[data.name] and equipSeedEvent then
+			-- Number-key on a seed-resource slot equips it as a Tool
+			-- via the server bridge. Same path as the slot-click
+			-- handler above.
+			equipSeedEvent:FireServer(data.name)
 		end
 	end
 end)
