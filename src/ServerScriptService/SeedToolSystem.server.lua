@@ -109,6 +109,8 @@ equipEvent.OnServerEvent:Connect(function(player, seedName)
 		end
 	end
 
+	if not backpack then return end
+
 	_G.RemoveResourceFromInventory(player, seedName, 1)
 	if _G.SendInventory then
 		_G.SendInventory(player)
@@ -120,36 +122,47 @@ equipEvent.OnServerEvent:Connect(function(player, seedName)
 	tool:SetAttribute("OwnerUserId", player.UserId)
 	tool.CanBeDropped = false
 
-	-- Connect the refund-on-unequip / refund-on-leave watcher. We use
-	-- AncestryChanged so a "switch to another slot" (Tool goes back to
-	-- Backpack) and a "drop / destroy" (Tool parent → nil) both
-	-- route through one handler.
+	-- Parent into Backpack first. The AncestryChanged refund watcher
+	-- below is gated on the "Ready" attribute so this initial parent
+	-- change AND the subsequent EquipTool() shuffle don't trip a
+	-- false refund. Ready flips to true once Tool.Equipped has fired
+	-- once — only AFTER that point does an unequip mean "the player
+	-- changed their mind".
+	tool.Parent = backpack
+
+	-- Force-equip: drop whatever else is in hand, then equip the new
+	-- seed Tool. Without UnequipTools() first, Roblox parks the new
+	-- Tool inside Character but keeps the existing one (e.g. the
+	-- Stone_Axe) visibly held, which the user reported as "the seed
+	-- doesn't come into hand". EquipTool also re-parents from
+	-- Backpack to Character, which is the cue we wait for below.
+	local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+	if humanoid then
+		pcall(function() humanoid:UnequipTools() end)
+		pcall(function() humanoid:EquipTool(tool) end)
+	end
+
+	-- Connect the refund-on-leave watcher. We start it disabled and
+	-- arm it on the first Equipped event so the Backpack-→-Character
+	-- transition we just performed (via EquipTool) doesn't refund.
+	tool.Equipped:Once(function()
+		tool:SetAttribute("Ready", true)
+	end)
+
 	tool.AncestryChanged:Connect(function(_, newParent)
+		if not tool:GetAttribute("Ready") then return end
 		if newParent == nil then
-			-- Tool fully removed from the world. If it wasn't consumed
-			-- by GardenSystem.plantSeedTool, refund. Otherwise just
-			-- let Destroy() complete.
+			-- Tool fully removed from the world. Refund unless the
+			-- plant action stamped Consumed=true.
 			task.defer(function()
 				refundSeed(player, tool)
 			end)
-		elseif newParent == backpack or (newParent and newParent:IsA("Backpack")) then
-			-- Player swapped to another hotbar slot — Backpack is the
-			-- Tool's new parent. Refund + destroy so the count returns
-			-- to the inventory stack.
+		elseif newParent and newParent:IsA("Backpack") then
+			-- Player swapped slots. Refund + destroy so the count
+			-- returns to the inventory stack.
 			task.defer(function()
 				refundSeed(player, tool)
 			end)
 		end
 	end)
-
-	-- Parent directly to the character so it auto-equips. If the
-	-- character has been deleted between request + here, fall back
-	-- to the backpack.
-	if char then
-		tool.Parent = char
-	elseif backpack then
-		tool.Parent = backpack
-	else
-		tool:Destroy()
-	end
 end)
