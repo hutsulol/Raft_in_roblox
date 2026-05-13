@@ -114,6 +114,12 @@ local TOOL_ICONS = {
 	["Phone"] = "rbxassetid://123703470055474",
 	["Anchor_part"] = "rbxassetid://120414328052740",
 	["bag_empty_2"] = BAG_EMPTY_ICON,
+	-- Seed-as-Tool variants. The Tool templates the user authored
+	-- carry these names; the icons mirror the matching seed resource
+	-- so they read the same as the inventory stack form.
+	["Palm_seed"]      = "rbxassetid://138995623166184",
+	["Banana_Seed"]    = "rbxassetid://73140419103065",
+	["Pineapple_seed"] = "rbxassetid://128520746024640",
 }
 
 -- Forward-declared so functions above line 1585 (quickTransfer,

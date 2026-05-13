@@ -23,6 +23,11 @@ local placingGarden = false
 local placingBedGardenForTree = false
 local placingBed = false
 local placingSawmill = false
+-- Seed-tool-in-hand planting (Banana_Seed / Palm_seed / etc.) — the
+-- player can click a watered Bed_Garden_For_Tree to drop the seedling
+-- there. No ghost is needed; we use the mouse target instead.
+local placingSeed = false
+local currentSeedTool = nil
 local lastGhostValid = false
 local lastGhostCF = nil
 local lastGhostRaftOffset = nil -- CFrame offset relative to raft
@@ -110,6 +115,16 @@ local function updateHint()
 	-- Grape tool hint
 	if currentTool.Name == "[GRAPES]" or currentTool.Name == "Grapes" then
 		hintLabel.Text = "Click to eat grapes"
+		hintLabel.Visible = true
+		return
+	end
+
+	-- Seed-tool hint: appears whenever a *_seed / *_Seed Tool is
+	-- equipped, regardless of whether the player is currently aiming
+	-- at a watered bed. Matches the user's expectation that the
+	-- prompt is visible while the seed is in hand.
+	if placingSeed then
+		hintLabel.Text = "Click on watered tree garden bed to plant"
 		hintLabel.Visible = true
 		return
 	end
@@ -410,6 +425,22 @@ local function onToolEquipped(tool)
 		placingBedGardenForTree = false
 		placingBed = false
 		createGhost("Sawmill")
+	elseif tool.Name:lower():find("_seed") then
+		-- Any seed-named Tool (Palm_seed, Banana_Seed, Pineapple_seed,
+		-- Coconut_Seed, ...) becomes a "plant on the next watered tree
+		-- bed I click" tool. No ghost — we don't have a single
+		-- preview model since the seedling pose only appears AFTER
+		-- the plant action lands on the server.
+		placingSeed = true
+		currentSeedTool = tool
+		placingPurifier = false
+		placingBush = false
+		placingWorkbench = false
+		placingGarden = false
+		placingBedGardenForTree = false
+		placingBed = false
+		placingSawmill = false
+		destroyGhost()
 	else
 		placingPurifier = false
 		placingBush = false
@@ -418,6 +449,8 @@ local function onToolEquipped(tool)
 		placingBedGardenForTree = false
 		placingBed = false
 		placingSawmill = false
+		placingSeed = false
+		currentSeedTool = nil
 		destroyGhost()
 	end
 
@@ -439,6 +472,8 @@ local function onToolUnequipped()
 	placingBedGardenForTree = false
 	placingBed = false
 	placingSawmill = false
+	placingSeed = false
+	currentSeedTool = nil
 	destroyGhost()
 	updateHint()
 end
@@ -562,6 +597,34 @@ mouse.Button1Down:Connect(function()
 		playPlaceSound()
 		destroyGhost()
 		placingSawmill = false
+		return
+	end
+
+	-- Seed-tool planting: raycast from mouse to find a watered tree
+	-- garden bed under the cursor and ask the server to plant a
+	-- seedling on it. Server destroys the Tool + drives the growth
+	-- stages (palm seeds → 4-stage growth; everything else stops at
+	-- the seedling).
+	if placingSeed and currentSeedTool then
+		local unitRay = camera:ViewportPointToRay(mouse.X, mouse.Y)
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { player.Character }
+		local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 200, params)
+		if not result then return end
+
+		-- Walk up to the bed Model (the ray hits one of its parts).
+		local target = result.Instance
+		while target and target ~= workspace do
+			if target:IsA("Model") and target:GetAttribute("IsBedGardenForTree") then break end
+			target = target.Parent
+		end
+		if not target or not target:IsA("Model") or not target:GetAttribute("IsBedGardenForTree") then return end
+		if not target:GetAttribute("IsWatered") then return end
+		if target:GetAttribute("GrowthStage") then return end
+
+		gardenActionEvent:FireServer("plantSeedTool", target)
+		playPlaceSound()
 		return
 	end
 

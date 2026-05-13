@@ -190,6 +190,19 @@ end
 -- Called recursively via task.delay; each call swaps to stage `idx`
 -- and schedules the next. We guard with the GrowthStage attribute so
 -- a re-water / chop / unplant cycle can short-circuit a pending step.
+--
+-- Stage progression rule: every seed swaps to Stage_1 (the generic
+-- seedling), but only "palm" seeds continue past it. Per the user
+-- brief, banana / pineapple seedlings stop at Stage_1 until further
+-- per-species art lands. The palm check looks for "palm" or
+-- "coconut" inside the PlantedSeed string so both the Tool name
+-- "Palm_seed" and the resource name "Coconut_Seed" qualify.
+local function isPalmSeed(plantedSeed)
+	if type(plantedSeed) ~= "string" then return false end
+	local lower = plantedSeed:lower()
+	return lower:find("palm") ~= nil or lower:find("coconut") ~= nil
+end
+
 local function growTree(garden, idx)
 	if not garden or not garden.Parent then return end
 	if garden:GetAttribute("GrowthStage") ~= idx - 1 then return end
@@ -203,6 +216,8 @@ local function growTree(garden, idx)
 	garden.Name = garden:GetAttribute("DryTemplate") or "Bed_Garden_For_Tree"
 	garden:SetAttribute("GrowthStage", idx)
 
+	local palm = isPalmSeed(garden:GetAttribute("PlantedSeed"))
+
 	if idx == #TREE_STAGES then
 		-- Final stage is a fully-grown tree the player can chop.
 		-- StoneAxeSystem checks Choppable + TreeHealth on the model;
@@ -211,11 +226,12 @@ local function growTree(garden, idx)
 		garden:SetAttribute("Choppable", true)
 		garden:SetAttribute("IsPlantedTree", true)
 		garden:SetAttribute("TreeHealth", 5)
-	else
+	elseif palm then
 		task.delay(TREE_STAGE_INTERVAL, function()
 			growTree(garden, idx + 1)
 		end)
 	end
+	-- else: non-palm seed → stays at Stage_1 indefinitely.
 end
 
 -- Reverts a chopped planted tree back to a dry empty bed. Registered
@@ -434,6 +450,36 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 		-- Cancel the dry-out timer so the bed stays "watered enough"
 		-- through the growth cycle. We clear WateredTime so the
 		-- existing dry-out task.delay short-circuits.
+		target:SetAttribute("WateredTime", nil)
+
+		growTree(target, 1)
+
+	elseif action == "plantSeedTool" then
+		-- Player clicks a watered tree bed while holding a seed Tool
+		-- (Banana_Seed / Palm_seed / etc.). Destroys the Tool +
+		-- kicks off the growth chain. growTree's palm check uses the
+		-- Tool's name verbatim, so "Palm_seed" / "Coconut_Seed"
+		-- progress through all four stages and anything else
+		-- (Banana_Seed / Pineapple_seed) freezes at the seedling.
+		if not target or not target:IsA("Model") then return end
+		if not target:GetAttribute("IsBedGardenForTree") then return end
+		if not target:GetAttribute("IsWatered") then return end
+		if target:GetAttribute("GrowthStage") then return end
+
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		if not hrp then return end
+		if (hrp.Position - target:GetPivot().Position).Magnitude > 15 then return end
+
+		local tool = char:FindFirstChildWhichIsA("Tool")
+		if not tool then return end
+		local lowerName = tool.Name:lower()
+		if not lowerName:find("_seed") then return end
+
+		local seedName = tool.Name
+		tool:Destroy()
+
+		target:SetAttribute("PlantedSeed", seedName)
+		target:SetAttribute("GrowthStage", 0)
 		target:SetAttribute("WateredTime", nil)
 
 		growTree(target, 1)
