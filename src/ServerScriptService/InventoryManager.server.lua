@@ -15,13 +15,24 @@ local DEFAULT_BASE_GRID_SLOTS = 5
 local DEFAULT_UNLOCKED = DEFAULT_HOTBAR_SLOTS + DEFAULT_BASE_GRID_SLOTS -- 13
 local AUTO_SAVE_INTERVAL = 120 -- seconds
 
--- All known resource names (keys the inventory can hold)
+-- All known resource names (keys the inventory can hold).
+-- Items missing from this list still get added to the inv table by
+-- AddResourceToInventory — Lua doesn't care about schema — but they
+-- (a) aren't restored on respawn / re-join because loadInventory only
+-- reads RESOURCE_SET-listed names from DataStore, and (b) aren't
+-- counted by getTotalResourceStacks so the trim guard skips them
+-- which can leave the player's slot count silently inconsistent. So
+-- every resource the player can legitimately end up holding must be
+-- registered here.
 local RESOURCE_NAMES = {
 	"Log", "Plastic", "Stone", "Plank", "Leaves", "Rope",
 	"Sand", "Clay", "Wet_Brick", "Dry_Brick",
 	"Iron_Ore", "Iron_Ingot",
 	"Blue_Fish", "Carp_Fish", "Fish_Bones", "Foil_Fish",
 	"Jelly_Fish", "Legendary_Fish", "Seabass_Fish", "Tilapia_Fish",
+	"Banana", "Banana_Seed",
+	"Coconut", "Coconut_Seed",
+	"Pineapple", "Pineapple_Seed",
 }
 
 local RESOURCE_SET = {}
