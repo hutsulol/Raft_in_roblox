@@ -41,6 +41,9 @@ local DISPLAY_NAMES = {
 	Wood_Knife     = "Wood Knife",
 	["Pick-Axe"]   = "Pick-Axe",
 	Stone_Axe      = "Stone Axe",
+	Banana_Seed    = "Banana Seed",
+	Coconut_Seed   = "Coconut Seed",
+	Pineapple_Seed = "Pineapple Seed",
 }
 
 local function displayName(rawName)

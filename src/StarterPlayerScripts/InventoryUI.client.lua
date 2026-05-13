@@ -71,6 +71,15 @@ local RESOURCE_ICONS = {
 	Legendary_Fish = LEGENDARY_FISH_ICON,
 	Seabass_Fish = SEABASS_FISH_ICON,
 	Tilapia_Fish = TILAPIA_FISH_ICON,
+	-- Fruits dropped from trees (Banana/Coconut) and the new
+	-- hand-harvested Pineapple, plus the matching seeds the player
+	-- can replant.
+	Banana          = "rbxassetid://95041000167181",
+	Banana_Seed     = "rbxassetid://73140419103065",
+	Coconut         = "rbxassetid://120321968340866",
+	Coconut_Seed    = "rbxassetid://138995623166184",
+	Pineapple       = "rbxassetid://93324727574975",
+	Pineapple_Seed  = "rbxassetid://128520746024640",
 }
 
 local TOOL_ICONS = {
