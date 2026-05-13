@@ -275,6 +275,15 @@ chopTreeEvent.OnServerEvent:Connect(function(player, treeModel)
 	chopTreeEvent:FireClient(player, "drops", drops, healthAfter)
 
 	if healthAfter <= 0 then
-		treeModel:Destroy()
+		-- Planted tree on a raft bed: the wrapper Model IS the tree-bed,
+		-- destroying it would also remove the bed. Hand it off to
+		-- GardenSystem instead, which swaps the bed back to its dry
+		-- empty state. Falls back to Destroy() for world-spawned trees
+		-- that have no bed under them.
+		if treeModel:GetAttribute("IsPlantedTree") and typeof(_G.OnPlantedTreeChopped) == "function" then
+			pcall(_G.OnPlantedTreeChopped, treeModel)
+		else
+			treeModel:Destroy()
+		end
 	end
 end)

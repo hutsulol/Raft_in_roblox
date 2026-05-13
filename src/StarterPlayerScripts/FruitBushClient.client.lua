@@ -1,9 +1,15 @@
 -- FruitBushClient.client.lua
--- Shows "[E] Collect Pineapple" when the player walks up to a fruit
--- bush, and fires HarvestFruit on E press. Server-side validation
--- (range / cooldown / inventory grant) lives in
--- ServerScriptService/FruitBushSystem.server.lua — this file is
--- pure UX.
+-- Handles every "press E next to a thing on the raft / island" loop
+-- that doesn't fit the existing tool-based interactions:
+--
+--   * Harvest a fruit-bearing model (PineApple leaves → 1-2 Pineapples
+--     + 1 Pineapple_Seed, cooldown).
+--   * Plant a seed on a watered Bed_Garden_For_Tree → kicks off the
+--     four-stage tree growth timer on the server (GardenSystem).
+--
+-- Server-side validation (range / cooldown / inventory grant / etc.)
+-- lives in ServerScriptService/FruitBushSystem + GardenSystem; this
+-- file is pure UX (hint label + E dispatch).
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -13,16 +19,17 @@ local UserInputService  = game:GetService("UserInputService")
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local harvestEvent = ReplicatedStorage:WaitForChild("HarvestFruit")
+local harvestEvent     = ReplicatedStorage:WaitForChild("HarvestFruit")
+local gardenActionEvent = ReplicatedStorage:WaitForChild("GardenAction")
 
--- Same prefix table the server uses (kept in sync manually — both are
--- short and this avoids replicating a config module just for one
--- shared constant).
 local HARVESTABLE_PREFIXES = {
 	{ prefix = "PineApple", display = "Pineapple" },
 }
 
 local PICKUP_RANGE = 12
+local PLANT_RANGE  = 12
+
+local SEED_NAMES = { "Pineapple_Seed", "Banana_Seed", "Coconut_Seed" }
 
 -- ─── Hint label ───
 local screenGui = Instance.new("ScreenGui")
@@ -59,32 +66,59 @@ local function matchHarvestable(model)
 	return nil
 end
 
--- Walk a Model's descendants once and pick up every nested Model that
--- matches a harvestable prefix. Pre-filters by ancestor name to avoid
--- a full workspace scan every frame.
+-- We use the same _G.InventorySlotData InventoryUI publishes (read-
+-- only here) to figure out if the player owns any seed. It's a
+-- snapshot of slot contents — fast to scan and updates as the server
+-- pushes inventory diffs back through InventoryUpdate.
+local function playerHasSeed()
+	local slots = _G.InventorySlotData
+	if typeof(slots) ~= "table" then return false end
+	for _, data in pairs(slots) do
+		if data and data.type == "resource" and data.count and data.count > 0 then
+			for _, seedName in ipairs(SEED_NAMES) do
+				if data.name == seedName then return true end
+			end
+		end
+	end
+	return false
+end
+
+local currentAction = nil  -- "harvest" | "plant"
 local currentTarget = nil
-local function findNearestBush()
+
+local function findInteraction()
 	local char = player.Character
 	local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return nil, nil end
+	if not hrp then return end
 	local playerPos = hrp.Position
 
-	local closest, closestEntry, closestDist = nil, nil, PICKUP_RANGE
+	local bestHarvest, bestHarvestEntry, bestHarvestDist = nil, nil, PICKUP_RANGE
+	local bestPlantBed, bestPlantDist = nil, PLANT_RANGE
+	local hasSeed = playerHasSeed()
 
 	local function considerModel(m)
+		-- Harvestable fruit bushes (PineApple leaves).
 		local entry = matchHarvestable(m)
-		if not entry then return end
-		if m:GetAttribute("FruitCooldown") then return end
-		local d = (playerPos - m:GetPivot().Position).Magnitude
-		if d < closestDist then
-			closest, closestEntry, closestDist = m, entry, d
+		if entry and not m:GetAttribute("FruitCooldown") then
+			local d = (playerPos - m:GetPivot().Position).Magnitude
+			if d < bestHarvestDist then
+				bestHarvest, bestHarvestEntry, bestHarvestDist = m, entry, d
+			end
+		end
+
+		-- Tree garden beds the player can plant on.
+		if hasSeed
+			and m:GetAttribute("IsBedGardenForTree")
+			and m:GetAttribute("IsWatered")
+			and not m:GetAttribute("GrowthStage")
+		then
+			local d = (playerPos - m:GetPivot().Position).Magnitude
+			if d < bestPlantDist then
+				bestPlantBed, bestPlantDist = m, d
+			end
 		end
 	end
 
-	-- Walk every top-level workspace child and recurse only into
-	-- Model children (Trees Folder, Island_1, Raft, etc.) for the
-	-- harvest scan. PartCount on islands is high but the
-	-- IsA("Model") fast-path keeps this lightweight.
 	for _, top in workspace:GetChildren() do
 		if top:IsA("Model") then
 			considerModel(top)
@@ -96,23 +130,35 @@ local function findNearestBush()
 		end
 	end
 
-	return closest, closestEntry
-end
-
-RunService.Heartbeat:Connect(function()
-	local bush, entry = findNearestBush()
-	currentTarget = bush
-	if bush and entry then
-		hintLabel.Text    = "[E] Collect " .. entry.display
+	-- Pick whichever is closer; harvest wins ties so the planting
+	-- prompt doesn't suppress a ripe bush you're standing next to.
+	if bestHarvest and (not bestPlantBed or bestHarvestDist <= bestPlantDist) then
+		currentAction = "harvest"
+		currentTarget = bestHarvest
+		hintLabel.Text    = "[E] Collect " .. bestHarvestEntry.display
+		hintLabel.Visible = true
+	elseif bestPlantBed then
+		currentAction = "plant"
+		currentTarget = bestPlantBed
+		hintLabel.Text    = "[E] Plant Seed"
 		hintLabel.Visible = true
 	else
+		currentAction = nil
+		currentTarget = nil
 		hintLabel.Visible = false
 	end
-end)
+end
+
+RunService.Heartbeat:Connect(findInteraction)
 
 UserInputService.InputBegan:Connect(function(input, processed)
 	if UserInputService:GetFocusedTextBox() then return end
 	if input.KeyCode ~= Enum.KeyCode.E then return end
 	if not currentTarget or not currentTarget.Parent then return end
-	harvestEvent:FireServer(currentTarget)
+
+	if currentAction == "harvest" then
+		harvestEvent:FireServer(currentTarget)
+	elseif currentAction == "plant" then
+		gardenActionEvent:FireServer("plantSeed", currentTarget)
+	end
 end)

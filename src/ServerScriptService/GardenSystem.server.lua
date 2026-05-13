@@ -4,6 +4,18 @@ local rs = game:GetService("ReplicatedStorage")
 -- ─── Config ───
 local WATER_DRY_TIME = 60 -- seconds before watered garden dries out
 
+-- Tree growth progression for planted seeds. Same stage list for all
+-- seed kinds today — the user has only authored palm stage models so
+-- far; once banana / coconut growth art lands, swap to a per-seed
+-- table here.
+local TREE_STAGES = {
+	"Bed_Garden_seedling_Stage_1",
+	"Bed_Garden_Palm_Stage_2",
+	"Bed_Garden_Palm_Stage_3",
+	"Bed_Garden_Palm_Stage_4",
+}
+local TREE_STAGE_INTERVAL = 10  -- seconds between stage swaps
+
 -- ─── Remote Events ───
 local function getOrCreate(name)
 	local e = rs:FindFirstChild(name)
@@ -36,22 +48,19 @@ local function enableBushGrapes(garden)
 	end
 end
 
--- ─── Model Swap (dry ↔ watered, like purifier) ───
--- Dry / wet template names live on the garden as attributes so the
--- swap function can handle both the regular Garden (Garden ↔
--- Garden_watered) and the tree-sized variant (Bed_Garden_For_Tree ↔
--- Bed_Garden_For_Tree_Wet) without forking the function.
-local function swapGardenModel(garden, watered)
-	local dryName = garden:GetAttribute("DryTemplate") or "Garden"
-	local wetName = garden:GetAttribute("WetTemplate") or "Garden_watered"
-	local templateName = watered and wetName or dryName
+-- ─── Generic bed-model swap ───
+-- Destroys the bed's current children, clones the requested template's
+-- children in their place, welds the new parts to the raft, and
+-- restores the bed pose relative to the raft. Returns true on success.
+-- Used by both the dry/wet swap below AND the tree-growth stage swap.
+local function swapBedModelChildren(garden, templateName)
 	local template = rs:FindFirstChild(templateName)
 		or rs:FindFirstChild(templateName, true)
 		or workspace:FindFirstChild(templateName)
 		or workspace:FindFirstChild(templateName, true)
 	if not template then
 		warn("GardenSystem: model not found: " .. templateName)
-		return
+		return false
 	end
 
 	-- Snapshot raft velocity + capture garden pose AS RAFT-RELATIVE
@@ -87,15 +96,13 @@ local function swapGardenModel(garden, watered)
 		savedRelCF = raftPrimary.CFrame:ToObjectSpace(savedCF)
 	end
 
-	-- Save attributes
-	local placedBy = garden:GetAttribute("PlacedBy")
-
-	-- Save bush children (don't destroy them during swap!)
+	-- Save bush children (don't destroy them during swap!). Tree-stage
+	-- swaps don't have bushes, so this loop is a no-op for them.
 	local bushes = {}
 	for _, child in garden:GetChildren() do
 		if child:GetAttribute("IsBush") then
 			table.insert(bushes, child)
-			child.Parent = workspace -- temporarily move out
+			child.Parent = workspace
 		end
 	end
 
@@ -114,7 +121,6 @@ local function swapGardenModel(garden, watered)
 			end
 			clone.Parent = garden
 		end
-		-- Set PrimaryPart from template
 		if template.PrimaryPart then
 			local newPrimary = garden:FindFirstChild(template.PrimaryPart.Name)
 			if newPrimary then
@@ -127,17 +133,12 @@ local function swapGardenModel(garden, watered)
 		end
 	end
 
-	-- Position against the raft's CURRENT pose, not the stale one.
 	if savedRelCF and raftPrimary then
 		garden:PivotTo(raftPrimary.CFrame * savedRelCF)
 	elseif savedCF then
 		garden:PivotTo(savedCF)
 	end
 
-	-- T15/T16: weld FIRST while anchored (the swap pass-1 already
-	-- anchored the new parts on clone), THEN unanchor in a separate
-	-- pass so the parts inherit the raft's velocity through the
-	-- rigid weld instead of being equalised from a free-body state.
 	if raftPrimary then
 		for _, part in garden:GetDescendants() do
 			if part:IsA("BasePart") then
@@ -156,24 +157,83 @@ local function swapGardenModel(garden, watered)
 		raftPrimary.AssemblyAngularVelocity = angVel
 	end
 
-	-- Restore bushes back into garden
 	for _, bush in bushes do
 		bush.Parent = garden
 	end
 
-	-- Restore attributes
+	return true
+end
+
+-- ─── Model Swap (dry ↔ watered, like purifier) ───
+-- Thin wrapper that picks the right template based on the watered
+-- flag and the DryTemplate / WetTemplate attributes set at placement
+-- time.
+local function swapGardenModel(garden, watered)
+	local placedBy = garden:GetAttribute("PlacedBy")
+	local dryName = garden:GetAttribute("DryTemplate") or "Garden"
+	local wetName = garden:GetAttribute("WetTemplate") or "Garden_watered"
+	local templateName = watered and wetName or dryName
+
+	if not swapBedModelChildren(garden, templateName) then return end
+
 	garden:SetAttribute("IsGarden", true)
 	garden:SetAttribute("IsWatered", watered)
 	garden:SetAttribute("PlacedBy", placedBy)
-	-- Restore the canonical dry name so external systems (save / load,
-	-- placement overlap, find-by-name) keep matching. Tree-sized beds
-	-- stay named Bed_Garden_For_Tree regardless of wet state.
-	garden.Name = garden:GetAttribute("DryTemplate") or "Garden"
+	garden.Name = dryName
 
-	-- If just watered, enable grapes on any bushes
 	if watered then
 		enableBushGrapes(garden)
 	end
+end
+
+-- ─── Tree growth ───
+-- Called recursively via task.delay; each call swaps to stage `idx`
+-- and schedules the next. We guard with the GrowthStage attribute so
+-- a re-water / chop / unplant cycle can short-circuit a pending step.
+local function growTree(garden, idx)
+	if not garden or not garden.Parent then return end
+	if garden:GetAttribute("GrowthStage") ~= idx - 1 then return end
+	local stageTemplate = TREE_STAGES[idx]
+	if not stageTemplate then return end
+
+	if not swapBedModelChildren(garden, stageTemplate) then return end
+
+	-- Keep the wrapper name + attributes stable so save/load + the
+	-- placement overlap checks still recognise this as the tree bed.
+	garden.Name = garden:GetAttribute("DryTemplate") or "Bed_Garden_For_Tree"
+	garden:SetAttribute("GrowthStage", idx)
+
+	if idx == #TREE_STAGES then
+		-- Final stage is a fully-grown tree the player can chop.
+		-- StoneAxeSystem checks Choppable + TreeHealth on the model;
+		-- IsPlantedTree tells it to swap-instead-of-Destroy when
+		-- finished (handled below via _G.OnPlantedTreeChopped).
+		garden:SetAttribute("Choppable", true)
+		garden:SetAttribute("IsPlantedTree", true)
+		garden:SetAttribute("TreeHealth", 5)
+	else
+		task.delay(TREE_STAGE_INTERVAL, function()
+			growTree(garden, idx + 1)
+		end)
+	end
+end
+
+-- Reverts a chopped planted tree back to a dry empty bed. Registered
+-- as a _G hook so StoneAxeSystem can call it without a hard module
+-- dependency on this script.
+_G.OnPlantedTreeChopped = function(garden)
+	if not garden or not garden.Parent then return end
+	if not garden:GetAttribute("IsPlantedTree") then return end
+
+	garden:SetAttribute("IsPlantedTree", nil)
+	garden:SetAttribute("Choppable", nil)
+	garden:SetAttribute("TreeHealth", nil)
+	garden:SetAttribute("GrowthStage", nil)
+	garden:SetAttribute("PlantedSeed", nil)
+	garden:SetAttribute("IsWatered", false)
+	garden:SetAttribute("WateredTime", nil)
+	-- Drop back to the dry empty bed model.
+	swapGardenModel(garden, false)
 end
 
 -- ─── Water a garden bed ───
@@ -337,5 +397,45 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 		if not target or not target:IsA("Model") or not target:GetAttribute("IsGarden") then return end
 		if target:GetAttribute("IsWatered") == true then return end -- already watered
 		waterGarden(target, player)
+
+	elseif action == "plantSeed" then
+		-- Player presses E on a watered tree bed while holding any
+		-- seed in their inventory. Consumes one seed and kicks off
+		-- the four-stage growth timer.
+		if not target or not target:IsA("Model") then return end
+		if not target:GetAttribute("IsBedGardenForTree") then return end
+		if not target:GetAttribute("IsWatered") then return end
+		if target:GetAttribute("GrowthStage") then return end -- already growing
+
+		local hrp = char:FindFirstChild("HumanoidRootPart")
+		if not hrp then return end
+		if (hrp.Position - target:GetPivot().Position).Magnitude > 15 then return end
+
+		-- Find the first seed the player owns. Order matters here only
+		-- for picking which seed gets consumed when the player holds
+		-- several types; the resulting tree currently uses the same
+		-- palm stages for all three.
+		local inv = _G.GetInventory and _G.GetInventory(player) or {}
+		local seedName
+		for _, candidate in ipairs({ "Pineapple_Seed", "Banana_Seed", "Coconut_Seed" }) do
+			if (inv[candidate] or 0) > 0 then
+				seedName = candidate
+				break
+			end
+		end
+		if not seedName then return end
+
+		if _G.RemoveResourceFromInventory then
+			_G.RemoveResourceFromInventory(player, seedName, 1)
+		end
+
+		target:SetAttribute("PlantedSeed", seedName)
+		target:SetAttribute("GrowthStage", 0)
+		-- Cancel the dry-out timer so the bed stays "watered enough"
+		-- through the growth cycle. We clear WateredTime so the
+		-- existing dry-out task.delay short-circuits.
+		target:SetAttribute("WateredTime", nil)
+
+		growTree(target, 1)
 	end
 end)
