@@ -47,12 +47,20 @@ local DROP_BUDGETS = {
 -- pool empties cleanly within 5 swings × 2 cap.
 local MAX_DROPS_PER_HIT = 2
 
--- Fruit species varies with tree species. Default = Coconut.
+-- Fruit + seed species vary with tree species. Default falls back to
+-- the palm pair so chopping a planted bed-tree (wrapper named
+-- Bed_Garden_For_Tree, not "Palm Tree") still yields a sensible
+-- Coconut + Coconut_Seed pair.
 local FRUIT_BY_TREE = {
 	["Banana Tree"] = "Banana",
 	["Palm Tree"]   = "Coconut",
 }
+local SEED_BY_TREE = {
+	["Banana Tree"] = "Banana_Seed",
+	["Palm Tree"]   = "Coconut_Seed",
+}
 local DEFAULT_FRUIT = "Coconut"
+local DEFAULT_SEED  = "Coconut_Seed"
 
 -- ─── Wood-break sound (Log resource template's "Wood Break") ─────
 local function playChopSound(atPosition)
@@ -113,9 +121,29 @@ local function ensureDropPool(treeModel)
 		treeModel:SetAttribute("Drop" .. kind, math.random(range[1], range[2]))
 	end
 
-	-- Resolve fruit species once; client doesn't need to know.
-	local fruitName = FRUIT_BY_TREE[treeModel.Name] or DEFAULT_FRUIT
-	treeModel:SetAttribute("DropFruitName", fruitName)
+	-- Resolve fruit + seed species once; client doesn't need to know.
+	-- Planted bed-trees (wrapper named "Bed_Garden_For_Tree") carry a
+	-- PlantedSeed attribute that hints at the seed kind chosen, which
+	-- we honour here so a Banana-seeded planted tree drops bananas
+	-- instead of coconuts. Otherwise fall through to the per-tree
+	-- table, then the default palm pair.
+	local plantedSeed = treeModel:GetAttribute("PlantedSeed")
+	local fruitName = FRUIT_BY_TREE[treeModel.Name]
+	local seedName  = SEED_BY_TREE[treeModel.Name]
+	if plantedSeed then
+		if plantedSeed == "Banana_Seed" then
+			fruitName = fruitName or "Banana"
+			seedName  = seedName  or "Banana_Seed"
+		elseif plantedSeed == "Pineapple_Seed" then
+			fruitName = fruitName or "Pineapple"
+			seedName  = seedName  or "Pineapple_Seed"
+		elseif plantedSeed == "Coconut_Seed" then
+			fruitName = fruitName or "Coconut"
+			seedName  = seedName  or "Coconut_Seed"
+		end
+	end
+	treeModel:SetAttribute("DropFruitName", fruitName or DEFAULT_FRUIT)
+	treeModel:SetAttribute("DropSeedName",  seedName  or DEFAULT_SEED)
 end
 
 -- Pulls AT MOST `MAX_DROPS_PER_HIT` items from the remaining pool —
@@ -155,9 +183,18 @@ local function dispensePool(treeModel, hitsLeftIncludingThis)
 		local kind     = buckets[i].kind
 		local poolKey  = "Drop" .. kind
 		local remaining = treeModel:GetAttribute(poolKey)
-		local resName  = (kind == "Fruit")
-			and treeModel:GetAttribute("DropFruitName")
-			or kind
+		-- "Sapling" / "Fruit" buckets translate to a per-tree resource
+		-- name (Banana_Seed vs Coconut_Seed, Banana vs Coconut, etc.)
+		-- resolved once in ensureDropPool. Logs / Leaves keep their
+		-- bucket name verbatim because they're tree-agnostic.
+		local resName
+		if kind == "Fruit" then
+			resName = treeModel:GetAttribute("DropFruitName") or DEFAULT_FRUIT
+		elseif kind == "Sapling" then
+			resName = treeModel:GetAttribute("DropSeedName") or DEFAULT_SEED
+		else
+			resName = kind
+		end
 		drops[resName] = 1
 		treeModel:SetAttribute(poolKey, remaining - 1)
 	end

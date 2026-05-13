@@ -15,6 +15,7 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
+local CollectionService = game:GetService("CollectionService")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -22,9 +23,26 @@ local playerGui = player:WaitForChild("PlayerGui")
 local harvestEvent     = ReplicatedStorage:WaitForChild("HarvestFruit")
 local gardenActionEvent = ReplicatedStorage:WaitForChild("GardenAction")
 
-local HARVESTABLE_PREFIXES = {
+-- Server tags every harvestable bush with this tag in
+-- FruitBushSystem.server.lua. Lets us enumerate them in O(N tagged)
+-- instead of walking the whole workspace tree each frame.
+local HARVESTABLE_TAG = "HarvestableFruitBush"
+
+-- Display label for the hint, keyed by Name prefix on the tagged
+-- model. Order matters only when two prefixes both match — first hit
+-- wins. Keep in sync with the server's HARVESTABLE table.
+local HARVESTABLE_DISPLAY = {
 	{ prefix = "PineApple", display = "Pineapple" },
 }
+
+local function displayFor(model)
+	for _, entry in ipairs(HARVESTABLE_DISPLAY) do
+		if string.find(model.Name, entry.prefix, 1, true) then
+			return entry.display
+		end
+	end
+	return "Fruit"
+end
 
 local PICKUP_RANGE = 12
 local PLANT_RANGE  = 12
@@ -56,20 +74,6 @@ local hintCorner = Instance.new("UICorner")
 hintCorner.CornerRadius = UDim.new(0, 8)
 hintCorner.Parent       = hintLabel
 
-local function matchHarvestable(model)
-	if not model or not model:IsA("Model") then return nil end
-	for _, entry in ipairs(HARVESTABLE_PREFIXES) do
-		if string.find(model.Name, entry.prefix, 1, true) then
-			return entry
-		end
-	end
-	return nil
-end
-
--- We use the same _G.InventorySlotData InventoryUI publishes (read-
--- only here) to figure out if the player owns any seed. It's a
--- snapshot of slot contents — fast to scan and updates as the server
--- pushes inventory diffs back through InventoryUpdate.
 local function playerHasSeed()
 	local slots = _G.InventorySlotData
 	if typeof(slots) ~= "table" then return false end
@@ -92,50 +96,48 @@ local function findInteraction()
 	if not hrp then return end
 	local playerPos = hrp.Position
 
-	local bestHarvest, bestHarvestEntry, bestHarvestDist = nil, nil, PICKUP_RANGE
-	local bestPlantBed, bestPlantDist = nil, PLANT_RANGE
+	local bestHarvest, bestHarvestDist = nil, PICKUP_RANGE
+	local bestPlantBed, bestPlantDist  = nil, PLANT_RANGE
 	local hasSeed = playerHasSeed()
 
-	local function considerModel(m)
-		-- Harvestable fruit bushes (PineApple leaves).
-		local entry = matchHarvestable(m)
-		if entry and not m:GetAttribute("FruitCooldown") then
-			local d = (playerPos - m:GetPivot().Position).Magnitude
+	-- Harvestable bushes are enumerated via CollectionService — the
+	-- server tags any matching Model (PineApple leaves nested inside
+	-- Island_1, a Trees Folder, or anywhere else in workspace).
+	for _, bush in CollectionService:GetTagged(HARVESTABLE_TAG) do
+		if bush.Parent and bush:IsDescendantOf(workspace) and not bush:GetAttribute("FruitCooldown") then
+			local d = (playerPos - bush:GetPivot().Position).Magnitude
 			if d < bestHarvestDist then
-				bestHarvest, bestHarvestEntry, bestHarvestDist = m, entry, d
-			end
-		end
-
-		-- Tree garden beds the player can plant on.
-		if hasSeed
-			and m:GetAttribute("IsBedGardenForTree")
-			and m:GetAttribute("IsWatered")
-			and not m:GetAttribute("GrowthStage")
-		then
-			local d = (playerPos - m:GetPivot().Position).Magnitude
-			if d < bestPlantDist then
-				bestPlantBed, bestPlantDist = m, d
+				bestHarvest, bestHarvestDist = bush, d
 			end
 		end
 	end
 
-	for _, top in workspace:GetChildren() do
-		if top:IsA("Model") then
-			considerModel(top)
-			for _, descendant in top:GetDescendants() do
-				if descendant:IsA("Model") then
-					considerModel(descendant)
+	-- Tree garden beds live on the raft; walking the raft's children
+	-- is cheap and avoids tagging every placement individually.
+	if hasSeed then
+		local raft = workspace:FindFirstChild("Raft")
+		if raft then
+			for _, m in raft:GetChildren() do
+				if m:IsA("Model")
+					and m:GetAttribute("IsBedGardenForTree")
+					and m:GetAttribute("IsWatered")
+					and not m:GetAttribute("GrowthStage")
+				then
+					local d = (playerPos - m:GetPivot().Position).Magnitude
+					if d < bestPlantDist then
+						bestPlantBed, bestPlantDist = m, d
+					end
 				end
 			end
 		end
 	end
 
-	-- Pick whichever is closer; harvest wins ties so the planting
-	-- prompt doesn't suppress a ripe bush you're standing next to.
+	-- Harvest wins on ties so a ripe bush right next to a waterable
+	-- bed doesn't get hidden.
 	if bestHarvest and (not bestPlantBed or bestHarvestDist <= bestPlantDist) then
 		currentAction = "harvest"
 		currentTarget = bestHarvest
-		hintLabel.Text    = "[E] Collect " .. bestHarvestEntry.display
+		hintLabel.Text    = "[E] Collect " .. displayFor(bestHarvest)
 		hintLabel.Visible = true
 	elseif bestPlantBed then
 		currentAction = "plant"

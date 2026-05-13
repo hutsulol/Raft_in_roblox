@@ -27,6 +27,33 @@ local HARVESTABLE = {
 	},
 }
 
+-- Tag every harvestable bush in workspace (Studio-placed or spawner-
+-- spawned) so the client can find them via CollectionService instead
+-- of doing a full workspace descendant walk every Heartbeat. Bushes
+-- can be nested arbitrarily — the user authors them inside Island_1,
+-- inside a Trees folder, anywhere — and the tag survives clones.
+local HARVESTABLE_TAG = "HarvestableFruitBush"
+
+local function tagIfBush(inst)
+	if not inst or not inst:IsA("Model") then return end
+	for prefix in pairs(HARVESTABLE) do
+		if string.find(inst.Name, prefix, 1, true) then
+			if not CollectionService:HasTag(inst, HARVESTABLE_TAG) then
+				CollectionService:AddTag(inst, HARVESTABLE_TAG)
+			end
+			return
+		end
+	end
+end
+
+-- Initial pass + live watcher. workspace.DescendantAdded fires for
+-- everything (Island_1 children, IslandSpawner clones, anything the
+-- user drops in via Studio), so we don't need a per-island hook.
+for _, descendant in workspace:GetDescendants() do
+	tagIfBush(descendant)
+end
+workspace.DescendantAdded:Connect(tagIfBush)
+
 local PICKUP_RANGE = 12  -- studs — must agree with the client hint
 
 -- ─── RemoteEvent setup ───
