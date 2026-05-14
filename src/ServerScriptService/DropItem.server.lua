@@ -389,6 +389,33 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		droppedItem:Destroy()
 		if _G.SendInventory then _G.SendInventory(player) end
 	else
+		-- Seeds (Banana_Seed / Coconut_Seed / Pineapple_Seed) live in
+		-- the leaf bag rather than the main inventory. Route them
+		-- through _G.AddSeedToBag and reject the pickup outright if
+		-- the player has no bag at all — the client surfaces a hint
+		-- so the player knows they need to craft one first.
+		local isSeed = type(resType) == "string" and resType:find("_Seed$") ~= nil
+		if isSeed and typeof(_G.AddSeedToBag) == "function" then
+			if typeof(_G.PlayerHasSeedBag) == "function" and not _G.PlayerHasSeedBag(player) then
+				pickupEvent:FireClient(player, "needSeedBag")
+				return
+			end
+			local cap = typeof(_G.GetSeedBagSpace) == "function" and _G.GetSeedBagSpace(player, resType) or 0
+			if cap <= 0 then
+				pickupEvent:FireClient(player, "seedBagFull")
+				return
+			end
+			local toPickup = math.min(resAmount, cap)
+			local leftover = resAmount - toPickup
+			_G.AddSeedToBag(player, resType, toPickup)
+			if leftover > 0 then
+				droppedItem:SetAttribute("ResourceAmount", leftover)
+			else
+				droppedItem:Destroy()
+			end
+			return
+		end
+
 		if not _G.AddResourceToInventory or not _G.GetInventoryCapacity then
 			print("[DropItem] PICKUP BLOCKED: InventoryManager globals missing")
 			return

@@ -127,6 +127,31 @@ local function pushSeedIntoBag(tool, seedName, amount)
 	return amount
 end
 
+-- Public helper: how many of `seedName` can be fit into the player's
+-- bags right now? Used by DropItem's seed-pickup path so picking up
+-- a ground seed fails cleanly when the player owns no bag (or every
+-- bag is full) instead of silently re-dropping it.
+_G.GetSeedBagSpace = function(player, seedName)
+	if not SEED_NAMES[seedName] then return 0 end
+	local total = 0
+	for _, bag in ipairs(iterPlayerBags(player)) do
+		for i = 1, SLOT_COUNT do
+			local name = bag:GetAttribute("Slot" .. i .. "_Name")
+			local count = bag:GetAttribute("Slot" .. i .. "_Count") or 0
+			if name == seedName then
+				total = total + (MAX_STACK - count)
+			elseif (name == "" or name == nil) then
+				total = total + MAX_STACK
+			end
+		end
+	end
+	return total
+end
+
+_G.PlayerHasSeedBag = function(player)
+	return #iterPlayerBags(player) > 0
+end
+
 -- Public helper: route a seed pickup into the player's bag(s).
 -- Anything that doesn't fit overflows to the floor as a physical
 -- drop via _G.SpawnResourceDrop, so seeds are never silently lost.
@@ -180,8 +205,12 @@ seedBagEvent.OnServerEvent:Connect(function(player, action, target, slotIndex)
 	if not bag then return end
 
 	if action == "open" then
-		if not isValidBed(target, hrp) then return end
-		seedBagEvent:FireClient(player, "show", target, bagSnapshot(bag))
+		-- Open without a bed (player just wants to peek inside) is
+		-- fine — we pass nil down to the client which disables the
+		-- per-slot plant click. Target only gets carried if the
+		-- player is actually near a valid watered bed.
+		local bed = isValidBed(target, hrp) and target or nil
+		seedBagEvent:FireClient(player, "show", bed, bagSnapshot(bag))
 
 	elseif action == "plant" then
 		if not isValidBed(target, hrp) then return end

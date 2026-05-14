@@ -21,6 +21,7 @@ local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local seedBagEvent = ReplicatedStorage:WaitForChild("SeedBagAction")
+local pickupEvent  = ReplicatedStorage:WaitForChild("PickupDroppedItem")
 
 local BAG_TOOL_NAME = "leaf bag"
 local DISPLAY_NAMES = {
@@ -305,8 +306,13 @@ local function refreshHint()
 		hintLabel.Visible = false
 		return
 	end
+	-- Hint is visible whenever the bag is equipped — pressing E opens
+	-- the picker even when there isn't a watered bed within reach
+	-- (the player just wants to inspect contents). When a bed IS in
+	-- range the picker enables slot-clicks for planting.
 	local bed = findBedNearby()
-	hintLabel.Visible = bed ~= nil
+	hintLabel.Text    = bed and "[E] Plant from Seed Bag" or "[E] Open Seed Bag"
+	hintLabel.Visible = true
 end
 
 RunService.Heartbeat:Connect(refreshHint)
@@ -321,9 +327,54 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if pickerGui.Enabled then return end
 	if processed then return end
 	if not currentTool or currentTool.Name ~= BAG_TOOL_NAME then return end
-	local bed = findBedNearby()
-	if not bed then return end
-	seedBagEvent:FireServer("open", bed)
+	-- E always opens the bag while the bag is in hand — bed-nearby
+	-- only affects whether the slot clicks actually plant something.
+	-- We pass the nearest valid bed (if any) so the server can echo
+	-- it back to us; nil simply means "viewing".
+	seedBagEvent:FireServer("open", findBedNearby())
+end)
+
+-- ─── Pickup error toast ───
+-- DropItem fires "needSeedBag" / "seedBagFull" when the player tries
+-- to pick up a seed without a bag (or with full bags). We surface a
+-- short centred toast so the cause is obvious instead of the seed
+-- silently refusing to enter the inventory.
+local toastLabel = Instance.new("TextLabel")
+toastLabel.AnchorPoint            = Vector2.new(0.5, 0.5)
+toastLabel.Position               = UDim2.new(0.5, 0, 0.42, 0)
+toastLabel.Size                   = UDim2.new(0, 360, 0, 44)
+toastLabel.BackgroundColor3       = Color3.fromRGB(0, 0, 0)
+toastLabel.BackgroundTransparency = 0.35
+toastLabel.TextColor3             = Color3.fromRGB(255, 220, 120)
+toastLabel.TextStrokeTransparency = 0.5
+toastLabel.Font                   = Enum.Font.GothamBold
+toastLabel.TextSize               = 18
+toastLabel.Visible                = false
+toastLabel.Parent                 = hintGui
+
+local toastCorner = Instance.new("UICorner")
+toastCorner.CornerRadius = UDim.new(0, 8)
+toastCorner.Parent       = toastLabel
+
+local toastJob = 0
+local function showToast(text)
+	toastLabel.Text    = text
+	toastLabel.Visible = true
+	toastJob = toastJob + 1
+	local myJob = toastJob
+	task.delay(2, function()
+		if myJob == toastJob then
+			toastLabel.Visible = false
+		end
+	end)
+end
+
+pickupEvent.OnClientEvent:Connect(function(action)
+	if action == "needSeedBag" then
+		showToast("You need a Leaf Bag to carry seeds.")
+	elseif action == "seedBagFull" then
+		showToast("Your Leaf Bag is full.")
+	end
 end)
 
 -- ─── Tool equip tracking ───
