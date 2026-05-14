@@ -234,9 +234,18 @@ local function growTree(garden, idx)
 	-- else: non-palm seed → stays at Stage_1 indefinitely.
 end
 
--- Reverts a chopped planted tree back to a dry empty bed. Registered
--- as a _G hook so StoneAxeSystem can call it without a hard module
--- dependency on this script.
+-- ─── Cross-script hooks ───
+-- StoneAxeSystem calls OnPlantedTreeChopped when the player fells a
+-- planted bed-tree; we revert the bed to its dry empty state instead
+-- of letting :Destroy() take the whole bed down with the tree.
+-- SeedBagSystem calls GrowTreeFromSeed after consuming a seed from
+-- the player's inventory; we just kick off stage 1.
+
+_G.GrowTreeFromSeed = function(garden)
+	if not garden or not garden.Parent then return end
+	growTree(garden, 1)
+end
+
 _G.OnPlantedTreeChopped = function(garden)
 	if not garden or not garden.Parent then return end
 	if not garden:GetAttribute("IsPlantedTree") then return end
