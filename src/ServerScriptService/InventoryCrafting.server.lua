@@ -55,6 +55,15 @@ local recipes = {
 		description = "An empty woven bag. Fill it with sand or clay on an island.",
 	},
 	{
+		name = "leaf bag",
+		displayName = "Leaf Bag",
+		icon = "rbxassetid://89398456198664",
+		costs = {Leaves = 5},
+		craftType = "tool",
+		category = "Misc",
+		description = "A small leaf bag for storing seeds. Hold it and press E next to a watered tree garden bed to plant.",
+	},
+	{
 		name = "Destitalor",
 		displayName = "Water Purifier",
 		icon = "rbxassetid://90221080738714",

@@ -425,22 +425,6 @@ local function onToolEquipped(tool)
 		placingBedGardenForTree = false
 		placingBed = false
 		createGhost("Sawmill")
-	elseif tool.Name:lower():find("_seed") then
-		-- Any seed-named Tool (Palm_seed, Banana_Seed, Pineapple_seed,
-		-- Coconut_Seed, ...) becomes a "plant on the next watered tree
-		-- bed I click" tool. No ghost — we don't have a single
-		-- preview model since the seedling pose only appears AFTER
-		-- the plant action lands on the server.
-		placingSeed = true
-		currentSeedTool = tool
-		placingPurifier = false
-		placingBush = false
-		placingWorkbench = false
-		placingGarden = false
-		placingBedGardenForTree = false
-		placingBed = false
-		placingSawmill = false
-		destroyGhost()
 	else
 		placingPurifier = false
 		placingBush = false

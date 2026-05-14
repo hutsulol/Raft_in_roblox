@@ -130,7 +130,13 @@ harvestEvent.OnServerEvent:Connect(function(player, target)
 	local fruitAmount = math.random(rule.fruitMin, rule.fruitMax)
 	_G.AddResourceToInventory(player, rule.fruitName, fruitAmount, bushPos)
 	if rule.seedCount > 0 then
-		_G.AddResourceToInventory(player, rule.seedName, rule.seedCount, bushPos)
+		-- Seeds go into the player's leaf bag rather than the main
+		-- inventory. Without a bag they spill onto the ground.
+		if typeof(_G.AddSeedToBag) == "function" then
+			_G.AddSeedToBag(player, rule.seedName, rule.seedCount, bushPos)
+		else
+			_G.AddResourceToInventory(player, rule.seedName, rule.seedCount, bushPos)
+		end
 	end
 	if _G.OnQuestResource then
 		pcall(_G.OnQuestResource, player, rule.fruitName, fruitAmount)

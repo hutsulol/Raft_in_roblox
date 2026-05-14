@@ -297,7 +297,15 @@ chopTreeEvent.OnServerEvent:Connect(function(player, treeModel)
 
 	-- Award drops + run quest hooks per resource.
 	for resName, count in pairs(drops) do
-		_G.AddResourceToInventory(player, resName, count, treePos)
+		-- Seeds (Banana_Seed / Coconut_Seed / Pineapple_Seed) live in
+		-- the leaf bag, not the main inventory. _G.AddSeedToBag fans
+		-- them across the player's bags and falls back to a ground
+		-- drop if none have room.
+		if resName:find("_Seed$") and typeof(_G.AddSeedToBag) == "function" then
+			_G.AddSeedToBag(player, resName, count, treePos)
+		else
+			_G.AddResourceToInventory(player, resName, count, treePos)
+		end
 		if _G.OnQuestResource then
 			_G.OnQuestResource(player, resName, count)
 		end

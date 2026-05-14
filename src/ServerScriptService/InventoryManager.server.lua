@@ -24,15 +24,17 @@ local AUTO_SAVE_INTERVAL = 120 -- seconds
 -- which can leave the player's slot count silently inconsistent. So
 -- every resource the player can legitimately end up holding must be
 -- registered here.
+--
+-- Seeds (Banana_Seed / Coconut_Seed / Pineapple_Seed) are intentionally
+-- absent — they live exclusively in the leaf bag Tool (see
+-- SeedBagSystem.server.lua) rather than the main inventory.
 local RESOURCE_NAMES = {
 	"Log", "Plastic", "Stone", "Plank", "Leaves", "Rope",
 	"Sand", "Clay", "Wet_Brick", "Dry_Brick",
 	"Iron_Ore", "Iron_Ingot",
 	"Blue_Fish", "Carp_Fish", "Fish_Bones", "Foil_Fish",
 	"Jelly_Fish", "Legendary_Fish", "Seabass_Fish", "Tilapia_Fish",
-	"Banana", "Banana_Seed",
-	"Coconut", "Coconut_Seed",
-	"Pineapple", "Pineapple_Seed",
+	"Banana", "Coconut", "Pineapple",
 }
 
 local RESOURCE_SET = {}

@@ -212,15 +212,20 @@ end
 
 local function paintSlots(seedList)
 	clearSlots()
-	for i, entry in ipairs(seedList) do
-		if i > SLOT_COUNT then break end
-		local s = slots[i]
-		s.seed              = entry.name
-		s.icon.Image        = SEED_ICONS[entry.name] or ""
-		s.count.Text        = "x" .. tostring(entry.count) .. "  " .. (DISPLAY_NAMES[entry.name] or entry.name)
-		s.button.BackgroundColor3 = COLOR_PAPER
-		s.stroke.Color      = COLOR_WOOD_DARKEST
-		s.button.Active     = true
+	-- Snapshot always returns SLOT_COUNT entries; empty ones carry
+	-- name == "" / count == 0. We render filled slots with the paper
+	-- background + icon, empty slots stay greyed out and unclickable.
+	for i = 1, SLOT_COUNT do
+		local entry = seedList and seedList[i]
+		local s     = slots[i]
+		if entry and entry.name and entry.name ~= "" and (entry.count or 0) > 0 then
+			s.seed              = entry.name
+			s.icon.Image        = SEED_ICONS[entry.name] or ""
+			s.count.Text        = "x" .. tostring(entry.count) .. "  " .. (DISPLAY_NAMES[entry.name] or entry.name)
+			s.button.BackgroundColor3 = COLOR_PAPER
+			s.stroke.Color      = COLOR_WOOD_DARKEST
+			s.button.Active     = true
+		end
 	end
 end
 
@@ -230,15 +235,18 @@ local function closePicker()
 end
 
 -- Click handlers wire each slot once at build time. They no-op until
--- paintSlots assigns a seed.
-for _, s in ipairs(slots) do
+-- paintSlots assigns a seed. The server expects the slot INDEX (so it
+-- can decrement the right Slot{i}_Count attribute on the bag), not
+-- the seed name — multiple slots in the bag can hold the same seed
+-- and we want to drain the specific one the player clicked.
+for i, s in ipairs(slots) do
 	s.button.MouseButton1Click:Connect(function()
 		if not s.seed then return end
 		if not currentBed or not currentBed.Parent then
 			closePicker()
 			return
 		end
-		seedBagEvent:FireServer("plant", currentBed, s.seed)
+		seedBagEvent:FireServer("plant", currentBed, i)
 	end)
 end
 

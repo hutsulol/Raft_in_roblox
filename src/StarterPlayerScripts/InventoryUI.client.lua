@@ -13,27 +13,12 @@ StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local inventoryCraftEvent = ReplicatedStorage:WaitForChild("InventoryCraft")
 
--- Equip-seed-as-tool RemoteEvent. The seed resources (Banana_Seed,
--- Coconut_Seed, Pineapple_Seed) stack in the inventory like any
--- other resource, but the player can also "take one in hand" by
--- clicking the slot — the server clones a matching Tool template,
--- decrements the stack by 1, and refunds back if the Tool leaves
--- the character without being planted. Lookup once, soft-wait so
--- the event is available by the time the click handlers fire.
-local equipSeedEvent = ReplicatedStorage:FindFirstChild("EquipSeedAsTool")
-if not equipSeedEvent then
-	equipSeedEvent = ReplicatedStorage:WaitForChild("EquipSeedAsTool", 5)
-end
-
--- Resource names that should trigger the seed-as-tool flow instead of
--- the standard tool-equip path when the player clicks / presses the
--- hotbar number. Keep in sync with SEED_RESOURCE_TO_TOOL on the
--- server (ServerScriptService/SeedToolSystem.server.lua).
-local SEED_RESOURCE_SET = {
-	Banana_Seed    = true,
-	Coconut_Seed   = true,
-	Pineapple_Seed = true,
-}
+-- Seed-as-Tool flow was retired — seeds now live in the leaf bag
+-- container (see SeedBagSystem.server.lua) and never appear as a
+-- main-inventory stack. Empty whitelist + nil event keep any stale
+-- click-on-seed handlers below as harmless no-ops.
+local equipSeedEvent = nil
+local SEED_RESOURCE_SET = {}
 
 local LOG_ICON = "rbxassetid://116178347748793"
 local PLASTIC_ICON = "rbxassetid://132919988751848"
