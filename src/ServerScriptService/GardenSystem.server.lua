@@ -204,12 +204,33 @@ local function isPalmSeed(plantedSeed)
 end
 
 local function growTree(garden, idx)
-	if not garden or not garden.Parent then return end
-	if garden:GetAttribute("GrowthStage") ~= idx - 1 then return end
+	if not garden or not garden.Parent then
+		print(string.format("[GardenSystem] growTree(%s) skipped: garden parent missing", tostring(idx)))
+		return
+	end
+	local currentStage = garden:GetAttribute("GrowthStage")
+	if currentStage ~= idx - 1 then
+		print(string.format(
+			"[GardenSystem] growTree(%s) skipped: GrowthStage=%s, expected %s",
+			tostring(idx), tostring(currentStage), tostring(idx - 1)
+		))
+		return
+	end
 	local stageTemplate = TREE_STAGES[idx]
-	if not stageTemplate then return end
+	if not stageTemplate then
+		print(string.format("[GardenSystem] growTree(%s) skipped: no TREE_STAGES[%s]", tostring(idx), tostring(idx)))
+		return
+	end
 
-	if not swapBedModelChildren(garden, stageTemplate) then return end
+	print(string.format(
+		"[GardenSystem] growTree(%s) → swap to %q (PlantedSeed=%s)",
+		tostring(idx), stageTemplate, tostring(garden:GetAttribute("PlantedSeed"))
+	))
+
+	if not swapBedModelChildren(garden, stageTemplate) then
+		print(string.format("[GardenSystem] growTree(%s) FAILED: swapBedModelChildren returned false", tostring(idx)))
+		return
+	end
 
 	-- Keep the wrapper name + attributes stable so save/load + the
 	-- placement overlap checks still recognise this as the tree bed.
@@ -226,10 +247,14 @@ local function growTree(garden, idx)
 		garden:SetAttribute("Choppable", true)
 		garden:SetAttribute("IsPlantedTree", true)
 		garden:SetAttribute("TreeHealth", 5)
+		print(string.format("[GardenSystem] growTree(%s) reached final stage — marked Choppable", tostring(idx)))
 	elseif palm then
+		print(string.format("[GardenSystem] growTree(%s) scheduling next stage in %ds", tostring(idx), TREE_STAGE_INTERVAL))
 		task.delay(TREE_STAGE_INTERVAL, function()
 			growTree(garden, idx + 1)
 		end)
+	else
+		print(string.format("[GardenSystem] growTree(%s) stopping — PlantedSeed isn't a palm (%s)", tostring(idx), tostring(garden:GetAttribute("PlantedSeed"))))
 	end
 	-- else: non-palm seed → stays at Stage_1 indefinitely.
 end
@@ -242,7 +267,15 @@ end
 -- the player's inventory; we just kick off stage 1.
 
 _G.GrowTreeFromSeed = function(garden)
-	if not garden or not garden.Parent then return end
+	if not garden or not garden.Parent then
+		print("[GardenSystem] GrowTreeFromSeed called with nil/orphan garden — skipping")
+		return
+	end
+	print(string.format(
+		"[GardenSystem] GrowTreeFromSeed: %s (PlantedSeed=%s)",
+		garden:GetFullName(),
+		tostring(garden:GetAttribute("PlantedSeed"))
+	))
 	growTree(garden, 1)
 end
 

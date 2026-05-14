@@ -234,8 +234,15 @@ seedBagEvent.OnServerEvent:Connect(function(player, action, target, slotIndex)
 		target:SetAttribute("GrowthStage", 0)
 		target:SetAttribute("WateredTime", nil)
 
+		print(string.format(
+			"[SeedBag] plant: seed=%s bed=%s slot=%d",
+			seedName, target:GetFullName(), slotIndex
+		))
+
 		if typeof(_G.GrowTreeFromSeed) == "function" then
 			_G.GrowTreeFromSeed(target)
+		else
+			warn("[SeedBag] _G.GrowTreeFromSeed missing — bed will not grow!")
 		end
 
 		seedBagEvent:FireClient(player, "close")
