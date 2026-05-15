@@ -622,6 +622,51 @@ local function findEmptySlot(startIdx, endIdx)
 	return nil
 end
 
+-- Forward-declared helpers used by vacateSlotForToolSwap below. The
+-- real definitions live further down (renderAllSlots is built when
+-- the UI is constructed; syncSlotLayoutToServer is the upvalue set
+-- in updateUI). vacate*'s caller runs only after both exist.
+local renderAllSlots
+
+-- Called when the player clicks a food-resource slot to equip a
+-- food Tool from the stack. Moves the remaining N-1 units of the
+-- resource into another empty slot so the slot the player clicked
+-- becomes free for the incoming Tool. The Tool placement path
+-- (rebuildSlotData) picks the first empty slot starting from 1, so
+-- clearing this one and shoving the leftovers elsewhere is enough
+-- to put the Tool exactly where the player clicked.
+--
+-- If no spare slot exists, the leftovers stay put — the Tool will
+-- fall back to a different slot in that case, which is the current
+-- behaviour. UX is "Tool lands where you clicked when there's room
+-- to make space", which is what the user actually noticed.
+local function vacateSlotForToolSwap(slotIndex, name, currentCount)
+	local remaining = math.max(0, (currentCount or 1) - 1)
+	if remaining == 0 then
+		-- Single-unit stack — slot will be empty after the server
+		-- consumes the resource. Just clear it locally so the
+		-- inventory snapshot from the server agrees with the visual
+		-- and the Tool can land here.
+		slotData[slotIndex] = nil
+		if renderAllSlots then renderAllSlots() end
+		if syncSlotLayoutToServer then syncSlotLayoutToServer() end
+		return
+	end
+
+	local target = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, maxWritableSlot())
+	if not target or target == slotIndex then
+		-- Nowhere to move the leftovers. Bail out and let the Tool
+		-- find some other empty slot via the normal placement path.
+		return
+	end
+
+	local icon = RESOURCE_ICONS[name] or ""
+	slotData[target]    = { type = "resource", name = name, count = remaining, icon = icon }
+	slotData[slotIndex] = nil
+	if renderAllSlots then renderAllSlots() end
+	if syncSlotLayoutToServer then syncSlotLayoutToServer() end
+end
+
 local function findItemSlot(itemType, itemName)
 	for i = 1, TOTAL_SLOTS do
 		if slotData[i] and slotData[i].type == itemType and slotData[i].name == itemName then
@@ -2082,6 +2127,10 @@ local function buildHotbar()
 				-- pattern as seeds — server clones a Tool into the
 				-- player's hand, decrements the stack by 1, refunds
 				-- if the Tool is unequipped without being eaten.
+				-- Pre-vacate the clicked slot so the incoming Tool
+				-- lands here instead of the next empty slot — see
+				-- vacateSlotForToolSwap() below.
+				vacateSlotForToolSwap(slotIndex, data.name, data.count or 1)
 				equipFoodEvent:FireServer(data.name)
 			end
 		end)
