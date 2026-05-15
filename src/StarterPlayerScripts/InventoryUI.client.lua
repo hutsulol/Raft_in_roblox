@@ -20,6 +20,23 @@ local inventoryCraftEvent = ReplicatedStorage:WaitForChild("InventoryCraft")
 local equipSeedEvent = nil
 local SEED_RESOURCE_SET = {}
 
+-- Food-as-Tool flow. Clicking a Banana / Coconut / Pineapple slot
+-- in the inventory tells the server to spawn the matching Tool in
+-- the player's hand (and decrement the stack by 1). A second click
+-- while the Tool is held eats it for hunger + HP; an unequip
+-- without eating refunds the resource. Server lives in
+-- ServerScriptService/FoodSystem.server.lua.
+local equipFoodEvent = ReplicatedStorage:FindFirstChild("EquipFoodAsTool")
+if not equipFoodEvent then
+	equipFoodEvent = ReplicatedStorage:WaitForChild("EquipFoodAsTool", 5)
+end
+
+local FOOD_RESOURCE_SET = {
+	Banana    = true,
+	Coconut   = true,
+	Pineapple = true,
+}
+
 local LOG_ICON = "rbxassetid://116178347748793"
 local PLASTIC_ICON = "rbxassetid://132919988751848"
 local STONE_ICON = "rbxassetid://96450657403376"
@@ -127,6 +144,12 @@ local TOOL_ICONS = {
 	["Palm_seed"]      = "rbxassetid://138995623166184",
 	["Banana_Seed"]    = "rbxassetid://73140419103065",
 	["Pineapple_seed"] = "rbxassetid://128520746024640",
+	-- Food Tools that the player can temporarily equip from the
+	-- main-inventory resource stack. Same icons as the resource
+	-- form so the hotbar slot stays visually consistent.
+	["Banana"]         = "rbxassetid://95041000167181",
+	["Coconut"]        = "rbxassetid://120321968340866",
+	["Pineapple"]      = "rbxassetid://93324727574975",
 }
 
 -- Forward-declared so functions above line 1585 (quickTransfer,
@@ -2054,6 +2077,12 @@ local function buildHotbar()
 				-- Server handles the refund if the Tool is unequipped
 				-- without being used.
 				equipSeedEvent:FireServer(data.name)
+			elseif data and data.type == "resource" and data.name and FOOD_RESOURCE_SET[data.name] and equipFoodEvent then
+				-- Food resource (Banana / Coconut / Pineapple): same
+				-- pattern as seeds — server clones a Tool into the
+				-- player's hand, decrements the stack by 1, refunds
+				-- if the Tool is unequipped without being eaten.
+				equipFoodEvent:FireServer(data.name)
 			end
 		end)
 	end
@@ -2492,6 +2521,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			-- via the server bridge. Same path as the slot-click
 			-- handler above.
 			equipSeedEvent:FireServer(data.name)
+		elseif data and data.type == "resource" and data.name and FOOD_RESOURCE_SET[data.name] and equipFoodEvent then
+			-- Number-key on a food-resource slot equips it as a Tool
+			-- the same way the click handler does. Player clicks
+			-- (Activated) eats it; switching away refunds.
+			equipFoodEvent:FireServer(data.name)
 		end
 	end
 end)

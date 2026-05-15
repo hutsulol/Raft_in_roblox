@@ -39,6 +39,25 @@ _G.DrainHunger = function(player, amount)
 	end
 end
 
+-- Public helper for consumable systems (FoodSystem, future cookware…)
+-- to refill hunger + optionally regen a slice of HP, mirroring the
+-- effect the grape-eat path applies inline below.
+_G.RestoreHunger = function(player, hungerAmount, hpAmount)
+	hungerAmount = tonumber(hungerAmount) or 0
+	if hungerData[player] and hungerAmount > 0 then
+		hungerData[player] = math.min(MAX_HUNGER, hungerData[player] + hungerAmount)
+		hungerEvent:FireClient(player, hungerData[player], MAX_HUNGER)
+	end
+	hpAmount = tonumber(hpAmount) or 0
+	if hpAmount > 0 then
+		local char = player.Character
+		local hum  = char and char:FindFirstChildWhichIsA("Humanoid")
+		if hum then
+			hum.Health = math.min(hum.MaxHealth, hum.Health + hpAmount)
+		end
+	end
+end
+
 local function initPlayer(player)
 	hungerData[player] = MAX_HUNGER
 	hungerEvent:FireClient(player, hungerData[player], MAX_HUNGER)
