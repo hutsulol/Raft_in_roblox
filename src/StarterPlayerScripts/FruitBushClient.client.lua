@@ -139,15 +139,21 @@ local function findInteraction()
 		currentTarget = bestHarvest
 		hintLabel.Text    = "[E] Collect " .. displayFor(bestHarvest)
 		hintLabel.Visible = true
+		-- While the prompt is visible, claim E away from InventoryUI's
+		-- toggle handler. The flag's deferred check there reads this
+		-- as "another script is using E" and skips toggleInventory().
+		_G.SuppressInventoryToggle = true
 	elseif bestPlantBed then
 		currentAction = "plant"
 		currentTarget = bestPlantBed
 		hintLabel.Text    = "[E] Plant Seed"
 		hintLabel.Visible = true
+		_G.SuppressInventoryToggle = true
 	else
 		currentAction = nil
 		currentTarget = nil
 		hintLabel.Visible = false
+		_G.SuppressInventoryToggle = false
 	end
 end
 
