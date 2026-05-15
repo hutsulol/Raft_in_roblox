@@ -622,49 +622,36 @@ local function findEmptySlot(startIdx, endIdx)
 	return nil
 end
 
--- Forward-declared helpers used by vacateSlotForToolSwap below. The
--- real definitions live further down (renderAllSlots is built when
--- the UI is constructed; syncSlotLayoutToServer is the upvalue set
--- in updateUI). vacate*'s caller runs only after both exist.
-local renderAllSlots
-
--- Called when the player clicks a food-resource slot to equip a
--- food Tool from the stack. Moves the remaining N-1 units of the
--- resource into another empty slot so the slot the player clicked
--- becomes free for the incoming Tool. The Tool placement path
--- (rebuildSlotData) picks the first empty slot starting from 1, so
--- clearing this one and shoving the leftovers elsewhere is enough
--- to put the Tool exactly where the player clicked.
---
--- If no spare slot exists, the leftovers stay put — the Tool will
--- fall back to a different slot in that case, which is the current
--- behaviour. UX is "Tool lands where you clicked when there's room
--- to make space", which is what the user actually noticed.
-local function vacateSlotForToolSwap(slotIndex, name, currentCount)
-	local remaining = math.max(0, (currentCount or 1) - 1)
-	if remaining == 0 then
-		-- Single-unit stack — slot will be empty after the server
-		-- consumes the resource. Just clear it locally so the
-		-- inventory snapshot from the server agrees with the visual
-		-- and the Tool can land here.
-		slotData[slotIndex] = nil
-		if renderAllSlots then renderAllSlots() end
-		if syncSlotLayoutToServer then syncSlotLayoutToServer() end
-		return
+-- Count how many "food Tool" instances of `toolName` the player owns
+-- right now (Backpack + Character). Used to fold the in-hand /
+-- standing-by Tool into the resource slot's displayed total — the
+-- player sees a single banana / coconut / pineapple slot whose count
+-- reflects "things you own", regardless of whether one of them is
+-- currently in your hand as a Tool or sitting in inv as a stack.
+local function countFoodToolsForName(toolName)
+	if not FOOD_RESOURCE_SET[toolName] then return 0 end
+	local total = 0
+	local function gather(container)
+		if not container then return end
+		for _, child in container:GetChildren() do
+			if child:IsA("Tool") and child.Name == toolName and child:GetAttribute("FoodResource") == toolName then
+				total = total + 1
+			end
+		end
 	end
+	gather(player.Character)
+	gather(player:FindFirstChild("Backpack"))
+	return total
+end
 
-	local target = findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, maxWritableSlot())
-	if not target or target == slotIndex then
-		-- Nowhere to move the leftovers. Bail out and let the Tool
-		-- find some other empty slot via the normal placement path.
-		return
-	end
-
-	local icon = RESOURCE_ICONS[name] or ""
-	slotData[target]    = { type = "resource", name = name, count = remaining, icon = icon }
-	slotData[slotIndex] = nil
-	if renderAllSlots then renderAllSlots() end
-	if syncSlotLayoutToServer then syncSlotLayoutToServer() end
+-- True if `tool` is one of those "borrowed from stack" food Tools we
+-- promoted via EquipFoodAsTool. They live shadowed by the resource
+-- slot, so the Tool-placement pass in rebuildSlotData skips them.
+local function isFoodTool(tool)
+	return tool
+		and tool:IsA("Tool")
+		and FOOD_RESOURCE_SET[tool.Name]
+		and tool:GetAttribute("FoodResource") == tool.Name
 end
 
 local function findItemSlot(itemType, itemName)
@@ -853,6 +840,11 @@ local function rebuildSlotData()
 
 		for resName, resIcon in RESOURCE_ICONS do
 			local count = inventory[resName] or 0
+			-- Food Tools that are currently in the player's hand or
+			-- Backpack count towards the resource slot's total so the
+			-- player sees a single "Pineapple x10" entry even when
+			-- one of those 10 is held as a Tool.
+			count = count + countFoodToolsForName(resName)
 			if count > 0 then
 				distributeResource(resName, count, resIcon)
 			end
@@ -862,22 +854,26 @@ local function rebuildSlotData()
 		-- duplicates (e.g. two Machetes) occupy separate cells. The
 		-- Tool reference is stored so rebuildSlotData can match a
 		-- slot back to the same instance on subsequent refreshes.
+		-- Food Tools are skipped here because the resource slot above
+		-- already owns their visual representation.
 		local slot = 2
 		for _, tool in tools do
-			while slot <= HOTBAR_SLOTS and slotData[slot] do
+			if not isFoodTool(tool) then
+				while slot <= HOTBAR_SLOTS and slotData[slot] do
+					slot = slot + 1
+				end
+				if slot > HOTBAR_SLOTS then break end
+				local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+				slotData[slot] = {
+					type = "tool",
+					name = tool.Name,
+					toolName = tool.Name,
+					toolInst = tool,
+					icon = toolIcon,
+					count = 1,
+				}
 				slot = slot + 1
 			end
-			if slot > HOTBAR_SLOTS then break end
-			local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
-			slotData[slot] = {
-				type = "tool",
-				name = tool.Name,
-				toolName = tool.Name,
-				toolInst = tool,
-				icon = toolIcon,
-				count = 1,
-			}
-			slot = slot + 1
 		end
 
 		-- First pass: still run the blood-stack merge so capsules
@@ -888,9 +884,14 @@ local function rebuildSlotData()
 		return
 	end
 
-	-- Update all resources
+	-- Update all resources. Food resources include any in-hand /
+	-- Backpack Food Tools so the slot count reflects "things you own"
+	-- regardless of whether one of them is currently equipped — see
+	-- countFoodToolsForName.
 	for resName, resIcon in RESOURCE_ICONS do
-		updateResourceSlots(resName, inventory[resName] or 0, resIcon)
+		local count = inventory[resName] or 0
+		count = count + countFoodToolsForName(resName)
+		updateResourceSlots(resName, count, resIcon)
 	end
 
 	-- Tools don't stack; each Tool Instance claims its own slot. Match
@@ -905,25 +906,32 @@ local function rebuildSlotData()
 	for i = 1, TOTAL_SLOTS do
 		local entry = slotData[i]
 		if entry and entry.type == "tool" then
-			local inst = entry.toolInst
-			if inst and currentSet[inst] and not claimed[inst] then
-				claimed[inst] = true
-				entry.count = 1
+			if FOOD_RESOURCE_SET[entry.toolName] then
+				-- Food Tools no longer claim slots — the resource slot
+				-- handles their visual via countFoodToolsForName.
+				-- Drop any leftover entry from before this consolidation.
+				slotData[i] = nil
 			else
-				local name = entry.toolName or entry.name
-				local bound
-				for _, t in tools do
-					if not claimed[t] and t.Name == name then
-						bound = t
-						break
-					end
-				end
-				if bound then
-					entry.toolInst = bound
+				local inst = entry.toolInst
+				if inst and currentSet[inst] and not claimed[inst] then
+					claimed[inst] = true
 					entry.count = 1
-					claimed[bound] = true
 				else
-					slotData[i] = nil
+					local name = entry.toolName or entry.name
+					local bound
+					for _, t in tools do
+						if not claimed[t] and t.Name == name then
+							bound = t
+							break
+						end
+					end
+					if bound then
+						entry.toolInst = bound
+						entry.count = 1
+						claimed[bound] = true
+					else
+						slotData[i] = nil
+					end
 				end
 			end
 		end
@@ -931,9 +939,11 @@ local function rebuildSlotData()
 
 	-- Any Tool instances not yet bound to a slot get a fresh one —
 	-- honouring _G.PendingTargetSlot so a chest → inventory drag lands
-	-- where the user released the drag.
+	-- where the user released the drag. Food Tools are shadowed by
+	-- their resource slot (countFoodToolsForName above), so we skip
+	-- claiming a slot for them entirely.
 	for _, tool in tools do
-		if not claimed[tool] then
+		if not claimed[tool] and not isFoodTool(tool) then
 			local target
 			local pending = _G.PendingTargetSlot
 			if pending and pending.name == tool.Name then
@@ -2127,10 +2137,9 @@ local function buildHotbar()
 				-- pattern as seeds — server clones a Tool into the
 				-- player's hand, decrements the stack by 1, refunds
 				-- if the Tool is unequipped without being eaten.
-				-- Pre-vacate the clicked slot so the incoming Tool
-				-- lands here instead of the next empty slot — see
-				-- vacateSlotForToolSwap() below.
-				vacateSlotForToolSwap(slotIndex, data.name, data.count or 1)
+				-- The Tool itself doesn't claim a slot; the resource
+				-- slot's displayed count includes the in-hand Tool so
+				-- visually the slot just stays where it was.
 				equipFoodEvent:FireServer(data.name)
 			end
 		end)
