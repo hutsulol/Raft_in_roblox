@@ -1051,6 +1051,22 @@ function renderAllSlots()
 							end
 						end
 						slot.BackgroundColor3 = isEquipped and COLORS.equipped or COLORS.slotBg
+					elseif data and data.type == "resource" and data.name and FOOD_RESOURCE_SET[data.name] and char then
+						-- Food resource slot lights up the same way as
+						-- a tool slot when the matching food Tool is
+						-- in the player's hand. countFoodToolsForName
+						-- doesn't distinguish hand vs Backpack — we
+						-- need the strict "in hand right now" check
+						-- here, mirroring the tool-instance test
+						-- above.
+						local isFoodEquipped = false
+						for _, t in char:GetChildren() do
+							if t:IsA("Tool") and t.Name == data.name and t:GetAttribute("FoodResource") == data.name then
+								isFoodEquipped = true
+								break
+							end
+						end
+						slot.BackgroundColor3 = isFoodEquipped and COLORS.equipped or COLORS.slotBg
 					else
 						slot.BackgroundColor3 = COLORS.slotBg
 					end
