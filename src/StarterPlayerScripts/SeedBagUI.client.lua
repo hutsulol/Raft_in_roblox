@@ -83,6 +83,17 @@ local currentTool      = nil
 local currentSelection = nil   -- slot index 1..SLOT_COUNT, or nil
 local currentSnapshot  = {}    -- mirror of the server snapshot
 
+-- Soft match: lowercase + strip spaces / underscores so a "Leaf Bag"
+-- or "leafbag" rename from the user doesn't break the picker. Has
+-- to live up here so refreshHint / InputBegan / setupCharacter
+-- (defined later in the script) all see it as a local upvalue and
+-- not a (nil) global.
+local function isBagTool(tool)
+	if not tool or not tool:IsA("Tool") then return false end
+	local name = tool.Name:lower():gsub("[_%s]", "")
+	return name == BAG_TOOL_NAME:lower():gsub("[_%s]", "")
+end
+
 -- ─── Hint label ───────────────────────────────────────────────────
 local hintGui = Instance.new("ScreenGui")
 hintGui.Name           = "SeedBagHint"
@@ -699,13 +710,11 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 
 -- ─── Tool equip tracking ─────────────────────────────────────────
--- Soft match: lowercase + strip spaces / underscores so a "Leaf Bag"
--- or "leafbag" rename from the user doesn't break the picker.
-local function isBagTool(tool)
-	if not tool or not tool:IsA("Tool") then return false end
-	local name = tool.Name:lower():gsub("[_%s]", "")
-	return name == BAG_TOOL_NAME:lower():gsub("[_%s]", "")
-end
+-- isBagTool moved up the file (above refreshHint / InputBegan /
+-- setupCharacter) — Lua locals declared after a function definition
+-- aren't visible inside that function's body, so the previous
+-- ordering had every isBagTool call resolve to a nil global and
+-- silently error on each Heartbeat / E press.
 
 local function setupCharacter(char)
 	if not char then return end
