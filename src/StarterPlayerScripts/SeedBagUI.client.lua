@@ -676,9 +676,25 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 	if input.KeyCode ~= Enum.KeyCode.E then return end
-	if pickerGui.Enabled then return end
-	if processed then return end
-	if not currentTool or currentTool.Name ~= BAG_TOOL_NAME then return end
+	-- Diagnostic trail. Each return is annotated so the Studio Output
+	-- reveals which guard tripped when the bag won't open on E.
+	if pickerGui.Enabled then
+		print("[SeedBagUI] E ignored: picker already open")
+		return
+	end
+	if processed then
+		print("[SeedBagUI] E ignored: gameProcessed=true (another GUI consumed it)")
+		return
+	end
+	if not currentTool then
+		print("[SeedBagUI] E ignored: currentTool=nil (nothing equipped on the character)")
+		return
+	end
+	if currentTool.Name ~= BAG_TOOL_NAME then
+		print(("[SeedBagUI] E ignored: equipped tool is %q, expected %q"):format(currentTool.Name, BAG_TOOL_NAME))
+		return
+	end
+	print(("[SeedBagUI] Firing open — bed=%s"):format(tostring(findBedNearby())))
 	seedBagEvent:FireServer("open", findBedNearby())
 end)
 
@@ -686,11 +702,20 @@ end)
 local function setupCharacter(char)
 	if not char then return end
 	currentTool = char:FindFirstChildWhichIsA("Tool")
+	if currentTool then
+		print(("[SeedBagUI] setupCharacter: initial tool=%q"):format(currentTool.Name))
+	end
 	char.ChildAdded:Connect(function(child)
-		if child:IsA("Tool") then currentTool = child end
+		if child:IsA("Tool") then
+			currentTool = child
+			print(("[SeedBagUI] ChildAdded: equipped %q"):format(child.Name))
+		end
 	end)
 	char.ChildRemoved:Connect(function(child)
-		if child == currentTool then currentTool = nil end
+		if child == currentTool then
+			print(("[SeedBagUI] ChildRemoved: unequipped %q"):format(child.Name))
+			currentTool = nil
+		end
 	end)
 end
 

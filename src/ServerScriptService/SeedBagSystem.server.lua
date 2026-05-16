@@ -199,10 +199,16 @@ end
 seedBagEvent.OnServerEvent:Connect(function(player, action, target, slotIndex)
 	local char = player.Character
 	local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-	if not hrp then return end
+	if not hrp then
+		print(("[SeedBag] %s: no HRP, abort action %q"):format(player.Name, tostring(action)))
+		return
+	end
 
 	local bag = getEquippedBag(player)
-	if not bag then return end
+	if not bag then
+		print(("[SeedBag] %s: no equipped leaf bag (action=%q)"):format(player.Name, tostring(action)))
+		return
+	end
 
 	if action == "open" then
 		-- Open without a bed (player just wants to peek inside) is
@@ -210,6 +216,7 @@ seedBagEvent.OnServerEvent:Connect(function(player, action, target, slotIndex)
 		-- per-slot plant click. Target only gets carried if the
 		-- player is actually near a valid watered bed.
 		local bed = isValidBed(target, hrp) and target or nil
+		print(("[SeedBag] open ok — bed=%s, snapshot built for %s"):format(tostring(bed), player.Name))
 		seedBagEvent:FireClient(player, "show", bed, bagSnapshot(bag))
 
 	elseif action == "plant" then
