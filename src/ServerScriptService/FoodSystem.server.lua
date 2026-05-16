@@ -220,16 +220,28 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 	if typeof(foodName) ~= "string" then return end
 	-- Whitelist check only — the actual hunger / hp values live
 	-- in the in-tool Script and are looked up via _G.GetFoodData.
-	if not FOOD_DATA[foodName] then return end
+	if not FOOD_DATA[foodName] then
+		warn(("[FoodSystem] %s requested invalid food name %q"):format(player.Name, foodName))
+		return
+	end
 
 	local inv = _G.GetInventory(player)
-	if (inv[foodName] or 0) < 1 then return end
+	if (inv[foodName] or 0) < 1 then
+		print(("[FoodSystem] %s tried to equip %s but has 0 in inventory"):format(player.Name, foodName))
+		return
+	end
 
-	if alreadyHoldingFood(player, foodName) then return end
+	if alreadyHoldingFood(player, foodName) then
+		print(("[FoodSystem] %s already holding %s — skipping"):format(player.Name, foodName))
+		return
+	end
 
 	local char     = player.Character
 	local backpack = player:FindFirstChild("Backpack")
-	if not backpack then return end
+	if not backpack then
+		warn(("[FoodSystem] %s has no Backpack — abort"):format(player.Name))
+		return
+	end
 
 	_G.RemoveResourceFromInventory(player, foodName, 1)
 	if _G.SendInventory then
@@ -237,6 +249,14 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 	end
 
 	local tool = makeFoodTool(foodName)
+	if not tool then
+		warn(("[FoodSystem] makeFoodTool returned nil for %q"):format(foodName))
+		return
+	end
+	print(("[FoodSystem] built tool for %s (class=%s, name=%s, handle=%s)"):format(
+		foodName, tool.ClassName, tool.Name, tostring(tool:FindFirstChild("Handle"))
+	))
+
 	tool:SetAttribute("FoodResource", foodName)
 	tool:SetAttribute("OwnerUserId", player.UserId)
 	tool.CanBeDropped = false
@@ -249,8 +269,19 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 	-- Backpack and the player thinks the click did nothing.
 	local humanoid = char and char:FindFirstChildOfClass("Humanoid")
 	if humanoid then
-		pcall(function() humanoid:UnequipTools() end)
-		pcall(function() humanoid:EquipTool(tool) end)
+		local okU, errU = pcall(function() humanoid:UnequipTools() end)
+		if not okU then
+			warn(("[FoodSystem] UnequipTools threw: %s"):format(tostring(errU)))
+		end
+		local okE, errE = pcall(function() humanoid:EquipTool(tool) end)
+		if not okE then
+			warn(("[FoodSystem] EquipTool threw: %s"):format(tostring(errE)))
+		end
+		print(("[FoodSystem] post-equip: tool.Parent=%s"):format(
+			tool.Parent and tool.Parent:GetFullName() or "nil"
+		))
+	else
+		warn("[FoodSystem] no Humanoid on character — tool sat in Backpack")
 	end
 
 	-- Refund guard arms on first Equipped — the Backpack→Character
