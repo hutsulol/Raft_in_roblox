@@ -2156,7 +2156,27 @@ local function buildHotbar()
 				-- The Tool itself doesn't claim a slot; the resource
 				-- slot's displayed count includes the in-hand Tool so
 				-- visually the slot just stays where it was.
-				equipFoodEvent:FireServer(data.name)
+				--
+				-- Toggle behaviour: if the same food Tool is already
+				-- in hand, clicking the slot again unequips it (which
+				-- routes through the server's AncestryChanged refund
+				-- hook back to the resource stack).
+				local char     = player.Character
+				local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+				local heldFoodTool = nil
+				if char then
+					for _, t in char:GetChildren() do
+						if t:IsA("Tool") and t.Name == data.name and t:GetAttribute("FoodResource") == data.name then
+							heldFoodTool = t
+							break
+						end
+					end
+				end
+				if heldFoodTool and humanoid then
+					humanoid:UnequipTools()
+				else
+					equipFoodEvent:FireServer(data.name)
+				end
 			end
 		end)
 	end
@@ -2596,10 +2616,27 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			-- handler above.
 			equipSeedEvent:FireServer(data.name)
 		elseif data and data.type == "resource" and data.name and FOOD_RESOURCE_SET[data.name] and equipFoodEvent then
-			-- Number-key on a food-resource slot equips it as a Tool
-			-- the same way the click handler does. Player clicks
-			-- (Activated) eats it; switching away refunds.
-			equipFoodEvent:FireServer(data.name)
+			-- Number-key on a food-resource slot toggles the food Tool
+			-- in hand: equip if nothing held of this kind, unequip
+			-- (refund via the server's AncestryChanged hook) if the
+			-- player is already holding one. Mirrors the slot-click
+			-- handler above so 1-8 and mouse-click behave the same.
+			local char     = player.Character
+			local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+			local heldFoodTool = nil
+			if char then
+				for _, t in char:GetChildren() do
+					if t:IsA("Tool") and t.Name == data.name and t:GetAttribute("FoodResource") == data.name then
+						heldFoodTool = t
+						break
+					end
+				end
+			end
+			if heldFoodTool and humanoid then
+				humanoid:UnequipTools()
+			else
+				equipFoodEvent:FireServer(data.name)
+			end
 		end
 	end
 end)
