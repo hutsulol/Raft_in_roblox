@@ -658,7 +658,7 @@ local function refreshHint()
 		hintLabel.Visible = false
 		return
 	end
-	if not currentTool or currentTool.Name ~= BAG_TOOL_NAME or not currentTool.Parent then
+	if not currentTool or not currentTool.Parent or not isBagTool(currentTool) then
 		hintLabel.Visible = false
 		return
 	end
@@ -690,7 +690,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		print("[SeedBagUI] E ignored: currentTool=nil (nothing equipped on the character)")
 		return
 	end
-	if currentTool.Name ~= BAG_TOOL_NAME then
+	if not isBagTool(currentTool) then
 		print(("[SeedBagUI] E ignored: equipped tool is %q, expected %q"):format(currentTool.Name, BAG_TOOL_NAME))
 		return
 	end
@@ -699,16 +699,24 @@ UserInputService.InputBegan:Connect(function(input, processed)
 end)
 
 -- ─── Tool equip tracking ─────────────────────────────────────────
+-- Soft match: lowercase + strip spaces / underscores so a "Leaf Bag"
+-- or "leafbag" rename from the user doesn't break the picker.
+local function isBagTool(tool)
+	if not tool or not tool:IsA("Tool") then return false end
+	local name = tool.Name:lower():gsub("[_%s]", "")
+	return name == BAG_TOOL_NAME:lower():gsub("[_%s]", "")
+end
+
 local function setupCharacter(char)
 	if not char then return end
 	currentTool = char:FindFirstChildWhichIsA("Tool")
 	if currentTool then
-		print(("[SeedBagUI] setupCharacter: initial tool=%q"):format(currentTool.Name))
+		print(("[SeedBagUI] setupCharacter: initial tool=%q (isBag=%s)"):format(currentTool.Name, tostring(isBagTool(currentTool))))
 	end
 	char.ChildAdded:Connect(function(child)
 		if child:IsA("Tool") then
 			currentTool = child
-			print(("[SeedBagUI] ChildAdded: equipped %q"):format(child.Name))
+			print(("[SeedBagUI] ChildAdded: equipped %q (isBag=%s)"):format(child.Name, tostring(isBagTool(child))))
 		end
 	end)
 	char.ChildRemoved:Connect(function(child)
@@ -721,3 +729,5 @@ end
 
 if player.Character then setupCharacter(player.Character) end
 player.CharacterAdded:Connect(setupCharacter)
+
+print("[SeedBagUI] script loaded — listening on E. BAG_TOOL_NAME=" .. BAG_TOOL_NAME)

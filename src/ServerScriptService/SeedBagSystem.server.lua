@@ -59,15 +59,24 @@ local function initBagSlots(tool)
 	end
 end
 
--- Walks every leaf bag the player owns (Backpack + held Tool). Each
--- container's children are scanned by Tool.Name so the player can
--- have multiple bags and we fill them in order.
+-- Soft match — lowercase + strip spaces / underscores so an
+-- accidental rename ("Leaf Bag", "leafbag", "leaf_bag") still
+-- registers as the bag tool.
+local function isBagTool(tool)
+	if not tool or not tool:IsA("Tool") then return false end
+	local name = tool.Name:lower():gsub("[_%s]", "")
+	return name == BAG_TOOL_NAME:lower():gsub("[_%s]", "")
+end
+
+-- Walks every leaf bag the player owns (Backpack + held Tool). Soft-
+-- matches Tool.Name via isBagTool so the player can have multiple
+-- bags or a rename of the template still resolves.
 local function iterPlayerBags(player)
 	local list = {}
 	local function gather(container)
 		if not container then return end
 		for _, child in container:GetChildren() do
-			if child:IsA("Tool") and child.Name == BAG_TOOL_NAME then
+			if isBagTool(child) then
 				initBagSlots(child)
 				list[#list + 1] = child
 			end
@@ -82,7 +91,7 @@ local function getEquippedBag(player)
 	local char = player.Character
 	if not char then return nil end
 	local tool = char:FindFirstChildWhichIsA("Tool")
-	if tool and tool.Name == BAG_TOOL_NAME then
+	if tool and isBagTool(tool) then
 		initBagSlots(tool)
 		return tool
 	end
