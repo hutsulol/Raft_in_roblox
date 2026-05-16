@@ -64,6 +64,15 @@ local recipes = {
 		description = "A small leaf bag for storing seeds. Hold it and press E next to a watered tree garden bed to plant.",
 	},
 	{
+		name = "Sand Bag",
+		displayName = "Sand Bag",
+		icon = "rbxassetid://100274201283741",
+		costs = {Leaves = 5},
+		craftType = "tool",
+		category = "Misc",
+		description = "A leaf bag for storing sand. Hold it and press E to inspect, or dig sand with the shovel to fill it up.",
+	},
+	{
 		name = "Destitalor",
 		displayName = "Water Purifier",
 		icon = "rbxassetid://90221080738714",

@@ -416,6 +416,38 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 			return
 		end
 
+		-- Sand on the ground: same pattern as seeds but routes
+		-- through the Sand Bag (SandBagSystem). Without a bag the
+		-- pickup is refused with a toast so the player knows they
+		-- need to craft one first.
+		if resType == "Sand" and typeof(_G.AddSandToBag) == "function" then
+			if typeof(_G.PlayerHasSandBag) == "function" and not _G.PlayerHasSandBag(player) then
+				pickupEvent:FireClient(player, "needSandBag")
+				return
+			end
+			local perUnit = typeof(_G.GetSandBagPercentPerUnit) == "function"
+				and _G.GetSandBagPercentPerUnit() or 5
+			local space   = typeof(_G.GetSandBagSpace) == "function" and _G.GetSandBagSpace(player) or 0
+			if space <= 0 then
+				pickupEvent:FireClient(player, "sandBagFull")
+				return
+			end
+			local maxUnits = math.floor(space / perUnit)
+			if maxUnits <= 0 then
+				pickupEvent:FireClient(player, "sandBagFull")
+				return
+			end
+			local toPickup = math.min(resAmount, maxUnits)
+			local leftover = resAmount - toPickup
+			_G.AddSandToBag(player, toPickup * perUnit, droppedItem.Parent and droppedItem.Position or nil)
+			if leftover > 0 then
+				droppedItem:SetAttribute("ResourceAmount", leftover)
+			else
+				droppedItem:Destroy()
+			end
+			return
+		end
+
 		if not _G.AddResourceToInventory or not _G.GetInventoryCapacity then
 			print("[DropItem] PICKUP BLOCKED: InventoryManager globals missing")
 			return

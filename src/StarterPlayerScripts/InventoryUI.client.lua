@@ -138,6 +138,7 @@ local TOOL_ICONS = {
 	["Phone"] = "rbxassetid://123703470055474",
 	["Anchor_part"] = "rbxassetid://120414328052740",
 	["bag_empty_2"] = BAG_EMPTY_ICON,
+	["Sand Bag"]    = "rbxassetid://100274201283741",
 	-- Seed-as-Tool variants. The Tool templates the user authored
 	-- carry these names; the icons mirror the matching seed resource
 	-- so they read the same as the inventory stack form.
@@ -2560,7 +2561,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		-- the live character directly so the two UIs can't race.
 		local char = player.Character
 		local equipped = char and char:FindFirstChildOfClass("Tool")
-		if equipped and (equipped.Name == "Phone" or equipped.Name == "leaf bag" or equipped:GetAttribute("CupState") ~= nil) then
+		if equipped and (equipped.Name == "Phone" or equipped.Name == "leaf bag" or equipped.Name == "Sand Bag" or equipped:GetAttribute("CupState") ~= nil) then
 			-- Phone owns its own E binding (close phone UI). Leaf bag
 			-- owns its own E binding too (open seed picker via
 			-- SeedBagUI.client.lua) — letting the regular inventory
@@ -2589,7 +2590,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			-- evaluation (unlikely, but cheap to verify).
 			local char2 = player.Character
 			local equipped2 = char2 and char2:FindFirstChildOfClass("Tool")
-			if equipped2 and (equipped2.Name == "Phone" or equipped2.Name == "leaf bag" or equipped2:GetAttribute("CupState") ~= nil) then
+			if equipped2 and (equipped2.Name == "Phone" or equipped2.Name == "leaf bag" or equipped2.Name == "Sand Bag" or equipped2:GetAttribute("CupState") ~= nil) then
 				return
 			end
 			toggleInventory()

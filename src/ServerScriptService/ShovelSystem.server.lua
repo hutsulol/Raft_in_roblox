@@ -85,26 +85,45 @@ digDirtEvent.OnServerEvent:Connect(function(player, part)
 
 	if health <= 0 then
 		local digType = part:GetAttribute("DigType") or "Sand"
-		-- Route through AddResourceToInventory so a full inventory
-		-- overflows into a world drop instead of being invisibly stored.
-		_G.AddResourceToInventory(player, digType, 1, part.Position)
-		if _G.OnQuestResource then
-			_G.OnQuestResource(player, digType, 1)
+		if digType == "Sand" then
+			-- Sand bypasses the main inventory and goes into the
+			-- Sand Bag tool the player carries (per SandBagSystem).
+			-- One pile = +15 % bag fill. Without a bag (or with all
+			-- bags full) we spill the pile onto the ground as a
+			-- physical drop so the player can pick it up later, after
+			-- they craft / empty a bag.
+			local landed = typeof(_G.AddSandPileToBag) == "function"
+				and _G.AddSandPileToBag(player, part.Position)
+			if not landed and _G.SpawnResourceDrop then
+				_G.SpawnResourceDrop(player, "Sand", 1, part.Position)
+			end
+			if _G.OnQuestResource then
+				_G.OnQuestResource(player, "Sand", 1)
+			end
+			digDirtEvent:FireClient(player, "destroyed", 1, "Sand")
+		else
+			-- Clay (and any future dig type) keeps the old behaviour:
+			-- straight into the main inventory.
+			_G.AddResourceToInventory(player, digType, 1, part.Position)
+			if _G.OnQuestResource then
+				_G.OnQuestResource(player, digType, 1)
+			end
+			digDirtEvent:FireClient(player, "destroyed", 1, digType)
 		end
-
-		digDirtEvent:FireClient(player, "destroyed", 1, digType)
 		part:Destroy()
 	else
 		digDirtEvent:FireClient(player, "hit", health)
 	end
 end)
 
--- ─── Ensure Sand/Clay exist in player inventories ───
+-- ─── Ensure Clay exists in player inventories ───
+-- Sand was removed from the main inventory — it lives in the Sand
+-- Bag (SandBagSystem) now. Clay still flows through the regular
+-- inventory.
 local function ensureFields(player)
 	task.wait(2)
 	local inv = _G.GetInventory and _G.GetInventory(player)
 	if inv then
-		if inv.Sand == nil then inv.Sand = 0 end
 		if inv.Clay == nil then inv.Clay = 0 end
 	end
 end
