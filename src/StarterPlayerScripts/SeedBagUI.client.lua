@@ -383,33 +383,15 @@ for i = 1, SLOT_COUNT do
 	cardStroke.Parent      = card
 
 	local icon = Instance.new("ImageLabel")
-	icon.AnchorPoint            = Vector2.new(0.5, 0)
-	icon.Position               = UDim2.new(0.5, 0, 0.06, 0)
-	-- Scale-based sizing so the icon shrinks with the card as the
-	-- panel scales. 85% width, ~55% height — leaves room for the
-	-- name + badge stack underneath without ever overlapping them.
-	icon.Size                   = UDim2.new(0.85, 0, 0.55, 0)
+	icon.AnchorPoint            = Vector2.new(0.5, 0.5)
+	icon.Position               = UDim2.fromScale(0.5, 0.5)
+	-- Without the name label below, the icon owns the whole card —
+	-- 85% of each axis so the rounded corners still read clearly.
+	icon.Size                   = UDim2.new(0.85, 0, 0.85, 0)
 	icon.BackgroundTransparency = 1
 	icon.ScaleType              = Enum.ScaleType.Fit
 	icon.Image                  = ""
 	icon.Parent                 = card
-
-	local nameLabel = Instance.new("TextLabel")
-	nameLabel.AnchorPoint            = Vector2.new(0.5, 0)
-	nameLabel.Position               = UDim2.new(0.5, 0, 0.63, 0)
-	nameLabel.Size                   = UDim2.new(0.9, 0, 0.2, 0)
-	nameLabel.BackgroundTransparency = 1
-	nameLabel.Text                   = ""
-	nameLabel.TextColor3             = COLOR_WOOD_DARKEST
-	nameLabel.Font                   = Enum.Font.GothamSemibold
-	nameLabel.TextScaled             = true
-	nameLabel.Parent                 = card
-	do
-		local sc = Instance.new("UITextSizeConstraint")
-		sc.MaxTextSize = 16
-		sc.MinTextSize = 9
-		sc.Parent      = nameLabel
-	end
 
 	-- "xN" badge bottom-center, sized as a fraction of the card so
 	-- the chip stays proportional at every panel scale.
@@ -456,7 +438,6 @@ for i = 1, SLOT_COUNT do
 	slots[i] = {
 		button     = card,
 		icon       = icon,
-		name       = nameLabel,
 		badge      = badge,
 		badgeLabel = badgeLabel,
 		emptyIcon  = emptyIcon,
@@ -487,11 +468,13 @@ end
 
 -- Scale-based layout — every element below uses Scale Y so the
 -- panel re-tiles cleanly when the outer UISizeConstraint clamps the
--- panel to a different absolute height.
+-- panel to a different absolute height. The info-box rows + hint
+-- line were removed per user feedback; the detail panel is now
+-- icon → name → Plant button, top to bottom.
 local detailIcon = Instance.new("ImageLabel")
 detailIcon.AnchorPoint            = Vector2.new(0.5, 0)
-detailIcon.Position               = UDim2.new(0.5, 0, 0.03, 0)
-detailIcon.Size                   = UDim2.new(0.8, 0, 0.42, 0)
+detailIcon.Position               = UDim2.new(0.5, 0, 0.05, 0)
+detailIcon.Size                   = UDim2.new(0.8, 0, 0.55, 0)
 detailIcon.BackgroundTransparency = 1
 detailIcon.ScaleType              = Enum.ScaleType.Fit
 detailIcon.Image                  = ""
@@ -499,8 +482,8 @@ detailIcon.Parent                 = detail
 
 local detailName = Instance.new("TextLabel")
 detailName.AnchorPoint            = Vector2.new(0.5, 0)
-detailName.Position               = UDim2.new(0.5, 0, 0.48, 0)
-detailName.Size                   = UDim2.new(0.9, 0, 0.08, 0)
+detailName.Position               = UDim2.new(0.5, 0, 0.65, 0)
+detailName.Size                   = UDim2.new(0.9, 0, 0.13, 0)
 detailName.BackgroundTransparency = 1
 detailName.Text                   = "Select a seed"
 detailName.TextColor3             = COLOR_WOOD_DARKEST
@@ -514,57 +497,15 @@ do
 	sc.Parent      = detailName
 end
 
-local infoBox = Instance.new("Frame")
-infoBox.AnchorPoint        = Vector2.new(0.5, 0)
-infoBox.Position           = UDim2.new(0.5, 0, 0.58, 0)
-infoBox.Size               = UDim2.new(0.9, 0, 0.22, 0)
-infoBox.BackgroundColor3   = COLOR_PAPER_LIGHT
-infoBox.BorderSizePixel    = 0
-infoBox.Parent             = detail
-do
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 10)
-	c.Parent       = infoBox
-end
-
-local infoGrowsLabel = Instance.new("TextLabel")
-infoGrowsLabel.Position               = UDim2.new(0, 10, 0, 6)
-infoGrowsLabel.Size                   = UDim2.new(1, -20, 0, 28)
-infoGrowsLabel.BackgroundTransparency = 1
-infoGrowsLabel.Text                   = ""
-infoGrowsLabel.TextColor3             = COLOR_WOOD_DARKEST
-infoGrowsLabel.TextXAlignment         = Enum.TextXAlignment.Left
-infoGrowsLabel.Font                   = Enum.Font.Gotham
-infoGrowsLabel.TextScaled             = true
-infoGrowsLabel.Parent                 = infoBox
-do
-	local sc = Instance.new("UITextSizeConstraint")
-	sc.MaxTextSize = 14
-	sc.MinTextSize = 9
-	sc.Parent      = infoGrowsLabel
-end
-
-local infoTimeLabel = Instance.new("TextLabel")
-infoTimeLabel.Position               = UDim2.new(0, 10, 0, 38)
-infoTimeLabel.Size                   = UDim2.new(1, -20, 0, 28)
-infoTimeLabel.BackgroundTransparency = 1
-infoTimeLabel.Text                   = ""
-infoTimeLabel.TextColor3             = COLOR_WOOD_DARKEST
-infoTimeLabel.TextXAlignment         = Enum.TextXAlignment.Left
-infoTimeLabel.Font                   = Enum.Font.Gotham
-infoTimeLabel.TextScaled             = true
-infoTimeLabel.Parent                 = infoBox
-do
-	local sc = Instance.new("UITextSizeConstraint")
-	sc.MaxTextSize = 14
-	sc.MinTextSize = 9
-	sc.Parent      = infoTimeLabel
-end
+-- Info-box ("Grows into" / "Time") + plantHint removed per user
+-- feedback — the detail panel now shows only the icon, name, and
+-- the Plant button. Anything else lived as text spilling over the
+-- button when the icon got tall.
 
 local plantBtn = Instance.new("TextButton")
 plantBtn.AnchorPoint            = Vector2.new(0.5, 1)
-plantBtn.Position               = UDim2.new(0.5, 0, 0.97, 0)
-plantBtn.Size                   = UDim2.new(0.9, 0, 0.14, 0)
+plantBtn.Position               = UDim2.new(0.5, 0, 0.95, 0)
+plantBtn.Size                   = UDim2.new(0.9, 0, 0.18, 0)
 plantBtn.BackgroundColor3       = COLOR_GREEN_OK
 plantBtn.Text                   = "Plant"
 plantBtn.TextColor3             = Color3.fromRGB(245, 245, 240)
@@ -584,25 +525,11 @@ do
 	sc.Parent      = plantBtn
 end
 
--- Hint line under the Plant button — explains why the button is
--- disabled when the player isn't next to a bed. Avoids cramming
--- the message into the button label (which used to overflow it).
-local plantHint = Instance.new("TextLabel")
-plantHint.AnchorPoint            = Vector2.new(0.5, 1)
-plantHint.Position               = UDim2.new(0.5, 0, 0.83, 0)
-plantHint.Size                   = UDim2.new(0.9, 0, 0.05, 0)
-plantHint.BackgroundTransparency = 1
-plantHint.Text                   = ""
-plantHint.TextColor3             = COLOR_WOOD_DARKEST
-plantHint.Font                   = Enum.Font.Gotham
-plantHint.TextScaled             = true
-plantHint.Parent                 = detail
-do
-	local sc = Instance.new("UITextSizeConstraint")
-	sc.MaxTextSize = 13
-	sc.MinTextSize = 8
-	sc.Parent      = plantHint
-end
+-- plantHint removed — user asked for no auxiliary text under the
+-- seed name in the detail panel. The Plant button's BackgroundColor
+-- + Active state alone signals whether the player can plant right
+-- now (bright green = plantable, dim green = need to step up to a
+-- watered bed first).
 
 local tipLabel = Instance.new("TextLabel")
 tipLabel.AnchorPoint            = Vector2.new(0.5, 1)
@@ -629,37 +556,20 @@ end
 local function paintDetail()
 	if currentSelection and slots[currentSelection] and slots[currentSelection].seed then
 		local seedName = slots[currentSelection].seed
-		local meta = SEED_META[seedName] or {
-			display = seedName,
-			icon = "",
-			growsInto = "Unknown",
-			growsTime = "—",
-		}
-		detailIcon.Image      = meta.icon
-		detailName.Text       = meta.display
-		infoGrowsLabel.Text   = "Grows into: " .. meta.growsInto
-		infoTimeLabel.Text    = "Time: " .. meta.growsTime
-		infoBox.Visible       = true
-		-- Plant button always reads "Plant" and stays visibly green.
-		-- The hint line below explains why it's dimmed when no bed.
+		local meta = SEED_META[seedName] or { display = seedName, icon = "" }
+		detailIcon.Image          = meta.icon
+		detailName.Text           = meta.display
 		plantBtn.Visible          = true
 		plantBtn.Text             = "Plant"
 		plantBtn.Active           = currentBed ~= nil
 		plantBtn.BackgroundColor3 = currentBed and COLOR_GREEN_OK or COLOR_GREEN_DIM
-		plantHint.Text            = currentBed and "" or "Stand next to a watered bed"
 	else
-		detailIcon.Image      = ""
-		detailName.Text       = "Select a seed"
-		infoGrowsLabel.Text   = ""
-		infoTimeLabel.Text    = ""
-		infoBox.Visible       = false
-		-- No seed selected — keep the button visible but inert so the
-		-- detail panel doesn't suddenly collapse height-wise.
+		detailIcon.Image          = ""
+		detailName.Text           = "Select a seed"
 		plantBtn.Visible          = true
 		plantBtn.Text             = "Plant"
 		plantBtn.Active           = false
 		plantBtn.BackgroundColor3 = COLOR_GREEN_DIM
-		plantHint.Text            = "Select a seed first"
 	end
 end
 
@@ -687,8 +597,6 @@ local function paintSlots(snapshot)
 			s.count               = entry.count
 			s.icon.Image          = meta.icon
 			s.icon.Visible        = true
-			s.name.Text           = meta.display
-			s.name.Visible        = true
 			s.badge.Visible       = true
 			s.badgeLabel.Text     = "x" .. tostring(entry.count)
 			s.emptyIcon.Visible   = false
@@ -699,8 +607,6 @@ local function paintSlots(snapshot)
 			s.count               = 0
 			s.icon.Image          = ""
 			s.icon.Visible        = false
-			s.name.Text           = ""
-			s.name.Visible        = false
 			s.badge.Visible       = false
 			s.emptyIcon.Visible   = false
 			s.button.BackgroundColor3 = COLOR_PAPER:Lerp(COLOR_WOOD_BASE, 0.35)
