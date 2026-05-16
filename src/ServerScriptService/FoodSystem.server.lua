@@ -16,7 +16,19 @@ local FOOD_DATA = {
 	Banana    = { hunger = 15, hp = 5 },
 	Coconut   = { hunger = 25, hp = 5 },
 	Pineapple = { hunger = 20, hp = 5 },
+	-- The user's Tool template is "PineApple" (capital A). Mirror
+	-- the data here so the in-tool Script can look up by Tool.Name
+	-- without a casing helper.
+	PineApple = { hunger = 20, hp = 5 },
 }
+
+-- Published for the in-Tool Script (src/Fruits/<Name> ( Tool )/Script).
+-- The Script calls this on Tool.Activated to figure out how much
+-- hunger / HP to grant, so the values stay in one place and a tuning
+-- pass touches only this table.
+_G.GetFoodData = function(name)
+	return FOOD_DATA[name]
+end
 
 -- Shared eating animation. Anything held as a food Tool plays this
 -- on Tool.Activated. User-authored templates that already ship with
@@ -191,8 +203,9 @@ end
 
 equipEvent.OnServerEvent:Connect(function(player, foodName)
 	if typeof(foodName) ~= "string" then return end
-	local data = FOOD_DATA[foodName]
-	if not data then return end
+	-- Whitelist check only — the actual hunger / hp values live
+	-- in the in-tool Script and are looked up via _G.GetFoodData.
+	if not FOOD_DATA[foodName] then return end
 
 	local inv = _G.GetInventory(player)
 	if (inv[foodName] or 0) < 1 then return end
@@ -232,32 +245,11 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 		tool:SetAttribute("Ready", true)
 	end)
 
-	tool.Activated:Connect(function()
-		-- Player clicked while holding the fruit → eat one.
-		-- Mark Consumed BEFORE Destroy so the AncestryChanged hook
-		-- knows the spend was intentional.
-		if tool:GetAttribute("Consumed") then return end
-		tool:SetAttribute("Consumed", true)
-
-		-- Play the eat animation on the player's Humanoid before
-		-- destroying the Tool. Once humanoid:LoadAnimation reads the
-		-- AnimationId the resulting track lives on the Animator, so
-		-- the animation keeps playing even after the Tool (and its
-		-- Animation child) are gone.
-		local holder = tool.Parent
-		local hum    = holder and holder:FindFirstChildOfClass("Humanoid")
-		local anim   = tool:FindFirstChild("Eat")
-		if hum and anim and anim:IsA("Animation") then
-			pcall(function()
-				local track = hum:LoadAnimation(anim)
-				track.Priority = Enum.AnimationPriority.Action
-				track:Play()
-			end)
-		end
-
-		_G.RestoreHunger(player, data.hunger, data.hp)
-		tool:Destroy()
-	end)
+	-- Tool.Activated → eating is now handled by the per-Tool Script
+	-- (src/Fruits/<Name> ( Tool )/Script): plays the Eat animation,
+	-- plays the shared "Eating Fruit Sound", waits the 0.5 s eat
+	-- delay, then calls _G.RestoreHunger + Destroy. FoodSystem only
+	-- owns the equip / refund plumbing now.
 
 	tool.AncestryChanged:Connect(function(_, newParent)
 		if not tool:GetAttribute("Ready") then return end
