@@ -67,10 +67,25 @@ local function findFoodTemplate(foodName)
 	-- The user can author the template as either a Tool (already
 	-- holdable) or a Model (we wrap it). Look top-level first, then
 	-- recurse so a "Fruits" / "Trees_Grow" folder doesn't hide it.
+	local function ok(inst)
+		return inst and (inst:IsA("Tool") or inst:IsA("Model") or inst:IsA("BasePart"))
+	end
 	local hit = ReplicatedStorage:FindFirstChild(foodName)
-	if hit and (hit:IsA("Tool") or hit:IsA("Model") or hit:IsA("BasePart")) then return hit end
+	if ok(hit) then return hit end
 	hit = ReplicatedStorage:FindFirstChild(foodName, true)
-	if hit and (hit:IsA("Tool") or hit:IsA("Model") or hit:IsA("BasePart")) then return hit end
+	if ok(hit) then return hit end
+	-- Case-insensitive fallback. The user's Pineapple Tool template
+	-- is authored as "PineApple" (capital A) — FindFirstChild is
+	-- case-sensitive, so a direct lookup misses it and we'd fall
+	-- through to the invisible placeholder. Walk descendants once
+	-- comparing lowercase names so any casing of the same word
+	-- still resolves.
+	local lower = foodName:lower()
+	for _, child in ReplicatedStorage:GetDescendants() do
+		if ok(child) and child.Name:lower() == lower then
+			return child
+		end
+	end
 	return nil
 end
 
