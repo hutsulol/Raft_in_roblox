@@ -384,17 +384,20 @@ for i = 1, SLOT_COUNT do
 
 	local icon = Instance.new("ImageLabel")
 	icon.AnchorPoint            = Vector2.new(0.5, 0)
-	icon.Position               = UDim2.new(0.5, 0, 0, 18)
-	icon.Size                   = UDim2.new(1, -32, 0, 96)
+	icon.Position               = UDim2.new(0.5, 0, 0.06, 0)
+	-- Scale-based sizing so the icon shrinks with the card as the
+	-- panel scales. 85% width, ~55% height — leaves room for the
+	-- name + badge stack underneath without ever overlapping them.
+	icon.Size                   = UDim2.new(0.85, 0, 0.55, 0)
 	icon.BackgroundTransparency = 1
 	icon.ScaleType              = Enum.ScaleType.Fit
 	icon.Image                  = ""
 	icon.Parent                 = card
 
 	local nameLabel = Instance.new("TextLabel")
-	nameLabel.AnchorPoint            = Vector2.new(0.5, 1)
-	nameLabel.Position               = UDim2.new(0.5, 0, 1, -32)
-	nameLabel.Size                   = UDim2.new(1, -12, 0, 22)
+	nameLabel.AnchorPoint            = Vector2.new(0.5, 0)
+	nameLabel.Position               = UDim2.new(0.5, 0, 0.63, 0)
+	nameLabel.Size                   = UDim2.new(0.9, 0, 0.2, 0)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text                   = ""
 	nameLabel.TextColor3             = COLOR_WOOD_DARKEST
@@ -408,11 +411,12 @@ for i = 1, SLOT_COUNT do
 		sc.Parent      = nameLabel
 	end
 
-	-- "xN" badge bottom-center.
+	-- "xN" badge bottom-center, sized as a fraction of the card so
+	-- the chip stays proportional at every panel scale.
 	local badge = Instance.new("Frame")
 	badge.AnchorPoint            = Vector2.new(0.5, 1)
-	badge.Position               = UDim2.new(0.5, 0, 1, -8)
-	badge.Size                   = UDim2.fromOffset(48, 22)
+	badge.Position               = UDim2.new(0.5, 0, 0.97, 0)
+	badge.Size                   = UDim2.new(0.45, 0, 0.16, 0)
 	badge.BackgroundColor3       = COLOR_WOOD_BASE
 	badge.BorderSizePixel        = 0
 	badge.Visible                = false
@@ -428,14 +432,21 @@ for i = 1, SLOT_COUNT do
 	badgeLabel.Text                   = ""
 	badgeLabel.TextColor3             = COLOR_PAPER_LIGHT
 	badgeLabel.Font                   = Enum.Font.GothamBold
-	badgeLabel.TextSize               = 14
+	badgeLabel.TextScaled             = true
 	badgeLabel.Parent                 = badge
+	do
+		local sc = Instance.new("UITextSizeConstraint")
+		sc.MaxTextSize = 14
+		sc.MinTextSize = 8
+		sc.Parent      = badgeLabel
+	end
 
 	-- Empty-state placeholder: a faint sprout icon when no seed.
+	-- Scale-sized so it tracks the card's current size.
 	local emptyIcon = Instance.new("ImageLabel")
 	emptyIcon.AnchorPoint            = Vector2.new(0.5, 0.5)
 	emptyIcon.Position               = UDim2.fromScale(0.5, 0.5)
-	emptyIcon.Size                   = UDim2.new(0, 56, 0, 56)
+	emptyIcon.Size                   = UDim2.new(0.45, 0, 0.45, 0)
 	emptyIcon.BackgroundTransparency = 1
 	emptyIcon.ImageTransparency      = 0.7
 	emptyIcon.Image                  = ""
@@ -474,10 +485,13 @@ do
 	s.Parent    = detail
 end
 
+-- Scale-based layout — every element below uses Scale Y so the
+-- panel re-tiles cleanly when the outer UISizeConstraint clamps the
+-- panel to a different absolute height.
 local detailIcon = Instance.new("ImageLabel")
 detailIcon.AnchorPoint            = Vector2.new(0.5, 0)
-detailIcon.Position               = UDim2.new(0.5, 0, 0, 14)
-detailIcon.Size                   = UDim2.new(1, -32, 0, 138)
+detailIcon.Position               = UDim2.new(0.5, 0, 0.03, 0)
+detailIcon.Size                   = UDim2.new(0.8, 0, 0.42, 0)
 detailIcon.BackgroundTransparency = 1
 detailIcon.ScaleType              = Enum.ScaleType.Fit
 detailIcon.Image                  = ""
@@ -485,8 +499,8 @@ detailIcon.Parent                 = detail
 
 local detailName = Instance.new("TextLabel")
 detailName.AnchorPoint            = Vector2.new(0.5, 0)
-detailName.Position               = UDim2.new(0.5, 0, 0, 160)
-detailName.Size                   = UDim2.new(1, -24, 0, 26)
+detailName.Position               = UDim2.new(0.5, 0, 0.48, 0)
+detailName.Size                   = UDim2.new(0.9, 0, 0.08, 0)
 detailName.BackgroundTransparency = 1
 detailName.Text                   = "Select a seed"
 detailName.TextColor3             = COLOR_WOOD_DARKEST
@@ -502,8 +516,8 @@ end
 
 local infoBox = Instance.new("Frame")
 infoBox.AnchorPoint        = Vector2.new(0.5, 0)
-infoBox.Position           = UDim2.new(0.5, 0, 0, 196)
-infoBox.Size               = UDim2.new(1, -24, 0, 74)
+infoBox.Position           = UDim2.new(0.5, 0, 0.58, 0)
+infoBox.Size               = UDim2.new(0.9, 0, 0.22, 0)
 infoBox.BackgroundColor3   = COLOR_PAPER_LIGHT
 infoBox.BorderSizePixel    = 0
 infoBox.Parent             = detail
@@ -549,8 +563,8 @@ end
 
 local plantBtn = Instance.new("TextButton")
 plantBtn.AnchorPoint            = Vector2.new(0.5, 1)
-plantBtn.Position               = UDim2.new(0.5, 0, 1, -14)
-plantBtn.Size                   = UDim2.new(1, -24, 0, 46)
+plantBtn.Position               = UDim2.new(0.5, 0, 0.97, 0)
+plantBtn.Size                   = UDim2.new(0.9, 0, 0.14, 0)
 plantBtn.BackgroundColor3       = COLOR_GREEN_OK
 plantBtn.Text                   = "Plant"
 plantBtn.TextColor3             = Color3.fromRGB(245, 245, 240)
@@ -575,8 +589,8 @@ end
 -- the message into the button label (which used to overflow it).
 local plantHint = Instance.new("TextLabel")
 plantHint.AnchorPoint            = Vector2.new(0.5, 1)
-plantHint.Position               = UDim2.new(0.5, 0, 1, -64)
-plantHint.Size                   = UDim2.new(1, -24, 0, 18)
+plantHint.Position               = UDim2.new(0.5, 0, 0.83, 0)
+plantHint.Size                   = UDim2.new(0.9, 0, 0.05, 0)
 plantHint.BackgroundTransparency = 1
 plantHint.Text                   = ""
 plantHint.TextColor3             = COLOR_WOOD_DARKEST
