@@ -169,6 +169,24 @@ pickerGui.DisplayOrder   = 95
 pickerGui.Enabled        = false
 pickerGui.Parent         = playerGui
 
+-- Invisible Modal GuiButton — Roblox's camera script releases the
+-- mouse cursor (Default behaviour, free to move) whenever ANY visible
+-- Modal button exists in PlayerGui. ModalUIUnlocker does the same
+-- trick for WorkbenchGui / InventoryGui / etc.; we attach our own
+-- here so the seed picker doesn't have to live on that whitelist.
+local modalUnlock = Instance.new("TextButton")
+modalUnlock.Name                 = "__ModalUnlock"
+modalUnlock.Modal                = true
+modalUnlock.Active               = true
+modalUnlock.BackgroundTransparency = 1
+modalUnlock.TextTransparency     = 1
+modalUnlock.Text                 = ""
+modalUnlock.AutoButtonColor      = false
+modalUnlock.Size                 = UDim2.fromOffset(1, 1)
+modalUnlock.Position             = UDim2.fromOffset(0, 0)
+modalUnlock.ZIndex               = 1
+modalUnlock.Parent               = pickerGui
+
 local backdrop = Instance.new("TextButton")
 backdrop.Size                   = UDim2.fromScale(1, 1)
 backdrop.BackgroundColor3       = Color3.fromRGB(0, 0, 0)
