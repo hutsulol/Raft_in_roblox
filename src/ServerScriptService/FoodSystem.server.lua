@@ -18,6 +18,28 @@ local FOOD_DATA = {
 	Pineapple = { hunger = 20, hp = 5 },
 }
 
+-- Shared eating animation. Anything held as a food Tool plays this
+-- on Tool.Activated. User-authored templates that already ship with
+-- an Animation child named "Eat" keep theirs; we only inject one
+-- when the template is missing it (e.g. the Banana / Pineapple Tools
+-- + the wrapped Coconut model).
+local EAT_ANIMATION_ID = "rbxassetid://5973758927"
+
+local function ensureEatAnimation(tool)
+	local existing = tool:FindFirstChild("Eat")
+	if existing and existing:IsA("Animation") then
+		if existing.AnimationId == "" then
+			existing.AnimationId = EAT_ANIMATION_ID
+		end
+		return existing
+	end
+	local anim = Instance.new("Animation")
+	anim.Name        = "Eat"
+	anim.AnimationId = EAT_ANIMATION_ID
+	anim.Parent      = tool
+	return anim
+end
+
 local equipEvent = ReplicatedStorage:FindFirstChild("EquipFoodAsTool")
 if not equipEvent then
 	equipEvent = Instance.new("RemoteEvent")
@@ -190,6 +212,7 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 	tool:SetAttribute("FoodResource", foodName)
 	tool:SetAttribute("OwnerUserId", player.UserId)
 	tool.CanBeDropped = false
+	ensureEatAnimation(tool)
 
 	tool.Parent = backpack
 
@@ -215,6 +238,23 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 		-- knows the spend was intentional.
 		if tool:GetAttribute("Consumed") then return end
 		tool:SetAttribute("Consumed", true)
+
+		-- Play the eat animation on the player's Humanoid before
+		-- destroying the Tool. Once humanoid:LoadAnimation reads the
+		-- AnimationId the resulting track lives on the Animator, so
+		-- the animation keeps playing even after the Tool (and its
+		-- Animation child) are gone.
+		local holder = tool.Parent
+		local hum    = holder and holder:FindFirstChildOfClass("Humanoid")
+		local anim   = tool:FindFirstChild("Eat")
+		if hum and anim and anim:IsA("Animation") then
+			pcall(function()
+				local track = hum:LoadAnimation(anim)
+				track.Priority = Enum.AnimationPriority.Action
+				track:Play()
+			end)
+		end
+
 		_G.RestoreHunger(player, data.hunger, data.hp)
 		tool:Destroy()
 	end)
