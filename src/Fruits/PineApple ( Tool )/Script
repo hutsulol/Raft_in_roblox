@@ -8,12 +8,12 @@
 --   1. Mark Consumed=true so FoodSystem's AncestryChanged refund
 --      hook treats this as a deliberate spend, not an unequip.
 --   2. Load + play the Eat animation on the player's Humanoid.
---   3. Clone "Eating Fruit Sound" (shared, parented next to the
---      Tool templates) so the audio survives the Tool's :Destroy().
---   4. Wait EAT_DELAY (0.5 s per the user brief) so the animation
---      has a moment to read on screen before the fruit disappears.
+--   3. task.wait EAT_DELAY (1.2 s per the user brief) — animation
+--      runs while the fruit visibly stays in the player's hand.
+--   4. Play the shared "Eating Fruit Sound" right as the fruit
+--      disappears (cloned so it survives the Tool's :Destroy).
 --   5. Restore hunger / HP via the _G hooks FoodSystem publishes —
---      _G.GetFoodData(toolName) → { hunger, hp }, and _G.RestoreHunger.
+--      _G.GetFoodData(toolName) → { hunger, hp }, _G.RestoreHunger.
 --   6. :Destroy().
 
 local Tool = script.Parent
@@ -23,7 +23,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local Debris            = game:GetService("Debris")
 local SoundService      = game:GetService("SoundService")
 
-local EAT_DELAY = 0.5
+local EAT_DELAY = 1.2
 
 local function findEatSound()
 	local fruits = ReplicatedStorage:FindFirstChild("Fruits")
@@ -62,18 +62,20 @@ Tool.Activated:Connect(function()
 		end
 	end
 
-	-- Play the shared eat sound. We clone it so it survives the
-	-- Tool's destruction (the original lives under
-	-- ReplicatedStorage.Fruits and is never moved).
+	-- Hold the fruit visible while the chew animation plays. Sound +
+	-- destruction both happen at the EAT_DELAY mark — that's when
+	-- the bite "lands" on screen.
+	task.wait(EAT_DELAY)
+
+	-- Play the shared eat sound right as the fruit disappears. We
+	-- clone it so the audio survives the upcoming Tool:Destroy().
 	local eatSound = findEatSound()
 	if eatSound then
 		local clone = eatSound:Clone()
 		clone.Parent = character or SoundService
 		clone:Play()
-		Debris:AddItem(clone, math.max(EAT_DELAY + 0.5, (eatSound.TimeLength or 1) + 0.2))
+		Debris:AddItem(clone, (eatSound.TimeLength or 1) + 0.5)
 	end
-
-	task.wait(EAT_DELAY)
 
 	local player = Players:GetPlayerFromCharacter(character)
 	if player then
