@@ -338,16 +338,28 @@ gridFrame.Parent             = panel
 
 local gridLayout = Instance.new("UIGridLayout")
 gridLayout.CellPadding   = UDim2.fromOffset(CARD_GAP, CARD_GAP)
-gridLayout.CellSize      = UDim2.fromScale(1 / GRID_COLS, 1 / GRID_ROWS)
+-- CellSize is recomputed on every AbsoluteSize change below — Scale-
+-- based sizing didn't account for CellPadding and overflowed the
+-- grid frame, spilling slot cards out the bottom.
+gridLayout.CellSize      = UDim2.fromOffset(80, 80)
 gridLayout.FillDirection = Enum.FillDirection.Horizontal
 gridLayout.SortOrder     = Enum.SortOrder.LayoutOrder
 gridLayout.StartCorner   = Enum.StartCorner.TopLeft
 gridLayout.Parent        = gridFrame
 
--- AbsoluteCellSize honours CellPadding; subtract a slice so cards
--- don't overlap.
-local gridPadding = Instance.new("UIPadding")
-gridPadding.Parent = gridFrame
+local function refitGridCells()
+	local w = gridFrame.AbsoluteSize.X
+	local h = gridFrame.AbsoluteSize.Y
+	if w <= 0 or h <= 0 then return end
+	-- Subtract the gaps between cells, then divide by the count.
+	local cellW = math.floor((w - (GRID_COLS - 1) * CARD_GAP) / GRID_COLS)
+	local cellH = math.floor((h - (GRID_ROWS - 1) * CARD_GAP) / GRID_ROWS)
+	if cellW <= 0 or cellH <= 0 then return end
+	gridLayout.CellSize = UDim2.fromOffset(cellW, cellH)
+end
+
+gridFrame:GetPropertyChangedSignal("AbsoluteSize"):Connect(refitGridCells)
+task.defer(refitGridCells)
 
 -- ── Slot card factory ───────────────────────────────────────────
 local slots = {}
@@ -778,12 +790,14 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		return
 	end
 	if input.KeyCode ~= Enum.KeyCode.E then return end
-	-- Diagnostic trail. Each return is annotated so the Studio Output
-	-- reveals which guard tripped when the bag won't open on E.
+	-- E also closes the picker if it's already open — symmetrical with
+	-- Escape, and matches "press the same key to toggle" muscle memory.
 	if pickerGui.Enabled then
-		print("[SeedBagUI] E ignored: picker already open")
+		closePicker()
 		return
 	end
+	-- Diagnostic trail. Each return is annotated so the Studio Output
+	-- reveals which guard tripped when the bag won't open on E.
 	if processed then
 		print("[SeedBagUI] E ignored: gameProcessed=true (another GUI consumed it)")
 		return
