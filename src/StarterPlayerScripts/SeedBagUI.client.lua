@@ -36,8 +36,8 @@ local seedBagEvent = ReplicatedStorage:WaitForChild("SeedBagAction")
 local pickupEvent  = ReplicatedStorage:WaitForChild("PickupDroppedItem")
 
 local BAG_TOOL_NAME = "leaf bag"
-local SLOT_COUNT    = 8
-local GRID_COLS     = 4
+local SLOT_COUNT    = 6
+local GRID_COLS     = 3
 local GRID_ROWS     = 2
 
 -- Seed display metadata. growsInto / growsTime drive the right-side
@@ -181,13 +181,28 @@ backdrop.Parent                 = pickerGui
 local panel = Instance.new("Frame")
 panel.AnchorPoint     = Vector2.new(0.5, 0.5)
 panel.Position        = UDim2.fromScale(0.5, 0.5)
-panel.Size            = UDim2.fromOffset(960, 600)
+-- Scale to ~65% of the viewport so the panel reads well on both
+-- laptop screens and 4K monitors. UISizeConstraint clamps to a
+-- sensible min/max — keeps slot cards legible on small screens and
+-- prevents the panel from sprawling on a 4K display.
+panel.Size            = UDim2.fromScale(0.55, 0.65)
 panel.BackgroundColor3 = COLOR_WOOD_BASE
 panel.BorderSizePixel = 0
 panel.Parent          = pickerGui
+
 do
+	local sc = Instance.new("UISizeConstraint")
+	sc.MinSize = Vector2.new(560, 360)
+	sc.MaxSize = Vector2.new(820, 540)
+	sc.Parent  = panel
+
+	local ar = Instance.new("UIAspectRatioConstraint")
+	ar.AspectRatio = 820 / 540   -- maintain the design's ratio
+	ar.DominantAxis = Enum.DominantAxis.Width
+	ar.Parent = panel
+
 	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 22)
+	c.CornerRadius = UDim.new(0, 18)
 	c.Parent       = panel
 	local s = Instance.new("UIStroke")
 	s.Color     = COLOR_WOOD_DARKEST
@@ -197,8 +212,8 @@ end
 
 -- ── Header strip ─────────────────────────────────────────────────
 local header = Instance.new("Frame")
-header.Size               = UDim2.new(1, -32, 0, 90)
-header.Position           = UDim2.new(0, 16, 0, 16)
+header.Size               = UDim2.new(1, -28, 0, 80)
+header.Position           = UDim2.new(0, 14, 0, 14)
 header.BackgroundColor3   = COLOR_WOOD_MID
 header.BorderSizePixel    = 0
 header.Parent             = panel
@@ -209,8 +224,8 @@ do
 end
 
 local bagIcon = Instance.new("ImageLabel")
-bagIcon.Size                   = UDim2.fromOffset(64, 64)
-bagIcon.Position               = UDim2.new(0, 12, 0.5, -32)
+bagIcon.Size                   = UDim2.fromOffset(56, 56)
+bagIcon.Position               = UDim2.new(0, 10, 0.5, -28)
 bagIcon.BackgroundColor3       = COLOR_PAPER
 bagIcon.BackgroundTransparency = 0
 bagIcon.Image                  = BAG_ICON
@@ -232,13 +247,19 @@ titleLabel.TextColor3         = COLOR_PAPER_LIGHT
 titleLabel.TextXAlignment     = Enum.TextXAlignment.Left
 titleLabel.TextYAlignment     = Enum.TextYAlignment.Center
 titleLabel.Font               = Enum.Font.GothamBold
-titleLabel.TextSize           = 24
+titleLabel.TextScaled         = true
 titleLabel.Parent             = header
+do
+	local sc = Instance.new("UITextSizeConstraint")
+	sc.MaxTextSize = 24
+	sc.MinTextSize = 12
+	sc.Parent      = titleLabel
+end
 
 local subtitleLabel = Instance.new("TextLabel")
 subtitleLabel.AnchorPoint            = Vector2.new(0, 0.5)
 subtitleLabel.Position               = UDim2.new(0, 88, 0.5, 16)
-subtitleLabel.Size                   = UDim2.new(1, -260, 0, 24)
+subtitleLabel.Size                   = UDim2.new(1, -260, 0, 22)
 subtitleLabel.BackgroundTransparency = 1
 subtitleLabel.Text                   = "Choose what to plant"
 subtitleLabel.TextColor3             = COLOR_PAPER_LIGHT
@@ -246,13 +267,19 @@ subtitleLabel.TextXAlignment         = Enum.TextXAlignment.Left
 subtitleLabel.TextYAlignment         = Enum.TextYAlignment.Center
 subtitleLabel.TextTransparency       = 0.2
 subtitleLabel.Font                   = Enum.Font.Gotham
-subtitleLabel.TextSize               = 18
+subtitleLabel.TextScaled             = true
 subtitleLabel.Parent                 = header
+do
+	local sc = Instance.new("UITextSizeConstraint")
+	sc.MaxTextSize = 18
+	sc.MinTextSize = 10
+	sc.Parent      = subtitleLabel
+end
 
 local counterFrame = Instance.new("Frame")
 counterFrame.AnchorPoint        = Vector2.new(1, 0.5)
-counterFrame.Position           = UDim2.new(1, -76, 0.5, 0)
-counterFrame.Size               = UDim2.fromOffset(100, 44)
+counterFrame.Position           = UDim2.new(1, -64, 0.5, 0)
+counterFrame.Size               = UDim2.fromOffset(80, 38)
 counterFrame.BackgroundColor3   = COLOR_WOOD_BASE
 counterFrame.BorderSizePixel    = 0
 counterFrame.Parent             = header
@@ -263,18 +290,25 @@ do
 end
 
 local counterLabel = Instance.new("TextLabel")
-counterLabel.Size               = UDim2.fromScale(1, 1)
+counterLabel.Size               = UDim2.new(1, -16, 1, -8)
+counterLabel.Position           = UDim2.new(0, 8, 0, 4)
 counterLabel.BackgroundTransparency = 1
 counterLabel.Text               = "0 / " .. SLOT_COUNT
 counterLabel.TextColor3         = COLOR_PAPER_LIGHT
 counterLabel.Font               = Enum.Font.GothamBold
-counterLabel.TextSize           = 22
+counterLabel.TextScaled         = true
 counterLabel.Parent             = counterFrame
+do
+	local sc = Instance.new("UITextSizeConstraint")
+	sc.MaxTextSize = 22
+	sc.MinTextSize = 10
+	sc.Parent      = counterLabel
+end
 
 local closeBtn = Instance.new("TextButton")
 closeBtn.AnchorPoint            = Vector2.new(1, 0.5)
-closeBtn.Position               = UDim2.new(1, -16, 0.5, 0)
-closeBtn.Size                   = UDim2.fromOffset(44, 44)
+closeBtn.Position               = UDim2.new(1, -12, 0.5, 0)
+closeBtn.Size                   = UDim2.fromOffset(38, 38)
 closeBtn.BackgroundColor3       = COLOR_WOOD_DARK
 closeBtn.Text                   = "×"
 closeBtn.TextColor3             = COLOR_PAPER_LIGHT
@@ -289,12 +323,12 @@ do
 end
 
 -- ── Grid (left side) ────────────────────────────────────────────
-local GRID_LEFT   = 16
-local GRID_TOP    = 130
-local DETAIL_W    = 260
-local CARD_GAP    = 12
-local DETAIL_GAP  = 18
-local GRID_BOTTOM = 60
+local GRID_LEFT   = 14
+local GRID_TOP    = 110
+local DETAIL_W    = 220
+local CARD_GAP    = 10
+local DETAIL_GAP  = 14
+local GRID_BOTTOM = 44
 
 local gridFrame = Instance.new("Frame")
 gridFrame.Position           = UDim2.new(0, GRID_LEFT, 0, GRID_TOP)
@@ -347,14 +381,20 @@ for i = 1, SLOT_COUNT do
 
 	local nameLabel = Instance.new("TextLabel")
 	nameLabel.AnchorPoint            = Vector2.new(0.5, 1)
-	nameLabel.Position               = UDim2.new(0.5, 0, 1, -34)
-	nameLabel.Size                   = UDim2.new(1, -16, 0, 22)
+	nameLabel.Position               = UDim2.new(0.5, 0, 1, -32)
+	nameLabel.Size                   = UDim2.new(1, -12, 0, 22)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text                   = ""
 	nameLabel.TextColor3             = COLOR_WOOD_DARKEST
 	nameLabel.Font                   = Enum.Font.GothamSemibold
-	nameLabel.TextSize               = 18
+	nameLabel.TextScaled             = true
 	nameLabel.Parent                 = card
+	do
+		local sc = Instance.new("UITextSizeConstraint")
+		sc.MaxTextSize = 16
+		sc.MinTextSize = 9
+		sc.Parent      = nameLabel
+	end
 
 	-- "xN" badge bottom-center.
 	local badge = Instance.new("Frame")
@@ -424,8 +464,8 @@ end
 
 local detailIcon = Instance.new("ImageLabel")
 detailIcon.AnchorPoint            = Vector2.new(0.5, 0)
-detailIcon.Position               = UDim2.new(0.5, 0, 0, 18)
-detailIcon.Size                   = UDim2.new(1, -32, 0, 150)
+detailIcon.Position               = UDim2.new(0.5, 0, 0, 14)
+detailIcon.Size                   = UDim2.new(1, -32, 0, 138)
 detailIcon.BackgroundTransparency = 1
 detailIcon.ScaleType              = Enum.ScaleType.Fit
 detailIcon.Image                  = ""
@@ -433,19 +473,25 @@ detailIcon.Parent                 = detail
 
 local detailName = Instance.new("TextLabel")
 detailName.AnchorPoint            = Vector2.new(0.5, 0)
-detailName.Position               = UDim2.new(0.5, 0, 0, 180)
-detailName.Size                   = UDim2.new(1, -32, 0, 28)
+detailName.Position               = UDim2.new(0.5, 0, 0, 160)
+detailName.Size                   = UDim2.new(1, -24, 0, 26)
 detailName.BackgroundTransparency = 1
 detailName.Text                   = "Select a seed"
 detailName.TextColor3             = COLOR_WOOD_DARKEST
 detailName.Font                   = Enum.Font.GothamBold
-detailName.TextSize               = 20
+detailName.TextScaled             = true
 detailName.Parent                 = detail
+do
+	local sc = Instance.new("UITextSizeConstraint")
+	sc.MaxTextSize = 20
+	sc.MinTextSize = 10
+	sc.Parent      = detailName
+end
 
 local infoBox = Instance.new("Frame")
 infoBox.AnchorPoint        = Vector2.new(0.5, 0)
-infoBox.Position           = UDim2.new(0.5, 0, 0, 220)
-infoBox.Size               = UDim2.new(1, -32, 0, 78)
+infoBox.Position           = UDim2.new(0.5, 0, 0, 196)
+infoBox.Size               = UDim2.new(1, -24, 0, 74)
 infoBox.BackgroundColor3   = COLOR_PAPER_LIGHT
 infoBox.BorderSizePixel    = 0
 infoBox.Parent             = detail
@@ -456,36 +502,48 @@ do
 end
 
 local infoGrowsLabel = Instance.new("TextLabel")
-infoGrowsLabel.Position               = UDim2.new(0, 12, 0, 8)
-infoGrowsLabel.Size                   = UDim2.new(1, -24, 0, 22)
+infoGrowsLabel.Position               = UDim2.new(0, 10, 0, 6)
+infoGrowsLabel.Size                   = UDim2.new(1, -20, 0, 28)
 infoGrowsLabel.BackgroundTransparency = 1
 infoGrowsLabel.Text                   = ""
 infoGrowsLabel.TextColor3             = COLOR_WOOD_DARKEST
 infoGrowsLabel.TextXAlignment         = Enum.TextXAlignment.Left
 infoGrowsLabel.Font                   = Enum.Font.Gotham
-infoGrowsLabel.TextSize               = 16
+infoGrowsLabel.TextScaled             = true
 infoGrowsLabel.Parent                 = infoBox
+do
+	local sc = Instance.new("UITextSizeConstraint")
+	sc.MaxTextSize = 14
+	sc.MinTextSize = 9
+	sc.Parent      = infoGrowsLabel
+end
 
 local infoTimeLabel = Instance.new("TextLabel")
-infoTimeLabel.Position               = UDim2.new(0, 12, 0, 36)
-infoTimeLabel.Size                   = UDim2.new(1, -24, 0, 22)
+infoTimeLabel.Position               = UDim2.new(0, 10, 0, 38)
+infoTimeLabel.Size                   = UDim2.new(1, -20, 0, 28)
 infoTimeLabel.BackgroundTransparency = 1
 infoTimeLabel.Text                   = ""
 infoTimeLabel.TextColor3             = COLOR_WOOD_DARKEST
 infoTimeLabel.TextXAlignment         = Enum.TextXAlignment.Left
 infoTimeLabel.Font                   = Enum.Font.Gotham
-infoTimeLabel.TextSize               = 16
+infoTimeLabel.TextScaled             = true
 infoTimeLabel.Parent                 = infoBox
+do
+	local sc = Instance.new("UITextSizeConstraint")
+	sc.MaxTextSize = 14
+	sc.MinTextSize = 9
+	sc.Parent      = infoTimeLabel
+end
 
 local plantBtn = Instance.new("TextButton")
 plantBtn.AnchorPoint            = Vector2.new(0.5, 1)
-plantBtn.Position               = UDim2.new(0.5, 0, 1, -18)
-plantBtn.Size                   = UDim2.new(1, -32, 0, 50)
-plantBtn.BackgroundColor3       = COLOR_GREEN_DIM
+plantBtn.Position               = UDim2.new(0.5, 0, 1, -14)
+plantBtn.Size                   = UDim2.new(1, -24, 0, 46)
+plantBtn.BackgroundColor3       = COLOR_GREEN_OK
 plantBtn.Text                   = "Plant"
 plantBtn.TextColor3             = Color3.fromRGB(245, 245, 240)
 plantBtn.Font                   = Enum.Font.GothamBold
-plantBtn.TextSize               = 22
+plantBtn.TextScaled             = true
 plantBtn.AutoButtonColor        = false
 plantBtn.Active                 = false
 plantBtn.Parent                 = detail
@@ -493,6 +551,31 @@ do
 	local c = Instance.new("UICorner")
 	c.CornerRadius = UDim.new(0, 12)
 	c.Parent       = plantBtn
+	-- Scale-text but cap so the label doesn't blow up on a tiny string.
+	local sc = Instance.new("UITextSizeConstraint")
+	sc.MaxTextSize = 22
+	sc.MinTextSize = 10
+	sc.Parent      = plantBtn
+end
+
+-- Hint line under the Plant button — explains why the button is
+-- disabled when the player isn't next to a bed. Avoids cramming
+-- the message into the button label (which used to overflow it).
+local plantHint = Instance.new("TextLabel")
+plantHint.AnchorPoint            = Vector2.new(0.5, 1)
+plantHint.Position               = UDim2.new(0.5, 0, 1, -64)
+plantHint.Size                   = UDim2.new(1, -24, 0, 18)
+plantHint.BackgroundTransparency = 1
+plantHint.Text                   = ""
+plantHint.TextColor3             = COLOR_WOOD_DARKEST
+plantHint.Font                   = Enum.Font.Gotham
+plantHint.TextScaled             = true
+plantHint.Parent                 = detail
+do
+	local sc = Instance.new("UITextSizeConstraint")
+	sc.MaxTextSize = 13
+	sc.MinTextSize = 8
+	sc.Parent      = plantHint
 end
 
 local tipLabel = Instance.new("TextLabel")
@@ -531,18 +614,26 @@ local function paintDetail()
 		infoGrowsLabel.Text   = "Grows into: " .. meta.growsInto
 		infoTimeLabel.Text    = "Time: " .. meta.growsTime
 		infoBox.Visible       = true
-		plantBtn.Active       = currentBed ~= nil
+		-- Plant button always reads "Plant" and stays visibly green.
+		-- The hint line below explains why it's dimmed when no bed.
+		plantBtn.Visible          = true
+		plantBtn.Text             = "Plant"
+		plantBtn.Active           = currentBed ~= nil
 		plantBtn.BackgroundColor3 = currentBed and COLOR_GREEN_OK or COLOR_GREEN_DIM
-		plantBtn.Text         = currentBed and "Plant" or "Stand next to a watered bed"
+		plantHint.Text            = currentBed and "" or "Stand next to a watered bed"
 	else
 		detailIcon.Image      = ""
 		detailName.Text       = "Select a seed"
 		infoGrowsLabel.Text   = ""
 		infoTimeLabel.Text    = ""
 		infoBox.Visible       = false
-		plantBtn.Active       = false
+		-- No seed selected — keep the button visible but inert so the
+		-- detail panel doesn't suddenly collapse height-wise.
+		plantBtn.Visible          = true
+		plantBtn.Text             = "Plant"
+		plantBtn.Active           = false
 		plantBtn.BackgroundColor3 = COLOR_GREEN_DIM
-		plantBtn.Text         = "Plant"
+		plantHint.Text            = "Select a seed first"
 	end
 end
 

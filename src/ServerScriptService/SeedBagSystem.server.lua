@@ -26,7 +26,7 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 
 local BAG_TOOL_NAME  = "leaf bag"
-local SLOT_COUNT     = 8
+local SLOT_COUNT     = 6
 local MAX_STACK      = 30
 local INTERACT_RANGE = 15
 
