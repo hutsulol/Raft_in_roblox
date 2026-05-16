@@ -92,9 +92,14 @@ digDirtEvent.OnServerEvent:Connect(function(player, part)
 			-- bags full) we spill the pile onto the ground as a
 			-- physical drop so the player can pick it up later, after
 			-- they craft / empty a bag.
-			local landed = typeof(_G.AddSandPileToBag) == "function"
-				and _G.AddSandPileToBag(player, part.Position)
+			local hasFn = typeof(_G.AddSandPileToBag) == "function"
+			print("[ShovelSystem] Sand dug. AddSandPileToBag exists?", hasFn,
+				"PlayerHasSandBag?", typeof(_G.PlayerHasSandBag) == "function" and _G.PlayerHasSandBag(player),
+				"BagSpace=", typeof(_G.GetSandBagSpace) == "function" and _G.GetSandBagSpace(player))
+			local landed = hasFn and _G.AddSandPileToBag(player, part.Position)
+			print("[ShovelSystem] AddSandPileToBag returned:", landed)
 			if not landed and _G.SpawnResourceDrop then
+				print("[ShovelSystem] Falling back to ground drop")
 				_G.SpawnResourceDrop(player, "Sand", 1, part.Position)
 			end
 			if _G.OnQuestResource then

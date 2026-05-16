@@ -28,9 +28,11 @@ local AUTO_SAVE_INTERVAL = 120 -- seconds
 -- Seeds (Banana_Seed / Coconut_Seed / Pineapple_Seed) are intentionally
 -- absent — they live exclusively in the leaf bag Tool (see
 -- SeedBagSystem.server.lua) rather than the main inventory.
+-- Sand is likewise absent — it lives in the Sand Bag tool (see
+-- SandBagSystem.server.lua) and never occupies an inventory slot.
 local RESOURCE_NAMES = {
 	"Log", "Plastic", "Stone", "Plank", "Leaves", "Rope",
-	"Sand", "Clay", "Wet_Brick", "Dry_Brick",
+	"Clay", "Wet_Brick", "Dry_Brick",
 	"Iron_Ore", "Iron_Ingot",
 	"Blue_Fish", "Carp_Fish", "Fish_Bones", "Foil_Fish",
 	"Jelly_Fish", "Legendary_Fish", "Seabass_Fish", "Tilapia_Fish",
@@ -449,6 +451,30 @@ _G.AddResourceToInventory = function(player, itemName, amount, dropPosition, sil
 	if type(itemName) ~= "string" or itemName == "" then return 0, 0 end
 	amount = tonumber(amount) or 0
 	if amount <= 0 then return 0, 0 end
+
+	-- Sand never enters the regular inventory. Route through the Sand
+	-- Bag tool instead; if the player has no bag (or every bag is full)
+	-- spill the remainder onto the ground so the resource isn't lost.
+	if itemName == "Sand" then
+		print("[InventoryManager] Sand redirected to bag/ground (amount=" .. amount .. ")")
+		local perUnit = typeof(_G.GetSandBagPercentPerUnit) == "function"
+			and _G.GetSandBagPercentPerUnit() or 5
+		local unitsLanded = 0
+		if typeof(_G.PlayerHasSandBag) == "function" and _G.PlayerHasSandBag(player)
+			and typeof(_G.AddSandToBag) == "function" then
+			local space = typeof(_G.GetSandBagSpace) == "function" and _G.GetSandBagSpace(player) or 0
+			local maxUnits = math.floor(space / perUnit)
+			unitsLanded = math.min(amount, maxUnits)
+			if unitsLanded > 0 then
+				_G.AddSandToBag(player, unitsLanded * perUnit, dropPosition)
+			end
+		end
+		local leftover = amount - unitsLanded
+		if leftover > 0 and _G.SpawnResourceDrop then
+			_G.SpawnResourceDrop(player, "Sand", leftover, dropPosition)
+		end
+		return unitsLanded, leftover
+	end
 
 	local inv = _G.GetInventory(player)
 	local cap = _G.GetInventoryCapacity(player, itemName)

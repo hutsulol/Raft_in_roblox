@@ -52,6 +52,9 @@ local function iterPlayerBags(player)
 	local function gather(container)
 		if not container then return end
 		for _, child in container:GetChildren() do
+			if child:IsA("Tool") then
+				print("[SandBagSystem] Tool seen:", child.Name, "isBagTool?", isBagTool(child))
+			end
 			if isBagTool(child) then
 				initBag(child)
 				list[#list + 1] = child
@@ -60,6 +63,7 @@ local function iterPlayerBags(player)
 	end
 	gather(player.Character)
 	gather(player:FindFirstChild("Backpack"))
+	print("[SandBagSystem] iterPlayerBags found", #list, "bag(s) for", player.Name)
 	return list
 end
 
@@ -98,6 +102,7 @@ end
 -- ground drop / refusal toast.
 _G.AddSandToBag = function(player, percent, dropPosition)
 	percent = tonumber(percent) or 0
+	print("[SandBagSystem] AddSandToBag called percent=", percent, "for", player.Name)
 	if percent <= 0 then return 0 end
 
 	local bags = iterPlayerBags(player)
@@ -106,13 +111,16 @@ _G.AddSandToBag = function(player, percent, dropPosition)
 		if remaining <= 0 then break end
 		local fill = bag:GetAttribute(ATTRIBUTE_NAME) or 0
 		local fit  = math.min(remaining, MAX_FILL - fill)
+		print("[SandBagSystem]   bag", bag.Name, "fill=", fill, "fit=", fit)
 		if fit > 0 then
 			bag:SetAttribute(ATTRIBUTE_NAME, fill + fit)
 			remaining = remaining - fit
+			print("[SandBagSystem]   bag now=", fill + fit)
 		end
 	end
 
 	local added = percent - remaining
+	print("[SandBagSystem] AddSandToBag added=", added, "remaining=", remaining)
 	if added > 0 then
 		-- Notify-card surfaces the gain. Reuses InventoryNotify so
 		-- the player gets the same "+N Sand" cue every other pickup
