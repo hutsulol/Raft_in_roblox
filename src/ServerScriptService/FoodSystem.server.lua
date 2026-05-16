@@ -30,22 +30,99 @@ while not _G.AddResourceToInventory or not _G.RemoveResourceFromInventory or not
 end
 
 local function findFoodTemplate(foodName)
-	-- Prefer a user-authored Tool template (so the in-world visual
-	-- matches) — direct lookup first, then a recursive sweep so the
-	-- template can live inside Trees_Grow or any other folder.
+	-- The user can author the template as either a Tool (already
+	-- holdable) or a Model (we wrap it). Look top-level first, then
+	-- recurse so a "Fruits" / "Trees_Grow" folder doesn't hide it.
 	local hit = ReplicatedStorage:FindFirstChild(foodName)
-	if hit and hit:IsA("Tool") then return hit end
+	if hit and (hit:IsA("Tool") or hit:IsA("Model") or hit:IsA("BasePart")) then return hit end
 	hit = ReplicatedStorage:FindFirstChild(foodName, true)
-	if hit and hit:IsA("Tool") then return hit end
+	if hit and (hit:IsA("Tool") or hit:IsA("Model") or hit:IsA("BasePart")) then return hit end
 	return nil
+end
+
+-- Prep a part so Roblox's Tool grip logic is happy with it: not
+-- anchored, no collision against players, low mass so the rig isn't
+-- dragged. Applied to every BasePart in the cloned template before
+-- wrapping it in a Tool.
+local function prepHoldablePart(part)
+	if not part or not part:IsA("BasePart") then return end
+	part.Anchored   = false
+	part.CanCollide = false
+	part.Massless   = true
+end
+
+-- Build a Tool around a Model / BasePart template. The Tool's Handle
+-- is the Model's PrimaryPart (or its first BasePart). Every other
+-- BasePart in the clone gets WeldConstrained to the Handle so the
+-- whole shape follows the player's grip as one unit.
+local function wrapModelAsTool(modelClone, foodName)
+	local handle
+	if modelClone:IsA("BasePart") then
+		modelClone.Name = "Handle"
+		handle = modelClone
+		local tool = Instance.new("Tool")
+		tool.Name = foodName
+		prepHoldablePart(handle)
+		handle.Parent = tool
+		return tool
+	end
+
+	handle = modelClone.PrimaryPart or modelClone:FindFirstChildWhichIsA("BasePart", true)
+	if not handle then
+		modelClone:Destroy()
+		return nil
+	end
+	handle.Name = "Handle"
+
+	-- Capture every other BasePart so we can weld them post-hoc.
+	local others = {}
+	for _, desc in modelClone:GetDescendants() do
+		if desc:IsA("BasePart") and desc ~= handle then
+			table.insert(others, desc)
+		end
+	end
+
+	local tool = Instance.new("Tool")
+	tool.Name = foodName
+
+	-- Move everything from the model into the Tool, preserving the
+	-- relative positioning that the user authored.
+	for _, child in modelClone:GetChildren() do
+		child.Parent = tool
+	end
+	modelClone:Destroy()
+
+	prepHoldablePart(handle)
+	for _, part in others do
+		prepHoldablePart(part)
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = handle
+		weld.Part1 = part
+		weld.Parent = handle
+	end
+
+	return tool
 end
 
 local function makeFoodTool(foodName)
 	local template = findFoodTemplate(foodName)
 	if template then
-		local clone = template:Clone()
-		clone.Name = foodName
-		return clone
+		if template:IsA("Tool") then
+			local clone = template:Clone()
+			clone.Name = foodName
+			-- Defensive: a hand-authored Tool template might still
+			-- have anchored / collidable parts that throw on equip.
+			for _, desc in clone:GetDescendants() do
+				prepHoldablePart(desc)
+			end
+			return clone
+		else
+			-- Model or BasePart → wrap into a Tool so the player can
+			-- actually hold it. Failed wrap (no BasePart inside) falls
+			-- through to the placeholder below.
+			local tool = wrapModelAsTool(template:Clone(), foodName)
+			if tool then return tool end
+		end
 	end
 	-- Placeholder Tool — invisible Handle so the equip mechanic still
 	-- works even when no model has been authored yet. The icon shows
