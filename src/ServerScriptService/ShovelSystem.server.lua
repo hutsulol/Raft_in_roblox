@@ -31,13 +31,34 @@ local function playDigSound(atPart)
 	Debris:AddItem(attach, lifetime)
 end
 
+-- Resolves the dig type for a part. Returns "Sand", "Clay", or nil.
+-- Two recognition rules:
+--   1. The BasePart itself is named "Sand" or "Clay" (legacy shape —
+--      e.g. flat ground patches).
+--   2. The BasePart sits directly inside a Model named "Sand" or
+--      "Clay" (new island art — clay clumps are a Model that wraps
+--      one or more Union meshes). Each child mesh acts as its own
+--      dig target so the player chips away one lump at a time.
+local function resolveDigType(part)
+	if part.Name == "Sand" or part.Name == "Clay" then
+		return part.Name
+	end
+	local parent = part.Parent
+	if parent and parent:IsA("Model") and (parent.Name == "Sand" or parent.Name == "Clay") then
+		return parent.Name
+	end
+	return nil
+end
+
 local function tagPart(part)
 	if not part:IsA("BasePart") then return end
-	if part.Name ~= "Sand" and part.Name ~= "Clay" then return end
 	if part:GetAttribute("Diggable") then return end
 
+	local digType = resolveDigType(part)
+	if not digType then return end
+
 	part:SetAttribute("Diggable", true)
-	part:SetAttribute("DigType", part.Name)
+	part:SetAttribute("DigType", digType)
 	part:SetAttribute("DigHealth", DIG_HITS_REQUIRED)
 end
 
@@ -48,7 +69,9 @@ local function tagDiggablesInModel(model)
 end
 
 local function isIsland(child)
-	return child:IsA("Model") and (child.Name == "Island_1" or child.Name == "Island_2")
+	if not child:IsA("Model") then return false end
+	-- Accept any island variant: "Island", "Island_1", "Island_42", …
+	return child.Name == "Island" or child.Name:match("^Island_%d+$") ~= nil
 end
 
 workspace.ChildAdded:Connect(function(child)
@@ -115,7 +138,18 @@ digDirtEvent.OnServerEvent:Connect(function(player, part)
 			end
 			digDirtEvent:FireClient(player, "destroyed", 1, digType)
 		end
+		-- Clean up the wrapper Model once its last lump is dug — a Clay
+		-- clump (or Sand patch) is a Model containing N Union meshes,
+		-- each of which is its own dig target. When the player chips
+		-- away the final mesh the empty Model would otherwise linger
+		-- in workspace forever.
+		local parent = part.Parent
 		part:Destroy()
+		if parent and parent:IsA("Model")
+			and (parent.Name == "Sand" or parent.Name == "Clay")
+			and not parent:FindFirstChildWhichIsA("BasePart") then
+			parent:Destroy()
+		end
 	else
 		digDirtEvent:FireClient(player, "hit", health)
 	end
