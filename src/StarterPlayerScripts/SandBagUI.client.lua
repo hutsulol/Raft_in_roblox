@@ -453,8 +453,16 @@ end
 -- the base stage, the next stage above it, and the 0..1 fraction
 -- between them. At 100 % the "next" collapses to the same stage and
 -- the fraction is 1.
+--
+-- Special case: the 10 → 30 gap has no intermediate texture, so any
+-- fill in [10, 30) freezes on the 10 % stage with no overlay. The
+-- visual then snaps to the 30 % texture the moment fill actually
+-- reaches 30 %. From 30 % onward stages blend smoothly again.
 local function pickStages(pct)
 	pct = math.clamp(pct, 0, 100)
+	if pct >= 10 and pct < 30 then
+		return FILL_STAGES[2], FILL_STAGES[2], 0
+	end
 	for i = #FILL_STAGES, 1, -1 do
 		local s = FILL_STAGES[i]
 		if pct >= s.pct then
