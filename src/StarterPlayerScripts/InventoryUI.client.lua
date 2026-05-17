@@ -1460,6 +1460,35 @@ end
 
 -- ─── Equip ───
 
+-- Toggle / switch tool by instance. Clicking a slot routes here with
+-- the exact Tool instance held in `slotData[i].toolInst`, so two slots
+-- holding same-named Tools (e.g. two Sand Bags) each get their own
+-- specific Tool — clicking slot 4 never equips slot 3's instance.
+--
+-- Behaviour:
+--   * the same instance is already in hand → unequip
+--   * another Tool is in hand (or nothing)  → equip this one (Roblox
+--                                              auto-unequips the prior
+--                                              tool so it's a one-click
+--                                              swap, not a two-step)
+local function equipToolInstance(tool)
+	if not tool or not tool:IsA("Tool") or not tool.Parent then return end
+	local char = player.Character
+	if not char then return end
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+
+	if tool.Parent == char then
+		humanoid:UnequipTools()
+		return
+	end
+
+	humanoid:EquipTool(tool)
+end
+
+-- Name-based fallback for callers that don't have a specific instance
+-- (legacy hotbar keys, debug code). Same toggle rule, but picks the
+-- first matching Tool in the backpack.
 local function equipToolByName(toolName)
 	local char = player.Character
 	if not char then return end
@@ -2140,7 +2169,11 @@ local function buildHotbar()
 			if isHoverBlockingOverlayOpen() then return end
 			local data = slotData[slotIndex]
 			if data and data.type == "tool" then
-				equipToolByName(data.toolName)
+				if data.toolInst then
+					equipToolInstance(data.toolInst)
+				else
+					equipToolByName(data.toolName)
+				end
 				task.wait(0.1)
 				renderAllSlots()
 			elseif data and data.type == "resource" and data.name and SEED_RESOURCE_SET[data.name] and equipSeedEvent then
@@ -2608,7 +2641,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		end
 		local data = slotData[slotNum]
 		if data and data.type == "tool" then
-			equipToolByName(data.toolName)
+			if data.toolInst then
+				equipToolInstance(data.toolInst)
+			else
+				equipToolByName(data.toolName)
+			end
 			task.wait(0.1)
 			renderAllSlots()
 		elseif data and data.type == "resource" and data.name and SEED_RESOURCE_SET[data.name] and equipSeedEvent then
