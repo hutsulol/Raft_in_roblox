@@ -542,19 +542,19 @@ local function paintFill(fill, max)
 		return
 	end
 
-	-- Going up. If we cross multiple thresholds in a single update,
-	-- play their reveals sequentially.
+	-- Going up. Collapse any number of skipped stages into a single
+	-- reveal — if the player jumped from 10 % straight to 100 %, just
+	-- one animation plays (10 % base, 100 % overlay rising from the
+	-- bottom), not five sequential ones.
 	stageAnimJob = stageAnimJob + 1
-	local jobId = stageAnimJob
+	local jobId   = stageAnimJob
 	local fromIdx = lastStageIdx
 	local toIdx   = newStage
 	task.spawn(function()
-		for idx = fromIdx, toIdx - 1 do
-			if stageAnimJob ~= jobId then return end
-			animateRevealStage(idx, idx + 1, jobId)
-			if stageAnimJob ~= jobId then return end
-			lastStageIdx = idx + 1
-		end
+		if stageAnimJob ~= jobId then return end
+		animateRevealStage(fromIdx, toIdx, jobId)
+		if stageAnimJob ~= jobId then return end
+		lastStageIdx = toIdx
 	end)
 end
 renderStageFlat(1)
