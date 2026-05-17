@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
+local RunService = game:GetService("RunService")
 local GuiService = game:GetService("GuiService")
 
 local player = Players.LocalPlayer
@@ -183,6 +184,12 @@ local function getSandBagIcon(tool)
 	return SAND_BAG_STAGES[1].image
 end
 
+-- Forward-declared so the SandFill listener (created early) can reach
+-- the in-place icon swapper (defined later, because it has to read
+-- `slotData` and `hotbarGui` which haven't been declared yet at this
+-- point in the file).
+local refreshSandBagIconInPlace
+
 -- Tools we've already wired a SandFill listener on, so we don't stack
 -- N connections on the same instance across rebuilds.
 local sandBagHooked = {}
@@ -191,7 +198,14 @@ local function ensureSandBagHook(tool)
 	if not isSandBagTool(tool) then return end
 	sandBagHooked[tool] = true
 	tool:GetAttributeChangedSignal("SandFill"):Connect(function()
-		if renderAllSlots then renderAllSlots() end
+		-- Don't trigger a full slot rebuild — that destroys the icon
+		-- and creates a new one, which leaves a one-frame gap. Stack
+		-- the new texture on top of the old icon, wait a render, then
+		-- drop the underlying one. The two stages line up exactly, so
+		-- the only thing that visually changes is the sand level.
+		if refreshSandBagIconInPlace then
+			refreshSandBagIconInPlace(tool)
+		end
 	end)
 	tool.AncestryChanged:Connect(function()
 		if not tool:IsDescendantOf(game) then
@@ -391,6 +405,46 @@ end
 local slotData = {}
 _G.InventorySlotData = slotData
 local slotsInitialized = false
+
+-- Overlay-then-remove icon swap for a Sand Bag tool whose SandFill
+-- attribute changed. Clones the existing ItemIcon, points the clone
+-- at the new stage texture, parents it ON TOP, waits for one render
+-- frame so the new texture is on screen, then drops the underlying
+-- icon. Result: the slot never blinks empty — the only thing the
+-- player sees change is the sand level inside the bag.
+refreshSandBagIconInPlace = function(tool)
+	if not tool or not hotbarGui then return end
+	local bar = hotbarGui:FindFirstChild("Hotbar")
+	if not bar then return end
+
+	for i = 1, HOTBAR_SLOTS do
+		local data = slotData[i]
+		if data and data.type == "tool" and data.toolInst == tool then
+			local slot = bar:FindFirstChild("HotbarSlot_" .. i)
+			if not slot then return end
+			local oldIcon = slot:FindFirstChild("ItemIcon")
+			if not oldIcon or not oldIcon:IsA("ImageLabel") then return end
+
+			local nextImage = getSandBagIcon(tool)
+			if not nextImage or nextImage == oldIcon.Image then return end
+
+			local origZ = oldIcon.ZIndex
+			local newIcon = oldIcon:Clone()
+			newIcon.Name   = "ItemIcon_swap"
+			newIcon.Image  = nextImage
+			newIcon.ZIndex = origZ + 1
+			newIcon.Parent = slot
+
+			task.spawn(function()
+				RunService.RenderStepped:Wait()
+				if oldIcon and oldIcon.Parent then oldIcon:Destroy() end
+				newIcon.Name   = "ItemIcon"
+				newIcon.ZIndex = origZ
+			end)
+			return
+		end
+	end
+end
 
 -- ─── Drag ───
 local dragState = {
