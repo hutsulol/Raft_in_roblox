@@ -465,9 +465,17 @@ local function stageIndexForPct(pct)
 end
 
 local function renderStageFlat(idx)
-	baseImage.Image    = FILL_STAGES[idx].image
-	overlayImage.Image = (FILL_STAGES[idx + 1] or FILL_STAGES[idx]).image
+	-- Collapse the overlay FIRST so it can't render with a stale image
+	-- during the same tick. Without this, finishing an animation
+	-- briefly showed the *next* stage's texture between the image swap
+	-- and the clip shrink — visible to the user as a one-frame flash
+	-- of e.g. the 30 % bag when settling on the 10 % stage.
 	overlayClip.Size   = UDim2.new(1, 0, 0, 0)
+	baseImage.Image    = FILL_STAGES[idx].image
+	-- Park the overlay on the same texture as the base. The "next stage"
+	-- image is assigned inside `animateRevealStage` right before the
+	-- reveal tween starts, never preloaded here.
+	overlayImage.Image = FILL_STAGES[idx].image
 end
 
 local lastStageIdx   = 1   -- texture stage currently rendered
