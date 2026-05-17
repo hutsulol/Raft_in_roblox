@@ -180,67 +180,16 @@ do
 	s.Parent    = panel
 end
 
--- Header
-local header = Instance.new("Frame")
-header.Size               = UDim2.new(1, -28, 0, 70)
-header.Position           = UDim2.new(0, 14, 0, 14)
-header.BackgroundColor3   = COLOR_WOOD_MID
-header.BorderSizePixel    = 0
-header.Parent             = panel
-do
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 14)
-	c.Parent       = header
-end
-
-local bagIcon = Instance.new("ImageLabel")
-bagIcon.Size                   = UDim2.fromOffset(50, 50)
-bagIcon.Position               = UDim2.new(0, 10, 0.5, -25)
-bagIcon.BackgroundTransparency = 1
-bagIcon.Image                  = EMPTY_BAG_ASSET
-bagIcon.ScaleType              = Enum.ScaleType.Fit
-bagIcon.Parent                 = header
-
-local titleLabel = Instance.new("TextLabel")
-titleLabel.AnchorPoint            = Vector2.new(0, 0.5)
-titleLabel.Position               = UDim2.new(0, 70, 0.5, 0)
-titleLabel.Size                   = UDim2.new(1, -130, 0.7, 0)
-titleLabel.BackgroundTransparency = 1
-titleLabel.Text                   = "Bag"
-titleLabel.TextColor3             = COLOR_WOOD_DARKEST
-titleLabel.TextXAlignment         = Enum.TextXAlignment.Left
-titleLabel.TextYAlignment         = Enum.TextYAlignment.Center
-titleLabel.Font                   = Enum.Font.GothamBold
-titleLabel.TextScaled             = true
-titleLabel.Parent                 = header
-do
-	local sc = Instance.new("UITextSizeConstraint")
-	sc.MaxTextSize = 26
-	sc.MinTextSize = 14
-	sc.Parent      = titleLabel
-end
-
-local closeBtn = Instance.new("TextButton")
-closeBtn.AnchorPoint            = Vector2.new(1, 0.5)
-closeBtn.Position               = UDim2.new(1, -10, 0.5, 0)
-closeBtn.Size                   = UDim2.fromOffset(40, 40)
-closeBtn.BackgroundColor3       = COLOR_WOOD_DARK
-closeBtn.Text                   = "×"
-closeBtn.TextColor3             = COLOR_PAPER_LIGHT
-closeBtn.Font                   = Enum.Font.GothamBold
-closeBtn.TextSize               = 24
-closeBtn.AutoButtonColor        = false
-closeBtn.Parent                 = header
-do
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 10)
-	c.Parent       = closeBtn
-end
+-- Close button image (same wood-X asset used by the quests panel).
+local CLOSE_BTN_ASSET = "rbxassetid://76127527205295"
 
 -- ── Body: left bag visual, right info panel ─────────────────
+-- The body now fills the whole panel (the title-bar header was removed
+-- on the user's request — Sand label + a small inline close button at
+-- the top of the info column do all the framing work it was doing).
 local body = Instance.new("Frame")
-body.Size               = UDim2.new(1, -28, 1, -100)
-body.Position           = UDim2.new(0, 14, 0, 92)
+body.Size               = UDim2.new(1, -28, 1, -28)
+body.Position           = UDim2.new(0, 14, 0, 14)
 body.BackgroundTransparency = 1
 body.Parent             = panel
 
@@ -322,7 +271,7 @@ infoPanel.Parent                 = body
 local sandName = Instance.new("TextLabel")
 sandName.AnchorPoint            = Vector2.new(0.5, 0)
 sandName.Position               = UDim2.new(0.5, 0, 0.03, 0)
-sandName.Size                   = UDim2.new(0.9, 0, 0.16, 0)
+sandName.Size                   = UDim2.new(0.78, 0, 0.16, 0)
 sandName.BackgroundTransparency = 1
 sandName.Text                   = "Sand"
 sandName.TextColor3             = COLOR_WOOD_DARKEST
@@ -335,6 +284,27 @@ do
 	sc.MinTextSize = 14
 	sc.Parent      = sandName
 end
+
+-- Inline close button (top-right of the info column, next to "Sand").
+-- Uses the same wood-X art as the quests panel so the close affordance
+-- is consistent across every menu.
+local closeBtn = Instance.new("ImageButton")
+closeBtn.AnchorPoint            = Vector2.new(1, 0)
+closeBtn.Position               = UDim2.new(1, 0, 0.03, 0)
+closeBtn.Size                   = UDim2.new(0.13, 0, 0.13, 0)
+closeBtn.BackgroundTransparency = 1
+closeBtn.BorderSizePixel        = 0
+closeBtn.AutoButtonColor        = false
+closeBtn.Image                  = CLOSE_BTN_ASSET
+closeBtn.ScaleType              = Enum.ScaleType.Fit
+closeBtn.Parent                 = infoPanel
+do
+	local ar = Instance.new("UIAspectRatioConstraint")
+	ar.AspectRatio = 1
+	ar.Parent      = closeBtn
+end
+closeBtn.MouseEnter:Connect(function() closeBtn.ImageTransparency = 0.15 end)
+closeBtn.MouseLeave:Connect(function() closeBtn.ImageTransparency = 0    end)
 
 local fillBox = Instance.new("Frame")
 fillBox.AnchorPoint            = Vector2.new(0.5, 0)
