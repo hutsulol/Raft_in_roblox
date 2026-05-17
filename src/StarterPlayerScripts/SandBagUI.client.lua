@@ -27,13 +27,13 @@ local sandBagEvent = ReplicatedStorage:WaitForChild("SandBagAction")
 local pickupEvent  = ReplicatedStorage:WaitForChild("PickupDroppedItem")
 
 local BAG_TOOL_NAME       = "Sand Bag"
-local EMPTY_BAG_ASSET     = "rbxassetid://100274201283741"
+local EMPTY_BAG_ASSET     = "rbxassetid://107012847180882"
 
 -- Ordered stages: each entry is { pct, image }. The renderer picks the
 -- highest stage whose pct is <= the current fill as the base layer,
 -- and the next stage above as the overlay (clipped from the bottom).
 local FILL_STAGES = {
-	{ pct =   0, image = "rbxassetid://100274201283741" },
+	{ pct =   0, image = "rbxassetid://107012847180882" },
 	{ pct =  10, image = "rbxassetid://87535824644391"  },
 	{ pct =  30, image = "rbxassetid://102984915310557" },
 	{ pct =  50, image = "rbxassetid://132918131694676" },

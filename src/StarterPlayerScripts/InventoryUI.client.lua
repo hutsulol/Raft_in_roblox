@@ -138,7 +138,7 @@ local TOOL_ICONS = {
 	["Phone"] = "rbxassetid://123703470055474",
 	["Anchor_part"] = "rbxassetid://120414328052740",
 	["bag_empty_2"] = BAG_EMPTY_ICON,
-	["Sand Bag"]    = "rbxassetid://100274201283741",
+	["Sand Bag"]    = "rbxassetid://107012847180882",
 	-- Seed-as-Tool variants. The Tool templates the user authored
 	-- carry these names; the icons mirror the matching seed resource
 	-- so they read the same as the inventory stack form.

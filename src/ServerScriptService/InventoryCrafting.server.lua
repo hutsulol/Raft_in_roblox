@@ -66,7 +66,7 @@ local recipes = {
 	{
 		name = "Sand Bag",
 		displayName = "Sand Bag",
-		icon = "rbxassetid://100274201283741",
+		icon = "rbxassetid://107012847180882",
 		costs = {Leaves = 5},
 		craftType = "tool",
 		category = "Misc",
