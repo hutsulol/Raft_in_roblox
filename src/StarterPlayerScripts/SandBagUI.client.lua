@@ -1,27 +1,14 @@
 -- SandBagUI.client.lua
 -- "Sand Bag" Tool interaction. Holding the bag and pressing E opens
--- a wood-palette inspection panel matching the user's design pass:
+-- a wood-palette inspection panel that shows the current bag visual,
+-- a numeric fill % and a progress bar.
 --
---   ┌──────────────────────────────────────────────────────────────┐
---   │ [🌿] Bag                                            [×]      │
---   ├──────────────────────────────────────────────────────────────┤
---   │                                                              │
---   │     ╔═══════════╗                  Sand                      │
---   │     ║  empty    ║         ┌───────────────────────────────┐  │
---   │     ║  bag art  ║         │  Fill Level                   │  │
---   │     ║  + sand   ║         │     N %                       │  │
---   │     ║  fill     ║         │  ▓▓▓▓░░░░░░░░░░░░░░░░         │  │
---   │     ╚═══════════╝         │  N / 100                      │  │
---   │                           └───────────────────────────────┘  │
---   │                                  [   Close   ]               │
---   └──────────────────────────────────────────────────────────────┘
---
--- The bag visual stacks two images:
---   * empty_bag (rbxassetid://100274201283741) — the leaf-bag art.
---   * mask (rbxassetid://124056134635393) — the tear-drop "inside"
---     of the bag, tinted sand-colour and clipped to a Frame whose
---     height tracks the bag's fill %. Anchored from the bottom so
---     the sand visibly "rises" as the bag fills.
+-- The bag visual stacks six prerendered textures, one per fill stage
+-- (0, 10, 30, 50, 70, 100 %). The "current" stage texture sits on the
+-- bottom, the "next" stage texture sits on top inside a bottom-anchored
+-- ClipsDescendants frame whose height grows from 0 to the bag's full
+-- height as fill rises from the current stage to the next — so the new
+-- sand level smoothly washes upward. Stage transitions are tweened.
 --
 -- Pickup error toasts ("You need a Sand Bag", "Your Sand Bag is
 -- full") are routed through PickupDroppedItem so the message reaches
@@ -31,6 +18,7 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
+local TweenService      = game:GetService("TweenService")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -40,9 +28,18 @@ local pickupEvent  = ReplicatedStorage:WaitForChild("PickupDroppedItem")
 
 local BAG_TOOL_NAME       = "Sand Bag"
 local EMPTY_BAG_ASSET     = "rbxassetid://100274201283741"
-local FILL_MASK_ASSET     = "rbxassetid://124056134635393"
-local SAND_COLOR          = Color3.fromRGB(212, 178, 110)
-local SAND_SHADOW_COLOR   = Color3.fromRGB(120,  96,  52)
+
+-- Ordered stages: each entry is { pct, image }. The renderer picks the
+-- highest stage whose pct is <= the current fill as the base layer,
+-- and the next stage above as the overlay (clipped from the bottom).
+local FILL_STAGES = {
+	{ pct =   0, image = "rbxassetid://100274201283741" },
+	{ pct =  10, image = "rbxassetid://135066387095806" },
+	{ pct =  30, image = "rbxassetid://102984915310557" },
+	{ pct =  50, image = "rbxassetid://132918131694676" },
+	{ pct =  70, image = "rbxassetid://135545427179049" },
+	{ pct = 100, image = "rbxassetid://76170913773356"  },
+}
 
 -- Wood palette (matches every other in-world UI)
 local COLOR_WOOD_DARKEST = Color3.fromRGB( 61,  40,  23)
@@ -255,13 +252,13 @@ bagArea.Size                   = UDim2.new(0.45, 0, 1, 0)
 bagArea.BackgroundTransparency = 1
 bagArea.Parent                 = body
 
-local bagImage = Instance.new("ImageLabel")
+-- Bag visual: anchor frame that keeps the aspect ratio fixed and holds
+-- the layered stage textures.
+local bagImage = Instance.new("Frame")
 bagImage.AnchorPoint            = Vector2.new(0.5, 0.5)
 bagImage.Position               = UDim2.fromScale(0.5, 0.5)
 bagImage.Size                   = UDim2.fromScale(1, 1)
 bagImage.BackgroundTransparency = 1
-bagImage.Image                  = EMPTY_BAG_ASSET
-bagImage.ScaleType              = Enum.ScaleType.Fit
 bagImage.Parent                 = bagArea
 do
 	local ar = Instance.new("UIAspectRatioConstraint")
@@ -269,54 +266,50 @@ do
 	ar.Parent      = bagImage
 end
 
--- Fill mask frame — clips the sand-tinted mask to the bottom N % of
--- the bag's bounding box. AnchorPoint(0.5, 1) anchors the clip area
--- to the bag's BOTTOM so the sand visibly fills upward.
-local fillClip = Instance.new("Frame")
-fillClip.AnchorPoint            = Vector2.new(0.5, 1)
-fillClip.Position               = UDim2.new(0.5, 0, 1, 0)
-fillClip.Size                   = UDim2.new(1, 0, 0, 0)  -- height set at runtime
-fillClip.BackgroundTransparency = 1
-fillClip.ClipsDescendants       = true
-fillClip.Parent                 = bagImage
+-- Base layer: the texture at the current fill stage. Full size, fills
+-- the bag frame.
+local baseImage = Instance.new("ImageLabel")
+baseImage.AnchorPoint            = Vector2.new(0.5, 0.5)
+baseImage.Position               = UDim2.fromScale(0.5, 0.5)
+baseImage.Size                   = UDim2.fromScale(1, 1)
+baseImage.BackgroundTransparency = 1
+baseImage.Image                  = EMPTY_BAG_ASSET
+baseImage.ScaleType              = Enum.ScaleType.Fit
+baseImage.ZIndex                 = 1
+baseImage.Parent                 = bagImage
 
--- The mask image, full-size, anchored to fillClip's bottom so its
--- bottom edge stays aligned with the bag's bottom as fillClip
--- changes height.
-local fillMask = Instance.new("ImageLabel")
-fillMask.AnchorPoint            = Vector2.new(0.5, 1)
-fillMask.Position               = UDim2.new(0.5, 0, 1, 0)
-fillMask.Size                   = UDim2.fromScale(1, 1)
-fillMask.SizeConstraint         = Enum.SizeConstraint.RelativeXY
-fillMask.BackgroundTransparency = 1
-fillMask.Image                  = FILL_MASK_ASSET
-fillMask.ImageColor3            = SAND_COLOR
-fillMask.ScaleType              = Enum.ScaleType.Fit
-fillMask.Parent                 = fillClip
--- The fillMask Size is in fillClip's RelativeXY space — that means
--- when fillClip's height shrinks, fillMask shrinks too. We want the
--- mask to stay at the BAG's full size so it doesn't squish. Override
--- by sizing the mask in offset pixels matched to bagImage on every
--- AbsoluteSize change.
+-- Overlay clip: anchored to the bag's bottom, grows upward as fill
+-- progresses between two stages. ClipsDescendants reveals the overlay
+-- image as a horizontal band that rises from the bottom.
+local overlayClip = Instance.new("Frame")
+overlayClip.AnchorPoint            = Vector2.new(0.5, 1)
+overlayClip.Position               = UDim2.new(0.5, 0, 1, 0)
+overlayClip.Size                   = UDim2.new(1, 0, 0, 0)  -- height set at runtime
+overlayClip.BackgroundTransparency = 1
+overlayClip.ClipsDescendants       = true
+overlayClip.ZIndex                 = 2
+overlayClip.Parent                 = bagImage
 
-local function refitFillMask()
+-- Overlay layer: the texture at the next fill stage. Sized in pixels
+-- to match the bag's full visual area so the texture doesn't squish as
+-- the clip frame's height changes — only the visible window grows.
+local overlayImage = Instance.new("ImageLabel")
+overlayImage.AnchorPoint            = Vector2.new(0.5, 1)
+overlayImage.Position               = UDim2.new(0.5, 0, 1, 0)
+overlayImage.Size                   = UDim2.fromScale(1, 1)
+overlayImage.BackgroundTransparency = 1
+overlayImage.Image                  = EMPTY_BAG_ASSET
+overlayImage.ScaleType              = Enum.ScaleType.Fit
+overlayImage.Parent                 = overlayClip
+
+local function refitOverlay()
 	local w = bagImage.AbsoluteSize.X
 	local h = bagImage.AbsoluteSize.Y
 	if w <= 0 or h <= 0 then return end
-	fillMask.Size = UDim2.fromOffset(w, h)
+	overlayImage.Size = UDim2.fromOffset(w, h)
 end
-bagImage:GetPropertyChangedSignal("AbsoluteSize"):Connect(refitFillMask)
-task.defer(refitFillMask)
-
--- Subtle shadow / depth tint underneath the fill — a second copy of
--- the mask, darker, offset down a hair so the sand reads as having
--- volume instead of being a flat tint.
-local fillShadow = fillMask:Clone()
-fillShadow.ImageColor3       = SAND_SHADOW_COLOR
-fillShadow.ImageTransparency = 0.65
-fillShadow.Position          = UDim2.new(0.5, 0, 1, 4)
-fillShadow.ZIndex            = fillMask.ZIndex - 1
-fillShadow.Parent            = fillClip
+bagImage:GetPropertyChangedSignal("AbsoluteSize"):Connect(refitOverlay)
+task.defer(refitOverlay)
 
 -- Right info panel.
 local infoPanel = Instance.new("Frame")
@@ -456,17 +449,83 @@ do
 end
 
 -- ── State + paint ───────────────────────────────────────────────
+-- Pick the (base, next) stage pair for an arbitrary fill %. Returns
+-- the base stage, the next stage above it, and the 0..1 fraction
+-- between them. At 100 % the "next" collapses to the same stage and
+-- the fraction is 1.
+local function pickStages(pct)
+	pct = math.clamp(pct, 0, 100)
+	for i = #FILL_STAGES, 1, -1 do
+		local s = FILL_STAGES[i]
+		if pct >= s.pct then
+			local nxt = FILL_STAGES[i + 1] or s
+			local span = nxt.pct - s.pct
+			local frac = span > 0 and (pct - s.pct) / span or 1
+			return s, nxt, frac
+		end
+	end
+	return FILL_STAGES[1], FILL_STAGES[2] or FILL_STAGES[1], 0
+end
+
+local function renderBagAtPct(pct)
+	local base, nxt, frac = pickStages(pct)
+	baseImage.Image    = base.image
+	overlayImage.Image = nxt.image
+	overlayClip.Size   = UDim2.new(1, 0, frac, 0)
+end
+
+-- Smoothly animate from `currentPct` to a target percentage. Cancels
+-- any in-flight tween so back-to-back updates don't fight each other.
+local currentPct = 0
+local fillTween  = nil
+local function setFillSmooth(targetPct, currentFillValue, maxFillValue)
+	targetPct = math.clamp(targetPct, 0, 100)
+	if fillTween then
+		fillTween:Cancel()
+		fillTween = nil
+	end
+
+	local startPct = currentPct
+	local startTime = os.clock()
+	local duration  = math.clamp(math.abs(targetPct - startPct) * 0.02, 0.15, 0.6)
+
+	-- Drive the visuals from a NumberValue so a single TweenService
+	-- handles the easing curve and we can mirror it to every widget.
+	local driver = Instance.new("NumberValue")
+	driver.Value = startPct
+	local conn
+	conn = driver:GetPropertyChangedSignal("Value"):Connect(function()
+		currentPct = driver.Value
+		renderBagAtPct(currentPct)
+		percentLabel.Text = string.format("%d%%", math.floor(currentPct + 0.5))
+		barFill.Size      = UDim2.new(currentPct / 100, 0, 1, 0)
+	end)
+
+	local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	fillTween = TweenService:Create(driver, info, { Value = targetPct })
+	fillTween.Completed:Connect(function()
+		if conn then conn:Disconnect() end
+		driver:Destroy()
+		currentPct = targetPct
+	end)
+	fillTween:Play()
+
+	-- Numeric count label snaps to the final value so the user can
+	-- read it immediately even mid-tween.
+	countLabel.Text = string.format("%d / %d",
+		math.floor(currentFillValue + 0.5), math.floor(maxFillValue + 0.5))
+end
+
 local function paintFill(fill, max)
 	fill = tonumber(fill) or 0
 	max  = tonumber(max)  or 100
-	local pct = math.clamp(fill / max, 0, 1)
-	percentLabel.Text  = string.format("%d%%", math.floor(pct * 100 + 0.5))
-	countLabel.Text    = string.format("%d / %d", math.floor(fill + 0.5), math.floor(max + 0.5))
-	barFill.Size       = UDim2.new(pct, 0, 1, 0)
-	-- Drive the bag visual fill — fillClip's height = pct of bagImage.
-	fillClip.Size      = UDim2.new(1, 0, pct, 0)
+	local pct = math.clamp((fill / max) * 100, 0, 100)
+	setFillSmooth(pct, fill, max)
 end
-paintFill(0, 100)
+renderBagAtPct(0)
+percentLabel.Text = "0%"
+barFill.Size      = UDim2.new(0, 0, 1, 0)
+countLabel.Text   = "0 / 100"
 
 local function closePicker()
 	pickerGui.Enabled = false
