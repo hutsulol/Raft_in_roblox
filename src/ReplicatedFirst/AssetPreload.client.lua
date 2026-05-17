@@ -12,14 +12,20 @@
 local ContentProvider = game:GetService("ContentProvider")
 
 local ASSETS = {
-	-- Sand Bag stage textures (must match SandBagUI.client.lua's
-	-- FILL_STAGES and InventoryUI.client.lua's SAND_BAG_STAGES).
-	"rbxassetid://107012847180882",  -- 0 % (empty)
-	"rbxassetid://87535824644391",   -- 10 %
-	"rbxassetid://102984915310557",  -- 30 %
-	"rbxassetid://132918131694676",  -- 50 %
-	"rbxassetid://135545427179049",  -- 70 %
-	"rbxassetid://76170913773356",   -- 100 %
+	-- Sand Bag, sand-content stage textures.
+	"rbxassetid://107012847180882",  -- 0 % (empty, shared with clay)
+	"rbxassetid://87535824644391",   -- 10 % sand
+	"rbxassetid://102984915310557",  -- 30 % sand
+	"rbxassetid://132918131694676",  -- 50 % sand
+	"rbxassetid://135545427179049",  -- 70 % sand
+	"rbxassetid://76170913773356",   -- 100 % sand
+
+	-- Sand Bag, clay-content stage textures.
+	"rbxassetid://137121316772176",  -- 10 % clay
+	"rbxassetid://94079996711573",   -- 30 % clay
+	"rbxassetid://71260002598684",   -- 50 % clay
+	"rbxassetid://85470636629483",   -- 70 % clay
+	"rbxassetid://115968010442225",  -- 100 % clay
 
 	-- Shared close-button art (used by QuestMenu + SandBagUI).
 	"rbxassetid://76127527205295",

@@ -108,30 +108,22 @@ digDirtEvent.OnServerEvent:Connect(function(player, part)
 
 	if health <= 0 then
 		local digType = part:GetAttribute("DigType") or "Sand"
-		if digType == "Sand" then
-			-- Sand bypasses the main inventory and goes into the
-			-- Sand Bag tool the player carries (per SandBagSystem).
-			-- One pile = +15 % bag fill. Without a bag (or with all
-			-- bags full) we spill the pile onto the ground as a
-			-- physical drop so the player can pick it up later, after
-			-- they craft / empty a bag.
-			local hasFn = typeof(_G.AddSandPileToBag) == "function"
-			print("[ShovelSystem] Sand dug. AddSandPileToBag exists?", hasFn,
-				"PlayerHasSandBag?", typeof(_G.PlayerHasSandBag) == "function" and _G.PlayerHasSandBag(player),
-				"BagSpace=", typeof(_G.GetSandBagSpace) == "function" and _G.GetSandBagSpace(player))
-			local landed = hasFn and _G.AddSandPileToBag(player, part.Position)
-			print("[ShovelSystem] AddSandPileToBag returned:", landed)
+		-- Sand and Clay both live in the unified Sand Bag (one bag holds
+		-- one type at a time — see SandBagSystem). One dug pile fills
+		-- 15 % of a compatible bag. No bag / no room → ground drop, so
+		-- the resource is never lost.
+		if digType == "Sand" or digType == "Clay" then
+			local landed = typeof(_G.AddPileToBag) == "function"
+				and _G.AddPileToBag(player, digType, part.Position)
 			if not landed and _G.SpawnResourceDrop then
-				print("[ShovelSystem] Falling back to ground drop")
-				_G.SpawnResourceDrop(player, "Sand", 1, part.Position)
+				_G.SpawnResourceDrop(player, digType, 1, part.Position)
 			end
 			if _G.OnQuestResource then
-				_G.OnQuestResource(player, "Sand", 1)
+				_G.OnQuestResource(player, digType, 1)
 			end
-			digDirtEvent:FireClient(player, "destroyed", 1, "Sand")
+			digDirtEvent:FireClient(player, "destroyed", 1, digType)
 		else
-			-- Clay (and any future dig type) keeps the old behaviour:
-			-- straight into the main inventory.
+			-- Future dig types (none yet) fall back to plain inventory.
 			_G.AddResourceToInventory(player, digType, 1, part.Position)
 			if _G.OnQuestResource then
 				_G.OnQuestResource(player, digType, 1)
@@ -155,17 +147,8 @@ digDirtEvent.OnServerEvent:Connect(function(player, part)
 	end
 end)
 
--- ─── Ensure Clay exists in player inventories ───
--- Sand was removed from the main inventory — it lives in the Sand
--- Bag (SandBagSystem) now. Clay still flows through the regular
--- inventory.
-local function ensureFields(player)
-	task.wait(2)
-	local inv = _G.GetInventory and _G.GetInventory(player)
-	if inv then
-		if inv.Clay == nil then inv.Clay = 0 end
-	end
-end
-
-Players.PlayerAdded:Connect(function(p) task.spawn(ensureFields, p) end)
-for _, p in Players:GetPlayers() do task.spawn(ensureFields, p) end
+-- Both Sand and Clay now live exclusively in the Sand Bag — neither
+-- gets a backing inventory entry, so there's nothing to seed on
+-- player-join. The old per-player ensureFields hook used to add
+-- inv.Clay = 0 here; remove it now that crafting drains directly from
+-- the bag (see InventoryCrafting).

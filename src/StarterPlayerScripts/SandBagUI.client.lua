@@ -29,17 +29,38 @@ local pickupEvent  = ReplicatedStorage:WaitForChild("PickupDroppedItem")
 local BAG_TOOL_NAME       = "Sand Bag"
 local EMPTY_BAG_ASSET     = "rbxassetid://107012847180882"
 
--- Ordered stages: each entry is { pct, image }. The renderer picks the
--- highest stage whose pct is <= the current fill as the base layer,
--- and the next stage above as the overlay (clipped from the bottom).
-local FILL_STAGES = {
-	{ pct =   0, image = "rbxassetid://107012847180882" },
-	{ pct =  10, image = "rbxassetid://87535824644391"  },
-	{ pct =  30, image = "rbxassetid://102984915310557" },
-	{ pct =  50, image = "rbxassetid://132918131694676" },
-	{ pct =  70, image = "rbxassetid://135545427179049" },
-	{ pct = 100, image = "rbxassetid://76170913773356"  },
+-- One ordered stage table per resource the bag can hold. The empty
+-- texture (pct = 0) is shared across types — only the filled stages
+-- are resource-specific.
+local STAGES_BY_CONTENT = {
+	Sand = {
+		{ pct =   0, image = "rbxassetid://107012847180882" },
+		{ pct =  10, image = "rbxassetid://87535824644391"  },
+		{ pct =  30, image = "rbxassetid://102984915310557" },
+		{ pct =  50, image = "rbxassetid://132918131694676" },
+		{ pct =  70, image = "rbxassetid://135545427179049" },
+		{ pct = 100, image = "rbxassetid://76170913773356"  },
+	},
+	Clay = {
+		{ pct =   0, image = "rbxassetid://107012847180882" },
+		{ pct =  10, image = "rbxassetid://137121316772176" },
+		{ pct =  30, image = "rbxassetid://94079996711573"  },
+		{ pct =  50, image = "rbxassetid://71260002598684"  },
+		{ pct =  70, image = "rbxassetid://85470636629483"  },
+		{ pct = 100, image = "rbxassetid://115968010442225" },
+	},
 }
+
+-- Picks the stage list for whichever content the bag is currently
+-- holding. Empty bags (content = nil) fall back to the Sand table —
+-- the 0 % entry is identical across types so it doesn't matter which.
+local function stagesFor(content)
+	return STAGES_BY_CONTENT[content] or STAGES_BY_CONTENT.Sand
+end
+
+-- Used by the early-out path in paintFill where the panel is built
+-- before any "show" event has arrived.
+local FILL_STAGES = STAGES_BY_CONTENT.Sand
 
 -- Stage textures + close art are preloaded from
 -- ReplicatedFirst/AssetPreload.client.lua during the loading screen,
@@ -439,32 +460,31 @@ local function stageIndexForPct(pct)
 	return 1
 end
 
+-- Tracks which stage table the inspector is currently rendering.
+-- Updated by paintFill before any stage swap, then read by
+-- renderStageFlat / animateRevealStage. A bag-content switch (Sand →
+-- Clay or back) gets treated as a "fresh paint" so the inspector
+-- snaps to the new texture table without animating a cross-resource
+-- transition.
+local currentStages  = STAGES_BY_CONTENT.Sand
+local currentContent = nil
+
 local function renderStageFlat(idx)
-	-- Collapse the overlay FIRST so it can't render with a stale image
-	-- during the same tick. Without this, finishing an animation
-	-- briefly showed the *next* stage's texture between the image swap
-	-- and the clip shrink — visible to the user as a one-frame flash
-	-- of e.g. the 30 % bag when settling on the 10 % stage.
+	local stages = currentStages
 	overlayClip.Size   = UDim2.new(1, 0, 0, 0)
-	baseImage.Image    = FILL_STAGES[idx].image
-	-- Park the overlay on the same texture as the base. The "next stage"
-	-- image is assigned inside `animateRevealStage` right before the
-	-- reveal tween starts, never preloaded here.
-	overlayImage.Image = FILL_STAGES[idx].image
+	baseImage.Image    = stages[idx].image
+	overlayImage.Image = stages[idx].image
 end
 
-local lastStageIdx   = 1   -- texture stage currently rendered
+local lastStageIdx   = 1
 local hasPainted     = false
-local stageAnimJob   = 0   -- cancellation token for stage transitions
+local stageAnimJob   = 0
 
--- Animate one threshold cross: keep `fromIdx` as the base, slide the
--- `toIdx` texture in from the bottom by growing `overlayClip` from 0 to
--- 1, then settle on `toIdx`. Yields until the tween finishes so the
--- caller can chain multiple crosses sequentially.
 local function animateRevealStage(fromIdx, toIdx, jobId)
 	if stageAnimJob ~= jobId then return end
-	baseImage.Image    = FILL_STAGES[fromIdx].image
-	overlayImage.Image = FILL_STAGES[toIdx].image
+	local stages = currentStages
+	baseImage.Image    = stages[fromIdx].image
+	overlayImage.Image = stages[toIdx].image
 	overlayClip.Size   = UDim2.new(1, 0, 0, 0)
 
 	local driver = Instance.new("NumberValue")
@@ -490,7 +510,7 @@ local function animateRevealStage(fromIdx, toIdx, jobId)
 	done:Destroy()
 end
 
-local function paintFill(fill, max)
+local function paintFill(fill, max, content)
 	fill = tonumber(fill) or 0
 	max  = tonumber(max)  or 100
 	local pct = math.clamp((fill / max) * 100, 0, 100)
@@ -503,6 +523,26 @@ local function paintFill(fill, max)
 	percentLabel.Text = string.format("%d%%", math.floor(pct + 0.5))
 	barFill.Size      = UDim2.new(pct / 100, 0, 1, 0)
 
+	-- Title above the fill box matches whatever the bag is holding.
+	-- Empty bags show a neutral label so the player knows they can
+	-- choose between sand and clay for the next fill.
+	if content == "Clay" then
+		sandName.Text = "Clay"
+	elseif content == "Sand" then
+		sandName.Text = "Sand"
+	else
+		sandName.Text = "Empty"
+	end
+
+	-- Resource-type switch (Sand ↔ Clay, or empty ↔ filled) forces a
+	-- texture-table reset — we don't want a half-finished cross-resource
+	-- reveal lingering on screen.
+	if content ~= currentContent then
+		currentContent = content
+		currentStages  = stagesFor(content)
+		hasPainted     = false  -- treat the next render as a clean snap
+	end
+
 	local newStage = stageIndexForPct(pct)
 
 	if not hasPainted then
@@ -513,22 +553,16 @@ local function paintFill(fill, max)
 	end
 
 	if newStage == lastStageIdx then
-		-- Same stage bracket — texture stays put.
 		return
 	end
 
 	if newStage < lastStageIdx then
-		-- Going down (sand spent / bag emptied somehow): snap.
 		stageAnimJob = stageAnimJob + 1
 		renderStageFlat(newStage)
 		lastStageIdx = newStage
 		return
 	end
 
-	-- Going up. Collapse any number of skipped stages into a single
-	-- reveal — if the player jumped from 10 % straight to 100 %, just
-	-- one animation plays (10 % base, 100 % overlay rising from the
-	-- bottom), not five sequential ones.
 	stageAnimJob = stageAnimJob + 1
 	local jobId   = stageAnimJob
 	local fromIdx = lastStageIdx
@@ -544,6 +578,7 @@ renderStageFlat(1)
 percentLabel.Text = "0%"
 barFill.Size      = UDim2.new(0, 0, 1, 0)
 countLabel.Text   = "0 / 100"
+sandName.Text     = "Empty"
 
 local function closePicker()
 	pickerGui.Enabled = false
@@ -553,9 +588,9 @@ closeBtn.MouseButton1Click:Connect(closePicker)
 closeBigBtn.MouseButton1Click:Connect(closePicker)
 backdrop.MouseButton1Click:Connect(closePicker)
 
-sandBagEvent.OnClientEvent:Connect(function(action, fill, max)
+sandBagEvent.OnClientEvent:Connect(function(action, fill, max, content)
 	if action == "show" then
-		paintFill(fill, max)
+		paintFill(fill, max, content)
 		pickerGui.Enabled = true
 	elseif action == "close" then
 		closePicker()

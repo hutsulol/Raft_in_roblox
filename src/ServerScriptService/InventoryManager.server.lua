@@ -28,11 +28,12 @@ local AUTO_SAVE_INTERVAL = 120 -- seconds
 -- Seeds (Banana_Seed / Coconut_Seed / Pineapple_Seed) are intentionally
 -- absent — they live exclusively in the leaf bag Tool (see
 -- SeedBagSystem.server.lua) rather than the main inventory.
--- Sand is likewise absent — it lives in the Sand Bag tool (see
--- SandBagSystem.server.lua) and never occupies an inventory slot.
+-- Sand and Clay are likewise absent — both live in the Sand Bag tool
+-- (see SandBagSystem.server.lua) and never occupy an inventory slot;
+-- crafting drains them straight from the bag.
 local RESOURCE_NAMES = {
 	"Log", "Plastic", "Stone", "Plank", "Leaves", "Rope",
-	"Clay", "Wet_Brick", "Dry_Brick",
+	"Wet_Brick", "Dry_Brick",
 	"Iron_Ore", "Iron_Ingot",
 	"Blue_Fish", "Carp_Fish", "Fish_Bones", "Foil_Fish",
 	"Jelly_Fish", "Legendary_Fish", "Seabass_Fish", "Tilapia_Fish",
@@ -452,26 +453,26 @@ _G.AddResourceToInventory = function(player, itemName, amount, dropPosition, sil
 	amount = tonumber(amount) or 0
 	if amount <= 0 then return 0, 0 end
 
-	-- Sand never enters the regular inventory. Route through the Sand
-	-- Bag tool instead; if the player has no bag (or every bag is full)
-	-- spill the remainder onto the ground so the resource isn't lost.
-	if itemName == "Sand" then
-		print("[InventoryManager] Sand redirected to bag/ground (amount=" .. amount .. ")")
-		local perUnit = typeof(_G.GetSandBagPercentPerUnit) == "function"
-			and _G.GetSandBagPercentPerUnit() or 5
+	-- Sand and Clay never enter the regular inventory — both route
+	-- through the Sand Bag system. If the player has no compatible bag
+	-- (no bag at all, or every bag is full / locked to the other type)
+	-- the remainder spills out as a ground drop so the resource isn't
+	-- silently lost.
+	if itemName == "Sand" or itemName == "Clay" then
+		local perUnit = typeof(_G.GetBagPercentPerUnit) == "function"
+			and _G.GetBagPercentPerUnit() or 5
 		local unitsLanded = 0
-		if typeof(_G.PlayerHasSandBag) == "function" and _G.PlayerHasSandBag(player)
-			and typeof(_G.AddSandToBag) == "function" then
-			local space = typeof(_G.GetSandBagSpace) == "function" and _G.GetSandBagSpace(player) or 0
+		if typeof(_G.AddToBag) == "function" and typeof(_G.GetBagSpaceFor) == "function" then
+			local space    = _G.GetBagSpaceFor(player, itemName) or 0
 			local maxUnits = math.floor(space / perUnit)
-			unitsLanded = math.min(amount, maxUnits)
+			unitsLanded    = math.min(amount, maxUnits)
 			if unitsLanded > 0 then
-				_G.AddSandToBag(player, unitsLanded * perUnit, dropPosition)
+				_G.AddToBag(player, itemName, unitsLanded * perUnit, dropPosition)
 			end
 		end
 		local leftover = amount - unitsLanded
 		if leftover > 0 and _G.SpawnResourceDrop then
-			_G.SpawnResourceDrop(player, "Sand", leftover, dropPosition)
+			_G.SpawnResourceDrop(player, itemName, leftover, dropPosition)
 		end
 		return unitsLanded, leftover
 	end

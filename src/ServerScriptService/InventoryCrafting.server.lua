@@ -210,17 +210,36 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	if not recipe then return end
 
 	local inv = _G.GetInventory and _G.GetInventory(player) or {}
+
+	-- Sand / Clay don't live in the inventory — they're stashed in the
+	-- Sand Bag tool. Treat bag units as if they were inventory units
+	-- for both the affordability check and the actual deduction below.
+	local function availableFor(item)
+		local count = inv[item] or 0
+		if (item == "Sand" or item == "Clay") and _G.GetBagUnitsFor then
+			count = count + _G.GetBagUnitsFor(player, item)
+		end
+		return count
+	end
+
 	for item, amount in recipe.costs do
-		if (inv[item] or 0) < amount then
+		if availableFor(item) < amount then
 			return
 		end
 	end
 
 	for item, amount in recipe.costs do
-		if _G.RemoveResourceFromInventory then
-			_G.RemoveResourceFromInventory(player, item, amount)
-		else
-			inv[item] = inv[item] - amount
+		local remaining = amount
+		if (item == "Sand" or item == "Clay") and _G.RemoveBagUnits then
+			local fromBag = _G.RemoveBagUnits(player, item, remaining)
+			remaining = remaining - fromBag
+		end
+		if remaining > 0 then
+			if _G.RemoveResourceFromInventory then
+				_G.RemoveResourceFromInventory(player, item, remaining)
+			else
+				inv[item] = (inv[item] or 0) - remaining
+			end
 		end
 	end
 

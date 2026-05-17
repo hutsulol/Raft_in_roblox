@@ -154,17 +154,28 @@ local TOOL_ICONS = {
 	["Pineapple"]      = "rbxassetid://93324727574975",
 }
 
--- Sand Bag fill stages — kept in sync with SandBagUI.client.lua's
--- FILL_STAGES so the hotbar icon mirrors the inspection panel's
--- current bag art. Iterated in `getSandBagIcon` from the highest stage
--- down so the largest stage whose threshold is reached wins.
-local SAND_BAG_STAGES = {
-	{ pct =   0, image = "rbxassetid://107012847180882" },
-	{ pct =  10, image = "rbxassetid://87535824644391"  },
-	{ pct =  30, image = "rbxassetid://102984915310557" },
-	{ pct =  50, image = "rbxassetid://132918131694676" },
-	{ pct =  70, image = "rbxassetid://135545427179049" },
-	{ pct = 100, image = "rbxassetid://76170913773356"  },
+-- Sand Bag fill stages — one table per resource the bag can hold.
+-- Mirrors SandBagUI.client.lua's STAGES_BY_CONTENT exactly so the
+-- hotbar icon always matches the inspector. Empty (pct = 0) is the
+-- same image across types so picking either table is fine for an
+-- empty bag.
+local BAG_STAGES_BY_CONTENT = {
+	Sand = {
+		{ pct =   0, image = "rbxassetid://107012847180882" },
+		{ pct =  10, image = "rbxassetid://87535824644391"  },
+		{ pct =  30, image = "rbxassetid://102984915310557" },
+		{ pct =  50, image = "rbxassetid://132918131694676" },
+		{ pct =  70, image = "rbxassetid://135545427179049" },
+		{ pct = 100, image = "rbxassetid://76170913773356"  },
+	},
+	Clay = {
+		{ pct =   0, image = "rbxassetid://107012847180882" },
+		{ pct =  10, image = "rbxassetid://137121316772176" },
+		{ pct =  30, image = "rbxassetid://94079996711573"  },
+		{ pct =  50, image = "rbxassetid://71260002598684"  },
+		{ pct =  70, image = "rbxassetid://85470636629483"  },
+		{ pct = 100, image = "rbxassetid://115968010442225" },
+	},
 }
 
 local function isSandBagTool(tool)
@@ -175,13 +186,15 @@ end
 
 local function getSandBagIcon(tool)
 	if not tool then return nil end
-	local fill = tool:GetAttribute("SandFill") or 0
-	for i = #SAND_BAG_STAGES, 1, -1 do
-		if fill >= SAND_BAG_STAGES[i].pct then
-			return SAND_BAG_STAGES[i].image
+	local fill    = tool:GetAttribute("SandFill")    or 0
+	local content = tool:GetAttribute("BagContent")
+	local stages  = BAG_STAGES_BY_CONTENT[content] or BAG_STAGES_BY_CONTENT.Sand
+	for i = #stages, 1, -1 do
+		if fill >= stages[i].pct then
+			return stages[i].image
 		end
 	end
-	return SAND_BAG_STAGES[1].image
+	return stages[1].image
 end
 
 -- Forward-declared so the SandFill listener (created early) can reach
@@ -197,16 +210,22 @@ local function ensureSandBagHook(tool)
 	if not tool or sandBagHooked[tool] then return end
 	if not isSandBagTool(tool) then return end
 	sandBagHooked[tool] = true
-	tool:GetAttributeChangedSignal("SandFill"):Connect(function()
+	local function onChange()
 		-- Don't trigger a full slot rebuild — that destroys the icon
 		-- and creates a new one, which leaves a one-frame gap. Stack
 		-- the new texture on top of the old icon, wait a render, then
 		-- drop the underlying one. The two stages line up exactly, so
-		-- the only thing that visually changes is the sand level.
+		-- the only thing that visually changes is the sand level (or
+		-- the resource type, on a Sand ↔ Clay swap).
 		if refreshSandBagIconInPlace then
 			refreshSandBagIconInPlace(tool)
 		end
-	end)
+	end
+	-- Both attributes can change the icon: SandFill drives the stage,
+	-- BagContent drives which texture family (sand vs clay) we sample
+	-- from. Re-render on either.
+	tool:GetAttributeChangedSignal("SandFill"):Connect(onChange)
+	tool:GetAttributeChangedSignal("BagContent"):Connect(onChange)
 	tool.AncestryChanged:Connect(function()
 		if not tool:IsDescendantOf(game) then
 			sandBagHooked[tool] = nil
