@@ -41,6 +41,24 @@ local FILL_STAGES = {
 	{ pct = 100, image = "rbxassetid://76170913773356"  },
 }
 
+-- Preload every stage texture (plus the wood-X close art) on script
+-- start so the inventory icon and the inspector never have to fetch an
+-- image mid-swap. Roblox caches the asset once it's resolved; the
+-- first-equip flicker the player saw before this came from
+-- PreloadAsync not running until the image was actually needed.
+local ContentProvider = game:GetService("ContentProvider")
+task.spawn(function()
+	local assets = {
+		"rbxassetid://76127527205295",  -- close button
+	}
+	for _, stage in FILL_STAGES do
+		assets[#assets + 1] = stage.image
+	end
+	pcall(function()
+		ContentProvider:PreloadAsync(assets)
+	end)
+end)
+
 -- Wood palette (matches every other in-world UI)
 local COLOR_WOOD_DARKEST = Color3.fromRGB( 61,  40,  23)
 local COLOR_WOOD_DARK    = Color3.fromRGB( 91,  58,  34)
