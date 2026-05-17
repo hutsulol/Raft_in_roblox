@@ -153,6 +153,53 @@ local TOOL_ICONS = {
 	["Pineapple"]      = "rbxassetid://93324727574975",
 }
 
+-- Sand Bag fill stages — kept in sync with SandBagUI.client.lua's
+-- FILL_STAGES so the hotbar icon mirrors the inspection panel's
+-- current bag art. Iterated in `getSandBagIcon` from the highest stage
+-- down so the largest stage whose threshold is reached wins.
+local SAND_BAG_STAGES = {
+	{ pct =   0, image = "rbxassetid://107012847180882" },
+	{ pct =  10, image = "rbxassetid://87535824644391"  },
+	{ pct =  30, image = "rbxassetid://102984915310557" },
+	{ pct =  50, image = "rbxassetid://132918131694676" },
+	{ pct =  70, image = "rbxassetid://135545427179049" },
+	{ pct = 100, image = "rbxassetid://76170913773356"  },
+}
+
+local function isSandBagTool(tool)
+	if not tool or not tool:IsA("Tool") then return false end
+	local a = tool.Name:lower():gsub("[_%s]", "")
+	return a == "sandbag"
+end
+
+local function getSandBagIcon(tool)
+	if not tool then return nil end
+	local fill = tool:GetAttribute("SandFill") or 0
+	for i = #SAND_BAG_STAGES, 1, -1 do
+		if fill >= SAND_BAG_STAGES[i].pct then
+			return SAND_BAG_STAGES[i].image
+		end
+	end
+	return SAND_BAG_STAGES[1].image
+end
+
+-- Tools we've already wired a SandFill listener on, so we don't stack
+-- N connections on the same instance across rebuilds.
+local sandBagHooked = {}
+local function ensureSandBagHook(tool)
+	if not tool or sandBagHooked[tool] then return end
+	if not isSandBagTool(tool) then return end
+	sandBagHooked[tool] = true
+	tool:GetAttributeChangedSignal("SandFill"):Connect(function()
+		if renderAllSlots then renderAllSlots() end
+	end)
+	tool.AncestryChanged:Connect(function()
+		if not tool:IsDescendantOf(game) then
+			sandBagHooked[tool] = nil
+		end
+	end)
+end
+
 -- Forward-declared so functions above line 1585 (quickTransfer,
 -- drag-drop handlers, etc.) can reference it via the same upvalue
 -- that gets assigned later. Without this, those call sites resolve
@@ -865,6 +912,7 @@ local function rebuildSlotData()
 				end
 				if slot > HOTBAR_SLOTS then break end
 				local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+				ensureSandBagHook(tool)
 				slotData[slot] = {
 					type = "tool",
 					name = tool.Name,
@@ -958,6 +1006,7 @@ local function rebuildSlotData()
 			target = target or findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, maxWritableSlot())
 			if target then
 				local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+				ensureSandBagHook(tool)
 				slotData[target] = {
 					type = "tool",
 					name = tool.Name,
@@ -992,13 +1041,22 @@ local function renderSlot(slot, data)
 	clearSlotUI(slot)
 	if not data then return end
 
+	-- Sand Bag tools swap their hotbar icon based on the SandFill
+	-- attribute so the slot art mirrors the inspection panel's current
+	-- bag stage. Falls through to the static icon if the tool ref is
+	-- gone (e.g. mid-respawn before rebuildSlotData rebinds it).
+	local iconAsset = data.icon or ""
+	if data.type == "tool" and data.toolInst and isSandBagTool(data.toolInst) then
+		iconAsset = getSandBagIcon(data.toolInst) or iconAsset
+	end
+
 	local img = Instance.new("ImageLabel")
 	img.Name = "ItemIcon"
 	img.AnchorPoint = Vector2.new(0.5, 0.5)
 	img.Size = UDim2.new(0.7, 0, 0.7, 0)
 	img.Position = UDim2.new(0.5, 0, 0.5, 0)
 	img.BackgroundTransparency = 1
-	img.Image = data.icon or ""
+	img.Image = iconAsset
 	img.ScaleType = Enum.ScaleType.Fit
 	img.ZIndex = 2
 	img.Parent = slot
