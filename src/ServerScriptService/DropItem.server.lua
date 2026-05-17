@@ -421,7 +421,11 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		-- pickup is refused with a toast so the player knows they
 		-- need to craft one first.
 		if resType == "Sand" and typeof(_G.AddSandToBag) == "function" then
+			print("[DropItem] Sand pickup attempt. HasBag?",
+				typeof(_G.PlayerHasSandBag) == "function" and _G.PlayerHasSandBag(player),
+				"Space=", typeof(_G.GetSandBagSpace) == "function" and _G.GetSandBagSpace(player))
 			if typeof(_G.PlayerHasSandBag) == "function" and not _G.PlayerHasSandBag(player) then
+				print("[DropItem] No sand bag — sending needSandBag toast")
 				pickupEvent:FireClient(player, "needSandBag")
 				return
 			end
@@ -429,16 +433,19 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 				and _G.GetSandBagPercentPerUnit() or 5
 			local space   = typeof(_G.GetSandBagSpace) == "function" and _G.GetSandBagSpace(player) or 0
 			if space <= 0 then
+				print("[DropItem] Sand bag full — sending sandBagFull toast")
 				pickupEvent:FireClient(player, "sandBagFull")
 				return
 			end
 			local maxUnits = math.floor(space / perUnit)
 			if maxUnits <= 0 then
+				print("[DropItem] Sand bag has <perUnit space left — sending sandBagFull toast")
 				pickupEvent:FireClient(player, "sandBagFull")
 				return
 			end
 			local toPickup = math.min(resAmount, maxUnits)
 			local leftover = resAmount - toPickup
+			print("[DropItem] Sand pickup: depositing", toPickup, "units (", toPickup * perUnit, "%) leftover=", leftover)
 			_G.AddSandToBag(player, toPickup * perUnit, droppedItem.Parent and droppedItem.Position or nil)
 			if leftover > 0 then
 				droppedItem:SetAttribute("ResourceAmount", leftover)
@@ -446,6 +453,8 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 				droppedItem:Destroy()
 			end
 			return
+		elseif resType == "Sand" then
+			print("[DropItem] Sand pickup hit but _G.AddSandToBag is NOT a function. typeof=", typeof(_G.AddSandToBag))
 		end
 
 		if not _G.AddResourceToInventory or not _G.GetInventoryCapacity then
