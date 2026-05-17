@@ -418,7 +418,7 @@ local slotsInitialized = false
 --      becomes the new canonical ItemIcon.
 -- The two stages line up exactly (same anchor / size / position), so
 -- the only thing the player visually sees change is the sand level.
-local SWAP_DELAY_SEC   = 1.0   -- delay between attribute change and overlay
+local SWAP_DELAY_SEC   = 0.1   -- delay between attribute change and overlay
 local POST_OVERLAY_GAP = 0.10  -- delay between overlay and old-icon removal
 
 refreshSandBagIconInPlace = function(tool)
