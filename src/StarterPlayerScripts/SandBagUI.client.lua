@@ -449,88 +449,152 @@ do
 end
 
 -- ── State + paint ───────────────────────────────────────────────
--- Pick the (base, next) stage pair for an arbitrary fill %. Returns
--- the base stage, the next stage above it, and the 0..1 fraction
--- between them. At 100 % the "next" collapses to the same stage and
--- the fraction is 1.
---
--- Special case: the 10 → 30 gap has no intermediate texture, so any
--- fill in [10, 30) freezes on the 10 % stage with no overlay. The
--- visual then snaps to the 30 % texture the moment fill actually
--- reaches 30 %. From 30 % onward stages blend smoothly again.
-local function pickStages(pct)
+-- The bag never blends mid-range. At fill X the base layer is the
+-- largest stage S with S.pct ≤ X (so 60 % shows the 50 % texture, not
+-- a partial 70 %). When the fill crosses a stage threshold upward, an
+-- overlay of the new stage's texture rises from the bottom over the
+-- previous stage — that's the only animation. Once the overlay
+-- completes the base swaps to the new stage and the overlay collapses
+-- back to zero, ready for the next threshold cross.
+local function stageIndexForPct(pct)
 	pct = math.clamp(pct, 0, 100)
-	if pct >= 10 and pct < 30 then
-		return FILL_STAGES[2], FILL_STAGES[2], 0
-	end
 	for i = #FILL_STAGES, 1, -1 do
-		local s = FILL_STAGES[i]
-		if pct >= s.pct then
-			local nxt = FILL_STAGES[i + 1] or s
-			local span = nxt.pct - s.pct
-			local frac = span > 0 and (pct - s.pct) / span or 1
-			return s, nxt, frac
-		end
+		if pct >= FILL_STAGES[i].pct then return i end
 	end
-	return FILL_STAGES[1], FILL_STAGES[2] or FILL_STAGES[1], 0
+	return 1
 end
 
-local function renderBagAtPct(pct)
-	local base, nxt, frac = pickStages(pct)
-	baseImage.Image    = base.image
-	overlayImage.Image = nxt.image
-	overlayClip.Size   = UDim2.new(1, 0, frac, 0)
+local function renderStageFlat(idx)
+	baseImage.Image    = FILL_STAGES[idx].image
+	overlayImage.Image = (FILL_STAGES[idx + 1] or FILL_STAGES[idx]).image
+	overlayClip.Size   = UDim2.new(1, 0, 0, 0)
 end
 
--- Smoothly animate from `currentPct` to a target percentage. Cancels
--- any in-flight tween so back-to-back updates don't fight each other.
-local currentPct = 0
-local fillTween  = nil
-local function setFillSmooth(targetPct, currentFillValue, maxFillValue)
-	targetPct = math.clamp(targetPct, 0, 100)
-	if fillTween then
-		fillTween:Cancel()
-		fillTween = nil
+local lastStageIdx   = 1   -- texture stage currently rendered
+local hasPainted     = false
+local stageAnimJob   = 0   -- cancellation token for stage transitions
+local barTween       = nil -- tween for the percent label / progress bar
+local barDriver      = nil
+local barDriverConn  = nil
+local displayedPct   = 0
+
+local function animateBarTo(targetPct)
+	if barTween then
+		barTween:Cancel()
+		barTween = nil
+	end
+	if barDriverConn then
+		barDriverConn:Disconnect()
+		barDriverConn = nil
+	end
+	if barDriver then
+		barDriver:Destroy()
+		barDriver = nil
 	end
 
-	local startPct = currentPct
-	local startTime = os.clock()
-	local duration  = math.clamp(math.abs(targetPct - startPct) * 0.02, 0.15, 0.6)
-
-	-- Drive the visuals from a NumberValue so a single TweenService
-	-- handles the easing curve and we can mirror it to every widget.
-	local driver = Instance.new("NumberValue")
-	driver.Value = startPct
-	local conn
-	conn = driver:GetPropertyChangedSignal("Value"):Connect(function()
-		currentPct = driver.Value
-		renderBagAtPct(currentPct)
-		percentLabel.Text = string.format("%d%%", math.floor(currentPct + 0.5))
-		barFill.Size      = UDim2.new(currentPct / 100, 0, 1, 0)
+	barDriver = Instance.new("NumberValue")
+	barDriver.Value = displayedPct
+	barDriverConn = barDriver:GetPropertyChangedSignal("Value"):Connect(function()
+		local v = barDriver.Value
+		percentLabel.Text = string.format("%d%%", math.floor(v + 0.5))
+		barFill.Size      = UDim2.new(v / 100, 0, 1, 0)
 	end)
 
+	local duration = math.clamp(math.abs(targetPct - displayedPct) * 0.02, 0.15, 0.5)
 	local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	fillTween = TweenService:Create(driver, info, { Value = targetPct })
-	fillTween.Completed:Connect(function()
-		if conn then conn:Disconnect() end
-		driver:Destroy()
-		currentPct = targetPct
+	barTween = TweenService:Create(barDriver, info, { Value = targetPct })
+	barTween.Completed:Connect(function()
+		if barDriverConn then barDriverConn:Disconnect(); barDriverConn = nil end
+		if barDriver then barDriver:Destroy(); barDriver = nil end
+		displayedPct = targetPct
 	end)
-	fillTween:Play()
+	barTween:Play()
+end
 
-	-- Numeric count label snaps to the final value so the user can
-	-- read it immediately even mid-tween.
-	countLabel.Text = string.format("%d / %d",
-		math.floor(currentFillValue + 0.5), math.floor(maxFillValue + 0.5))
+-- Animate one threshold cross: keep `fromIdx` as the base, slide the
+-- `toIdx` texture in from the bottom by growing `overlayClip` from 0 to
+-- 1, then settle on `toIdx`. Yields until the tween finishes so the
+-- caller can chain multiple crosses sequentially.
+local function animateRevealStage(fromIdx, toIdx, jobId)
+	if stageAnimJob ~= jobId then return end
+	baseImage.Image    = FILL_STAGES[fromIdx].image
+	overlayImage.Image = FILL_STAGES[toIdx].image
+	overlayClip.Size   = UDim2.new(1, 0, 0, 0)
+
+	local driver = Instance.new("NumberValue")
+	driver.Value = 0
+	local conn = driver:GetPropertyChangedSignal("Value"):Connect(function()
+		if stageAnimJob ~= jobId then return end
+		overlayClip.Size = UDim2.new(1, 0, driver.Value, 0)
+	end)
+	local info = TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+	local tw = TweenService:Create(driver, info, { Value = 1 })
+
+	local done = Instance.new("BindableEvent")
+	tw.Completed:Connect(function()
+		conn:Disconnect()
+		driver:Destroy()
+		if stageAnimJob == jobId then
+			renderStageFlat(toIdx)
+		end
+		done:Fire()
+	end)
+	tw:Play()
+	done.Event:Wait()
+	done:Destroy()
 end
 
 local function paintFill(fill, max)
 	fill = tonumber(fill) or 0
 	max  = tonumber(max)  or 100
 	local pct = math.clamp((fill / max) * 100, 0, 100)
-	setFillSmooth(pct, fill, max)
+
+	countLabel.Text = string.format("%d / %d",
+		math.floor(fill + 0.5), math.floor(max + 0.5))
+
+	local newStage = stageIndexForPct(pct)
+
+	if not hasPainted then
+		renderStageFlat(newStage)
+		lastStageIdx       = newStage
+		hasPainted         = true
+		displayedPct       = pct
+		percentLabel.Text  = string.format("%d%%", math.floor(pct + 0.5))
+		barFill.Size       = UDim2.new(pct / 100, 0, 1, 0)
+		return
+	end
+
+	animateBarTo(pct)
+
+	if newStage == lastStageIdx then
+		-- Same stage bracket — texture stays put, only the bar moved.
+		return
+	end
+
+	if newStage < lastStageIdx then
+		-- Going down (sand spent / bag emptied somehow): snap.
+		stageAnimJob = stageAnimJob + 1
+		renderStageFlat(newStage)
+		lastStageIdx = newStage
+		return
+	end
+
+	-- Going up. If we cross multiple thresholds in a single update,
+	-- play their reveals sequentially.
+	stageAnimJob = stageAnimJob + 1
+	local jobId = stageAnimJob
+	local fromIdx = lastStageIdx
+	local toIdx   = newStage
+	task.spawn(function()
+		for idx = fromIdx, toIdx - 1 do
+			if stageAnimJob ~= jobId then return end
+			animateRevealStage(idx, idx + 1, jobId)
+			if stageAnimJob ~= jobId then return end
+			lastStageIdx = idx + 1
+		end
+	end)
 end
-renderBagAtPct(0)
+renderStageFlat(1)
 percentLabel.Text = "0%"
 barFill.Size      = UDim2.new(0, 0, 1, 0)
 countLabel.Text   = "0 / 100"
