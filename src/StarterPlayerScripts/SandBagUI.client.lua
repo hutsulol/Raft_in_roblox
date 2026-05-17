@@ -34,7 +34,7 @@ local EMPTY_BAG_ASSET     = "rbxassetid://100274201283741"
 -- and the next stage above as the overlay (clipped from the bottom).
 local FILL_STAGES = {
 	{ pct =   0, image = "rbxassetid://100274201283741" },
-	{ pct =  10, image = "rbxassetid://135066387095806" },
+	{ pct =  10, image = "rbxassetid://87535824644391"  },
 	{ pct =  30, image = "rbxassetid://102984915310557" },
 	{ pct =  50, image = "rbxassetid://132918131694676" },
 	{ pct =  70, image = "rbxassetid://135545427179049" },
@@ -473,43 +473,6 @@ end
 local lastStageIdx   = 1   -- texture stage currently rendered
 local hasPainted     = false
 local stageAnimJob   = 0   -- cancellation token for stage transitions
-local barTween       = nil -- tween for the percent label / progress bar
-local barDriver      = nil
-local barDriverConn  = nil
-local displayedPct   = 0
-
-local function animateBarTo(targetPct)
-	if barTween then
-		barTween:Cancel()
-		barTween = nil
-	end
-	if barDriverConn then
-		barDriverConn:Disconnect()
-		barDriverConn = nil
-	end
-	if barDriver then
-		barDriver:Destroy()
-		barDriver = nil
-	end
-
-	barDriver = Instance.new("NumberValue")
-	barDriver.Value = displayedPct
-	barDriverConn = barDriver:GetPropertyChangedSignal("Value"):Connect(function()
-		local v = barDriver.Value
-		percentLabel.Text = string.format("%d%%", math.floor(v + 0.5))
-		barFill.Size      = UDim2.new(v / 100, 0, 1, 0)
-	end)
-
-	local duration = math.clamp(math.abs(targetPct - displayedPct) * 0.02, 0.15, 0.5)
-	local info = TweenInfo.new(duration, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
-	barTween = TweenService:Create(barDriver, info, { Value = targetPct })
-	barTween.Completed:Connect(function()
-		if barDriverConn then barDriverConn:Disconnect(); barDriverConn = nil end
-		if barDriver then barDriver:Destroy(); barDriver = nil end
-		displayedPct = targetPct
-	end)
-	barTween:Play()
-end
 
 -- Animate one threshold cross: keep `fromIdx` as the base, slide the
 -- `toIdx` texture in from the bottom by growing `overlayClip` from 0 to
@@ -549,25 +512,25 @@ local function paintFill(fill, max)
 	max  = tonumber(max)  or 100
 	local pct = math.clamp((fill / max) * 100, 0, 100)
 
-	countLabel.Text = string.format("%d / %d",
+	-- All three numeric widgets snap together to the new value so the
+	-- count label, the percent label and the progress bar never drift
+	-- out of sync. The texture stage is the only thing that animates.
+	countLabel.Text   = string.format("%d / %d",
 		math.floor(fill + 0.5), math.floor(max + 0.5))
+	percentLabel.Text = string.format("%d%%", math.floor(pct + 0.5))
+	barFill.Size      = UDim2.new(pct / 100, 0, 1, 0)
 
 	local newStage = stageIndexForPct(pct)
 
 	if not hasPainted then
 		renderStageFlat(newStage)
-		lastStageIdx       = newStage
-		hasPainted         = true
-		displayedPct       = pct
-		percentLabel.Text  = string.format("%d%%", math.floor(pct + 0.5))
-		barFill.Size       = UDim2.new(pct / 100, 0, 1, 0)
+		lastStageIdx = newStage
+		hasPainted   = true
 		return
 	end
 
-	animateBarTo(pct)
-
 	if newStage == lastStageIdx then
-		-- Same stage bracket — texture stays put, only the bar moved.
+		-- Same stage bracket — texture stays put.
 		return
 	end
 
