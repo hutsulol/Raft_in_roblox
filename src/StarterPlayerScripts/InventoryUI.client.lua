@@ -407,11 +407,20 @@ _G.InventorySlotData = slotData
 local slotsInitialized = false
 
 -- Overlay-then-remove icon swap for a Sand Bag tool whose SandFill
--- attribute changed. Clones the existing ItemIcon, points the clone
--- at the new stage texture, parents it ON TOP, waits for one render
--- frame so the new texture is on screen, then drops the underlying
--- icon. Result: the slot never blinks empty — the only thing the
--- player sees change is the sand level inside the bag.
+-- attribute changed. Sequence:
+--   1. SandFill changes → schedule the swap with task.delay so the
+--      texture has a generous moment to finish decoding into the GPU
+--      cache before we put it on screen.
+--   2. After the delay, clone the existing ItemIcon, point the clone
+--      at the new stage texture and parent it ON TOP of the old one.
+--   3. Wait ~3 render frames (well past any decode hiccup), then
+--      destroy the underlying icon and rename / re-Z the clone so it
+--      becomes the new canonical ItemIcon.
+-- The two stages line up exactly (same anchor / size / position), so
+-- the only thing the player visually sees change is the sand level.
+local SWAP_DELAY_SEC   = 1.0   -- delay between attribute change and overlay
+local POST_OVERLAY_GAP = 0.10  -- delay between overlay and old-icon removal
+
 refreshSandBagIconInPlace = function(tool)
 	if not tool or not hotbarGui then return end
 	local bar = hotbarGui:FindFirstChild("Hotbar")
@@ -428,18 +437,30 @@ refreshSandBagIconInPlace = function(tool)
 			local nextImage = getSandBagIcon(tool)
 			if not nextImage or nextImage == oldIcon.Image then return end
 
-			local origZ = oldIcon.ZIndex
-			local newIcon = oldIcon:Clone()
-			newIcon.Name   = "ItemIcon_swap"
-			newIcon.Image  = nextImage
-			newIcon.ZIndex = origZ + 1
-			newIcon.Parent = slot
+			task.delay(SWAP_DELAY_SEC, function()
+				-- Re-check between the delay and the swap: the slot, the
+				-- icon or the tool itself might be gone by now.
+				if not oldIcon or not oldIcon.Parent then return end
+				if not slot or not slot.Parent then return end
+				if data ~= slotData[i] or data.toolInst ~= tool then return end
 
-			task.spawn(function()
-				RunService.RenderStepped:Wait()
-				if oldIcon and oldIcon.Parent then oldIcon:Destroy() end
-				newIcon.Name   = "ItemIcon"
-				newIcon.ZIndex = origZ
+				local stillNext = getSandBagIcon(tool)
+				if not stillNext or stillNext == oldIcon.Image then return end
+
+				local origZ    = oldIcon.ZIndex
+				local newIcon  = oldIcon:Clone()
+				newIcon.Name   = "ItemIcon_swap"
+				newIcon.Image  = stillNext
+				newIcon.ZIndex = origZ + 1
+				newIcon.Parent = slot
+
+				task.delay(POST_OVERLAY_GAP, function()
+					if oldIcon and oldIcon.Parent then oldIcon:Destroy() end
+					if newIcon and newIcon.Parent then
+						newIcon.Name   = "ItemIcon"
+						newIcon.ZIndex = origZ
+					end
+				end)
 			end)
 			return
 		end
