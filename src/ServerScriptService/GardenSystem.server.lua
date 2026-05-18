@@ -9,16 +9,26 @@ local WATER_DRY_TIME = 60 -- seconds before watered garden dries out
 -- enough not to feel laggy; long enough to round off the visual pop.
 local FADE_DURATION = 0.35
 
--- Tree growth progression for planted seeds. The seedling stage is
--- shared across every seed type ("Bed_T_1_all" = "bed with any tree
--- sapling"); only palm seeds continue past it into the per-species
--- stages. Banana / pineapple art will get its own *_B_*/_P_* set if /
--- when those species need distinct intermediate stages.
-local TREE_STAGES = {
-	"Bed_T_1_all",
-	"Bed_T_P_2",
-	"Bed_T_P_3",
-	"Bed_T_P_Finish",
+-- Tree growth progression for planted seeds. Stage 1 (Bed_T_1_all)
+-- is the species-agnostic sapling — every seed uses it. Past stage 1
+-- the chain branches by seed type:
+--   * Palm   → Bed_T_P_2 → Bed_T_P_3 → Bed_T_P_Finish
+--   * Banana → Bed_T_B_2 → Bed_T_B_3 → Bed_T_B_Finish
+-- Seeds whose kind isn't listed here stop at Bed_T_1_all until art
+-- for them lands.
+local TREE_STAGES_BY_KIND = {
+	Palm = {
+		"Bed_T_1_all",
+		"Bed_T_P_2",
+		"Bed_T_P_3",
+		"Bed_T_P_Finish",
+	},
+	Banana = {
+		"Bed_T_1_all",
+		"Bed_T_B_2",
+		"Bed_T_B_3",
+		"Bed_T_B_Finish",
+	},
 }
 local TREE_STAGE_INTERVAL = 10  -- seconds between stage swaps
 
@@ -376,53 +386,38 @@ end
 --
 -- Stage progression rule: every seed swaps to Stage_1 (the generic
 -- seedling), but only "palm" seeds continue past it. Per the user
--- brief, banana / pineapple seedlings stop at Stage_1 until further
--- per-species art lands. The palm check looks for "palm" or
--- "coconut" inside the PlantedSeed string so both the Tool name
--- "Palm_seed" and the resource name "Coconut_Seed" qualify.
-local function isPalmSeed(plantedSeed)
-	if type(plantedSeed) ~= "string" then return false end
+-- brief. Maps a planted seed (resource name like "Banana_Seed" or
+-- Tool name like "Palm_seed") to the kind of tree it grows into. The
+-- result keys TREE_STAGES_BY_KIND for the per-species progression.
+local function getSeedKind(plantedSeed)
+	if type(plantedSeed) ~= "string" then return nil end
 	local lower = plantedSeed:lower()
-	return lower:find("palm") ~= nil or lower:find("coconut") ~= nil
+	if lower:find("palm") or lower:find("coconut") then return "Palm" end
+	if lower:find("banana") then return "Banana" end
+	return nil
 end
 
 local function growTree(garden, idx)
-	if not garden or not garden.Parent then
-		print(string.format("[GardenSystem] growTree(%s) skipped: garden parent missing", tostring(idx)))
-		return
-	end
+	if not garden or not garden.Parent then return end
 	local currentStage = garden:GetAttribute("GrowthStage")
-	if currentStage ~= idx - 1 then
-		print(string.format(
-			"[GardenSystem] growTree(%s) skipped: GrowthStage=%s, expected %s",
-			tostring(idx), tostring(currentStage), tostring(idx - 1)
-		))
-		return
-	end
-	local stageTemplate = TREE_STAGES[idx]
-	if not stageTemplate then
-		print(string.format("[GardenSystem] growTree(%s) skipped: no TREE_STAGES[%s]", tostring(idx), tostring(idx)))
-		return
-	end
+	if currentStage ~= idx - 1 then return end
 
-	print(string.format(
-		"[GardenSystem] growTree(%s) → swap to %q (PlantedSeed=%s)",
-		tostring(idx), stageTemplate, tostring(garden:GetAttribute("PlantedSeed"))
-	))
+	-- Pick the stage chain for whatever was planted; fall back to a
+	-- one-entry chain (just the sapling) so an unrecognised seed still
+	-- shows the sapling instead of crashing.
+	local kind = getSeedKind(garden:GetAttribute("PlantedSeed"))
+	local stages = (kind and TREE_STAGES_BY_KIND[kind]) or { "Bed_T_1_all" }
+	local stageTemplate = stages[idx]
+	if not stageTemplate then return end
 
-	if not swapBedModelChildren(garden, stageTemplate) then
-		print(string.format("[GardenSystem] growTree(%s) FAILED: swapBedModelChildren returned false", tostring(idx)))
-		return
-	end
+	if not swapBedModelChildren(garden, stageTemplate) then return end
 
 	-- Keep the wrapper name + attributes stable so save/load + the
 	-- placement overlap checks still recognise this as the tree bed.
 	garden.Name = garden:GetAttribute("DryTemplate") or "Bed_T"
 	garden:SetAttribute("GrowthStage", idx)
 
-	local palm = isPalmSeed(garden:GetAttribute("PlantedSeed"))
-
-	if idx == #TREE_STAGES then
+	if idx >= #stages then
 		-- Final stage is a fully-grown tree the player can chop.
 		-- StoneAxeSystem checks Choppable + TreeHealth on the model;
 		-- IsPlantedTree tells it to swap-instead-of-Destroy when
@@ -430,16 +425,11 @@ local function growTree(garden, idx)
 		garden:SetAttribute("Choppable", true)
 		garden:SetAttribute("IsPlantedTree", true)
 		garden:SetAttribute("TreeHealth", 5)
-		print(string.format("[GardenSystem] growTree(%s) reached final stage — marked Choppable", tostring(idx)))
-	elseif palm then
-		print(string.format("[GardenSystem] growTree(%s) scheduling next stage in %ds", tostring(idx), TREE_STAGE_INTERVAL))
+	else
 		task.delay(TREE_STAGE_INTERVAL, function()
 			growTree(garden, idx + 1)
 		end)
-	else
-		print(string.format("[GardenSystem] growTree(%s) stopping — PlantedSeed isn't a palm (%s)", tostring(idx), tostring(garden:GetAttribute("PlantedSeed"))))
 	end
-	-- else: non-palm seed → stays at Stage_1 indefinitely.
 end
 
 -- ─── Cross-script hooks ───

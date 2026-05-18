@@ -130,14 +130,18 @@ end
 -- Pick what to outline for a given Choppable model. Planted Bed_T*
 -- wrappers carry the bed art (Center / Model / Earth) alongside the
 -- actual tree, so highlighting the whole wrapper outlines the stones
--- and dirt too. Drill into the wrapper for a Palm Tree (or Rostok,
--- though Choppable isn't set until the palm is fully grown) so only
--- the tree itself gets the outline. Free-standing trees on islands
--- don't have these children and fall through to the wrapper.
+-- and dirt too. Skip past the bed's static children and return the
+-- first dynamic one (Palm Tree, Banana Tree, …) so only the tree
+-- itself gets the outline. Free-standing trees on islands don't have
+-- these static children and fall through to the wrapper.
+local TREE_BED_STATIC = { Center = true, Model = true, Earth = true }
 local function findHighlightTarget(tree)
 	if not tree then return nil end
-	local palm = tree:FindFirstChild("Palm Tree")
-	if palm then return palm end
+	for _, child in tree:GetChildren() do
+		if not TREE_BED_STATIC[child.Name] and not child:GetAttribute("IsBush") then
+			return child
+		end
+	end
 	return tree
 end
 
