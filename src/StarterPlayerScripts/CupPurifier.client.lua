@@ -147,7 +147,11 @@ end
 -- ─── Ghost Preview for Placement ───
 local function createGhost(templateName)
 	if ghost then ghost:Destroy() end
-	local template = ReplicatedStorage:FindFirstChild(templateName or "Destitalor")
+	-- Try a flat lookup first, then a recursive search so templates
+	-- nested in organisation folders (Trees_Grow, etc.) still resolve.
+	local name = templateName or "Destitalor"
+	local template = ReplicatedStorage:FindFirstChild(name)
+		or ReplicatedStorage:FindFirstChild(name, true)
 	if not template then return end
 
 	ghost = template:Clone()
