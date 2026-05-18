@@ -1,8 +1,13 @@
 local Players = game:GetService("Players")
 local rs = game:GetService("ReplicatedStorage")
+local TweenService = game:GetService("TweenService")
 
 -- ─── Config ───
 local WATER_DRY_TIME = 60 -- seconds before watered garden dries out
+
+-- How long the cross-fade between two bed templates takes. Short
+-- enough not to feel laggy; long enough to round off the visual pop.
+local FADE_DURATION = 0.35
 
 -- Tree growth progression for planted seeds. The seedling stage is
 -- shared across every seed type ("Bed_T_1_all" = "bed with any tree
@@ -134,9 +139,35 @@ local function swapBedModelChildren(garden, templateName)
 		end
 	end
 
-	-- Clear old children
-	for _, child in garden:GetChildren() do
-		child:Destroy()
+	-- ✱ Cross-fade: instead of yanking the old children out of the
+	-- scene, reparent them into a temporary holder and tween their
+	-- transparency to 1 over FADE_DURATION. The welds they already
+	-- hold against the raft stay valid (WeldConstraint binds by part
+	-- reference, not by parent), so they don't drift while they fade.
+	-- Once the tween finishes the holder is destroyed and the GC
+	-- reclaims the parts. The new children get the matching
+	-- transparency-up-from-1 tween further down, producing a smooth
+	-- overlap instead of a one-frame pop.
+	local oldChildren = garden:GetChildren()
+	if #oldChildren > 0 then
+		local fadeHolder = Instance.new("Folder")
+		fadeHolder.Name = "BedFadeOut"
+		fadeHolder.Parent = workspace
+		local fadeInfo = TweenInfo.new(FADE_DURATION, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+		for _, child in oldChildren do
+			child.Parent = fadeHolder
+			if child:IsA("BasePart") then
+				TweenService:Create(child, fadeInfo, { Transparency = 1 }):Play()
+			end
+			for _, desc in child:GetDescendants() do
+				if desc:IsA("BasePart") then
+					TweenService:Create(desc, fadeInfo, { Transparency = 1 }):Play()
+				end
+			end
+		end
+		task.delay(FADE_DURATION + 0.1, function()
+			if fadeHolder.Parent then fadeHolder:Destroy() end
+		end)
 	end
 
 	-- Clone new model contents, anchor everything first
@@ -173,6 +204,27 @@ local function swapBedModelChildren(garden, templateName)
 	-- treeModel:GetPivot().Position, which works either way; setting a
 	-- primary would make WorldPivot start tracking that part again and
 	-- reintroduce the offset drift the swap pipeline just got rid of.
+
+	-- ✱ Fade-in pass: snap every newly-cloned BasePart to invisible,
+	-- then tween it back to its template-authored transparency over
+	-- the same FADE_DURATION used for the old children's fade-out.
+	-- Skip parts already at 1 (e.g. the Center anchor) so they don't
+	-- pop in as visible squares. The result is a crossfade that
+	-- visually morphs one bed stage into the next without the abrupt
+	-- snap the user reported.
+	local fadeInInfo = TweenInfo.new(FADE_DURATION, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+	local function fadeInPart(part)
+		local target = part.Transparency
+		if target >= 1 then return end
+		part.Transparency = 1
+		TweenService:Create(part, fadeInInfo, { Transparency = target }):Play()
+	end
+	for _, child in garden:GetChildren() do
+		if child:IsA("BasePart") then fadeInPart(child) end
+		for _, desc in child:GetDescendants() do
+			if desc:IsA("BasePart") then fadeInPart(desc) end
+		end
+	end
 
 	if raftPrimary then
 		for _, part in garden:GetDescendants() do
