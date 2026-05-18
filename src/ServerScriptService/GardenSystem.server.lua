@@ -134,16 +134,23 @@ local function swapBedModelChildren(garden, templateName)
 			clone.Parent = garden
 		end
 
-		-- ✱ Anchor by BOUNDING-BOX CENTRE, identity rotation — the exact
-		-- same recipe placeBedTemplate uses for initial placement. This
-		-- normalises the wrapper's pivot regardless of where each
-		-- individual template authored its own pivot, so cycling
-		-- through Bed_T → _Wat → _1_all → _P_2/3/Finish keeps the
-		-- visual centre pinned to the placement spot instead of
-		-- jumping sideways whenever a template's authored pivot
-		-- happens to sit off-centre.
-		local bbCF = garden:GetBoundingBox()
-		garden.WorldPivot = CFrame.new(bbCF.Position)
+		-- ✱ Anchor by the model's "Center" reference part, falling back
+		-- to the bounding-box centre. Tree-stage templates author a
+		-- Center > Center BasePart that sits at the SAME spot on every
+		-- variant — using bbox centre alone slid the model downward as
+		-- the palm grew taller (the bbox grew, its centre rose). The
+		-- Center part is a stable per-template anchor that doesn't
+		-- shift with the tree's height. Falls back to bbox centre for
+		-- templates that don't carry a Center anchor (regular garden,
+		-- legacy beds, etc.).
+		local anchorPos
+		local centerPart = garden:FindFirstChild("Center", true)
+		if centerPart and centerPart:IsA("BasePart") then
+			anchorPos = centerPart.Position
+		else
+			anchorPos = garden:GetBoundingBox().Position
+		end
+		garden.WorldPivot = CFrame.new(anchorPos)
 	end
 
 	-- Move so the bbox centre lands at the original placement pose.
@@ -400,10 +407,19 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 			end
 		end
 
-		-- Reset WorldPivot to bounding box center with identity rotation
+		-- Reset WorldPivot to the model's "Center" reference part (if it
+		-- has one) or its bounding-box centre, with identity rotation.
+		-- Using the Center part keeps growth-stage swaps stable: as the
+		-- palm grows taller the bbox centre rises, but Center stays put.
 		if placed:IsA("Model") then
-			local bbCF = placed:GetBoundingBox()
-			placed.WorldPivot = CFrame.new(bbCF.Position)
+			local anchorPos
+			local centerPart = placed:FindFirstChild("Center", true)
+			if centerPart and centerPart:IsA("BasePart") then
+				anchorPos = centerPart.Position
+			else
+				anchorPos = placed:GetBoundingBox().Position
+			end
+			placed.WorldPivot = CFrame.new(anchorPos)
 		end
 
 		placed:PivotTo(worldCF)
