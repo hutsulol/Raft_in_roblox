@@ -79,20 +79,33 @@ local function swapBedModelChildren(garden, templateName)
 		angVel = raftPrimary.AssemblyAngularVelocity
 	end
 
-	-- Clear PrimaryPart FIRST so the saved pivot below reads the
-	-- wrapper's actual Origin (WorldPivot), not the previous template's
-	-- primary CFrame which is offset by that primary's local pose. On
-	-- the first swap these would have matched; on every subsequent
-	-- swap the offset compounded and tilted the model further.
+	-- Drop PrimaryPart up front so it can't drag the wrapper's pivot
+	-- around between swaps. The wrapper's anchor going forward is its
+	-- WorldPivot — set explicitly below.
 	garden.PrimaryPart = nil
 
-	-- Save the wrapper's current PIVOT (its "Origin" in world space).
-	-- With PrimaryPart cleared, GetPivot returns WorldPivot, which is
-	-- the only stable per-wrapper Origin across consecutive swaps.
-	local savedPivot = garden:GetPivot()
-	local savedRelPivot
-	if raftPrimary then
-		savedRelPivot = raftPrimary.CFrame:ToObjectSpace(savedPivot)
+	-- ✱ Anchor the swap by the PLAYER'S ORIGINAL PLACEMENT POSE, not
+	-- by the wrapper's current pivot. placeBedTemplate stamps a
+	-- PlacedRelPivot attribute (raft-local CFrame) right after placing
+	-- the bed; replaying it on every swap means the visual model lands
+	-- at the same world spot no matter how each template authored its
+	-- own pivot offset. Falls back to the current pivot for any pre-
+	-- existing bed that was placed before this attribute existed.
+	local relFromAttr = garden:GetAttribute("PlacedRelPivot")
+	local desiredPivot
+	if typeof(relFromAttr) == "CFrame" and raftPrimary then
+		desiredPivot = raftPrimary.CFrame * relFromAttr
+	else
+		local fallback = garden:GetPivot()
+		desiredPivot = fallback
+		if raftPrimary then
+			-- Stamp the attribute now so future swaps don't have to
+			-- guess again. We use the wrapper's current pivot as the
+			-- best-available anchor, since that's where the player
+			-- last saw the bed.
+			garden:SetAttribute("PlacedRelPivot",
+				raftPrimary.CFrame:ToObjectSpace(fallback))
+		end
 	end
 
 	-- Save bush children (don't destroy them during swap!). Tree-stage
@@ -121,20 +134,19 @@ local function swapBedModelChildren(garden, templateName)
 			clone.Parent = garden
 		end
 
-		-- ✱ Adopt the template's authored Origin as the wrapper's pivot.
-		-- The cloned children sit at template-local positions around
-		-- this pivot, so PivotTo below moves everything consistently
-		-- relative to the new template's authored layout.
-		garden.WorldPivot = template:GetPivot()
+		-- ✱ Anchor by BOUNDING-BOX CENTRE, identity rotation — the exact
+		-- same recipe placeBedTemplate uses for initial placement. This
+		-- normalises the wrapper's pivot regardless of where each
+		-- individual template authored its own pivot, so cycling
+		-- through Bed_T → _Wat → _1_all → _P_2/3/Finish keeps the
+		-- visual centre pinned to the placement spot instead of
+		-- jumping sideways whenever a template's authored pivot
+		-- happens to sit off-centre.
+		local bbCF = garden:GetBoundingBox()
+		garden.WorldPivot = CFrame.new(bbCF.Position)
 	end
 
-	-- Move the (just-rebuilt) model so its pivot lands at the saved
-	-- pose. With WorldPivot now aligned with the template's origin
-	-- and PrimaryPart cleared, PivotTo translates+rotates every clone
-	-- by exactly the same delta — orientation is preserved.
-	local desiredPivot = (savedRelPivot and raftPrimary)
-		and (raftPrimary.CFrame * savedRelPivot)
-		or savedPivot
+	-- Move so the bbox centre lands at the original placement pose.
 	garden:PivotTo(desiredPivot)
 
 	-- Deliberately DO NOT re-bind a PrimaryPart on the wrapper. The
@@ -142,8 +154,6 @@ local function swapBedModelChildren(garden, templateName)
 	-- treeModel:GetPivot().Position, which works either way; setting a
 	-- primary would make WorldPivot start tracking that part again and
 	-- reintroduce the offset drift the swap pipeline just got rid of.
-	-- garden.WorldPivot is now the single source of truth for the bed's
-	-- Origin and it survives every future swap unchanged.
 
 	if raftPrimary then
 		for _, part in garden:GetDescendants() do
@@ -398,6 +408,16 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		placed:PivotTo(worldCF)
 		placed.Parent = raft
+
+		-- Stamp the player's original placement pose as a raft-relative
+		-- attribute. Every future template swap reads this so the
+		-- visual bed always lands at the exact spot the player clicked,
+		-- regardless of where the new template's authored pivot is
+		-- relative to its visual centre.
+		if raft.PrimaryPart then
+			placed:SetAttribute("PlacedRelPivot",
+				raft.PrimaryPart.CFrame:ToObjectSpace(worldCF))
+		end
 
 		-- Same 3-pass weld pattern used by the regular Garden / Bed /
 		-- WorkBench placements: snapshot raft velocity, anchor, weld
