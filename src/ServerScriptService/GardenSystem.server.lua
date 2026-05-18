@@ -79,22 +79,19 @@ local function swapBedModelChildren(garden, templateName)
 		angVel = raftPrimary.AssemblyAngularVelocity
 	end
 
-	-- Save position from an actual part
-	local savedCF = nil
-	local primaryPart = garden.PrimaryPart
-	if primaryPart then
-		savedCF = primaryPart.CFrame
-	else
-		local firstPart = garden:FindFirstChildWhichIsA("BasePart", true)
-		if firstPart then
-			savedCF = firstPart.CFrame
-		else
-			savedCF = garden:GetPivot()
-		end
-	end
-	local savedRelCF
-	if raftPrimary and savedCF then
-		savedRelCF = raftPrimary.CFrame:ToObjectSpace(savedCF)
+	-- Save the wrapper's current PIVOT (its "Origin" in world space).
+	-- We deliberately use the model's pivot, not a child part's CFrame,
+	-- so the swap stays orientation-stable across every template even
+	-- if the templates' authored PrimaryParts disagree on rotation.
+	-- The original behaviour read PrimaryPart.CFrame, which made the
+	-- new model land at the OLD primary's pose — fine when every
+	-- template was authored with an identical primary, but produced
+	-- the "flipped bed" the user saw once the new Bed_T art set used
+	-- a different convention.
+	local savedPivot = garden:GetPivot()
+	local savedRelPivot
+	if raftPrimary then
+		savedRelPivot = raftPrimary.CFrame:ToObjectSpace(savedPivot)
 	end
 
 	-- Save bush children (don't destroy them during swap!). Tree-stage
@@ -106,6 +103,11 @@ local function swapBedModelChildren(garden, templateName)
 			child.Parent = workspace
 		end
 	end
+
+	-- Clear PrimaryPart so its impending destruction doesn't leave a
+	-- dangling reference and so PivotTo below operates on WorldPivot
+	-- (not the still-set primary's CFrame).
+	garden.PrimaryPart = nil
 
 	-- Clear old children
 	for _, child in garden:GetChildren() do
@@ -122,22 +124,37 @@ local function swapBedModelChildren(garden, templateName)
 			end
 			clone.Parent = garden
 		end
-		if template.PrimaryPart then
-			local newPrimary = garden:FindFirstChild(template.PrimaryPart.Name)
-			if newPrimary then
-				garden.PrimaryPart = newPrimary
-			end
-		end
-		if not garden.PrimaryPart then
-			local first = garden:FindFirstChildWhichIsA("BasePart", true)
-			if first then garden.PrimaryPart = first end
-		end
+
+		-- ✱ Adopt the template's authored Origin as the wrapper's pivot.
+		-- The cloned children sit at template-local positions around
+		-- this pivot, so PivotTo below moves everything consistently
+		-- relative to the new template's authored layout.
+		garden.WorldPivot = template:GetPivot()
 	end
 
-	if savedRelCF and raftPrimary then
-		garden:PivotTo(raftPrimary.CFrame * savedRelCF)
-	elseif savedCF then
-		garden:PivotTo(savedCF)
+	-- Move the (just-rebuilt) model so its pivot lands at the saved
+	-- pose. With WorldPivot now aligned with the template's origin
+	-- and PrimaryPart cleared, PivotTo translates+rotates every clone
+	-- by exactly the same delta — orientation is preserved.
+	if savedRelPivot and raftPrimary then
+		garden:PivotTo(raftPrimary.CFrame * savedRelPivot)
+	else
+		garden:PivotTo(savedPivot)
+	end
+
+	-- Re-bind PrimaryPart for any downstream system that prefers it
+	-- (StoneAxeSystem, save layout, etc.). Setting it after PivotTo
+	-- avoids the "PivotTo moves the primary, not the model" pitfall
+	-- that broke orientation in the previous implementation.
+	if template:IsA("Model") and template.PrimaryPart then
+		local newPrimary = garden:FindFirstChild(template.PrimaryPart.Name)
+		if newPrimary then
+			garden.PrimaryPart = newPrimary
+		end
+	end
+	if not garden.PrimaryPart then
+		local first = garden:FindFirstChildWhichIsA("BasePart", true)
+		if first then garden.PrimaryPart = first end
 	end
 
 	if raftPrimary then
