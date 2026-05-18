@@ -4,15 +4,16 @@ local rs = game:GetService("ReplicatedStorage")
 -- ─── Config ───
 local WATER_DRY_TIME = 60 -- seconds before watered garden dries out
 
--- Tree growth progression for planted seeds. Same stage list for all
--- seed kinds today — the user has only authored palm stage models so
--- far; once banana / coconut growth art lands, swap to a per-seed
--- table here.
+-- Tree growth progression for planted seeds. The seedling stage is
+-- shared across every seed type ("Bed_T_1_all" = "bed with any tree
+-- sapling"); only palm seeds continue past it into the per-species
+-- stages. Banana / pineapple art will get its own *_B_*/_P_* set if /
+-- when those species need distinct intermediate stages.
 local TREE_STAGES = {
-	"Bed_Garden_seedling_Stage_1",
-	"Bed_Garden_Palm_Stage_2",
-	"Bed_Garden_Palm_Stage_3",
-	"Bed_Garden_Palm_Stage_4",
+	"Bed_T_1_all",
+	"Bed_T_P_2",
+	"Bed_T_P_3",
+	"Bed_T_P_Finish",
 }
 local TREE_STAGE_INTERVAL = 10  -- seconds between stage swaps
 
@@ -234,7 +235,7 @@ local function growTree(garden, idx)
 
 	-- Keep the wrapper name + attributes stable so save/load + the
 	-- placement overlap checks still recognise this as the tree bed.
-	garden.Name = garden:GetAttribute("DryTemplate") or "Bed_Garden_For_Tree"
+	garden.Name = garden:GetAttribute("DryTemplate") or "Bed_T"
 	garden:SetAttribute("GrowthStage", idx)
 
 	local palm = isPalmSeed(garden:GetAttribute("PlantedSeed"))
@@ -439,15 +440,15 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 		-- Larger tree-sized garden bed. Same on-raft welding flow +
 		-- watering flow as the regular garden (IsGarden = true so the
 		-- shared waterGarden path picks it up), just with its own dry /
-		-- wet template pair: Bed_Garden_For_Tree ↔ Bed_Garden_For_Tree_Wet.
+		-- wet template pair: Bed_T ↔ Bed_T_Wat.
 		-- IsBedGardenForTree stays for future tree-planting logic that
 		-- needs to distinguish the two bed kinds.
-		placeBedTemplate("Bed_Garden_For_Tree", "Bed_Garden_For_Tree", "Bed_Garden_For_Tree", {
+		placeBedTemplate("Bed_T", "Bed_T", "Bed_T", {
 			IsGarden           = true,
 			IsWatered          = false,
 			IsBedGardenForTree = true,
-			DryTemplate        = "Bed_Garden_For_Tree",
-			WetTemplate        = "Bed_Garden_For_Tree_Wet",
+			DryTemplate        = "Bed_T",
+			WetTemplate        = "Bed_T_Wat",
 		})
 
 	elseif action == "waterGarden" then

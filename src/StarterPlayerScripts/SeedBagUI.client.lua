@@ -1,7 +1,7 @@
 -- SeedBagUI.client.lua
 -- "Leaf bag" Tool interaction. While the bag is in hand, pressing E
 -- opens the seed picker; if the player is also next to a watered
--- Bed_Garden_For_Tree, the picker's "Plant" button is enabled and
+-- Bed_T, the picker's "Plant" button is enabled and
 -- planting consumes one seed from the bag.
 --
 -- Layout matches the user-supplied design pass:

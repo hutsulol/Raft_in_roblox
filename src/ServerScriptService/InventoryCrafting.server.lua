@@ -94,9 +94,9 @@ local recipes = {
 		-- Larger variant of the regular Garden Bed, sized to host a
 		-- tree. Same placement / R-rotate / raft-weld flow as Garden;
 		-- the server handler lives alongside the regular garden in
-		-- GardenSystem.server.lua and clones the Bed_Garden_For_Tree
+		-- GardenSystem.server.lua and clones the Bed_T
 		-- template from ReplicatedStorage.
-		name = "Bed_Garden_For_Tree",
+		name = "Bed_T",
 		displayName = "Tree Garden Bed",
 		icon = "rbxassetid://137766871451752",
 		costs = {Log = 1},

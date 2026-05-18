@@ -49,7 +49,7 @@ local MAX_DROPS_PER_HIT = 2
 
 -- Fruit + seed species vary with tree species. Default falls back to
 -- the palm pair so chopping a planted bed-tree (wrapper named
--- Bed_Garden_For_Tree, not "Palm Tree") still yields a sensible
+-- Bed_T, not "Palm Tree") still yields a sensible
 -- Coconut + Coconut_Seed pair.
 local FRUIT_BY_TREE = {
 	["Banana Tree"] = "Banana",
@@ -122,7 +122,7 @@ local function ensureDropPool(treeModel)
 	end
 
 	-- Resolve fruit + seed species once; client doesn't need to know.
-	-- Planted bed-trees (wrapper named "Bed_Garden_For_Tree") carry a
+	-- Planted bed-trees (wrapper named "Bed_T") carry a
 	-- PlantedSeed attribute that hints at the seed kind chosen, which
 	-- we honour here so a Banana-seeded planted tree drops bananas
 	-- instead of coconuts. Otherwise fall through to the per-tree

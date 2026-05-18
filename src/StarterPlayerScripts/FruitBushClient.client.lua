@@ -4,7 +4,7 @@
 --
 --   * Harvest a fruit-bearing model (PineApple leaves → 1-2 Pineapples
 --     + 1 Pineapple_Seed, cooldown).
---   * Plant a seed on a watered Bed_Garden_For_Tree → kicks off the
+--   * Plant a seed on a watered Bed_T → kicks off the
 --     four-stage tree growth timer on the server (GardenSystem).
 --
 -- Server-side validation (range / cooldown / inventory grant / etc.)

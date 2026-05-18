@@ -14,7 +14,7 @@
 --
 -- Interaction flow:
 --   1. Player holds "leaf bag", stands next to a watered
---      Bed_Garden_For_Tree, presses E.
+--      Bed_T, presses E.
 --   2. SeedBagUI.client.lua fires SeedBagAction("open", bed).
 --   3. We validate + reply with SeedBagAction("show", bed, slots).
 --   4. Player clicks a slot → SeedBagAction("plant", bed, slotIndex).

@@ -24,7 +24,7 @@ local placingBedGardenForTree = false
 local placingBed = false
 local placingSawmill = false
 -- Seed-tool-in-hand planting (Banana_Seed / Palm_seed / etc.) — the
--- player can click a watered Bed_Garden_For_Tree to drop the seedling
+-- player can click a watered Bed_T to drop the seedling
 -- there. No ghost is needed; we use the mouse target instead.
 local placingSeed = false
 local currentSeedTool = nil
@@ -242,7 +242,7 @@ local function isPlacementBlocked(placeCF, ghostSize)
 	-- Known placed object names to check against
 	local placedObjectNames = {
 		WorkBench = true, Purifier = true, Garden = true,
-		Bed_Garden_For_Tree = true,
+		Bed_T = true,
 		Bed = true, Destitalor = true, bush = true, Sawmill = true,
 	}
 
@@ -398,7 +398,7 @@ local function onToolEquipped(tool)
 		placingBed = false
 		placingBedGardenForTree = false
 		createGhost("Garden")
-	elseif tool.Name == "Bed_Garden_For_Tree" then
+	elseif tool.Name == "Bed_T" then
 		placingBedGardenForTree = true
 		placingGarden = false
 		placingPurifier = false
@@ -406,7 +406,7 @@ local function onToolEquipped(tool)
 		placingWorkbench = false
 		placingBed = false
 		placingSawmill = false
-		createGhost("Bed_Garden_For_Tree")
+		createGhost("Bed_T")
 	elseif tool.Name == "Bed" then
 		placingBed = true
 		placingPurifier = false

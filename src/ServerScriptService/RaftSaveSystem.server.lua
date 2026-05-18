@@ -716,7 +716,7 @@ local function restoreTools(player, saveData)
 
 	-- Placeholder tools (placement items) — create a simple Tool with transparent Handle
 	local placeholderTools = {
-		["WorkBench"] = true, ["Garden"] = true, ["Bed_Garden_For_Tree"] = true,
+		["WorkBench"] = true, ["Garden"] = true, ["Bed_T"] = true,
 		["Furnace"] = true, ["Bed"] = true, ["bush"] = true,
 	}
 
