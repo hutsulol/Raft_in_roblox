@@ -76,10 +76,12 @@ local function findCenterAnchor(model)
 end
 
 -- Names that act as the bed's "chassis" — Center is the per-template
--- anchor, Model is the static bed art (stone border etc.). Once the
--- bed is placed these never get swapped: every stage transition only
--- touches the stage-specific siblings (Earth, Rostok, Palm Tree, …).
-local STATIC_CHILD_NAMES = { Center = true, Model = true }
+-- anchor, Model is the static bed art (stone border etc.). Earth is
+-- treated as part of the chassis EXCEPT during dry↔wet swaps, where
+-- the dirt texture itself is the thing the player is supposed to see
+-- change. Callers control that via opts.swapEarth (see swapGardenModel
+-- vs growTree).
+local DEFAULT_STATIC_NAMES = { Center = true, Model = true, Earth = true }
 
 -- Fade-out the provided list of children. They get reparented out of
 -- the garden into a temp Folder so subsequent surgical adds don't
@@ -153,7 +155,9 @@ local function weldCloneToRaft(clone, raftPrimary)
 	end
 end
 
-local function swapBedModelChildren(garden, templateName)
+local function swapBedModelChildren(garden, templateName, opts)
+	opts = opts or {}
+
 	local template = rs:FindFirstChild(templateName)
 		or rs:FindFirstChild(templateName, true)
 		or workspace:FindFirstChild(templateName)
@@ -195,6 +199,15 @@ local function swapBedModelChildren(garden, templateName)
 	if gardenCenter and templateCenter then
 		local delta = gardenCenter.CFrame * templateCenter.CFrame:Inverse()
 
+		-- Build the static set for THIS swap. Earth is static by
+		-- default — only dry↔wet transitions (opts.swapEarth = true,
+		-- driven by swapGardenModel) lift it out of the static list so
+		-- the dirt texture actually changes. Tree-growth swaps leave
+		-- swapEarth unset, so the wet Earth survives every stage.
+		local staticNames = {}
+		for k, v in DEFAULT_STATIC_NAMES do staticNames[k] = v end
+		if opts.swapEarth then staticNames.Earth = nil end
+
 		-- Index template children by name; static templates' children
 		-- get filtered out below so we never re-clone them.
 		local templateByName = {}
@@ -207,7 +220,7 @@ local function swapBedModelChildren(garden, templateName)
 		-- pair is a no-op (Center/Model carry forward as-is).
 		local addedClones = {}
 		for name, templateChild in templateByName do
-			if STATIC_CHILD_NAMES[name] and garden:FindFirstChild(name) then
+			if staticNames[name] and garden:FindFirstChild(name) then
 				-- static child already present → keep as-is
 				continue
 			end
@@ -241,7 +254,7 @@ local function swapBedModelChildren(garden, templateName)
 		for _, child in garden:GetChildren() do
 			if not addedSet[child]
 				and not child:GetAttribute("IsBush")
-				and not STATIC_CHILD_NAMES[child.Name] then
+				and not staticNames[child.Name] then
 				table.insert(toRemove, child)
 			end
 		end
@@ -339,7 +352,12 @@ local function swapGardenModel(garden, watered)
 	local wetName = garden:GetAttribute("WetTemplate") or "Garden_watered"
 	local templateName = watered and wetName or dryName
 
-	if not swapBedModelChildren(garden, templateName) then return end
+	-- swapEarth = true: this IS the dry↔wet transition, so the Earth
+	-- texture should change. Tree-growth swaps don't pass this flag and
+	-- the wet Earth survives untouched.
+	if not swapBedModelChildren(garden, templateName, { swapEarth = true }) then
+		return
+	end
 
 	garden:SetAttribute("IsGarden", true)
 	garden:SetAttribute("IsWatered", watered)
