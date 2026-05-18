@@ -127,6 +127,20 @@ local function findChoppableTree(instance)
 	return nil
 end
 
+-- Pick what to outline for a given Choppable model. Planted Bed_T*
+-- wrappers carry the bed art (Center / Model / Earth) alongside the
+-- actual tree, so highlighting the whole wrapper outlines the stones
+-- and dirt too. Drill into the wrapper for a Palm Tree (or Rostok,
+-- though Choppable isn't set until the palm is fully grown) so only
+-- the tree itself gets the outline. Free-standing trees on islands
+-- don't have these children and fall through to the wrapper.
+local function findHighlightTarget(tree)
+	if not tree then return nil end
+	local palm = tree:FindFirstChild("Palm Tree")
+	if palm then return palm end
+	return tree
+end
+
 -- ─── Cursor swap helper ──────────────────────────────────────────
 -- showAxeCursor(true)  → hide the system cursor and follow the
 --                        mouse with our 40×40 axe ImageLabel
@@ -166,7 +180,7 @@ local function updateHighlight()
 		local tree = findChoppableTree(result.Instance)
 		if tree then
 			highlightedTree = tree
-			if highlightBox then highlightBox.Adornee = tree end
+			if highlightBox then highlightBox.Adornee = findHighlightTarget(tree) end
 			showAxeCursor(true)
 			hintLabel.Text = "Click to chop tree"
 			hintLabel.Visible = true
