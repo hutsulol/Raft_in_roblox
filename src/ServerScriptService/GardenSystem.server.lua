@@ -54,6 +54,22 @@ end
 -- children in their place, welds the new parts to the raft, and
 -- restores the bed pose relative to the raft. Returns true on success.
 -- Used by both the dry/wet swap below AND the tree-growth stage swap.
+
+-- Finds the model's "Center" BasePart — the per-template anchor the
+-- artist authors at the same world spot on every variant. The Bed_T
+-- art uses a wrapping Center folder/model that itself is named
+-- "Center", so a recursive FindFirstChild("Center") returns the folder
+-- (not a BasePart) and the swap silently falls back to bbox centre.
+-- Iterate explicitly so we only ever pick the BasePart.
+local function findCenterAnchor(model)
+	for _, desc in model:GetDescendants() do
+		if desc:IsA("BasePart") and desc.Name == "Center" then
+			return desc
+		end
+	end
+	return nil
+end
+
 local function swapBedModelChildren(garden, templateName)
 	local template = rs:FindFirstChild(templateName)
 		or rs:FindFirstChild(templateName, true)
@@ -136,20 +152,16 @@ local function swapBedModelChildren(garden, templateName)
 
 		-- ✱ Anchor by the model's "Center" reference part, falling back
 		-- to the bounding-box centre. Tree-stage templates author a
-		-- Center > Center BasePart that sits at the SAME spot on every
-		-- variant — using bbox centre alone slid the model downward as
-		-- the palm grew taller (the bbox grew, its centre rose). The
+		-- Center BasePart that sits at the SAME spot on every variant
+		-- — using bbox centre alone slid the model downward as the
+		-- palm grew taller (the bbox grew, its centre rose). The
 		-- Center part is a stable per-template anchor that doesn't
 		-- shift with the tree's height. Falls back to bbox centre for
 		-- templates that don't carry a Center anchor (regular garden,
 		-- legacy beds, etc.).
-		local anchorPos
-		local centerPart = garden:FindFirstChild("Center", true)
-		if centerPart and centerPart:IsA("BasePart") then
-			anchorPos = centerPart.Position
-		else
-			anchorPos = garden:GetBoundingBox().Position
-		end
+		local centerPart = findCenterAnchor(garden)
+		local anchorPos = centerPart and centerPart.Position
+			or garden:GetBoundingBox().Position
 		garden.WorldPivot = CFrame.new(anchorPos)
 	end
 
@@ -412,13 +424,9 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 		-- Using the Center part keeps growth-stage swaps stable: as the
 		-- palm grows taller the bbox centre rises, but Center stays put.
 		if placed:IsA("Model") then
-			local anchorPos
-			local centerPart = placed:FindFirstChild("Center", true)
-			if centerPart and centerPart:IsA("BasePart") then
-				anchorPos = centerPart.Position
-			else
-				anchorPos = placed:GetBoundingBox().Position
-			end
+			local centerPart = findCenterAnchor(placed)
+			local anchorPos = centerPart and centerPart.Position
+				or placed:GetBoundingBox().Position
 			placed.WorldPivot = CFrame.new(anchorPos)
 		end
 
