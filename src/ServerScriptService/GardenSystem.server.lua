@@ -75,6 +75,84 @@ local function findCenterAnchor(model)
 	return nil
 end
 
+-- Names that act as the bed's "chassis" — Center is the per-template
+-- anchor, Model is the static bed art (stone border etc.). Once the
+-- bed is placed these never get swapped: every stage transition only
+-- touches the stage-specific siblings (Earth, Rostok, Palm Tree, …).
+local STATIC_CHILD_NAMES = { Center = true, Model = true }
+
+-- Fade-out the provided list of children. They get reparented out of
+-- the garden into a temp Folder so subsequent surgical adds don't
+-- accidentally relocate them, then every BasePart's transparency
+-- tweens to 1. WeldConstraints binding them to the raft stay valid
+-- through the reparent (welds reference parts, not models), so they
+-- don't drift while they fade. After FADE_DURATION the holder is
+-- destroyed and GC reclaims everything.
+local function fadeOutChildren(children)
+	if #children == 0 then return end
+	local fadeHolder = Instance.new("Folder")
+	fadeHolder.Name = "BedFadeOut"
+	fadeHolder.Parent = workspace
+	local info = TweenInfo.new(FADE_DURATION, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+	for _, child in children do
+		child.Parent = fadeHolder
+		if child:IsA("BasePart") then
+			TweenService:Create(child, info, { Transparency = 1 }):Play()
+		end
+		for _, desc in child:GetDescendants() do
+			if desc:IsA("BasePart") then
+				TweenService:Create(desc, info, { Transparency = 1 }):Play()
+			end
+		end
+	end
+	task.delay(FADE_DURATION + 0.1, function()
+		if fadeHolder.Parent then fadeHolder:Destroy() end
+	end)
+end
+
+-- Snap every BasePart inside the given clones to Transparency = 1,
+-- then tween each one back to its template-authored transparency.
+-- Skips parts already at 1 (Center anchor, collision markers) so they
+-- don't briefly flash visible mid-tween.
+local function fadeInClones(clones)
+	if #clones == 0 then return end
+	local info = TweenInfo.new(FADE_DURATION, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
+	local function fadeInPart(part)
+		local target = part.Transparency
+		if target >= 1 then return end
+		part.Transparency = 1
+		TweenService:Create(part, info, { Transparency = target }):Play()
+	end
+	for _, clone in clones do
+		if clone:IsA("BasePart") then fadeInPart(clone) end
+		for _, desc in clone:GetDescendants() do
+			if desc:IsA("BasePart") then fadeInPart(desc) end
+		end
+	end
+end
+
+-- Weld every BasePart inside a clone to the raft's primary, then
+-- unanchor them so they ride the raft. Mirrors the 3-pass dance used
+-- by placeBedTemplate but applied per-clone so the existing welded
+-- static children (Center, Model) aren't re-welded redundantly.
+local function weldCloneToRaft(clone, raftPrimary)
+	if not raftPrimary then return end
+	local parts = {}
+	if clone:IsA("BasePart") then table.insert(parts, clone) end
+	for _, desc in clone:GetDescendants() do
+		if desc:IsA("BasePart") then table.insert(parts, desc) end
+	end
+	for _, part in parts do
+		local weld = Instance.new("WeldConstraint")
+		weld.Part0 = part
+		weld.Part1 = raftPrimary
+		weld.Parent = part
+	end
+	for _, part in parts do
+		part.Anchored = false
+	end
+end
+
 local function swapBedModelChildren(garden, templateName)
 	local template = rs:FindFirstChild(templateName)
 		or rs:FindFirstChild(templateName, true)
@@ -85,13 +163,6 @@ local function swapBedModelChildren(garden, templateName)
 		return false
 	end
 
-	-- Snapshot raft velocity + capture garden pose AS RAFT-RELATIVE
-	-- BEFORE any destroy/clone work (T14/T19). The destroy + clone
-	-- steps span a couple of physics frames during which the raft
-	-- drifts, so saving a world CFrame and PivotTo'ing it back later
-	-- places the new parts against a stale raft pose. Welds then
-	-- lock that drift in and the solver kicks the assembly to fix
-	-- it → the bouncing.
 	local raft = workspace:FindFirstChild("Raft")
 	local raftPrimary = raft and raft.PrimaryPart or nil
 	local linVel, angVel
@@ -100,37 +171,9 @@ local function swapBedModelChildren(garden, templateName)
 		angVel = raftPrimary.AssemblyAngularVelocity
 	end
 
-	-- Drop PrimaryPart up front so it can't drag the wrapper's pivot
-	-- around between swaps. The wrapper's anchor going forward is its
-	-- WorldPivot — set explicitly below.
 	garden.PrimaryPart = nil
 
-	-- ✱ Anchor the swap by the PLAYER'S ORIGINAL PLACEMENT POSE, not
-	-- by the wrapper's current pivot. placeBedTemplate stamps a
-	-- PlacedRelPivot attribute (raft-local CFrame) right after placing
-	-- the bed; replaying it on every swap means the visual model lands
-	-- at the same world spot no matter how each template authored its
-	-- own pivot offset. Falls back to the current pivot for any pre-
-	-- existing bed that was placed before this attribute existed.
-	local relFromAttr = garden:GetAttribute("PlacedRelPivot")
-	local desiredPivot
-	if typeof(relFromAttr) == "CFrame" and raftPrimary then
-		desiredPivot = raftPrimary.CFrame * relFromAttr
-	else
-		local fallback = garden:GetPivot()
-		desiredPivot = fallback
-		if raftPrimary then
-			-- Stamp the attribute now so future swaps don't have to
-			-- guess again. We use the wrapper's current pivot as the
-			-- best-available anchor, since that's where the player
-			-- last saw the bed.
-			garden:SetAttribute("PlacedRelPivot",
-				raftPrimary.CFrame:ToObjectSpace(fallback))
-		end
-	end
-
-	-- Save bush children (don't destroy them during swap!). Tree-stage
-	-- swaps don't have bushes, so this loop is a no-op for them.
+	-- Save bushes so neither the diff nor the fade pipeline touches them.
 	local bushes = {}
 	for _, child in garden:GetChildren() do
 		if child:GetAttribute("IsBush") then
@@ -139,38 +182,108 @@ local function swapBedModelChildren(garden, templateName)
 		end
 	end
 
-	-- ✱ Cross-fade: instead of yanking the old children out of the
-	-- scene, reparent them into a temporary holder and tween their
-	-- transparency to 1 over FADE_DURATION. The welds they already
-	-- hold against the raft stay valid (WeldConstraint binds by part
-	-- reference, not by parent), so they don't drift while they fade.
-	-- Once the tween finishes the holder is destroyed and the GC
-	-- reclaims the parts. The new children get the matching
-	-- transparency-up-from-1 tween further down, producing a smooth
-	-- overlap instead of a one-frame pop.
-	local oldChildren = garden:GetChildren()
-	if #oldChildren > 0 then
-		local fadeHolder = Instance.new("Folder")
-		fadeHolder.Name = "BedFadeOut"
-		fadeHolder.Parent = workspace
-		local fadeInfo = TweenInfo.new(FADE_DURATION, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-		for _, child in oldChildren do
-			child.Parent = fadeHolder
-			if child:IsA("BasePart") then
-				TweenService:Create(child, fadeInfo, { Transparency = 1 }):Play()
+	-- ─── Surgical swap mode (preferred) ───
+	-- If the garden already has a Center BasePart and the template also
+	-- has one, we can position new template children relative to the
+	-- existing Center instead of re-cloning everything. Static children
+	-- (Center, Model) stay put. Per-stage children (Earth, Rostok, Palm
+	-- Tree, …) get the diff treatment: kept if unchanged by name,
+	-- replaced if both present (cross-fade), added if new, removed if
+	-- the template doesn't have them.
+	local gardenCenter   = findCenterAnchor(garden)
+	local templateCenter = template:IsA("Model") and findCenterAnchor(template) or nil
+	if gardenCenter and templateCenter then
+		local delta = gardenCenter.CFrame * templateCenter.CFrame:Inverse()
+
+		-- Index template children by name; static templates' children
+		-- get filtered out below so we never re-clone them.
+		local templateByName = {}
+		for _, child in template:GetChildren() do
+			templateByName[child.Name] = child
+		end
+
+		-- Plan additions: clone every non-static template child, plus
+		-- any static one the garden somehow lost. Same-name same-static
+		-- pair is a no-op (Center/Model carry forward as-is).
+		local addedClones = {}
+		for name, templateChild in templateByName do
+			if STATIC_CHILD_NAMES[name] and garden:FindFirstChild(name) then
+				-- static child already present → keep as-is
+				continue
 			end
-			for _, desc in child:GetDescendants() do
-				if desc:IsA("BasePart") then
-					TweenService:Create(desc, fadeInfo, { Transparency = 1 }):Play()
-				end
+			local clone = templateChild:Clone()
+			if clone:IsA("BasePart") then clone.Anchored = true end
+			for _, desc in clone:GetDescendants() do
+				if desc:IsA("BasePart") then desc.Anchored = true end
+			end
+			-- Apply the template→garden delta so the clone sits at the
+			-- same offset from the garden's Center that it had from the
+			-- template's Center in RS.
+			if clone:IsA("BasePart") then
+				clone.CFrame = delta * clone.CFrame
+			elseif clone:IsA("Model") then
+				clone:PivotTo(delta * clone:GetPivot())
+			end
+			clone.Parent = garden
+			table.insert(addedClones, clone)
+		end
+
+		-- Plan removals: anything in the garden that isn't a bush, isn't
+		-- a static carry-over, and isn't one of the clones we just
+		-- added (matched by reference, not name) needs to fade out. A
+		-- name in both garden and template (e.g. Earth dry → Earth wet)
+		-- ends up in `addedClones` AND has its old copy here — those
+		-- cross-fade, which is exactly what we want.
+		local addedSet = {}
+		for _, c in addedClones do addedSet[c] = true end
+
+		local toRemove = {}
+		for _, child in garden:GetChildren() do
+			if not addedSet[child]
+				and not child:GetAttribute("IsBush")
+				and not STATIC_CHILD_NAMES[child.Name] then
+				table.insert(toRemove, child)
 			end
 		end
-		task.delay(FADE_DURATION + 0.1, function()
-			if fadeHolder.Parent then fadeHolder:Destroy() end
-		end)
+
+		fadeOutChildren(toRemove)
+		fadeInClones(addedClones)
+		for _, clone in addedClones do
+			weldCloneToRaft(clone, raftPrimary)
+		end
+		if raftPrimary then
+			raftPrimary.AssemblyLinearVelocity  = linVel
+			raftPrimary.AssemblyAngularVelocity = angVel
+		end
+
+		for _, bush in bushes do
+			bush.Parent = garden
+		end
+		return true
 	end
 
-	-- Clone new model contents, anchor everything first
+	-- ─── Fallback: full re-clone + PivotTo ───
+	-- Reached when either the garden or the template lacks a Center
+	-- BasePart (regular garden, legacy beds). Same code path as before
+	-- the surgical refactor: cross-fade the whole wrapper, clone the
+	-- whole template, anchor by bbox/Center, PivotTo the saved
+	-- placement pose.
+	local relFromAttr = garden:GetAttribute("PlacedRelPivot")
+	local desiredPivot
+	if typeof(relFromAttr) == "CFrame" and raftPrimary then
+		desiredPivot = raftPrimary.CFrame * relFromAttr
+	else
+		local fallback = garden:GetPivot()
+		desiredPivot = fallback
+		if raftPrimary then
+			garden:SetAttribute("PlacedRelPivot",
+				raftPrimary.CFrame:ToObjectSpace(fallback))
+		end
+	end
+
+	local oldChildren = garden:GetChildren()
+	fadeOutChildren(oldChildren)
+
 	if template:IsA("Model") then
 		for _, child in template:GetChildren() do
 			local clone = child:Clone()
@@ -181,50 +294,15 @@ local function swapBedModelChildren(garden, templateName)
 			clone.Parent = garden
 		end
 
-		-- ✱ Anchor by the model's "Center" reference part, falling back
-		-- to the bounding-box centre. Tree-stage templates author a
-		-- Center BasePart that sits at the SAME spot on every variant
-		-- — using bbox centre alone slid the model downward as the
-		-- palm grew taller (the bbox grew, its centre rose). The
-		-- Center part is a stable per-template anchor that doesn't
-		-- shift with the tree's height. Falls back to bbox centre for
-		-- templates that don't carry a Center anchor (regular garden,
-		-- legacy beds, etc.).
 		local centerPart = findCenterAnchor(garden)
 		local anchorPos = centerPart and centerPart.Position
 			or garden:GetBoundingBox().Position
 		garden.WorldPivot = CFrame.new(anchorPos)
 	end
 
-	-- Move so the bbox centre lands at the original placement pose.
 	garden:PivotTo(desiredPivot)
 
-	-- Deliberately DO NOT re-bind a PrimaryPart on the wrapper. The
-	-- only consumer that cared (StoneAxeSystem) reads
-	-- treeModel:GetPivot().Position, which works either way; setting a
-	-- primary would make WorldPivot start tracking that part again and
-	-- reintroduce the offset drift the swap pipeline just got rid of.
-
-	-- ✱ Fade-in pass: snap every newly-cloned BasePart to invisible,
-	-- then tween it back to its template-authored transparency over
-	-- the same FADE_DURATION used for the old children's fade-out.
-	-- Skip parts already at 1 (e.g. the Center anchor) so they don't
-	-- pop in as visible squares. The result is a crossfade that
-	-- visually morphs one bed stage into the next without the abrupt
-	-- snap the user reported.
-	local fadeInInfo = TweenInfo.new(FADE_DURATION, Enum.EasingStyle.Sine, Enum.EasingDirection.Out)
-	local function fadeInPart(part)
-		local target = part.Transparency
-		if target >= 1 then return end
-		part.Transparency = 1
-		TweenService:Create(part, fadeInInfo, { Transparency = target }):Play()
-	end
-	for _, child in garden:GetChildren() do
-		if child:IsA("BasePart") then fadeInPart(child) end
-		for _, desc in child:GetDescendants() do
-			if desc:IsA("BasePart") then fadeInPart(desc) end
-		end
-	end
+	fadeInClones(garden:GetChildren())
 
 	if raftPrimary then
 		for _, part in garden:GetDescendants() do
