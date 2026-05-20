@@ -231,17 +231,37 @@ local function setGhostColor(valid)
 	lastGhostValid = valid
 	local color = valid and Color3.fromRGB(80, 255, 80) or Color3.fromRGB(255, 80, 80)
 	if not ghost then return end
+
+	-- Three layered approaches so AT LEAST ONE always reads as a
+	-- visible green/red overlay regardless of what the ghost asset
+	-- looks like under the hood:
+	--   1. Per-part BasePart.Color — works on plain-colour primitives
+	--      like the berry bush. No-op on textured MeshParts.
+	--   2. A Highlight on the model — should work on every renderable
+	--      part, including textured meshes, but in practice has been
+	--      finicky when the asset is a deeply nested Model.
+	--   3. A SelectionBox per BasePart — old-school but bulletproof.
+	--      Draws a clear outline + tinted surface fill on every part,
+	--      indistinguishable from a "selected" look in Studio.
 	for _, part in ghost:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Color = color
+			local sb = part:FindFirstChild("GhostSelectionBox")
+			if not sb then
+				sb = Instance.new("SelectionBox")
+				sb.Name               = "GhostSelectionBox"
+				sb.Adornee            = part
+				sb.LineThickness      = 0.06
+				sb.SurfaceTransparency = 0.55
+				sb.Transparency       = 0
+				sb.Parent             = part
+			end
+			sb.Color3        = color
+			sb.SurfaceColor3 = color
 		end
 	end
-	-- The Highlight is what actually paints textured meshes (the
-	-- per-part Color above only registers on plain-colour primitives).
-	-- Self-heal the overlay here: if the original createGhost ran on a
-	-- code path that didn't add one, or some sync hiccup left the
-	-- existing one detached, rebuild it on the spot so the user always
-	-- gets the green/red feedback.
+
+	-- Self-heal Highlight too (kept as a redundant layer).
 	local highlight = ghost:FindFirstChild("GhostHighlight")
 	if not highlight then
 		highlight = Instance.new("Highlight")
