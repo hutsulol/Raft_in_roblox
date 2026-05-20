@@ -566,9 +566,15 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			tool:SetAttribute("Ready", true)
 		end)
 		tool.AncestryChanged:Connect(function(_, newParent)
+			-- AncestryChanged fires multiple times during the rapid
+			-- Character → Backpack → nil sequence triggered when the
+			-- player hot-swaps Tools. Gate with a Refunded flag so the
+			-- inventory only gets ONE seed back, not one per event.
+			if tool:GetAttribute("Refunded") then return end
 			if not tool:GetAttribute("Ready") then return end
 			if tool:GetAttribute("Consumed") then return end
 			if newParent == nil or (newParent and newParent:IsA("Backpack")) then
+				tool:SetAttribute("Refunded", true)
 				task.defer(function()
 					if _G.AddResourceToInventory and player and player.Parent then
 						_G.AddResourceToInventory(player, resourceName, 1, nil, true)

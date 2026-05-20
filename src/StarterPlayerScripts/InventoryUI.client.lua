@@ -2397,13 +2397,28 @@ local function buildHotbar()
 				task.wait(0.1)
 				renderAllSlots()
 			elseif data and data.type == "resource" and data.name and BUSH_SEED_RESOURCE_SET[data.name] and bushActionEvent then
-				-- Bush-seed resource (Pineapple_Bush_Seed): server clones
-				-- the matching placement Tool into the player's hand,
-				-- decrements the stack by 1, refunds on unequip-without-
-				-- use. Identical pattern to food but routes to the
-				-- bush ghost flow in CupPurifier rather than the
-				-- "eat me" Tool script.
-				bushActionEvent:FireServer("equipBushSeed", data.name)
+				-- Bush-seed resource (Pineapple_Bush_Seed). Toggle:
+				-- holding the matching Tool already → UnequipTools (the
+				-- server's AncestryChanged hook refunds 1 to the stack);
+				-- otherwise ask the server to spawn one. Same pattern
+				-- as the food path so the count never doubles up.
+				local char2     = player.Character
+				local humanoid2 = char2 and char2:FindFirstChildOfClass("Humanoid")
+				local heldBushSeed = nil
+				if char2 then
+					for _, t in char2:GetChildren() do
+						if t:IsA("Tool") and t.Name == data.name
+							and t:GetAttribute("BushSeedResource") == data.name then
+							heldBushSeed = t
+							break
+						end
+					end
+				end
+				if heldBushSeed and humanoid2 then
+					humanoid2:UnequipTools()
+				else
+					bushActionEvent:FireServer("equipBushSeed", data.name)
+				end
 			elseif data and data.type == "resource" and data.name and SEED_RESOURCE_SET[data.name] and equipSeedEvent then
 				-- Seed resource: ask the server to spawn a matching
 				-- Tool in the character's hand and decrement the stack.
@@ -2877,10 +2892,27 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			task.wait(0.1)
 			renderAllSlots()
 		elseif data and data.type == "resource" and data.name and BUSH_SEED_RESOURCE_SET[data.name] and bushActionEvent then
-			-- Number-key on a bush-seed slot: same as the slot-click
-			-- branch above — server hands the placement Tool to the
-			-- player.
-			bushActionEvent:FireServer("equipBushSeed", data.name)
+			-- Number-key on a bush-seed slot: same toggle as the slot-
+			-- click branch above. Pressing the slot's hotkey while the
+			-- seed is in hand unequips it (refund via AncestryChanged);
+			-- otherwise asks the server for a new Tool.
+			local char3     = player.Character
+			local humanoid3 = char3 and char3:FindFirstChildOfClass("Humanoid")
+			local heldBushSeed = nil
+			if char3 then
+				for _, t in char3:GetChildren() do
+					if t:IsA("Tool") and t.Name == data.name
+						and t:GetAttribute("BushSeedResource") == data.name then
+						heldBushSeed = t
+						break
+					end
+				end
+			end
+			if heldBushSeed and humanoid3 then
+				humanoid3:UnequipTools()
+			else
+				bushActionEvent:FireServer("equipBushSeed", data.name)
+			end
 		elseif data and data.type == "resource" and data.name and SEED_RESOURCE_SET[data.name] and equipSeedEvent then
 			-- Number-key on a seed-resource slot equips it as a Tool
 			-- via the server bridge. Same path as the slot-click

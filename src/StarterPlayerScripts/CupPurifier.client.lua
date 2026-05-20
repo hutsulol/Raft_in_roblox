@@ -205,8 +205,9 @@ local function createGhost(templateName)
 	-- parts; this Highlight covers the textured pineapple-bush mesh.
 	local highlight = Instance.new("Highlight")
 	highlight.Name                = "GhostHighlight"
+	highlight.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
 	highlight.FillColor           = Color3.fromRGB(80, 255, 80)
-	highlight.FillTransparency    = 0.55
+	highlight.FillTransparency    = 0.25
 	highlight.OutlineColor        = Color3.fromRGB(80, 255, 80)
 	highlight.OutlineTransparency = 0
 	highlight.Adornee             = ghost
