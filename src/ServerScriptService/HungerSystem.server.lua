@@ -392,8 +392,14 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			bush.WorldPivot = CFrame.new(bbCF.Position)
 		end
 
-		-- Position bush planted in garden bed (center at garden top surface)
+		-- Position bush planted in garden bed. PivotTo lands the bush's
+		-- pivot on the target CFrame, so we raise by half the bush's
+		-- height to put its BOTTOM on the bed's top surface (mirrors
+		-- the client ghost's positioning — otherwise the bush ends up
+		-- half-sunken on textured meshes whose pivot sits at bbox
+		-- centre).
 		local gardenCF, gardenSize = target:GetBoundingBox()
+		local _, bushSize = bush:GetBoundingBox()
 		local topY = gardenCF.Position.Y + gardenSize.Y / 2
 		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 
@@ -401,7 +407,7 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		local bushBBCF = bush:GetBoundingBox()
 		local bushTemplateRot = bushBBCF.Rotation
 
-		bush:PivotTo(CFrame.new(gardenCF.Position.X, topY, gardenCF.Position.Z) * CFrame.Angles(0, restYaw, 0) * bushTemplateRot)
+		bush:PivotTo(CFrame.new(gardenCF.Position.X, topY + bushSize.Y / 2, gardenCF.Position.Z) * CFrame.Angles(0, restYaw, 0) * bushTemplateRot)
 		bush.Parent = target -- parent bush to the garden bed
 
 		-- Quest hook: questEvent string is picked per-kind at the top so

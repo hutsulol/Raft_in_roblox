@@ -821,6 +821,35 @@ local function isFoodTool(tool)
 		and tool:GetAttribute("FoodResource") == tool.Name
 end
 
+-- Same shadow-by-resource-slot trick for bush seeds. The Tool is
+-- spawned by HungerSystem.equipBushSeed and carries
+-- BushSeedResource = <resource name> so we know it's the stack-
+-- borrowed variant and not, say, a Pineapple_Seed tree seed that
+-- happens to share part of its name.
+local function countBushSeedToolsForName(resName)
+	if not BUSH_SEED_RESOURCE_SET[resName] then return 0 end
+	local total = 0
+	local function gather(container)
+		if not container then return end
+		for _, child in container:GetChildren() do
+			if child:IsA("Tool") and child.Name == resName
+				and child:GetAttribute("BushSeedResource") == resName then
+				total = total + 1
+			end
+		end
+	end
+	gather(player.Character)
+	gather(player:FindFirstChild("Backpack"))
+	return total
+end
+
+local function isBushSeedTool(tool)
+	return tool
+		and tool:IsA("Tool")
+		and BUSH_SEED_RESOURCE_SET[tool.Name]
+		and tool:GetAttribute("BushSeedResource") == tool.Name
+end
+
 local function findItemSlot(itemType, itemName)
 	for i = 1, TOTAL_SLOTS do
 		if slotData[i] and slotData[i].type == itemType and slotData[i].name == itemName then
@@ -1007,11 +1036,12 @@ local function rebuildSlotData()
 
 		for resName, resIcon in RESOURCE_ICONS do
 			local count = inventory[resName] or 0
-			-- Food Tools that are currently in the player's hand or
-			-- Backpack count towards the resource slot's total so the
-			-- player sees a single "Pineapple x10" entry even when
-			-- one of those 10 is held as a Tool.
+			-- Food + bush-seed Tools that are currently in the player's
+			-- hand or Backpack count towards the resource slot's total
+			-- so the player sees a single "Pineapple_Bush_Seed x10"
+			-- entry even when one of those 10 is held as a Tool.
 			count = count + countFoodToolsForName(resName)
+			count = count + countBushSeedToolsForName(resName)
 			if count > 0 then
 				distributeResource(resName, count, resIcon)
 			end
@@ -1021,11 +1051,11 @@ local function rebuildSlotData()
 		-- duplicates (e.g. two Machetes) occupy separate cells. The
 		-- Tool reference is stored so rebuildSlotData can match a
 		-- slot back to the same instance on subsequent refreshes.
-		-- Food Tools are skipped here because the resource slot above
-		-- already owns their visual representation.
+		-- Food + bush-seed Tools are skipped here because the resource
+		-- slot above already owns their visual representation.
 		local slot = 2
 		for _, tool in tools do
-			if not isFoodTool(tool) then
+			if not isFoodTool(tool) and not isBushSeedTool(tool) then
 				while slot <= HOTBAR_SLOTS and slotData[slot] do
 					slot = slot + 1
 				end
@@ -1052,13 +1082,14 @@ local function rebuildSlotData()
 		return
 	end
 
-	-- Update all resources. Food resources include any in-hand /
-	-- Backpack Food Tools so the slot count reflects "things you own"
-	-- regardless of whether one of them is currently equipped — see
-	-- countFoodToolsForName.
+	-- Update all resources. Food + bush-seed resources include any
+	-- in-hand / Backpack Tool counterpart so the slot count reflects
+	-- "things you own" regardless of whether one of them is currently
+	-- equipped — see countFoodToolsForName / countBushSeedToolsForName.
 	for resName, resIcon in RESOURCE_ICONS do
 		local count = inventory[resName] or 0
 		count = count + countFoodToolsForName(resName)
+		count = count + countBushSeedToolsForName(resName)
 		updateResourceSlots(resName, count, resIcon)
 	end
 
@@ -1074,10 +1105,11 @@ local function rebuildSlotData()
 	for i = 1, TOTAL_SLOTS do
 		local entry = slotData[i]
 		if entry and entry.type == "tool" then
-			if FOOD_RESOURCE_SET[entry.toolName] then
-				-- Food Tools no longer claim slots — the resource slot
-				-- handles their visual via countFoodToolsForName.
-				-- Drop any leftover entry from before this consolidation.
+			if FOOD_RESOURCE_SET[entry.toolName] or BUSH_SEED_RESOURCE_SET[entry.toolName] then
+				-- Food / bush-seed Tools no longer claim slots — the
+				-- resource slot handles their visual via the count*Tools
+				-- helpers. Drop any leftover entry from before this
+				-- consolidation.
 				slotData[i] = nil
 			else
 				local inst = entry.toolInst
@@ -1107,11 +1139,11 @@ local function rebuildSlotData()
 
 	-- Any Tool instances not yet bound to a slot get a fresh one —
 	-- honouring _G.PendingTargetSlot so a chest → inventory drag lands
-	-- where the user released the drag. Food Tools are shadowed by
-	-- their resource slot (countFoodToolsForName above), so we skip
-	-- claiming a slot for them entirely.
+	-- where the user released the drag. Food + bush-seed Tools are
+	-- shadowed by their resource slot (count*ToolsForName above), so
+	-- we skip claiming a slot for them entirely.
 	for _, tool in tools do
-		if not claimed[tool] and not isFoodTool(tool) then
+		if not claimed[tool] and not isFoodTool(tool) and not isBushSeedTool(tool) then
 			local target
 			local pending = _G.PendingTargetSlot
 			if pending and pending.name == tool.Name then
@@ -1245,6 +1277,17 @@ function renderAllSlots()
 							end
 						end
 						slot.BackgroundColor3 = isFoodEquipped and COLORS.equipped or COLORS.slotBg
+					elseif data and data.type == "resource" and data.name and BUSH_SEED_RESOURCE_SET[data.name] and char then
+						-- Bush-seed resource slot — same hand-only highlight
+						-- as the food path above, keyed on BushSeedResource.
+						local isBushSeedEquipped = false
+						for _, t in char:GetChildren() do
+							if t:IsA("Tool") and t.Name == data.name and t:GetAttribute("BushSeedResource") == data.name then
+								isBushSeedEquipped = true
+								break
+							end
+						end
+						slot.BackgroundColor3 = isBushSeedEquipped and COLORS.equipped or COLORS.slotBg
 					else
 						slot.BackgroundColor3 = COLORS.slotBg
 					end

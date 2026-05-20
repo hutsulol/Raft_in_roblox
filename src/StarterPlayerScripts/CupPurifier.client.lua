@@ -197,6 +197,21 @@ local function createGhost(templateName)
 			part:Destroy()
 		end
 	end
+
+	-- Highlight overlay — drives the green/red valid/invalid feedback
+	-- in a way that survives MeshParts whose visible look comes from a
+	-- TextureID, not BasePart.Color. The per-part Color tint above
+	-- still lights up solid-colour primitives like the berry-bush
+	-- parts; this Highlight covers the textured pineapple-bush mesh.
+	local highlight = Instance.new("Highlight")
+	highlight.Name                = "GhostHighlight"
+	highlight.FillColor           = Color3.fromRGB(80, 255, 80)
+	highlight.FillTransparency    = 0.55
+	highlight.OutlineColor        = Color3.fromRGB(80, 255, 80)
+	highlight.OutlineTransparency = 0
+	highlight.Adornee             = ghost
+	highlight.Parent              = ghost
+
 	ghost.Parent = workspace
 end
 
@@ -214,12 +229,18 @@ end
 local function setGhostColor(valid)
 	lastGhostValid = valid
 	local color = valid and Color3.fromRGB(80, 255, 80) or Color3.fromRGB(255, 80, 80)
-	if ghost then
-		for _, part in ghost:GetDescendants() do
-			if part:IsA("BasePart") then
-				part.Color = color
-			end
+	if not ghost then return end
+	for _, part in ghost:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Color = color
 		end
+	end
+	-- The Highlight is what actually paints textured meshes (the
+	-- per-part Color above only registers on plain-colour primitives).
+	local highlight = ghost:FindFirstChild("GhostHighlight")
+	if highlight then
+		highlight.FillColor    = color
+		highlight.OutlineColor = color
 	end
 end
 
@@ -312,13 +333,19 @@ local function updateGhost()
 		-- Bush: only valid on garden beds
 		local garden = findGardenBed(result.Instance)
 		if garden and not gardenHasBush(garden) then
-			-- Snap to top center of garden bed
+			-- Snap to top center of garden bed. PivotTo lands the bush's
+			-- pivot (= bbox centre, set in createGhost) on the supplied
+			-- CFrame, so raise the Y by half the ghost's height to put
+			-- the bbox BOTTOM on the bed's top surface — otherwise the
+			-- bush sinks halfway into the dirt (visible on the textured
+			-- pineapple-bush mesh; the berry bush's authored pivot
+			-- happens to sit lower so it always looked fine).
 			local gardenCF, gardenSize = garden:GetBoundingBox()
 			local ghostSize = ghost:GetExtentsSize()
 			local topY = gardenCF.Position.Y + gardenSize.Y / 2
 			local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 
-			local placeCF = CFrame.new(gardenCF.Position.X, topY, gardenCF.Position.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0) * ghostTemplateRotation
+			local placeCF = CFrame.new(gardenCF.Position.X, topY + ghostSize.Y / 2, gardenCF.Position.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0) * ghostTemplateRotation
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
 			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
