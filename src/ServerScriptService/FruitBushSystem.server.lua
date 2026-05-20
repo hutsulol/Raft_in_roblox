@@ -16,14 +16,19 @@ local CollectionService = game:GetService("CollectionService")
 -- "PineApple leaves" in workspace matches via the leading "PineApple"
 -- so renamed siblings (PineApple leaves, PineApple leaves2, …) all
 -- share the same rule without per-instance config.
+--
+-- `seedRouting` is "inventory" (Pineapple_Bush_Seed — used to replant
+-- another bush via the placement Tool flow) or "bag" (Banana_Seed and
+-- friends — tree seeds that need the leaf-bag's seed-picker UI).
 local HARVESTABLE = {
 	["PineApple"] = {
-		fruitName  = "Pineapple",
-		seedName   = "Pineapple_Seed",
-		fruitMin   = 1,
-		fruitMax   = 2,
-		seedCount  = 1,
-		cooldown   = 60,  -- seconds before the bush bears fruit again
+		fruitName    = "Pineapple",
+		seedName     = "Pineapple_Bush_Seed",
+		seedRouting  = "inventory",
+		fruitMin     = 1,
+		fruitMax     = 2,
+		seedCount    = 1,
+		cooldown     = 60,  -- seconds before the bush bears fruit again
 	},
 }
 
@@ -130,9 +135,12 @@ harvestEvent.OnServerEvent:Connect(function(player, target)
 	local fruitAmount = math.random(rule.fruitMin, rule.fruitMax)
 	_G.AddResourceToInventory(player, rule.fruitName, fruitAmount, bushPos)
 	if rule.seedCount > 0 then
-		-- Seeds go into the player's leaf bag rather than the main
-		-- inventory. Without a bag they spill onto the ground.
-		if typeof(_G.AddSeedToBag) == "function" then
+		-- Bush seeds (Pineapple_Bush_Seed) go to inventory like any
+		-- normal resource; tree seeds (Banana_Seed and friends) go
+		-- into the leaf bag with a ground-drop fallback.
+		if rule.seedRouting == "inventory" then
+			_G.AddResourceToInventory(player, rule.seedName, rule.seedCount, bushPos)
+		elseif typeof(_G.AddSeedToBag) == "function" then
 			_G.AddSeedToBag(player, rule.seedName, rule.seedCount, bushPos)
 		else
 			_G.AddResourceToInventory(player, rule.seedName, rule.seedCount, bushPos)

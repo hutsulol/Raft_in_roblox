@@ -390,12 +390,11 @@ local function onToolEquipped(tool)
 		placingGarden = false
 		placingBed = false
 		createGhost("bush")
-	elseif tool.Name == "Pineapple_Seed" then
-		-- Pineapple seed plants a harvestable pineapple bush on a
-		-- regular Garden bed, sharing the same ghost-preview flow as
-		-- the berry bush. The seed is consumed on placement; the bush
-		-- gets HarvestableFruitBush tagged via FruitBushSystem's
-		-- DescendantAdded watcher once it's parented to the garden.
+	elseif tool.Name == "Pineapple_Bush_Seed" then
+		-- Pineapple bush seed (the inventory-routed variant created
+		-- by BushSeedSystem). Same ghost-preview flow as the berry
+		-- bush; the Tool is consumed on placement and refunds the
+		-- resource if unequipped without being used.
 		placingBush = true
 		placingPurifier = false
 		placingWorkbench = false

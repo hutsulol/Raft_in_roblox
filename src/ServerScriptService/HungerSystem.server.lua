@@ -306,7 +306,7 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			templateName  = "bush"
 			finalBushName = "Bush"
 			questEvent    = "planted:BerryBush"
-		elseif tool.Name == "Pineapple_Seed" then
+		elseif tool.Name == "Pineapple_Bush_Seed" then
 			templateName  = "PineApple leaves"
 			finalBushName = "PineApple leaves"
 			questEvent    = "planted:PineappleBush"
@@ -443,7 +443,10 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			setupBushClickDetector(bush)
 		end
 
-		-- Remove tool from player
+		-- Mark Consumed before Destroy so BushSeedSystem's refund hook
+		-- (AncestryChanged → AddResourceToInventory) doesn't return
+		-- the seed once we've successfully used it for placement.
+		tool:SetAttribute("Consumed", true)
 		tool:Destroy()
 	end
 end)

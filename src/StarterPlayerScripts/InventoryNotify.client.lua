@@ -43,7 +43,8 @@ local DISPLAY_NAMES = {
 	Stone_Axe      = "Stone Axe",
 	Banana_Seed    = "Banana Seed",
 	Coconut_Seed   = "Coconut Seed",
-	Pineapple_Seed = "Pineapple Seed",
+	Pineapple_Seed      = "Pineapple Seed",
+	Pineapple_Bush_Seed = "Pineapple Bush Seed",
 }
 
 local function displayName(rawName)

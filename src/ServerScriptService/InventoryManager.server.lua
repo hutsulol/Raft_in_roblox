@@ -31,6 +31,9 @@ local AUTO_SAVE_INTERVAL = 120 -- seconds
 -- Sand and Clay are likewise absent — both live in the Sand Bag tool
 -- (see SandBagSystem.server.lua) and never occupy an inventory slot;
 -- crafting drains them straight from the bag.
+-- Pineapple_Bush_Seed IS a regular inventory item — bush seeds are
+-- separate from tree seeds (no bag involvement) and equip-to-place
+-- mirrors the berry-bush Tool flow.
 local RESOURCE_NAMES = {
 	"Log", "Plastic", "Stone", "Plank", "Leaves", "Rope",
 	"Wet_Brick", "Dry_Brick",
@@ -38,6 +41,7 @@ local RESOURCE_NAMES = {
 	"Blue_Fish", "Carp_Fish", "Fish_Bones", "Foil_Fish",
 	"Jelly_Fish", "Legendary_Fish", "Seabass_Fish", "Tilapia_Fish",
 	"Banana", "Coconut", "Pineapple",
+	"Pineapple_Bush_Seed",
 }
 
 local RESOURCE_SET = {}
