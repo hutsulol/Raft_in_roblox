@@ -149,10 +149,26 @@ local function createGhost(templateName)
 	if ghost then ghost:Destroy() end
 	-- Try a flat lookup first, then a recursive search so templates
 	-- nested in organisation folders (Trees_Grow, etc.) still resolve.
+	-- Fall back to a case-insensitive sweep so any spelling drift
+	-- (PineApple leaves / Pineapple leaves / PineApple Leaves, …)
+	-- still finds the asset instead of silently returning nil.
 	local name = templateName or "Destitalor"
 	local template = ReplicatedStorage:FindFirstChild(name)
 		or ReplicatedStorage:FindFirstChild(name, true)
-	if not template then return end
+	if not template then
+		local lowerTarget = name:lower()
+		for _, desc in ReplicatedStorage:GetDescendants() do
+			if (desc:IsA("Model") or desc:IsA("BasePart"))
+				and desc.Name:lower() == lowerTarget then
+				template = desc
+				break
+			end
+		end
+	end
+	if not template then
+		warn(("[CupPurifier] ghost template %q not found in ReplicatedStorage"):format(name))
+		return
+	end
 
 	ghost = template:Clone()
 	ghost.Name = "PlacementGhost"
