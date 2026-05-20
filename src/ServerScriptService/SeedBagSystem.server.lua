@@ -259,13 +259,17 @@ seedBagEvent.OnServerEvent:Connect(function(player, action, target, slotIndex)
 			bag:SetAttribute("Slot" .. slotIndex .. "_Name", "")
 		end
 
-		-- Spawn the Tool and force-equip it. Parenting to Character
-		-- auto-equips on most setups, but the explicit Unequip+Equip
-		-- handles the case where another tool is already in hand.
+		-- Park the new Tool in Backpack first, then UnequipTools (which
+		-- sends the currently-held Seed Bag back to the backpack) and
+		-- EquipTool the seed. Doing the parent-to-Character trick
+		-- straight away while the bag was still equipped left the seed
+		-- in limbo: Roblox refuses to host two Tools in Character at
+		-- once and the player saw nothing happen after pressing Plant.
+		local backpack = player:FindFirstChild("Backpack")
 		local tool = template:Clone()
 		tool:SetAttribute("FromSeedBag", true)
 		tool:SetAttribute("SeedName", seedName)
-		tool.Parent = char
+		tool.Parent = backpack or char
 		local humanoid = char:FindFirstChildOfClass("Humanoid")
 		if humanoid then
 			pcall(function() humanoid:UnequipTools() end)
