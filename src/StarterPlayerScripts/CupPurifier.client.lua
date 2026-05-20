@@ -208,10 +208,13 @@ local function setGhostColor(valid)
 end
 
 -- ─── Find garden bed from hit instance ───
+-- Bushes only plant on the small flat Garden, never on the tree-sized
+-- Bed_T (which also carries IsGarden=true so the watering pipeline
+-- can be shared). Skip past tree beds so the ghost can't snap to them.
 local function findGardenBed(instance)
 	local current = instance
 	while current and current ~= workspace do
-		if current:GetAttribute("IsGarden") then
+		if current:GetAttribute("IsGarden") and not current:GetAttribute("IsBedGardenForTree") then
 			return current
 		end
 		current = current.Parent
@@ -387,6 +390,18 @@ local function onToolEquipped(tool)
 		placingGarden = false
 		placingBed = false
 		createGhost("bush")
+	elseif tool.Name == "Pineapple_Seed" then
+		-- Pineapple seed plants a harvestable pineapple bush on a
+		-- regular Garden bed, sharing the same ghost-preview flow as
+		-- the berry bush. The seed is consumed on placement; the bush
+		-- gets HarvestableFruitBush tagged via FruitBushSystem's
+		-- DescendantAdded watcher once it's parented to the garden.
+		placingBush = true
+		placingPurifier = false
+		placingWorkbench = false
+		placingGarden = false
+		placingBed = false
+		createGhost("PineApple leaves")
 	elseif tool.Name == "WorkBench" then
 		placingWorkbench = true
 		placingPurifier = false

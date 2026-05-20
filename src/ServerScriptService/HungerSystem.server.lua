@@ -291,12 +291,36 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		tool:Destroy()
 
 	elseif action == "placeBush" then
-		-- Player places a bush on a garden bed
+		-- Player places a bush on a garden bed. Two kinds are accepted:
+		--   * Berry bush — equipped Tool is the "bush" / "Bush" stub
+		--     crafted from the workbench.
+		--   * Pineapple bush — equipped Tool is a Pineapple_Seed (the
+		--     same Tool the player drops into the leaf bag); planting
+		--     it on a regular Garden grows a harvestable PineApple
+		--     bush instead of starting tree growth.
 		local tool = char:FindFirstChildWhichIsA("Tool")
-		if not tool or (tool.Name ~= "bush" and tool.Name ~= "Bush") then return end
+		if not tool then return end
 
-		-- target is the garden bed instance (sent from client)
+		local templateName, finalBushName, questEvent
+		if tool.Name == "bush" or tool.Name == "Bush" then
+			templateName  = "bush"
+			finalBushName = "Bush"
+			questEvent    = "planted:BerryBush"
+		elseif tool.Name == "Pineapple_Seed" then
+			templateName  = "PineApple leaves"
+			finalBushName = "PineApple leaves"
+			questEvent    = "planted:PineappleBush"
+		else
+			return
+		end
+
+		-- target is the garden bed instance (sent from client). Must be
+		-- a regular Garden — tree beds carry IsGarden=true too (the
+		-- watering pipeline is shared) so we explicitly reject them
+		-- here. Bushes belong on the small flat Garden, never on the
+		-- tree-sized Bed_T.
 		if not target or not target:IsA("Model") or not target:GetAttribute("IsGarden") then return end
+		if target:GetAttribute("IsBedGardenForTree") then return end
 
 		local raft = workspace:FindFirstChild("Raft")
 		if not raft or not raft.PrimaryPart then return end
@@ -306,19 +330,26 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			if child:GetAttribute("IsBush") then return end
 		end
 
-		local template = rs:FindFirstChild("bush")
+		local template = rs:FindFirstChild(templateName)
+			or rs:FindFirstChild(templateName, true)
 		if not template then
-			warn("HungerSystem: bush template not found in ReplicatedStorage")
+			warn(("HungerSystem: bush template %q not found in ReplicatedStorage"):format(templateName))
 			return
 		end
 
 		local gardenIsWatered = target:GetAttribute("IsWatered") == true
 
 		local bush = template:Clone()
-		bush.Name = "Bush"
+		bush.Name = finalBushName
 		bush:SetAttribute("IsBush", true)
-		bush:SetAttribute("GrapesAvailable", gardenIsWatered)
 		bush:SetAttribute("PlacedBy", player.UserId)
+		-- GrapesAvailable is berry-specific (drives the hidden-when-dry
+		-- grape-mesh logic below). The pineapple bush is harvested
+		-- through FruitBushSystem instead — it picks the model up via
+		-- the HarvestableFruitBush tag, applied automatically on parent.
+		if templateName == "bush" then
+			bush:SetAttribute("GrapesAvailable", gardenIsWatered)
+		end
 
 		-- Remove any existing scripts inside the bush
 		for _, desc in bush:GetDescendants() do
@@ -327,8 +358,10 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 			end
 		end
 
-		-- If garden is dry, hide grape parts so bush looks fruitless
-		if not gardenIsWatered then
+		-- If garden is dry, hide grape parts so the berry bush looks
+		-- fruitless. Pineapple bushes get their fruit-visibility logic
+		-- from FruitBushSystem's cooldown loop instead, so skip there.
+		if templateName == "bush" and not gardenIsWatered then
 			local grapes = bush:FindFirstChild("grapes") or bush:FindFirstChild("Grapes")
 			if grapes then
 				if grapes:IsA("BasePart") then
@@ -359,9 +392,11 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		bush:PivotTo(CFrame.new(gardenCF.Position.X, topY, gardenCF.Position.Z) * CFrame.Angles(0, restYaw, 0) * bushTemplateRot)
 		bush.Parent = target -- parent bush to the garden bed
 
-		-- Quest hook (Phase I): credit "Plant N berry bushes" objectives.
-		if typeof(_G.OnQuestEvent) == "function" then
-			pcall(_G.OnQuestEvent, player, "planted:BerryBush", 1)
+		-- Quest hook: questEvent string is picked per-kind at the top so
+		-- "planted:BerryBush" / "planted:PineappleBush" can be tracked
+		-- separately by quest objectives.
+		if questEvent and typeof(_G.OnQuestEvent) == "function" then
+			pcall(_G.OnQuestEvent, player, questEvent, 1)
 		end
 
 		-- T13/T15/T16: snapshot velocity, force-anchor (templates may
@@ -402,8 +437,11 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		primary.AssemblyLinearVelocity  = linVel
 		primary.AssemblyAngularVelocity = angVel
 
-		-- Setup click detector for grape picking
-		setupBushClickDetector(bush)
+		-- Setup click detector for grape picking — berry bush only.
+		-- Pineapple bushes are harvested via E (FruitBushSystem).
+		if templateName == "bush" then
+			setupBushClickDetector(bush)
+		end
 
 		-- Remove tool from player
 		tool:Destroy()
