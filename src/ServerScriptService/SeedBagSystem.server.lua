@@ -229,7 +229,12 @@ seedBagEvent.OnServerEvent:Connect(function(player, action, target, slotIndex)
 		seedBagEvent:FireClient(player, "show", bed, bagSnapshot(bag))
 
 	elseif action == "plant" then
-		if not isValidBed(target, hrp) then return end
+		-- Take one seed out of the chosen slot and put the matching
+		-- Tool directly into the player's hand. The player aims at
+		-- whatever they want themselves (tree bed → press E to plant
+		-- a sapling, regular Garden → ghost-place a bush). If the
+		-- Tool is unequipped without being used (Backpack drop / drop
+		-- to world) we refund the seed back to the bag.
 		slotIndex = tonumber(slotIndex)
 		if not slotIndex or slotIndex < 1 or slotIndex > SLOT_COUNT then return end
 
@@ -238,28 +243,58 @@ seedBagEvent.OnServerEvent:Connect(function(player, action, target, slotIndex)
 		if not seedName or seedName == "" or count <= 0 then return end
 		if not SEED_NAMES[seedName] then return end
 
-		-- Consume one from this slot. Clear name when the stack
-		-- empties so the slot reads as empty in the snapshot.
+		-- Resolve the Tool template before touching the bag — if the
+		-- template is missing we don't want to silently eat the seed.
+		local template = ReplicatedStorage:FindFirstChild(seedName)
+			or ReplicatedStorage:FindFirstChild(seedName, true)
+		if not template or not template:IsA("Tool") then
+			warn("[SeedBag] seed Tool template missing: " .. seedName)
+			return
+		end
+
+		-- Consume one from this slot.
 		count = count - 1
 		bag:SetAttribute("Slot" .. slotIndex .. "_Count", count)
 		if count <= 0 then
 			bag:SetAttribute("Slot" .. slotIndex .. "_Name", "")
 		end
 
-		target:SetAttribute("PlantedSeed", seedName)
-		target:SetAttribute("GrowthStage", 0)
-		target:SetAttribute("WateredTime", nil)
+		-- Spawn the Tool and force-equip it. Parenting to Character
+		-- auto-equips on most setups, but the explicit Unequip+Equip
+		-- handles the case where another tool is already in hand.
+		local tool = template:Clone()
+		tool:SetAttribute("FromSeedBag", true)
+		tool:SetAttribute("SeedName", seedName)
+		tool.Parent = char
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			pcall(function() humanoid:UnequipTools() end)
+			pcall(function() humanoid:EquipTool(tool) end)
+		end
+
+		-- Refund guard: only arm AFTER the first Equipped fires, so the
+		-- initial Backpack→Character shuffle EquipTool just performed
+		-- isn't mistaken for the player putting the tool back.
+		tool.Equipped:Once(function()
+			tool:SetAttribute("Ready", true)
+		end)
+		tool.AncestryChanged:Connect(function(_, newParent)
+			if not tool:GetAttribute("Ready") then return end
+			if tool:GetAttribute("Consumed") then return end
+			if newParent == nil or (newParent and newParent:IsA("Backpack")) then
+				task.defer(function()
+					if _G.AddSeedToBag then
+						_G.AddSeedToBag(player, seedName, 1)
+					end
+					if tool.Parent then tool:Destroy() end
+				end)
+			end
+		end)
 
 		print(string.format(
-			"[SeedBag] plant: seed=%s bed=%s slot=%d",
-			seedName, target:GetFullName(), slotIndex
+			"[SeedBag] equip-to-hand: seed=%s slot=%d (player=%s)",
+			seedName, slotIndex, player.Name
 		))
-
-		if typeof(_G.GrowTreeFromSeed) == "function" then
-			_G.GrowTreeFromSeed(target)
-		else
-			warn("[SeedBag] _G.GrowTreeFromSeed missing — bed will not grow!")
-		end
 
 		seedBagEvent:FireClient(player, "close")
 	end

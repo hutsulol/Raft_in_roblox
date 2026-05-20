@@ -579,8 +579,11 @@ local function paintDetail()
 		detailName.Text           = meta.display
 		plantBtn.Visible          = true
 		plantBtn.Text             = "Plant"
-		plantBtn.Active           = currentBed ~= nil
-		plantBtn.BackgroundColor3 = currentBed and COLOR_GREEN_OK or COLOR_GREEN_DIM
+		-- Plant hands the seed Tool to the player; they aim and place
+		-- themselves. No bed-proximity check anymore — the button is
+		-- live as soon as a seed slot is selected.
+		plantBtn.Active           = true
+		plantBtn.BackgroundColor3 = COLOR_GREEN_OK
 	else
 		detailIcon.Image          = ""
 		detailName.Text           = "Select a seed"
@@ -661,9 +664,11 @@ end
 
 plantBtn.MouseButton1Click:Connect(function()
 	if not plantBtn.Active then return end
-	if not currentBed or not currentBed.Parent then return end
 	if not currentSelection then return end
 	if not slots[currentSelection] or not slots[currentSelection].seed then return end
+	-- Pass currentBed verbatim — server ignores it for the new
+	-- equip-to-hand flow but keeping the arg slot avoids changing the
+	-- shared RemoteEvent signature.
 	seedBagEvent:FireServer("plant", currentBed, currentSelection)
 end)
 
