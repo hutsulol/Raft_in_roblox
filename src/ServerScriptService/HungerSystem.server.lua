@@ -480,10 +480,25 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		local inv = _G.GetInventory and _G.GetInventory(player) or {}
 		if (inv[resourceName] or 0) <= 0 then return end
 
-		local template = rs:FindFirstChild(spec.template)
-			or rs:FindFirstChild(spec.template, true)
-		if not template or not template:IsA("Tool") then
-			warn("[HungerSystem] bush-seed Tool template missing: " .. spec.template)
+		-- Template lookup with a case-insensitive fallback: the user's
+		-- Studio assets ship as Pineapple_seed (lowercase 's'), but the
+		-- legacy seed-bag code spells it Pineapple_Seed. Try the exact
+		-- name first, then recursive, then walk descendants comparing
+		-- against the lowercased target so either spelling resolves.
+		local function findTemplate(name)
+			local hit = rs:FindFirstChild(name) or rs:FindFirstChild(name, true)
+			if hit and hit:IsA("Tool") then return hit end
+			local lowerTarget = name:lower()
+			for _, desc in rs:GetDescendants() do
+				if desc:IsA("Tool") and desc.Name:lower() == lowerTarget then
+					return desc
+				end
+			end
+			return nil
+		end
+		local template = findTemplate(spec.template)
+		if not template then
+			warn(("[HungerSystem] bush-seed Tool template %q not found in ReplicatedStorage (case-insensitive search included)"):format(spec.template))
 			return
 		end
 
