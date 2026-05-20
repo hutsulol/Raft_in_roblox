@@ -38,14 +38,16 @@ local FOOD_RESOURCE_SET = {
 	Pineapple = true,
 }
 
--- Bush-seed-as-Tool flow (BushSeedSystem on the server). Clicking
--- a Pineapple_Bush_Seed inventory slot spawns the matching placement
--- Tool in the player's hand and decrements the stack by 1; the
--- server's refund hook returns the resource if the Tool is unequipped
--- without being used.
-local equipBushSeedEvent = ReplicatedStorage:FindFirstChild("EquipBushSeedAsTool")
-if not equipBushSeedEvent then
-	equipBushSeedEvent = ReplicatedStorage:WaitForChild("EquipBushSeedAsTool", 5)
+-- Bush-seed-as-Tool flow. Riding on the same BushAction RemoteEvent
+-- HungerSystem already exposes for berry-bush placement avoids
+-- depending on a new server script being added to Studio. Clicking
+-- a Pineapple_Bush_Seed inventory slot fires
+-- BushAction("equipBushSeed", resourceName) and the server spawns
+-- the matching placement Tool in the player's hand (refund-on-
+-- unequip-without-place is handled server-side).
+local bushActionEvent = ReplicatedStorage:FindFirstChild("BushAction")
+if not bushActionEvent then
+	bushActionEvent = ReplicatedStorage:WaitForChild("BushAction", 5)
 end
 
 local BUSH_SEED_RESOURCE_SET = {
@@ -2346,14 +2348,14 @@ local function buildHotbar()
 				end
 				task.wait(0.1)
 				renderAllSlots()
-			elseif data and data.type == "resource" and data.name and BUSH_SEED_RESOURCE_SET[data.name] and equipBushSeedEvent then
+			elseif data and data.type == "resource" and data.name and BUSH_SEED_RESOURCE_SET[data.name] and bushActionEvent then
 				-- Bush-seed resource (Pineapple_Bush_Seed): server clones
 				-- the matching placement Tool into the player's hand,
 				-- decrements the stack by 1, refunds on unequip-without-
 				-- use. Identical pattern to food but routes to the
 				-- bush ghost flow in CupPurifier rather than the
 				-- "eat me" Tool script.
-				equipBushSeedEvent:FireServer(data.name)
+				bushActionEvent:FireServer("equipBushSeed", data.name)
 			elseif data and data.type == "resource" and data.name and SEED_RESOURCE_SET[data.name] and equipSeedEvent then
 				-- Seed resource: ask the server to spawn a matching
 				-- Tool in the character's hand and decrement the stack.
@@ -2826,11 +2828,11 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			end
 			task.wait(0.1)
 			renderAllSlots()
-		elseif data and data.type == "resource" and data.name and BUSH_SEED_RESOURCE_SET[data.name] and equipBushSeedEvent then
+		elseif data and data.type == "resource" and data.name and BUSH_SEED_RESOURCE_SET[data.name] and bushActionEvent then
 			-- Number-key on a bush-seed slot: same as the slot-click
 			-- branch above — server hands the placement Tool to the
 			-- player.
-			equipBushSeedEvent:FireServer(data.name)
+			bushActionEvent:FireServer("equipBushSeed", data.name)
 		elseif data and data.type == "resource" and data.name and SEED_RESOURCE_SET[data.name] and equipSeedEvent then
 			-- Number-key on a seed-resource slot equips it as a Tool
 			-- via the server bridge. Same path as the slot-click

@@ -264,6 +264,18 @@ local function setupBushClickDetector(bush)
 	end)
 end
 
+-- Bush seeds (Pineapple_Bush_Seed today) → equip-to-hand mapping.
+-- Each entry: { template = "<RS Tool template name>", toolName = "<runtime name>" }.
+-- Reusing existing seed Tool art skips needing a new asset; the
+-- runtime rename lets CupPurifier / placeBush above recognise it as a
+-- bush-placement Tool rather than a tree seed.
+local BUSH_SEEDS = {
+	Pineapple_Bush_Seed = {
+		template = "Pineapple_Seed",
+		toolName = "Pineapple_Bush_Seed",
+	},
+}
+
 -- ─── Handle Actions ───
 bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 	local char = player.Character
@@ -448,5 +460,66 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		-- the seed once we've successfully used it for placement.
 		tool:SetAttribute("Consumed", true)
 		tool:Destroy()
+
+	elseif action == "equipBushSeed" then
+		-- Inventory click on a bush-seed resource (Pineapple_Bush_Seed
+		-- today) — clone the matching seed Tool, drop it into Backpack
+		-- and force-equip into the player's hand. Refund hook on the
+		-- Tool returns the resource if the player unequips without
+		-- placing. Same architecture as FoodSystem; lives here so it
+		-- shares the BushAction RemoteEvent (already created by the
+		-- berry-bush flow above) and no extra ServerScriptService file
+		-- needs to be added.
+		local resourceName = target  -- second arg carries the resource name
+		local spec = type(resourceName) == "string" and BUSH_SEEDS[resourceName]
+		if not spec then return end
+
+		local backpack = player:FindFirstChild("Backpack")
+		if not backpack then return end
+
+		local inv = _G.GetInventory and _G.GetInventory(player) or {}
+		if (inv[resourceName] or 0) <= 0 then return end
+
+		local template = rs:FindFirstChild(spec.template)
+			or rs:FindFirstChild(spec.template, true)
+		if not template or not template:IsA("Tool") then
+			warn("[HungerSystem] bush-seed Tool template missing: " .. spec.template)
+			return
+		end
+
+		if _G.RemoveResourceFromInventory then
+			_G.RemoveResourceFromInventory(player, resourceName, 1)
+		end
+		if _G.SendInventory then _G.SendInventory(player) end
+
+		local tool = template:Clone()
+		tool.Name = spec.toolName
+		tool:SetAttribute("BushSeedResource", resourceName)
+		tool:SetAttribute("OwnerUserId", player.UserId)
+		tool.CanBeDropped = false
+		tool.Parent = backpack
+
+		local humanoid = char:FindFirstChildOfClass("Humanoid")
+		if humanoid then
+			pcall(function() humanoid:UnequipTools() end)
+			pcall(function() humanoid:EquipTool(tool) end)
+		end
+
+		tool.Equipped:Once(function()
+			tool:SetAttribute("Ready", true)
+		end)
+		tool.AncestryChanged:Connect(function(_, newParent)
+			if not tool:GetAttribute("Ready") then return end
+			if tool:GetAttribute("Consumed") then return end
+			if newParent == nil or (newParent and newParent:IsA("Backpack")) then
+				task.defer(function()
+					if _G.AddResourceToInventory and player and player.Parent then
+						_G.AddResourceToInventory(player, resourceName, 1, nil, true)
+						if _G.SendInventory then _G.SendInventory(player) end
+					end
+					if tool.Parent then tool:Destroy() end
+				end)
+			end
+		end)
 	end
 end)
