@@ -207,7 +207,7 @@ local function createGhost(templateName)
 	highlight.Name                = "GhostHighlight"
 	highlight.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
 	highlight.FillColor           = Color3.fromRGB(80, 255, 80)
-	highlight.FillTransparency    = 0.25
+	highlight.FillTransparency    = 0.15
 	highlight.OutlineColor        = Color3.fromRGB(80, 255, 80)
 	highlight.OutlineTransparency = 0
 	highlight.Adornee             = ghost
@@ -238,11 +238,22 @@ local function setGhostColor(valid)
 	end
 	-- The Highlight is what actually paints textured meshes (the
 	-- per-part Color above only registers on plain-colour primitives).
+	-- Self-heal the overlay here: if the original createGhost ran on a
+	-- code path that didn't add one, or some sync hiccup left the
+	-- existing one detached, rebuild it on the spot so the user always
+	-- gets the green/red feedback.
 	local highlight = ghost:FindFirstChild("GhostHighlight")
-	if highlight then
-		highlight.FillColor    = color
-		highlight.OutlineColor = color
+	if not highlight then
+		highlight = Instance.new("Highlight")
+		highlight.Name                = "GhostHighlight"
+		highlight.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.FillTransparency    = 0.15
+		highlight.OutlineTransparency = 0
+		highlight.Adornee             = ghost
+		highlight.Parent              = ghost
 	end
+	highlight.FillColor    = color
+	highlight.OutlineColor = color
 end
 
 -- ─── Find garden bed from hit instance ───
