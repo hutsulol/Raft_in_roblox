@@ -163,9 +163,14 @@ local TOOL_ICONS = {
 	-- Seed-as-Tool variants. The Tool templates the user authored
 	-- carry these names; the icons mirror the matching seed resource
 	-- so they read the same as the inventory stack form.
-	["Palm_seed"]      = "rbxassetid://138995623166184",
-	["Banana_Seed"]    = "rbxassetid://73140419103065",
-	["Pineapple_seed"] = "rbxassetid://128520746024640",
+	["Palm_seed"]           = "rbxassetid://138995623166184",
+	["Banana_Seed"]         = "rbxassetid://73140419103065",
+	["Pineapple_seed"]      = "rbxassetid://128520746024640",
+	-- Bush-seed Tool variant — same art as the tree seed; the suffix
+	-- differentiates "plant a bush on a Garden" from "plant a tree
+	-- sapling on Bed_T". Without this entry the slot fell back to
+	-- LOG_ICON when the Tool was rebuilt into a slot.
+	["Pineapple_Bush_Seed"] = "rbxassetid://128520746024640",
 	-- Food Tools that the player can temporarily equip from the
 	-- main-inventory resource stack. Same icons as the resource
 	-- form so the hotbar slot stays visually consistent.

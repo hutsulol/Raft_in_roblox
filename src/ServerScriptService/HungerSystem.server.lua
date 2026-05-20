@@ -480,26 +480,64 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		local inv = _G.GetInventory and _G.GetInventory(player) or {}
 		if (inv[resourceName] or 0) <= 0 then return end
 
-		-- Template lookup with a case-insensitive fallback: the user's
-		-- Studio assets ship as Pineapple_seed (lowercase 's'), but the
-		-- legacy seed-bag code spells it Pineapple_Seed. Try the exact
-		-- name first, then recursive, then walk descendants comparing
-		-- against the lowercased target so either spelling resolves.
-		local function findTemplate(name)
+		-- Find the asset the user authored. Try the exact bush-seed
+		-- toolName first (preferred — matches what we're about to
+		-- equip), fall back to the older template name, then case-
+		-- insensitive sweep so different spellings ("Pineapple_seed",
+		-- "Pineapple_Seed", "Pineapple_Bush_Seed") all resolve.
+		local function findAsset(name)
 			local hit = rs:FindFirstChild(name) or rs:FindFirstChild(name, true)
-			if hit and hit:IsA("Tool") then return hit end
+			if hit then return hit end
 			local lowerTarget = name:lower()
 			for _, desc in rs:GetDescendants() do
-				if desc:IsA("Tool") and desc.Name:lower() == lowerTarget then
+				if (desc:IsA("Tool") or desc:IsA("Model"))
+					and desc.Name:lower() == lowerTarget then
 					return desc
 				end
 			end
 			return nil
 		end
-		local template = findTemplate(spec.template)
-		if not template then
-			warn(("[HungerSystem] bush-seed Tool template %q not found in ReplicatedStorage (case-insensitive search included)"):format(spec.template))
+
+		local source = findAsset(spec.toolName) or findAsset(spec.template)
+		if not source then
+			warn(("[HungerSystem] bush-seed asset %q / %q not found in RS"):format(spec.toolName, spec.template))
 			return
+		end
+
+		-- Build (or clone) a Tool that wraps the asset. Roblox refuses
+		-- to equip a Tool that has no BasePart named "Handle", and that
+		-- silent rejection was the root cause of the last symptom —
+		-- the slot icon flipped to the generic log fallback because
+		-- the Tool sat in Backpack instead of moving into Character.
+		local tool
+		if source:IsA("Tool") then
+			tool = source:Clone()
+			tool.Name = spec.toolName
+		else  -- Model
+			tool = Instance.new("Tool")
+			tool.Name = spec.toolName
+			local cloned = source:Clone()
+			for _, child in cloned:GetChildren() do
+				child.Parent = tool
+			end
+			cloned:Destroy()
+		end
+
+		-- Ensure a Handle exists. Either rename the first BasePart, or
+		-- synthesise an invisible one so EquipTool can't fail on this
+		-- branch even for a parts-less placeholder asset.
+		if not tool:FindFirstChild("Handle") then
+			local firstPart = tool:FindFirstChildWhichIsA("BasePart", true)
+			if firstPart then
+				firstPart.Name = "Handle"
+			else
+				local handle = Instance.new("Part")
+				handle.Name = "Handle"
+				handle.Size = Vector3.new(0.5, 0.5, 0.5)
+				handle.Transparency = 1
+				handle.CanCollide = false
+				handle.Parent = tool
+			end
 		end
 
 		if _G.RemoveResourceFromInventory then
@@ -507,8 +545,6 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		end
 		if _G.SendInventory then _G.SendInventory(player) end
 
-		local tool = template:Clone()
-		tool.Name = spec.toolName
 		tool:SetAttribute("BushSeedResource", resourceName)
 		tool:SetAttribute("OwnerUserId", player.UserId)
 		tool.CanBeDropped = false
