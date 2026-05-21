@@ -1,39 +1,34 @@
 -- StartRoomQueue.server.lua
--- Per-room queue tracker. Drop a copy of this Script inside each
--- StartRoom-style Model in Studio; each copy manages ITS OWN parent
--- model independently. No central registry, no name conventions —
--- the script reads script.Parent as the room.
+-- Queue tracker for lobby rooms. Auto-adapts to where it's placed:
 --
--- Expected layout (inside script.Parent):
+--   * If parented INSIDE a room Model → operates on script.Parent only
+--     (per-room mode). Useful when each room ships with its own copy.
+--   * Anywhere else (ServerScriptService.Lobby, etc.) → walks
+--     workspace for every Model named "Barrier_Players" and treats
+--     its first Model ancestor as a room (central mode). Hot-adds
+--     new rooms via DescendantAdded.
+--
+-- Inside each room we expect:
 --   Ring (BasePart)                       — inner play floor
 --   RingBeams.Barrier_Players (Model)     — corner Attachments forming
---                                            the queue perimeter beams
+--                                            the queue-perimeter beams
 --   InfoPart > Bg.Container.Entry         — text-list entry template
 --   InfoPart > ParticipantsGui.Container.Entry — avatar tile template
 --   CharacterCount (SurfaceGui w/ TextLabel)   — "N / MAX" readout
 --
--- A player auto-joins the queue the moment their HumanoidRootPart
--- enters either the Ring's bbox or the Barrier_Players polygon.
--- Stepping out (or disconnecting) auto-leaves. No prompts.
---
--- Capacity ("MAX" in the count label) reads from a MaxPlayers
--- attribute on the room model, else from DEFAULT_MAX_BY_NAME below,
--- else from FALLBACK_MAX.
+-- A player auto-joins the room's queue the moment their
+-- HumanoidRootPart enters either the Ring's bbox or the
+-- Barrier_Players polygon. Stepping out (or disconnecting) auto-
+-- leaves. No prompts.
 
 local Players    = game:GetService("Players")
 local RunService = game:GetService("RunService")
 
-local room = script.Parent
-if not room or not room:IsA("Model") then
-	warn(string.format(
-		"[StartRoomQueue] script.Parent is %s, expected a Model — script disabled",
-		tostring(room and room.ClassName or "<nil>")
-	))
-	return
-end
-
 -- ─── Config ───────────────────────────────────────────────────────
 
+-- Capacity ("MAX" in the count label) reads from a MaxPlayers
+-- attribute on the room model first; falls back to a per-name default
+-- below, else to FALLBACK_MAX.
 local DEFAULT_MAX_BY_NAME = {
 	StartRoom    = 1,
 	DuelPad      = 2,
@@ -42,10 +37,10 @@ local DEFAULT_MAX_BY_NAME = {
 	DuelRing_4v4 = 8,
 }
 local FALLBACK_MAX   = 4
-local POLL_INTERVAL  = 0.25  -- seconds between zone-occupancy sweeps
-local VERTICAL_SLACK = 12    -- studs of Y room above/below the zone
+local POLL_INTERVAL  = 0.25
+local VERTICAL_SLACK = 12  -- studs of Y room above/below the zone
 
-local LOG_TAG = "[" .. room.Name .. " Queue]"
+local LOG_TAG = "[StartRoomQueue]"
 
 -- ─── Avatar headshot helper ──────────────────────────────────────
 
@@ -68,10 +63,6 @@ end
 
 -- ─── Zone geometry ───────────────────────────────────────────────
 
--- Barrier_Players is drawn as Beams between corner Attachments
--- (C1..C4 / P1..P4). Build an axis-aligned XZ rectangle that wraps
--- every attachment, plus a Y slack so jumping doesn't drop the
--- player out of the queue.
 local function computeBarrierZone(barrierModel)
 	local minX, minZ =  math.huge,  math.huge
 	local maxX, maxZ = -math.huge, -math.huge
@@ -108,7 +99,7 @@ local function pointInZone(point, zoneCF, zoneSize)
 		and math.abs(localPos.Z) <= zoneSize.Z / 2
 end
 
--- ─── UI wiring ───────────────────────────────────────────────────
+-- ─── UI helpers ──────────────────────────────────────────────────
 
 local function hideTemplate(inst)
 	if not inst then return end
@@ -129,68 +120,94 @@ local function clearStaleEntries(container, templateName)
 	end
 end
 
-local infoPart       = room:FindFirstChild("InfoPart", true)
-local bg             = infoPart and infoPart:FindFirstChild("Bg", true)
-local bgContainer    = bg and bg:FindFirstChild("Container", true)
-local bgTemplate     = bgContainer and bgContainer:FindFirstChild("Entry")
-local partsGui       = infoPart and infoPart:FindFirstChild("ParticipantsGui", true)
-local partsContainer = partsGui and partsGui:FindFirstChild("Container", true)
-local partsTemplate  = partsContainer and partsContainer:FindFirstChild("Entry")
-local countGui       = room:FindFirstChild("CharacterCount", true)
-local countLabel     = countGui and countGui:FindFirstChildWhichIsA("TextLabel", true)
-
-local maxPlayers = room:GetAttribute("MaxPlayers")
-if type(maxPlayers) ~= "number" then
-	maxPlayers = DEFAULT_MAX_BY_NAME[room.Name] or FALLBACK_MAX
+local function defaultMaxFor(roomModel)
+	local attr = roomModel:GetAttribute("MaxPlayers")
+	if type(attr) == "number" then return attr end
+	return DEFAULT_MAX_BY_NAME[roomModel.Name] or FALLBACK_MAX
 end
 
-hideTemplate(bgTemplate)
-hideTemplate(partsTemplate)
-clearStaleEntries(bgContainer,    bgTemplate    and bgTemplate.Name)
-clearStaleEntries(partsContainer, partsTemplate and partsTemplate.Name)
+-- ─── Per-room state ──────────────────────────────────────────────
 
-local barrier = room:FindFirstChild("Barrier_Players", true)
-local ring    = room:FindFirstChild("Ring", true)
+local roomState = {}  -- [roomModel] = state
 
-local barrierCF, barrierSize, attachCount
-if barrier then
-	barrierCF, barrierSize, attachCount = computeBarrierZone(barrier)
+local function ensureRoomState(roomModel)
+	if roomState[roomModel] then return roomState[roomModel] end
+
+	local infoPart       = roomModel:FindFirstChild("InfoPart", true)
+	local bg             = infoPart and infoPart:FindFirstChild("Bg", true)
+	local bgContainer    = bg and bg:FindFirstChild("Container", true)
+	local bgTemplate     = bgContainer and bgContainer:FindFirstChild("Entry")
+	local partsGui       = infoPart and infoPart:FindFirstChild("ParticipantsGui", true)
+	local partsContainer = partsGui and partsGui:FindFirstChild("Container", true)
+	local partsTemplate  = partsContainer and partsContainer:FindFirstChild("Entry")
+	local countGui       = roomModel:FindFirstChild("CharacterCount", true)
+	local countLabel     = countGui and countGui:FindFirstChildWhichIsA("TextLabel", true)
+
+	local ring     = roomModel:FindFirstChild("Ring", true)
+	local ringCF, ringSize = partAsZone(ring)
+
+	local barrier  = roomModel:FindFirstChild("Barrier_Players", true)
+	local barrierCF, barrierSize, attachCount
+	if barrier then
+		barrierCF, barrierSize, attachCount = computeBarrierZone(barrier)
+	end
+
+	hideTemplate(bgTemplate)
+	hideTemplate(partsTemplate)
+	clearStaleEntries(bgContainer,    bgTemplate    and bgTemplate.Name)
+	clearStaleEntries(partsContainer, partsTemplate and partsTemplate.Name)
+
+	local state = {
+		room            = roomModel,
+		queue           = {},
+		bgTemplate      = bgTemplate,
+		bgContainer     = bgContainer,
+		partsTemplate   = partsTemplate,
+		partsContainer  = partsContainer,
+		countLabel      = countLabel,
+		maxPlayers      = defaultMaxFor(roomModel),
+		ringCF          = ringCF,
+		ringSize        = ringSize,
+		barrierCF       = barrierCF,
+		barrierSize     = barrierSize,
+		ring            = ring,
+		barrier         = barrier,
+	}
+	roomState[roomModel] = state
+
+	print(string.format(
+		"%s registered %q. attachments=%s Ring=%s CountLabel=%s PartsTpl=%s BgTpl=%s Max=%d",
+		LOG_TAG, roomModel:GetFullName(),
+		tostring(attachCount),
+		tostring(ring and "ok" or "<missing>"),
+		tostring(countLabel and "ok" or "<missing>"),
+		tostring(partsTemplate and "ok" or "<missing>"),
+		tostring(bgTemplate and "ok" or "<missing>"),
+		state.maxPlayers))
+
+	return state
 end
-local ringCF, ringSize = partAsZone(ring)
 
-print(string.format(
-	"%s online. Barrier attachments=%s. Ring=%s. CountLabel=%s. PartsTemplate=%s. BgTemplate=%s. Max=%d",
-	LOG_TAG,
-	tostring(attachCount),
-	tostring(ring and ring:GetFullName() or "<missing>"),
-	tostring(countLabel and countLabel:GetFullName() or "<missing>"),
-	tostring(partsTemplate and partsTemplate:GetFullName() or "<missing>"),
-	tostring(bgTemplate and bgTemplate:GetFullName() or "<missing>"),
-	maxPlayers
-))
+-- ─── UI sync ─────────────────────────────────────────────────────
 
--- ─── Queue state + UI updates ────────────────────────────────────
-
-local queue = {}  -- [userId] = true
-
-local function queueSize()
+local function queueSize(state)
 	local n = 0
-	for _ in pairs(queue) do n = n + 1 end
+	for _ in pairs(state.queue) do n = n + 1 end
 	return n
 end
 
-local function updateCount()
-	if not countLabel then return end
-	countLabel.Text = string.format("%d / %d", queueSize(), maxPlayers)
+local function updateCount(state)
+	if not state.countLabel then return end
+	state.countLabel.Text = string.format("%d / %d", queueSize(state), state.maxPlayers)
 end
 
-local function addPlayer(player)
-	if queue[player.UserId] then return end
-	queue[player.UserId] = true
+local function addPlayer(state, player)
+	if state.queue[player.UserId] then return end
+	state.queue[player.UserId] = true
 	local uid = tostring(player.UserId)
 
-	if bgTemplate and bgContainer then
-		local entry = bgTemplate:Clone()
+	if state.bgTemplate and state.bgContainer then
+		local entry = state.bgTemplate:Clone()
 		entry.Name = uid
 		pcall(function() entry.Visible = true end)
 		local nameLabel = entry:FindFirstChild("Name", true)
@@ -198,78 +215,128 @@ local function addPlayer(player)
 		if nameLabel and nameLabel:IsA("TextLabel") then
 			nameLabel.Text = player.Name
 		end
-		entry.Parent = bgContainer
+		entry.Parent = state.bgContainer
 	end
 
-	if partsTemplate and partsContainer then
-		local entry = partsTemplate:Clone()
+	if state.partsTemplate and state.partsContainer then
+		local entry = state.partsTemplate:Clone()
 		entry.Name = uid
 		pcall(function() entry.Visible = true end)
 		local headshot = entry:FindFirstChild("Headshot", true)
 		if headshot and headshot:IsA("ImageLabel") then
 			headshot.Image = getHeadshot(player.UserId)
 		end
-		entry.Parent = partsContainer
+		entry.Parent = state.partsContainer
 	end
 
-	updateCount()
-	print(string.format("%s %s joined (count=%d/%d)",
-		LOG_TAG, player.Name, queueSize(), maxPlayers))
+	updateCount(state)
+	print(string.format("%s %s joined %q (count=%d/%d)",
+		LOG_TAG, player.Name, state.room.Name, queueSize(state), state.maxPlayers))
 end
 
-local function removePlayer(userId)
-	if not queue[userId] then return end
-	queue[userId] = nil
+local function removePlayer(state, userId)
+	if not state.queue[userId] then return end
+	state.queue[userId] = nil
 	local uid = tostring(userId)
-	if bgContainer then
-		local e = bgContainer:FindFirstChild(uid)
+	if state.bgContainer then
+		local e = state.bgContainer:FindFirstChild(uid)
 		if e then e:Destroy() end
 	end
-	if partsContainer then
-		local e = partsContainer:FindFirstChild(uid)
+	if state.partsContainer then
+		local e = state.partsContainer:FindFirstChild(uid)
 		if e then e:Destroy() end
 	end
-	updateCount()
+	updateCount(state)
+end
+
+-- ─── Discovery: pick rooms based on where the script lives ──────
+
+local function findRoomFor(barrier)
+	local cur = barrier.Parent
+	while cur and cur ~= workspace do
+		if cur:IsA("Model") then return cur end
+		cur = cur.Parent
+	end
+	return nil
+end
+
+local parent = script.Parent
+local isInsideRoom = parent and parent:IsA("Model")
+
+if isInsideRoom then
+	-- Per-room mode: bind to script.Parent only.
+	ensureRoomState(parent)
+	print(string.format("%s per-room mode bound to %s",
+		LOG_TAG, parent:GetFullName()))
+else
+	-- Central mode: discover every Barrier_Players in workspace and
+	-- register its first Model ancestor as a room. Hot-add new ones
+	-- via DescendantAdded so a lobby that streams in arenas later
+	-- still picks them up.
+	for _, desc in workspace:GetDescendants() do
+		if desc.Name == "Barrier_Players" and desc:IsA("Model") then
+			local room = findRoomFor(desc)
+			if room then ensureRoomState(room) end
+		end
+	end
+	workspace.DescendantAdded:Connect(function(desc)
+		if desc.Name == "Barrier_Players" and desc:IsA("Model") then
+			task.wait(0.1)  -- let sibling parts settle into the model
+			local room = findRoomFor(desc)
+			if room and not roomState[room] then
+				ensureRoomState(room)
+			end
+		end
+	end)
+	local n = 0
+	for _ in pairs(roomState) do n = n + 1 end
+	print(string.format("%s central mode — discovered %d room(s) at boot.",
+		LOG_TAG, n))
 end
 
 -- ─── Sweep loop ──────────────────────────────────────────────────
 
 local function sweep()
-	-- Recompute the zone geometry each pass so a lobby platform that
-	-- drifts (raft, moving spawn pad) doesn't strand the zone in
-	-- world space.
-	if barrier and barrier.Parent then
-		barrierCF, barrierSize = computeBarrierZone(barrier)
-	end
-	if ring and ring.Parent then
-		ringCF, ringSize = partAsZone(ring)
-	end
+	for room, state in pairs(roomState) do
+		if not room.Parent then
+			roomState[room] = nil
+		else
+			-- Recompute zones every pass: a drifting lobby platform
+			-- would otherwise strand the zone in world space.
+			if state.barrier and state.barrier.Parent then
+				state.barrierCF, state.barrierSize = computeBarrierZone(state.barrier)
+			end
+			if state.ring and state.ring.Parent then
+				state.ringCF, state.ringSize = partAsZone(state.ring)
+			end
 
-	local seen = {}
-	for _, player in Players:GetPlayers() do
-		local char = player.Character
-		local hrp  = char and char:FindFirstChild("HumanoidRootPart")
-		if hrp then
-			local pos = hrp.Position
-			local inside = (barrierCF and pointInZone(pos, barrierCF, barrierSize))
-				or (ringCF and pointInZone(pos, ringCF, ringSize))
-			if inside then
-				seen[player.UserId] = true
-				if not queue[player.UserId] then
-					addPlayer(player)
+			local seen = {}
+			for _, player in Players:GetPlayers() do
+				local char = player.Character
+				local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+				if hrp then
+					local pos = hrp.Position
+					local inside = (state.barrierCF and pointInZone(pos, state.barrierCF, state.barrierSize))
+						or (state.ringCF and pointInZone(pos, state.ringCF, state.ringSize))
+					if inside then
+						seen[player.UserId] = true
+						if not state.queue[player.UserId] then
+							addPlayer(state, player)
+						end
+					end
 				end
 			end
-		end
-	end
-	for uid in pairs(queue) do
-		if not seen[uid] then
-			removePlayer(uid)
+			for uid in pairs(state.queue) do
+				if not seen[uid] then
+					removePlayer(state, uid)
+				end
+			end
 		end
 	end
 end
 
 local accum = 0
-local conn = RunService.Heartbeat:Connect(function(dt)
+RunService.Heartbeat:Connect(function(dt)
 	accum = accum + dt
 	if accum >= POLL_INTERVAL then
 		accum = 0
@@ -278,14 +345,17 @@ local conn = RunService.Heartbeat:Connect(function(dt)
 end)
 
 Players.PlayerRemoving:Connect(function(player)
-	removePlayer(player.UserId)
-end)
-
--- Self-clean if the room is destroyed at runtime (lobby teardown,
--- Studio reload, …) so the heartbeat connection doesn't keep firing
--- against a stale model.
-room.AncestryChanged:Connect(function()
-	if not room:IsDescendantOf(game) then
-		conn:Disconnect()
+	for _, state in pairs(roomState) do
+		removePlayer(state, player.UserId)
 	end
 end)
+
+-- Console helper: `_G.DumpStartRoomQueue()` dumps every room's state.
+_G.DumpStartRoomQueue = function()
+	for room, state in pairs(roomState) do
+		print(string.format("%s %s max=%d queue=%d barrier=%s ring=%s",
+			LOG_TAG, room:GetFullName(), state.maxPlayers, queueSize(state),
+			state.barrierSize and tostring(state.barrierSize) or "<nil>",
+			state.ringSize    and tostring(state.ringSize)    or "<nil>"))
+	end
+end
