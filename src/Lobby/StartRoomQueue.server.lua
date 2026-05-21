@@ -272,7 +272,13 @@ end
 
 local function updateCount(state)
 	if not state.countLabel then return end
-	if state.locked and state.timerExpires then
+	if state.teleporting then
+		-- Teleport is in flight — Roblox is processing TeleportAsync
+		-- and the player hasn't physically been pulled out of the
+		-- place yet. Don't restart a countdown; show "Loading" so
+		-- they know the engine is working on it.
+		state.countLabel.Text = "Loading"
+	elseif state.locked and state.timerExpires then
 		-- Countdown takes over the slot read-out while the room is
 		-- locked. We refresh from the sweep so the value ticks down.
 		local remaining = math.max(0, math.ceil(state.timerExpires - os.clock()))
@@ -479,12 +485,80 @@ local function teleportPlayers(state, players)
 	return true
 end
 
--- Called every sweep on a state that's currently locked. Refreshes
--- the timer display, and on expiry teleports the queued players to
--- the destination place. Custom logic can override by defining
--- _G.OnRoomFull(room, players); when present, the teleport is
--- skipped and the handler takes over.
+-- Pin a player in place while the teleport is in flight so they
+-- can't wander out of the zone during the 5-6 second gap between
+-- TeleportAsync returning and Roblox physically pulling them into
+-- the destination place.
+local DEFAULT_WALK_SPEED = 16
+local function freezePlayer(player)
+	local char = player.Character
+	local hum  = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum then return end
+	-- Remember the original speed so unfreezing restores it.
+	if hum:GetAttribute("StartRoomQueue_OriginalWalkSpeed") == nil then
+		hum:SetAttribute("StartRoomQueue_OriginalWalkSpeed", hum.WalkSpeed)
+		hum:SetAttribute("StartRoomQueue_OriginalJumpPower", hum.JumpPower)
+	end
+	hum.WalkSpeed = 0
+	hum.JumpPower = 0
+end
+
+local function unfreezePlayer(player)
+	local char = player.Character
+	local hum  = char and char:FindFirstChildOfClass("Humanoid")
+	if not hum then return end
+	local origWalk = hum:GetAttribute("StartRoomQueue_OriginalWalkSpeed")
+	local origJump = hum:GetAttribute("StartRoomQueue_OriginalJumpPower")
+	hum.WalkSpeed = (type(origWalk) == "number" and origWalk) or DEFAULT_WALK_SPEED
+	hum.JumpPower = (type(origJump) == "number" and origJump) or 50
+	hum:SetAttribute("StartRoomQueue_OriginalWalkSpeed", nil)
+	hum:SetAttribute("StartRoomQueue_OriginalJumpPower", nil)
+end
+
+-- How long we'll wait in the teleporting phase before assuming the
+-- teleport failed (Roblox raised, network glitch, etc.) and falling
+-- back to a normal unlock so the players aren't stranded.
+local TELEPORT_TIMEOUT_SECS = 30
+
+-- Called every sweep. Drives both the countdown tick AND the
+-- post-countdown "teleport pending" phase:
+--   * Locked + countdown ticking → updates the visible counter.
+--   * Locked + countdown reached zero → fires the teleport, enters
+--     the teleporting phase. From here on the room ignores walk-
+--     ins, holds queued players still, and displays "Loading"
+--     until Roblox actually pulls them out of the place (their
+--     queue entry vanishes the next sweep).
+--   * Teleporting too long → safety unlock so a failed teleport
+--     doesn't permanently strand the room.
+-- Custom logic can override the teleport via _G.OnRoomFull(room,
+-- players); when present, the built-in TeleportAsync is skipped.
 local function tickLock(state)
+	if state.teleporting then
+		-- Keep the locked players frozen in place.
+		for uid in pairs(state.queue) do
+			local p = Players:GetPlayerByUserId(uid)
+			if p then freezePlayer(p) end
+		end
+		updateCount(state)
+		-- Safety: if Roblox hasn't pulled the players out within the
+		-- timeout, abandon the teleport and unlock so the lobby
+		-- stays usable.
+		if os.clock() - (state.teleportingSince or 0) > TELEPORT_TIMEOUT_SECS then
+			warn(string.format("%s %s teleport timed out after %ds — unlocking",
+				LOG_TAG, state.room.Name, TELEPORT_TIMEOUT_SECS))
+			for uid in pairs(state.queue) do
+				local p = Players:GetPlayerByUserId(uid)
+				if p then unfreezePlayer(p) end
+			end
+			state.teleporting     = false
+			state.teleportingSince = nil
+			state.locked          = false
+			state.timerExpires    = nil
+			updateCount(state)
+		end
+		return
+	end
+
 	if not state.locked or not state.timerExpires then return end
 	if os.clock() < state.timerExpires then
 		-- Just refresh the visible countdown.
@@ -492,7 +566,11 @@ local function tickLock(state)
 		return
 	end
 
-	-- Timer expired. Snapshot the players, hand them off.
+	-- Timer expired. Snapshot the players, fire the teleport, and
+	-- enter the teleporting phase. We deliberately do NOT clear the
+	-- queue or unlock here — sweep is told to keep them on hold so
+	-- they don't get a second "10s countdown" cycle while Roblox is
+	-- still processing the original TeleportAsync.
 	local players = {}
 	for uid in pairs(state.queue) do
 		local p = Players:GetPlayerByUserId(uid)
@@ -504,17 +582,15 @@ local function tickLock(state)
 		teleportPlayers(state, players)
 	end
 
-	-- Force-clear the queue so the room frees up. If the teleport
-	-- queued successfully Roblox is already pulling the players out
-	-- of the place — they leave the zone automatically. If it failed
-	-- and they're still standing inside, the next sweep re-adds them
-	-- and the 10s cycle restarts.
-	for uid in pairs(state.queue) do
-		removePlayer(state, uid)
+	-- Freeze each player immediately so they can't step out of the
+	-- zone during the teleport handshake.
+	for _, p in players do
+		freezePlayer(p)
 	end
-	state.locked = false
-	state.timerExpires = nil
-	updateCount(state)
+
+	state.teleporting     = true
+	state.teleportingSince = os.clock()
+	updateCount(state)  -- flips the label to "Loading"
 end
 
 local function sweep()
@@ -540,10 +616,11 @@ local function sweep()
 					local inside = (state.barrierCF and pointInZone(pos, state.barrierCF, state.barrierSize))
 						or (state.ringCF and pointInZone(pos, state.ringCF, state.ringSize))
 					if inside then
-						if state.locked then
-							-- Locked room: existing queued players
-							-- keep their slot, new walk-ins are
-							-- ignored so the countdown can resolve
+						if state.locked or state.teleporting then
+							-- Locked / teleporting room: existing
+							-- queued players keep their slot, new
+							-- walk-ins are ignored so the countdown
+							-- can resolve / the teleport can finish
 							-- with the original roster.
 							if state.queue[player.UserId] then
 								seen[player.UserId] = true
@@ -559,26 +636,51 @@ local function sweep()
 			end
 			for uid in pairs(state.queue) do
 				if not seen[uid] then
+					-- Player no longer in the zone — could be a
+					-- voluntary walk-out OR Roblox in the middle of
+					-- yanking them out for the teleport. Either way
+					-- they leave the queue.
+					local p = Players:GetPlayerByUserId(uid)
+					if p then unfreezePlayer(p) end
 					removePlayer(state, uid)
 				end
 			end
 
-			-- Trip the lock the moment the queue fills up. Player
-			-- leaving during the countdown cancels the lock and
-			-- restores the normal "N / N" display.
-			local size = queueSize(state)
-			if not state.locked and size >= state.maxPlayers and size > 0 then
-				state.locked = true
-				state.timerExpires = os.clock() + FULL_TIMER_SECS
-				print(string.format("%s %s reached capacity (%d) — %ds countdown started",
-					LOG_TAG, state.room.Name, state.maxPlayers, FULL_TIMER_SECS))
-				updateCount(state)
-			elseif state.locked and size < state.maxPlayers then
-				state.locked = false
-				state.timerExpires = nil
-				updateCount(state)
-				print(string.format("%s %s lock cancelled — player left during countdown",
-					LOG_TAG, state.room.Name))
+			-- Lock cycle management — teleporting state takes
+			-- precedence over the regular "queue fills up = lock"
+			-- logic so we don't restart a countdown while Roblox is
+			-- still processing the original teleport.
+			if state.teleporting then
+				if queueSize(state) == 0 then
+					-- Last queued player physically left the place
+					-- (teleport succeeded, or they timed out).
+					-- Fully reset the room.
+					state.teleporting     = false
+					state.teleportingSince = nil
+					state.locked          = false
+					state.timerExpires    = nil
+					updateCount(state)
+					print(string.format("%s %s teleport complete — room reset",
+						LOG_TAG, state.room.Name))
+				end
+			else
+				-- Trip the lock the moment the queue fills up.
+				-- A player leaving during the countdown cancels the
+				-- lock and restores the normal "N / N" display.
+				local size = queueSize(state)
+				if not state.locked and size >= state.maxPlayers and size > 0 then
+					state.locked = true
+					state.timerExpires = os.clock() + FULL_TIMER_SECS
+					print(string.format("%s %s reached capacity (%d) — %ds countdown started",
+						LOG_TAG, state.room.Name, state.maxPlayers, FULL_TIMER_SECS))
+					updateCount(state)
+				elseif state.locked and size < state.maxPlayers then
+					state.locked = false
+					state.timerExpires = nil
+					updateCount(state)
+					print(string.format("%s %s lock cancelled — player left during countdown",
+						LOG_TAG, state.room.Name))
+				end
 			end
 
 			tickLock(state)
