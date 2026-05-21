@@ -3053,9 +3053,18 @@ inventoryCraftEvent.OnClientEvent:Connect(function(action, data, inv)
 end)
 
 -- ─── Init ───
-rebuildSlotData()
-buildHotbar()
-renderAllSlots()
+-- Defer the initial UI build off the critical boot path. The
+-- hotbar / grid render is not needed until the character actually
+-- spawns and Roblox lets the player interact — running these
+-- inline added ~1 s to perceived load on the destination place.
+-- task.spawn yields the current thread immediately so the rest of
+-- the script's module-level code can finish; the UI builds on the
+-- next resume.
+task.spawn(function()
+	rebuildSlotData()
+	buildHotbar()
+	renderAllSlots()
+end)
 
 -- Track the replicated `Characteristics.UnlockedInventorySlots` value
 -- (written by Strength.server.lua based on the player's Strength stat)
