@@ -21,8 +21,9 @@
 -- Barrier_Players polygon. Stepping out (or disconnecting) auto-
 -- leaves. No prompts.
 
-local Players    = game:GetService("Players")
-local RunService = game:GetService("RunService")
+local Players        = game:GetService("Players")
+local RunService     = game:GetService("RunService")
+local TeleportService = game:GetService("TeleportService")
 
 -- ─── Config ───────────────────────────────────────────────────────
 
@@ -41,6 +42,11 @@ local FALLBACK_MAX     = 4
 local POLL_INTERVAL    = 0.25
 local VERTICAL_SLACK   = 12  -- studs of Y room above/below the zone
 local FULL_TIMER_SECS  = 10  -- countdown once a room hits capacity
+
+-- Destination for the countdown-finished teleport. Same place ID
+-- LobbyServer uses for its raft / save-pad teleports. Each room can
+-- override via a `DestinationPlaceId` attribute on its Model/Folder.
+local DEFAULT_PLACE_ID = 77272676169005
 
 local LOG_TAG = "[StartRoomQueue]"
 
@@ -443,10 +449,41 @@ end
 
 -- ─── Sweep loop ──────────────────────────────────────────────────
 
+-- Teleport the given players into the room's destination place.
+-- Each room can carry a `DestinationPlaceId` attribute on its
+-- Folder/Model to send players to a custom destination; falls back
+-- to DEFAULT_PLACE_ID (the same place LobbyServer's lobby/save flow
+-- targets). Returns true on success so the caller can keep the
+-- lock until the teleport actually fires off — that way a failed
+-- TeleportAsync doesn't leave the room stuck "empty but countdown
+-- ran" with players still standing on the pad.
+local function teleportPlayers(state, players)
+	if #players == 0 then return true end
+	local placeId = state.room:GetAttribute("DestinationPlaceId") or DEFAULT_PLACE_ID
+
+	local teleportOptions = Instance.new("TeleportOptions")
+	teleportOptions:SetTeleportData({
+		fromRoom    = state.room.Name,
+		playerCount = #players,
+	})
+
+	local ok, err = pcall(function()
+		TeleportService:TeleportAsync(placeId, players, teleportOptions)
+	end)
+	if not ok then
+		warn(string.format("%s teleport failed: %s", LOG_TAG, tostring(err)))
+		return false
+	end
+	print(string.format("%s teleporting %d player(s) from %q to place %d",
+		LOG_TAG, #players, state.room.Name, placeId))
+	return true
+end
+
 -- Called every sweep on a state that's currently locked. Refreshes
--- the timer display, and on expiry fires _G.OnRoomFull (if defined)
--- + force-empties the queue so the lock cycle doesn't immediately
--- re-trigger.
+-- the timer display, and on expiry teleports the queued players to
+-- the destination place. Custom logic can override by defining
+-- _G.OnRoomFull(room, players); when present, the teleport is
+-- skipped and the handler takes over.
 local function tickLock(state)
 	if not state.locked or not state.timerExpires then return end
 	if os.clock() < state.timerExpires then
@@ -455,8 +492,7 @@ local function tickLock(state)
 		return
 	end
 
-	-- Timer expired. Snapshot the players, fire the optional handler
-	-- so downstream code can teleport them / start a match / etc.
+	-- Timer expired. Snapshot the players, hand them off.
 	local players = {}
 	for uid in pairs(state.queue) do
 		local p = Players:GetPlayerByUserId(uid)
@@ -465,14 +501,14 @@ local function tickLock(state)
 	if typeof(_G.OnRoomFull) == "function" then
 		pcall(_G.OnRoomFull, state.room, players)
 	else
-		print(string.format("%s %s timer expired with %d player(s); no _G.OnRoomFull handler wired",
-			LOG_TAG, state.room.Name, #players))
+		teleportPlayers(state, players)
 	end
 
-	-- Force-clear the queue so the room frees up. If the players are
-	-- still physically in the zone the next sweep re-adds them and
-	-- the 10s cycle restarts; if the handler teleported them out the
-	-- zone is empty and the room is back to "0 / N".
+	-- Force-clear the queue so the room frees up. If the teleport
+	-- queued successfully Roblox is already pulling the players out
+	-- of the place — they leave the zone automatically. If it failed
+	-- and they're still standing inside, the next sweep re-adds them
+	-- and the 10s cycle restarts.
 	for uid in pairs(state.queue) do
 		removePlayer(state, uid)
 	end
