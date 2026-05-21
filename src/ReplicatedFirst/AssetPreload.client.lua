@@ -31,11 +31,16 @@ local ASSETS = {
 	"rbxassetid://76127527205295",
 }
 
--- PreloadAsync is synchronous (yields). Running it here in
--- ReplicatedFirst means the asset fetch happens during the loading
--- screen — the player can't see the hotbar / open a bag until this
--- returns. pcall guards against a single bad ID failing the whole
--- batch.
-pcall(function()
-	ContentProvider:PreloadAsync(ASSETS)
+-- PreloadAsync is synchronous (yields). If we ran it inline here
+-- in ReplicatedFirst we'd block the boot path on a dozen texture
+-- downloads — adding seconds to the post-teleport black screen
+-- before the player can actually interact. Spawn it instead so
+-- the assets warm up in the background while the world loads.
+-- Worst case the first SandBag open arrives a frame ahead of the
+-- cache and the icon pops in; the trade-off is worth the much
+-- snappier teleport.
+task.spawn(function()
+	pcall(function()
+		ContentProvider:PreloadAsync(ASSETS)
+	end)
 end)
