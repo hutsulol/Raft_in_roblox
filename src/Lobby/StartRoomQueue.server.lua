@@ -490,29 +490,46 @@ end
 -- TeleportAsync returning and Roblox physically pulling them into
 -- the destination place.
 local DEFAULT_WALK_SPEED = 16
+local DEFAULT_JUMP_POWER = 50
+local DEFAULT_JUMP_HEIGHT = 7.2
 local function freezePlayer(player)
 	local char = player.Character
 	local hum  = char and char:FindFirstChildOfClass("Humanoid")
 	if not hum then return end
-	-- Remember the original speed so unfreezing restores it.
+	-- Remember the original movement values so unfreezing restores
+	-- whatever the avatar normally has. JumpPower covers the legacy
+	-- Humanoid setup; JumpHeight covers modern avatars (the two
+	-- coexist on the same Humanoid — UseJumpPower decides which
+	-- one Roblox reads, so we zero both to be safe).
 	if hum:GetAttribute("StartRoomQueue_OriginalWalkSpeed") == nil then
 		hum:SetAttribute("StartRoomQueue_OriginalWalkSpeed", hum.WalkSpeed)
-		hum:SetAttribute("StartRoomQueue_OriginalJumpPower", hum.JumpPower)
+		hum:SetAttribute("StartRoomQueue_OriginalJumpPower",  hum.JumpPower)
+		hum:SetAttribute("StartRoomQueue_OriginalJumpHeight", hum.JumpHeight)
 	end
-	hum.WalkSpeed = 0
-	hum.JumpPower = 0
+	hum.WalkSpeed  = 0
+	hum.JumpPower  = 0
+	hum.JumpHeight = 0
+	-- Belt-and-braces: even with JumpPower / JumpHeight at zero the
+	-- Jumping state can fire briefly (it just produces no vertical
+	-- velocity), which still plays the jump animation. Disabling the
+	-- state outright stops that too.
+	hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, false)
 end
 
 local function unfreezePlayer(player)
 	local char = player.Character
 	local hum  = char and char:FindFirstChildOfClass("Humanoid")
 	if not hum then return end
-	local origWalk = hum:GetAttribute("StartRoomQueue_OriginalWalkSpeed")
-	local origJump = hum:GetAttribute("StartRoomQueue_OriginalJumpPower")
-	hum.WalkSpeed = (type(origWalk) == "number" and origWalk) or DEFAULT_WALK_SPEED
-	hum.JumpPower = (type(origJump) == "number" and origJump) or 50
-	hum:SetAttribute("StartRoomQueue_OriginalWalkSpeed", nil)
-	hum:SetAttribute("StartRoomQueue_OriginalJumpPower", nil)
+	local origWalk   = hum:GetAttribute("StartRoomQueue_OriginalWalkSpeed")
+	local origJump   = hum:GetAttribute("StartRoomQueue_OriginalJumpPower")
+	local origHeight = hum:GetAttribute("StartRoomQueue_OriginalJumpHeight")
+	hum.WalkSpeed  = (type(origWalk)   == "number" and origWalk)   or DEFAULT_WALK_SPEED
+	hum.JumpPower  = (type(origJump)   == "number" and origJump)   or DEFAULT_JUMP_POWER
+	hum.JumpHeight = (type(origHeight) == "number" and origHeight) or DEFAULT_JUMP_HEIGHT
+	hum:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+	hum:SetAttribute("StartRoomQueue_OriginalWalkSpeed",  nil)
+	hum:SetAttribute("StartRoomQueue_OriginalJumpPower",  nil)
+	hum:SetAttribute("StartRoomQueue_OriginalJumpHeight", nil)
 end
 
 -- How long we'll wait in the teleporting phase before assuming the
