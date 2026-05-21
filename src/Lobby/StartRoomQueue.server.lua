@@ -180,13 +180,20 @@ local function ensureRoomState(roomModel)
 	end
 
 	-- Cache every Beam descendant of the barrier model with its
-	-- author-time Color (ColorSequence). On lock we recolour them
-	-- yellow; on unlock we restore each one's original sequence.
+	-- author-time Color (ColorSequence), Transparency (NumberSequence)
+	-- and LightInfluence (number). On state changes we override
+	-- those properties; on the way back we restore each individual
+	-- beam's original snapshot so the lobby looks the same as
+	-- whatever the author built.
 	local barrierBeams = {}
 	if barrier then
 		for _, desc in barrier:GetDescendants() do
 			if desc:IsA("Beam") then
-				barrierBeams[desc] = desc.Color
+				barrierBeams[desc] = {
+					color          = desc.Color,
+					transparency   = desc.Transparency,
+					lightInfluence = desc.LightInfluence,
+				}
 			end
 		end
 	end
@@ -279,16 +286,27 @@ local function updateRingBeams(state)
 	end
 end
 
--- Recolour the barrier-perimeter beams yellow while the room is
--- locked (full, 10-second countdown running); restore each Beam's
--- author-time Color when the lock clears. Beam.Color is a
--- ColorSequence — we wrap a single-stop sequence around the
--- requested Color3 so it matches that property type.
-local YELLOW_SEQ = ColorSequence.new(Color3.fromRGB(255, 255, 0))
+-- Three layered overrides on the barrier-perimeter beams, each
+-- restoring to the per-beam author snapshot when the trigger lifts:
+--   * LightInfluence → 1 the moment any player is in queue (so the
+--     beams pick up scene lighting and "wake up" visually).
+--   * Color → ColorSequence(yellow) while the room is locked (full,
+--     countdown ticking).
+--   * Transparency → fully opaque (NumberSequence(0)) on lock so
+--     the perimeter reads as a solid yellow bar instead of the
+--     faded idle look.
+-- Lock implies hasPlayers, so the Color/Transparency change happens
+-- on top of the LightInfluence kick-up.
+local YELLOW_SEQ      = ColorSequence.new(Color3.fromRGB(255, 255, 0))
+local SOLID_TRANS_SEQ = NumberSequence.new(0)
 local function updateBarrierBeams(state)
-	for beam, original in pairs(state.barrierBeams) do
+	local hasPlayers = next(state.queue) ~= nil
+	local locked     = state.locked
+	for beam, snap in pairs(state.barrierBeams) do
 		if beam.Parent then
-			beam.Color = state.locked and YELLOW_SEQ or original
+			beam.LightInfluence = hasPlayers and 1            or snap.lightInfluence
+			beam.Color          = locked     and YELLOW_SEQ   or snap.color
+			beam.Transparency   = locked     and SOLID_TRANS_SEQ or snap.transparency
 		end
 	end
 end
