@@ -29,8 +29,8 @@ local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local TITLE_TEXT     = "Survive 100 Days"
-local GROW_DURATION  = 1.0
-local TITLE_FADE_IN  = 0.35
+local GROW_DURATION  = 0.3
+local TITLE_FADE_IN  = 0.2
 local LOG_TAG        = "[LobbyTeleportFX]"
 
 -- ── Iris-out played on the lobby client BEFORE teleport ───────
