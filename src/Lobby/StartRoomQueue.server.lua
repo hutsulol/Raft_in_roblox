@@ -168,10 +168,27 @@ local function ensureRoomState(roomModel)
 	local ring     = roomModel:FindFirstChild("Ring", true)
 	local ringCF, ringSize = partAsZone(ring)
 
+	-- The Studio author sometimes renames the perimeter beam model
+	-- (Barrier_Players → Border_FindGame, …). Match either so the
+	-- queue detection + the lock-yellow feedback below both wire up.
 	local barrier  = roomModel:FindFirstChild("Barrier_Players", true)
+		or roomModel:FindFirstChild("Border_FindGame", true)
+		or roomModel:FindFirstChild("Border_Players", true)
 	local barrierCF, barrierSize, attachCount
 	if barrier then
 		barrierCF, barrierSize, attachCount = computeBarrierZone(barrier)
+	end
+
+	-- Cache every Beam descendant of the barrier model with its
+	-- author-time Color (ColorSequence). On lock we recolour them
+	-- yellow; on unlock we restore each one's original sequence.
+	local barrierBeams = {}
+	if barrier then
+		for _, desc in barrier:GetDescendants() do
+			if desc:IsA("Beam") then
+				barrierBeams[desc] = desc.Color
+			end
+		end
 	end
 
 	-- Capacity derivation:
@@ -208,6 +225,9 @@ local function ensureRoomState(roomModel)
 		-- Cache the Ring's Beam children so the sweep doesn't
 		-- re-walk descendants every 0.25 s.
 		ringBeams       = {},
+		-- Beams of the barrier model, mapped to their original
+		-- author-time Color so we can restore on unlock.
+		barrierBeams    = barrierBeams,
 	}
 	if ring then
 		for _, desc in ring:GetDescendants() do
@@ -256,6 +276,20 @@ local function updateRingBeams(state)
 	local on = next(state.queue) ~= nil
 	for _, beam in state.ringBeams do
 		if beam.Parent then beam.Enabled = on end
+	end
+end
+
+-- Recolour the barrier-perimeter beams yellow while the room is
+-- locked (full, 10-second countdown running); restore each Beam's
+-- author-time Color when the lock clears. Beam.Color is a
+-- ColorSequence — we wrap a single-stop sequence around the
+-- requested Color3 so it matches that property type.
+local YELLOW_SEQ = ColorSequence.new(Color3.fromRGB(255, 255, 0))
+local function updateBarrierBeams(state)
+	for beam, original in pairs(state.barrierBeams) do
+		if beam.Parent then
+			beam.Color = state.locked and YELLOW_SEQ or original
+		end
 	end
 end
 
@@ -495,6 +529,7 @@ local function sweep()
 
 			tickLock(state)
 			updateRingBeams(state)
+			updateBarrierBeams(state)
 		end
 	end
 end
