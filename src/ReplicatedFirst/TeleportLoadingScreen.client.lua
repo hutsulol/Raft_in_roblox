@@ -12,13 +12,30 @@ local TweenService     = game:GetService("TweenService")
 
 local TITLE_TEXT = "Survive 100 Days"
 
+local LOG_TAG = "[DestLoadingScreen]"
+print(LOG_TAG .. " booted in ReplicatedFirst")
+
 -- Hide Roblox's default loading screen as soon as we can.
 pcall(function()
 	ReplicatedFirst:RemoveDefaultLoadingScreen()
 end)
 
-local player    = Players.LocalPlayer
+-- ReplicatedFirst LocalScripts can start before Players.LocalPlayer
+-- is populated. Spin briefly until it is — without this guard the
+-- next line errors and the whole script silently aborts.
+local player = Players.LocalPlayer
+local waited = 0
+while not player and waited < 5 do
+	task.wait(0.05)
+	waited = waited + 0.05
+	player = Players.LocalPlayer
+end
+if not player then
+	warn(LOG_TAG .. " LocalPlayer never resolved — aborting custom loader")
+	return
+end
 local playerGui = player:WaitForChild("PlayerGui")
+print(LOG_TAG .. " building screen")
 
 -- ── Build the title card ──────────────────────────────────────
 -- Fully black backdrop + centred "Survive 100 Days" — identical

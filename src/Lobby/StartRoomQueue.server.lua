@@ -615,6 +615,8 @@ local function tickLock(state)
 	-- Roblox starts the actual teleport. Then wait long enough for
 	-- the animation to fill the screen so the handoff to the
 	-- SetTeleportGui-registered loader is seamless.
+	print(string.format("%s firing iris prepare event to %d player(s) for room %q",
+		LOG_TAG, #players, state.room.Name))
 	for _, p in players do
 		teleportPrepareEvent:FireClient(p, {
 			room    = state.room.Name,

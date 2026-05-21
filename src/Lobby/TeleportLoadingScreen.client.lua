@@ -160,9 +160,14 @@ local function playIrisOut()
 	end)
 end
 
+local LOG_TAG = "[LobbyTeleportFX]"
 local prepareEvent = ReplicatedStorage:WaitForChild("StartRoomTeleportPrepare", 10)
 if prepareEvent then
+	print(LOG_TAG .. " bound to StartRoomTeleportPrepare RemoteEvent")
 	prepareEvent.OnClientEvent:Connect(function(payload)
+		print(LOG_TAG .. " prepare event fired; playing iris-out")
 		playIrisOut()
 	end)
+else
+	warn(LOG_TAG .. " StartRoomTeleportPrepare never appeared in ReplicatedStorage — iris animation disabled")
 end
