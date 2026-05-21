@@ -1,92 +1,41 @@
--- TeleportLoadingScreen.client.lua
--- Two-phase loader for queue-countdown teleports leaving the lobby:
+-- TeleportLoadingScreen.client.lua (lobby side)
+-- Plays the iris-out transition that introduces a queue-countdown
+-- teleport. Once the round timer hits zero the server fires
+-- StartRoomTeleportPrepare and the client:
 --
---   1. Iris-out preview. When the room countdown hits zero, the
---      server fires StartRoomTeleportPrepare. We open a fullscreen
---      ScreenGui that grows a black circle from the centre of the
---      screen until it covers everything, then fades in a title
---      ("Survive 100 Days") so the player has an in-fiction beat
---      while the server is still about to call TeleportAsync.
---   2. SetTeleportGui handoff. A separate "end-state" ScreenGui
---      (already at fully-black + title) is registered with
---      TeleportService:SetTeleportGui so the moment Roblox actually
---      starts the teleport the visual is identical — no flicker
---      between the lobby iris and the engine's teleport screen.
---      The destination place's ReplicatedFirst loader matches the
---      same look, then plays the reverse iris-in once game.Loaded.
+--   1. Grows a black circle from the centre of the screen until it
+--      covers everything (Sine easing for a smooth, even motion).
+--   2. Fades in a "Survive 100 Days" title behind/in the centre of
+--      the black mask.
+--   3. After a brief hold, Roblox actually starts TeleportAsync on
+--      the server. We deliberately DO NOT call SetTeleportGui so
+--      Roblox's own "Joining game" / place-card screen takes over
+--      from here on — the player sees the standard transfer screen
+--      between the lobby and the destination instead of a static
+--      black overlay holding them hostage during the load.
 
 local Players          = game:GetService("Players")
-local TeleportService  = game:GetService("TeleportService")
 local TweenService     = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
--- This loader applies to teleports leaving the lobby. The
--- destination place runs its own ReplicatedFirst-based loader; the
--- gui registered below stays attached through the destination's
--- own load phase as well.
+-- The script only runs while the player is in the lobby place; on
+-- the destination the iris simply doesn't exist (Roblox's stock
+-- loader is shown instead).
 local OCEAN_PLACE_ID = 77272676169005
 if game.PlaceId == OCEAN_PLACE_ID then return end
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local TITLE_TEXT = "Survive 100 Days"
+local TITLE_TEXT     = "Survive 100 Days"
+local GROW_DURATION  = 0.55
+local TITLE_FADE_IN  = 0.25
+local LOG_TAG        = "[LobbyTeleportFX]"
 
--- ── Helpers ────────────────────────────────────────────────────
+-- ── Iris-out played on the lobby client BEFORE teleport ───────
 
--- Build the title-card content (black background + centred title
--- text) into `screenGui`. Returns the title TextLabel so callers can
--- fade / tween it.
-local function buildTitleCard(screenGui)
-	local bg = Instance.new("Frame")
-	bg.Name                  = "TitleBackdrop"
-	bg.AnchorPoint           = Vector2.new(0.5, 0.5)
-	bg.Position              = UDim2.fromScale(0.5, 0.5)
-	bg.Size                  = UDim2.fromScale(1, 1)
-	bg.BackgroundColor3      = Color3.fromRGB(0, 0, 0)
-	bg.BorderSizePixel       = 0
-	bg.ZIndex                = 1
-	bg.Parent                = screenGui
+local irisGui  -- single instance; replaced on every fresh trigger.
 
-	local title = Instance.new("TextLabel")
-	title.Name                = "Title"
-	title.AnchorPoint         = Vector2.new(0.5, 0.5)
-	title.Position            = UDim2.fromScale(0.5, 0.5)
-	title.Size                = UDim2.new(0.8, 0, 0.12, 0)
-	title.BackgroundTransparency = 1
-	title.Text                = TITLE_TEXT
-	title.TextColor3          = Color3.new(1, 1, 1)
-	title.TextStrokeColor3    = Color3.new(0, 0, 0)
-	title.TextStrokeTransparency = 0.5
-	title.Font                = Enum.Font.GothamBold
-	title.TextScaled          = true
-	title.ZIndex              = 2
-	title.Parent              = bg
-	do
-		local sc = Instance.new("UITextSizeConstraint")
-		sc.MaxTextSize = 64
-		sc.MinTextSize = 28
-		sc.Parent      = title
-	end
-	return title, bg
-end
-
--- ── End-state GUI registered with TeleportService ──────────────
--- Already at the "iris finished, title visible" state. Roblox shows
--- it during the actual teleport so the transition from our lobby
--- iris into Roblox-managed teleport is invisible.
-local endStateGui = Instance.new("ScreenGui")
-endStateGui.Name           = "TeleportEndState"
-endStateGui.ResetOnSpawn   = false
-endStateGui.IgnoreGuiInset = true
-endStateGui.DisplayOrder   = 100
-buildTitleCard(endStateGui)
-pcall(function() TeleportService:SetTeleportGui(endStateGui) end)
-
--- ── Iris-out played on the lobby client BEFORE teleport ──────
--- Server fires StartRoomTeleportPrepare the moment the countdown
--- ends; we react by growing a circular black mask from the centre.
-local irisGui  -- single instance; killed on every new firing.
 local function playIrisOut()
 	if irisGui then irisGui:Destroy() end
 
@@ -97,70 +46,79 @@ local function playIrisOut()
 	irisGui.DisplayOrder   = 99
 	irisGui.Parent         = playerGui
 
-	-- Black circle, square frame + UICorner radius 1 = perfect circle.
-	-- Sized in scale so on any aspect ratio the final tween still
-	-- comfortably covers screen corners.
+	-- Pre-stage the title invisibly so it's already in the layout
+	-- when the iris hits the screen edges — avoids the awkward
+	-- one-frame "text pops in after the mask snaps".
+	local title = Instance.new("TextLabel")
+	title.Name                = "Title"
+	title.AnchorPoint         = Vector2.new(0.5, 0.5)
+	title.Position            = UDim2.fromScale(0.5, 0.5)
+	title.Size                = UDim2.new(0.8, 0, 0.12, 0)
+	title.BackgroundTransparency = 1
+	title.Text                = TITLE_TEXT
+	title.TextColor3          = Color3.new(1, 1, 1)
+	title.TextStrokeColor3    = Color3.new(0, 0, 0)
+	title.TextStrokeTransparency = 1
+	title.TextTransparency    = 1
+	title.Font                = Enum.Font.GothamBold
+	title.TextScaled          = true
+	title.ZIndex              = 2
+	title.Parent              = irisGui
+	do
+		local sc = Instance.new("UITextSizeConstraint")
+		sc.MaxTextSize = 64
+		sc.MinTextSize = 28
+		sc.Parent      = title
+	end
+
+	-- Black circle: square Frame + UICorner(1,0) + AspectRatio 1.
+	-- Start at a small positive Size so the AspectRatioConstraint
+	-- has a non-degenerate base to lock onto; otherwise the first
+	-- frame can render as a tiny rectangle before the constraint
+	-- kicks in.
 	local circle = Instance.new("Frame")
 	circle.Name                 = "IrisCircle"
 	circle.AnchorPoint          = Vector2.new(0.5, 0.5)
 	circle.Position             = UDim2.fromScale(0.5, 0.5)
-	circle.Size                 = UDim2.fromScale(0, 0)
+	circle.Size                 = UDim2.fromScale(0.02, 0.02)
 	circle.BackgroundColor3     = Color3.fromRGB(0, 0, 0)
 	circle.BorderSizePixel      = 0
+	circle.ZIndex               = 1
 	circle.Parent               = irisGui
 	do
 		local c = Instance.new("UICorner")
 		c.CornerRadius = UDim.new(1, 0)
 		c.Parent       = circle
 		local ar = Instance.new("UIAspectRatioConstraint")
-		ar.AspectRatio = 1
-		ar.Parent      = circle
+		ar.AspectRatio  = 1
+		ar.DominantAxis = Enum.DominantAxis.Width
+		ar.Parent       = circle
 	end
 
-	-- Grow the circle to ~2.5x the larger screen dimension so the
-	-- diagonal is fully covered on every aspect ratio.
+	-- Grow to roughly 3x the screen so the diagonal is comfortably
+	-- covered on every aspect ratio (16:9 needs ~1.15x of width,
+	-- 21:9 ultrawide needs ~1.3x, 3x is safe everywhere).
 	local growTween = TweenService:Create(
 		circle,
-		TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ Size = UDim2.fromScale(2.5, 2.5) }
+		TweenInfo.new(GROW_DURATION, Enum.EasingStyle.Sine, Enum.EasingDirection.Out),
+		{ Size = UDim2.fromScale(3, 3) }
 	)
 	growTween:Play()
 
-	-- Once the circle has filled the screen, fade in the title. The
-	-- end-state SetTeleportGui will replace this gui as soon as
-	-- Roblox starts the teleport, so the title persists visually
-	-- straight through.
+	-- Fade in the title once the mask reaches the screen edges. We
+	-- start the title tween slightly BEFORE growTween completes so
+	-- the text and the full-cover state arrive together.
 	task.spawn(function()
-		growTween.Completed:Wait()
-		local title = Instance.new("TextLabel")
-		title.Name                = "Title"
-		title.AnchorPoint         = Vector2.new(0.5, 0.5)
-		title.Position            = UDim2.fromScale(0.5, 0.5)
-		title.Size                = UDim2.new(0.8, 0, 0.12, 0)
-		title.BackgroundTransparency = 1
-		title.Text                = TITLE_TEXT
-		title.TextColor3          = Color3.new(1, 1, 1)
-		title.TextStrokeColor3    = Color3.new(0, 0, 0)
-		title.TextStrokeTransparency = 0.5
-		title.Font                = Enum.Font.GothamBold
-		title.TextScaled          = true
-		title.TextTransparency    = 1
-		title.Parent              = irisGui
-		do
-			local sc = Instance.new("UITextSizeConstraint")
-			sc.MaxTextSize = 64
-			sc.MinTextSize = 28
-			sc.Parent      = title
-		end
+		task.wait(GROW_DURATION * 0.65)
 		TweenService:Create(
 			title,
-			TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ TextTransparency = 0, TextStrokeTransparency = 0.5 }
+			TweenInfo.new(TITLE_FADE_IN, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ TextTransparency = 0, TextStrokeTransparency = 0.4 }
 		):Play()
 	end)
 end
 
-local LOG_TAG = "[LobbyTeleportFX]"
+-- ── Wait for the server-side RemoteEvent + bind ───────────────
 local prepareEvent = ReplicatedStorage:WaitForChild("StartRoomTeleportPrepare", 10)
 if prepareEvent then
 	print(LOG_TAG .. " bound to StartRoomTeleportPrepare RemoteEvent")
