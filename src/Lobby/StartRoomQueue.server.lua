@@ -32,13 +32,15 @@ local RunService = game:GetService("RunService")
 local DEFAULT_MAX_BY_NAME = {
 	StartRoom    = 1,
 	DuelPad      = 2,
+	DuelRing_1v1 = 1,
 	DuelRing_2v2 = 4,
 	DuelRing_3v3 = 6,
 	DuelRing_4v4 = 8,
 }
-local FALLBACK_MAX   = 4
-local POLL_INTERVAL  = 0.25
-local VERTICAL_SLACK = 12  -- studs of Y room above/below the zone
+local FALLBACK_MAX     = 4
+local POLL_INTERVAL    = 0.25
+local VERTICAL_SLACK   = 12  -- studs of Y room above/below the zone
+local FULL_TIMER_SECS  = 10  -- countdown once a room hits capacity
 
 local LOG_TAG = "[StartRoomQueue]"
 
@@ -172,7 +174,19 @@ local function ensureRoomState(roomModel)
 		barrierSize     = barrierSize,
 		ring            = ring,
 		barrier         = barrier,
+		locked          = false,
+		timerExpires    = nil,
+		-- Cache the Ring's Beam children so the sweep doesn't
+		-- re-walk descendants every 0.25 s.
+		ringBeams       = {},
 	}
+	if ring then
+		for _, desc in ring:GetDescendants() do
+			if desc:IsA("Beam") then
+				table.insert(state.ringBeams, desc)
+			end
+		end
+	end
 	roomState[roomModel] = state
 
 	print(string.format(
@@ -198,7 +212,24 @@ end
 
 local function updateCount(state)
 	if not state.countLabel then return end
-	state.countLabel.Text = string.format("%d / %d", queueSize(state), state.maxPlayers)
+	if state.locked and state.timerExpires then
+		-- Countdown takes over the slot read-out while the room is
+		-- locked. We refresh from the sweep so the value ticks down.
+		local remaining = math.max(0, math.ceil(state.timerExpires - os.clock()))
+		state.countLabel.Text = tostring(remaining)
+	else
+		state.countLabel.Text = string.format("%d / %d", queueSize(state), state.maxPlayers)
+	end
+end
+
+-- Drive the glow Beams on the Ring based on whether anyone is in
+-- queue. Cheap — cached BasePart references, no descendant walk
+-- per sweep.
+local function updateRingBeams(state)
+	local on = next(state.queue) ~= nil
+	for _, beam in state.ringBeams do
+		if beam.Parent then beam.Enabled = on end
+	end
 end
 
 local function addPlayer(state, player)
@@ -312,6 +343,44 @@ end
 
 -- ─── Sweep loop ──────────────────────────────────────────────────
 
+-- Called every sweep on a state that's currently locked. Refreshes
+-- the timer display, and on expiry fires _G.OnRoomFull (if defined)
+-- + force-empties the queue so the lock cycle doesn't immediately
+-- re-trigger.
+local function tickLock(state)
+	if not state.locked or not state.timerExpires then return end
+	if os.clock() < state.timerExpires then
+		-- Just refresh the visible countdown.
+		updateCount(state)
+		return
+	end
+
+	-- Timer expired. Snapshot the players, fire the optional handler
+	-- so downstream code can teleport them / start a match / etc.
+	local players = {}
+	for uid in pairs(state.queue) do
+		local p = Players:GetPlayerByUserId(uid)
+		if p then table.insert(players, p) end
+	end
+	if typeof(_G.OnRoomFull) == "function" then
+		pcall(_G.OnRoomFull, state.room, players)
+	else
+		print(string.format("%s %s timer expired with %d player(s); no _G.OnRoomFull handler wired",
+			LOG_TAG, state.room.Name, #players))
+	end
+
+	-- Force-clear the queue so the room frees up. If the players are
+	-- still physically in the zone the next sweep re-adds them and
+	-- the 10s cycle restarts; if the handler teleported them out the
+	-- zone is empty and the room is back to "0 / N".
+	for uid in pairs(state.queue) do
+		removePlayer(state, uid)
+	end
+	state.locked = false
+	state.timerExpires = nil
+	updateCount(state)
+end
+
 local function sweep()
 	for room, state in pairs(roomState) do
 		if not room.Parent then
@@ -335,9 +404,19 @@ local function sweep()
 					local inside = (state.barrierCF and pointInZone(pos, state.barrierCF, state.barrierSize))
 						or (state.ringCF and pointInZone(pos, state.ringCF, state.ringSize))
 					if inside then
-						seen[player.UserId] = true
-						if not state.queue[player.UserId] then
-							addPlayer(state, player)
+						if state.locked then
+							-- Locked room: existing queued players
+							-- keep their slot, new walk-ins are
+							-- ignored so the countdown can resolve
+							-- with the original roster.
+							if state.queue[player.UserId] then
+								seen[player.UserId] = true
+							end
+						else
+							seen[player.UserId] = true
+							if not state.queue[player.UserId] then
+								addPlayer(state, player)
+							end
 						end
 					end
 				end
@@ -347,6 +426,27 @@ local function sweep()
 					removePlayer(state, uid)
 				end
 			end
+
+			-- Trip the lock the moment the queue fills up. Player
+			-- leaving during the countdown cancels the lock and
+			-- restores the normal "N / N" display.
+			local size = queueSize(state)
+			if not state.locked and size >= state.maxPlayers and size > 0 then
+				state.locked = true
+				state.timerExpires = os.clock() + FULL_TIMER_SECS
+				print(string.format("%s %s reached capacity (%d) — %ds countdown started",
+					LOG_TAG, state.room.Name, state.maxPlayers, FULL_TIMER_SECS))
+				updateCount(state)
+			elseif state.locked and size < state.maxPlayers then
+				state.locked = false
+				state.timerExpires = nil
+				updateCount(state)
+				print(string.format("%s %s lock cancelled — player left during countdown",
+					LOG_TAG, state.room.Name))
+			end
+
+			tickLock(state)
+			updateRingBeams(state)
 		end
 	end
 end
