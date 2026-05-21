@@ -39,7 +39,7 @@ if not teleportPrepareEvent then
 	teleportPrepareEvent.Name = TELEPORT_PREPARE_EVENT_NAME
 	teleportPrepareEvent.Parent = ReplicatedStorage
 end
-local IRIS_PRELUDE_SECS = 0.4
+local IRIS_PRELUDE_SECS = 1.05
 
 -- ─── Config ───────────────────────────────────────────────────────
 
