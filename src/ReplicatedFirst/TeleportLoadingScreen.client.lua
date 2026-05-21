@@ -1,19 +1,26 @@
 -- TeleportLoadingScreen.client.lua (destination side)
--- Mirrors src/Lobby/TeleportLoadingScreen.client.lua but lives in
--- ReplicatedFirst of the Ocean place. Roblox runs ReplicatedFirst's
--- LocalScripts BEFORE any other client script and gives them a
--- chance to dismiss the default loading screen + draw their own.
+-- Lives in ReplicatedFirst of the Ocean place so Roblox runs it
+-- before any other client script and we can dismiss the default
+-- loading screen + draw our own.
 --
--- Effect from the player's POV when arriving from a queue teleport:
---   1. Lobby SetTeleportGui paints the pirate-raft background
---      during the outbound handshake.
---   2. The moment the place file starts loading, this script kicks
---      in — RemoveDefaultLoadingScreen kills the stock Roblox
---      logo/spinner, our ScreenGui takes over with the same art +
---      "Loading" label + progress bar.
---   3. game:IsLoaded() resolves → we tween the bar to 100 %, hold
---      briefly, then destroy the GUI so the player drops into the
---      world.
+-- The Ocean place has StreamingEnabled, which means:
+--   * game.Loaded fires once the initial replication chunk is in,
+--     not "when the entire map is downloaded" — so it tends to
+--     fire much faster than on a non-streaming place.
+--   * Workspace continues to stream parts in around the player
+--     for several more seconds after Loaded. If we tear down the
+--     overlay the moment Loaded fires, the player can land on
+--     half-streamed geometry (and sometimes through it before the
+--     ocean's collision rolls in).
+--
+-- So the dismiss waits on three things rather than just Loaded:
+--   1. game:IsLoaded()
+--   2. LocalPlayer.Character + HumanoidRootPart exist
+--   3. workspace:RequestStreamAroundAsync(hrp.Position) returned —
+--      the StreamingMinRadius around the player is guaranteed in
+--      memory before we drop the curtain.
+-- The whole post-load handoff runs as fast as those three resolve:
+-- no artificial 5 s fake-progress, no hold, only a 0.2 s fade.
 
 local Players          = game:GetService("Players")
 local ReplicatedFirst  = game:GetService("ReplicatedFirst")
@@ -27,7 +34,19 @@ pcall(function()
 	ReplicatedFirst:RemoveDefaultLoadingScreen()
 end)
 
-local player    = Players.LocalPlayer
+-- ReplicatedFirst LocalScripts can start before LocalPlayer is
+-- populated. Spin briefly until it is.
+local player = Players.LocalPlayer
+local waited = 0
+while not player and waited < 5 do
+	task.wait(0.05)
+	waited += 0.05
+	player = Players.LocalPlayer
+end
+if not player then
+	warn("[DestLoadingScreen] LocalPlayer never resolved — aborting custom loader")
+	return
+end
 local playerGui = player:WaitForChild("PlayerGui")
 
 -- ── Build the ScreenGui ────────────────────────────────────────
@@ -100,40 +119,57 @@ do
 	c.Parent       = barFill
 end
 
--- ── Fake progress while the place loads ────────────────────────
--- Tween toward 95 % over ~5 s so the bar reads "almost done"
--- without overshooting "done" before IsLoaded resolves.
+-- ── Progress bar fake-fill ────────────────────────────────────
+-- Run a short linear approach toward 85 % over 2.5 s — enough
+-- visual motion to feel alive, short enough that StreamingEnabled
+-- builds typically resolve before we'd otherwise overshoot.
 local approachTween = TweenService:Create(
 	barFill,
-	TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-	{ Size = UDim2.new(0.95, 0, 1, 0) }
+	TweenInfo.new(2.5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
+	{ Size = UDim2.new(0.85, 0, 1, 0) }
 )
 approachTween:Play()
 
--- Once Roblox tells us the place is loaded, finish the bar and
--- dismiss the screen.
-task.spawn(function()
+-- ── Helpers for the StreamingEnabled-aware dismiss ────────────
+local function waitForLoaded()
 	if not game:IsLoaded() then
 		game.Loaded:Wait()
 	end
-	-- Snap the bar to 100 % so the player sees the fill complete.
+end
+
+local function waitForCharacter()
+	local char = player.Character or player.CharacterAdded:Wait()
+	-- HumanoidRootPart is replicated separately; on StreamingEnabled
+	-- it can arrive a beat after the Model itself.
+	local hrp = char:FindFirstChild("HumanoidRootPart")
+	if not hrp then
+		hrp = char:WaitForChild("HumanoidRootPart", 10)
+	end
+	return char, hrp
+end
+
+local function waitForStreamAround(hrp)
+	-- RequestStreamAroundAsync forces the engine to stream the
+	-- area around `position` and only returns when the
+	-- StreamingMinRadius worth of content is resident. On a
+	-- non-StreamingEnabled place this is a no-op that returns
+	-- immediately.
+	if not hrp then return end
+	pcall(function()
+		workspace:RequestStreamAroundAsync(hrp.Position)
+	end)
+end
+
+local function fadeAndDestroy()
 	approachTween:Cancel()
 	local finishTween = TweenService:Create(
 		barFill,
-		TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
 		{ Size = UDim2.new(1, 0, 1, 0) }
 	)
 	finishTween:Play()
 	finishTween.Completed:Wait()
-	-- Brief beat so the "complete" frame is visible, then fade out.
-	task.wait(0.2)
-	local fadeOut = TweenService:Create(
-		screenGui,
-		TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{}
-	)
-	-- ScreenGui doesn't tween cleanly, so just fade each child by
-	-- bumping their Transparency / TextTransparency manually.
+
 	local fadeChildren = {}
 	for _, desc in screenGui:GetDescendants() do
 		if desc:IsA("ImageLabel") or desc:IsA("Frame") then
@@ -146,9 +182,10 @@ task.spawn(function()
 			table.insert(fadeChildren, { obj = desc, prop = "TextStrokeTransparency" })
 		end
 	end
+	local fadeDuration = 0.2
 	local fadeStart = os.clock()
-	while os.clock() - fadeStart < 0.4 do
-		local t = (os.clock() - fadeStart) / 0.4
+	while os.clock() - fadeStart < fadeDuration do
+		local t = (os.clock() - fadeStart) / fadeDuration
 		for _, e in fadeChildren do
 			pcall(function()
 				e.obj[e.prop] = math.min(1, t)
@@ -157,4 +194,11 @@ task.spawn(function()
 		RunService.RenderStepped:Wait()
 	end
 	screenGui:Destroy()
+end
+
+task.spawn(function()
+	waitForLoaded()
+	local _char, hrp = waitForCharacter()
+	waitForStreamAround(hrp)
+	fadeAndDestroy()
 end)
