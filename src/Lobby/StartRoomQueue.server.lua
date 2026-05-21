@@ -113,19 +113,56 @@ local UTILITY_CLASSES = {
 	UIAspectRatioConstraint = true, UISizeConstraint = true,
 	UICorner = true, UIStroke = true, UIGradient = true,
 }
-local function clearStaleEntries(container, templateName)
-	if not container then return end
-	for _, child in container:GetChildren() do
-		if not UTILITY_CLASSES[child.ClassName] and child.Name ~= templateName then
-			child:Destroy()
-		end
-	end
-end
 
 local function defaultMaxFor(roomModel)
 	local attr = roomModel:GetAttribute("MaxPlayers")
 	if type(attr) == "number" then return attr end
 	return DEFAULT_MAX_BY_NAME[roomModel.Name] or FALLBACK_MAX
+end
+
+-- Empty an entry's player-specific visuals — used both to scrub
+-- newly-cloned slots into a neutral state and to clear a slot when
+-- its assigned player walks out.
+local function clearEntryVisuals(entry)
+	if not entry then return end
+	local nameLabel = entry:FindFirstChild("Name", true)
+		or entry:FindFirstChildWhichIsA("TextLabel", true)
+	if nameLabel and nameLabel:IsA("TextLabel") then
+		nameLabel.Text = ""
+	end
+	local headshot = entry:FindFirstChild("Headshot", true)
+	if headshot and headshot:IsA("ImageLabel") then
+		headshot.Image = ""
+	end
+end
+
+-- Build exactly N visible slot entries inside `container` by cloning
+-- `template`. Anything else (extra Studio-authored "Entry" duplicates,
+-- leftover per-player entries from a previous session, …) is removed
+-- so the slot count always matches MaxPlayers regardless of how many
+-- placeholder entries the author dropped in.
+local function buildSlots(container, template, slotCount)
+	if not container or not template then return {} end
+
+	hideTemplate(template)
+
+	-- Sweep everything except the template + UI utility children.
+	for _, child in container:GetChildren() do
+		if not UTILITY_CLASSES[child.ClassName] and child ~= template then
+			child:Destroy()
+		end
+	end
+
+	local slots = {}
+	for i = 1, slotCount do
+		local entry = template:Clone()
+		entry.Name = "Slot_" .. i
+		pcall(function() entry.Visible = true end)
+		clearEntryVisuals(entry)
+		entry.Parent = container
+		table.insert(slots, { entry = entry, assignedTo = nil })
+	end
+	return slots
 end
 
 -- ─── Per-room state ──────────────────────────────────────────────
@@ -154,20 +191,15 @@ local function ensureRoomState(roomModel)
 		barrierCF, barrierSize, attachCount = computeBarrierZone(barrier)
 	end
 
-	hideTemplate(bgTemplate)
-	hideTemplate(partsTemplate)
-	clearStaleEntries(bgContainer,    bgTemplate    and bgTemplate.Name)
-	clearStaleEntries(partsContainer, partsTemplate and partsTemplate.Name)
+	local maxPlayers = defaultMaxFor(roomModel)
 
 	local state = {
 		room            = roomModel,
 		queue           = {},
-		bgTemplate      = bgTemplate,
-		bgContainer     = bgContainer,
-		partsTemplate   = partsTemplate,
-		partsContainer  = partsContainer,
+		bgSlots         = buildSlots(bgContainer,    bgTemplate,    maxPlayers),
+		partsSlots      = buildSlots(partsContainer, partsTemplate, maxPlayers),
 		countLabel      = countLabel,
-		maxPlayers      = defaultMaxFor(roomModel),
+		maxPlayers      = maxPlayers,
 		ringCF          = ringCF,
 		ringSize        = ringSize,
 		barrierCF       = barrierCF,
@@ -232,32 +264,49 @@ local function updateRingBeams(state)
 	end
 end
 
+-- Find the first slot in `slots` not yet assigned to a player.
+local function firstFreeSlot(slots)
+	for _, slot in slots do
+		if slot.assignedTo == nil then
+			return slot
+		end
+	end
+	return nil
+end
+
+-- Find the slot currently assigned to a UserId.
+local function findAssignedSlot(slots, userId)
+	for _, slot in slots do
+		if slot.assignedTo == userId then
+			return slot
+		end
+	end
+	return nil
+end
+
 local function addPlayer(state, player)
 	if state.queue[player.UserId] then return end
 	state.queue[player.UserId] = true
-	local uid = tostring(player.UserId)
 
-	if state.bgTemplate and state.bgContainer then
-		local entry = state.bgTemplate:Clone()
-		entry.Name = uid
-		pcall(function() entry.Visible = true end)
-		local nameLabel = entry:FindFirstChild("Name", true)
-			or entry:FindFirstChildWhichIsA("TextLabel", true)
+	-- Bg slot — usually carries the player's name.
+	local bgSlot = firstFreeSlot(state.bgSlots)
+	if bgSlot then
+		bgSlot.assignedTo = player.UserId
+		local nameLabel = bgSlot.entry:FindFirstChild("Name", true)
+			or bgSlot.entry:FindFirstChildWhichIsA("TextLabel", true)
 		if nameLabel and nameLabel:IsA("TextLabel") then
 			nameLabel.Text = player.Name
 		end
-		entry.Parent = state.bgContainer
 	end
 
-	if state.partsTemplate and state.partsContainer then
-		local entry = state.partsTemplate:Clone()
-		entry.Name = uid
-		pcall(function() entry.Visible = true end)
-		local headshot = entry:FindFirstChild("Headshot", true)
+	-- ParticipantsGui slot — avatar headshot.
+	local partsSlot = firstFreeSlot(state.partsSlots)
+	if partsSlot then
+		partsSlot.assignedTo = player.UserId
+		local headshot = partsSlot.entry:FindFirstChild("Headshot", true)
 		if headshot and headshot:IsA("ImageLabel") then
 			headshot.Image = getHeadshot(player.UserId)
 		end
-		entry.Parent = state.partsContainer
 	end
 
 	updateCount(state)
@@ -268,15 +317,19 @@ end
 local function removePlayer(state, userId)
 	if not state.queue[userId] then return end
 	state.queue[userId] = nil
-	local uid = tostring(userId)
-	if state.bgContainer then
-		local e = state.bgContainer:FindFirstChild(uid)
-		if e then e:Destroy() end
+
+	local bgSlot = findAssignedSlot(state.bgSlots, userId)
+	if bgSlot then
+		bgSlot.assignedTo = nil
+		clearEntryVisuals(bgSlot.entry)
 	end
-	if state.partsContainer then
-		local e = state.partsContainer:FindFirstChild(uid)
-		if e then e:Destroy() end
+
+	local partsSlot = findAssignedSlot(state.partsSlots, userId)
+	if partsSlot then
+		partsSlot.assignedTo = nil
+		clearEntryVisuals(partsSlot.entry)
 	end
+
 	updateCount(state)
 end
 
