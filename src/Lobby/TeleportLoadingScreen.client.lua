@@ -1,123 +1,168 @@
 -- TeleportLoadingScreen.client.lua
--- Replaces Roblox's default teleport loading wheel with a branded
--- screen the player sees the moment a queue countdown teleport
--- fires: the pirate-raft background art + "Loading" label + a
--- progress bar that fills as the destination place loads.
+-- Two-phase loader for queue-countdown teleports leaving the lobby:
 --
--- TeleportService:SetTeleportGui takes a ScreenGui and shows it for
--- the entire teleport flow (leaving the lobby + landing on the
--- destination's loading phase), so the queue-countdown teleport
--- never reverts to the stock Roblox loader.
+--   1. Iris-out preview. When the room countdown hits zero, the
+--      server fires StartRoomTeleportPrepare. We open a fullscreen
+--      ScreenGui that grows a black circle from the centre of the
+--      screen until it covers everything, then fades in a title
+--      ("Survive 100 Days") so the player has an in-fiction beat
+--      while the server is still about to call TeleportAsync.
+--   2. SetTeleportGui handoff. A separate "end-state" ScreenGui
+--      (already at fully-black + title) is registered with
+--      TeleportService:SetTeleportGui so the moment Roblox actually
+--      starts the teleport the visual is identical — no flicker
+--      between the lobby iris and the engine's teleport screen.
+--      The destination place's ReplicatedFirst loader matches the
+--      same look, then plays the reverse iris-in once game.Loaded.
 
-local Players         = game:GetService("Players")
-local TeleportService = game:GetService("TeleportService")
-local TweenService    = game:GetService("TweenService")
+local Players          = game:GetService("Players")
+local TeleportService  = game:GetService("TeleportService")
+local TweenService     = game:GetService("TweenService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- This loader applies to teleports leaving the lobby. The
--- destination place runs its own client startup; the gui registered
--- below stays attached through the destination's load phase, so we
--- don't need to set it up again there.
+-- destination place runs its own ReplicatedFirst-based loader; the
+-- gui registered below stays attached through the destination's
+-- own load phase as well.
 local OCEAN_PLACE_ID = 77272676169005
 if game.PlaceId == OCEAN_PLACE_ID then return end
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
-local LOADING_BG_ASSET = "rbxassetid://111898515497348"
+local TITLE_TEXT = "Survive 100 Days"
 
--- ── Build the GUI hierarchy ─────────────────────────────────────
--- The ScreenGui is NOT parented to PlayerGui — SetTeleportGui hands
--- it to TeleportService, which manages its lifetime.
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name           = "TeleportLoadingScreen"
-screenGui.ResetOnSpawn   = false
-screenGui.IgnoreGuiInset = true
-screenGui.DisplayOrder   = 100
+-- ── Helpers ────────────────────────────────────────────────────
 
-local bg = Instance.new("ImageLabel")
-bg.Name                  = "Background"
-bg.Size                  = UDim2.fromScale(1, 1)
-bg.Position              = UDim2.fromScale(0, 0)
-bg.BackgroundColor3      = Color3.fromRGB(0, 0, 0)
-bg.BackgroundTransparency = 0
-bg.Image                 = LOADING_BG_ASSET
-bg.ScaleType             = Enum.ScaleType.Crop
-bg.Parent                = screenGui
+-- Build the title-card content (black background + centred title
+-- text) into `screenGui`. Returns the title TextLabel so callers can
+-- fade / tween it.
+local function buildTitleCard(screenGui)
+	local bg = Instance.new("Frame")
+	bg.Name                  = "TitleBackdrop"
+	bg.AnchorPoint           = Vector2.new(0.5, 0.5)
+	bg.Position              = UDim2.fromScale(0.5, 0.5)
+	bg.Size                  = UDim2.fromScale(1, 1)
+	bg.BackgroundColor3      = Color3.fromRGB(0, 0, 0)
+	bg.BorderSizePixel       = 0
+	bg.ZIndex                = 1
+	bg.Parent                = screenGui
 
--- "Loading" text near the bottom, just above the progress bar.
-local loadingLabel = Instance.new("TextLabel")
-loadingLabel.Name                = "LoadingLabel"
-loadingLabel.AnchorPoint         = Vector2.new(0.5, 0.5)
-loadingLabel.Position            = UDim2.new(0.5, 0, 0.85, 0)
-loadingLabel.Size                = UDim2.new(0.5, 0, 0.08, 0)
-loadingLabel.BackgroundTransparency = 1
-loadingLabel.Text                = "Loading"
-loadingLabel.TextColor3          = Color3.new(1, 1, 1)
-loadingLabel.TextStrokeColor3    = Color3.new(0, 0, 0)
-loadingLabel.TextStrokeTransparency = 0.4
-loadingLabel.Font                = Enum.Font.GothamBold
-loadingLabel.TextScaled          = true
-loadingLabel.Parent              = screenGui
-do
-	local sc = Instance.new("UITextSizeConstraint")
-	sc.MaxTextSize = 56
-	sc.MinTextSize = 24
-	sc.Parent      = loadingLabel
+	local title = Instance.new("TextLabel")
+	title.Name                = "Title"
+	title.AnchorPoint         = Vector2.new(0.5, 0.5)
+	title.Position            = UDim2.fromScale(0.5, 0.5)
+	title.Size                = UDim2.new(0.8, 0, 0.12, 0)
+	title.BackgroundTransparency = 1
+	title.Text                = TITLE_TEXT
+	title.TextColor3          = Color3.new(1, 1, 1)
+	title.TextStrokeColor3    = Color3.new(0, 0, 0)
+	title.TextStrokeTransparency = 0.5
+	title.Font                = Enum.Font.GothamBold
+	title.TextScaled          = true
+	title.ZIndex              = 2
+	title.Parent              = bg
+	do
+		local sc = Instance.new("UITextSizeConstraint")
+		sc.MaxTextSize = 64
+		sc.MinTextSize = 28
+		sc.Parent      = title
+	end
+	return title, bg
 end
 
--- Progress bar background — pill-shaped, sits centred horizontally
--- below the Loading label.
-local barBg = Instance.new("Frame")
-barBg.Name             = "BarBg"
-barBg.AnchorPoint      = Vector2.new(0.5, 0.5)
-barBg.Position         = UDim2.new(0.5, 0, 0.93, 0)
-barBg.Size             = UDim2.new(0.5, 0, 0.04, 0)
-barBg.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-barBg.BorderSizePixel  = 0
-barBg.Parent           = screenGui
-do
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0.5, 0)
-	c.Parent       = barBg
-	local sc = Instance.new("UISizeConstraint")
-	sc.MinSize = Vector2.new(400, 20)
-	sc.MaxSize = Vector2.new(900, 40)
-	sc.Parent  = barBg
+-- ── End-state GUI registered with TeleportService ──────────────
+-- Already at the "iris finished, title visible" state. Roblox shows
+-- it during the actual teleport so the transition from our lobby
+-- iris into Roblox-managed teleport is invisible.
+local endStateGui = Instance.new("ScreenGui")
+endStateGui.Name           = "TeleportEndState"
+endStateGui.ResetOnSpawn   = false
+endStateGui.IgnoreGuiInset = true
+endStateGui.DisplayOrder   = 100
+buildTitleCard(endStateGui)
+pcall(function() TeleportService:SetTeleportGui(endStateGui) end)
+
+-- ── Iris-out played on the lobby client BEFORE teleport ──────
+-- Server fires StartRoomTeleportPrepare the moment the countdown
+-- ends; we react by growing a circular black mask from the centre.
+local irisGui  -- single instance; killed on every new firing.
+local function playIrisOut()
+	if irisGui then irisGui:Destroy() end
+
+	irisGui = Instance.new("ScreenGui")
+	irisGui.Name           = "TeleportIrisOut"
+	irisGui.ResetOnSpawn   = false
+	irisGui.IgnoreGuiInset = true
+	irisGui.DisplayOrder   = 99
+	irisGui.Parent         = playerGui
+
+	-- Black circle, square frame + UICorner radius 1 = perfect circle.
+	-- Sized in scale so on any aspect ratio the final tween still
+	-- comfortably covers screen corners.
+	local circle = Instance.new("Frame")
+	circle.Name                 = "IrisCircle"
+	circle.AnchorPoint          = Vector2.new(0.5, 0.5)
+	circle.Position             = UDim2.fromScale(0.5, 0.5)
+	circle.Size                 = UDim2.fromScale(0, 0)
+	circle.BackgroundColor3     = Color3.fromRGB(0, 0, 0)
+	circle.BorderSizePixel      = 0
+	circle.Parent               = irisGui
+	do
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(1, 0)
+		c.Parent       = circle
+		local ar = Instance.new("UIAspectRatioConstraint")
+		ar.AspectRatio = 1
+		ar.Parent      = circle
+	end
+
+	-- Grow the circle to ~2.5x the larger screen dimension so the
+	-- diagonal is fully covered on every aspect ratio.
+	local growTween = TweenService:Create(
+		circle,
+		TweenInfo.new(0.45, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = UDim2.fromScale(2.5, 2.5) }
+	)
+	growTween:Play()
+
+	-- Once the circle has filled the screen, fade in the title. The
+	-- end-state SetTeleportGui will replace this gui as soon as
+	-- Roblox starts the teleport, so the title persists visually
+	-- straight through.
+	task.spawn(function()
+		growTween.Completed:Wait()
+		local title = Instance.new("TextLabel")
+		title.Name                = "Title"
+		title.AnchorPoint         = Vector2.new(0.5, 0.5)
+		title.Position            = UDim2.fromScale(0.5, 0.5)
+		title.Size                = UDim2.new(0.8, 0, 0.12, 0)
+		title.BackgroundTransparency = 1
+		title.Text                = TITLE_TEXT
+		title.TextColor3          = Color3.new(1, 1, 1)
+		title.TextStrokeColor3    = Color3.new(0, 0, 0)
+		title.TextStrokeTransparency = 0.5
+		title.Font                = Enum.Font.GothamBold
+		title.TextScaled          = true
+		title.TextTransparency    = 1
+		title.Parent              = irisGui
+		do
+			local sc = Instance.new("UITextSizeConstraint")
+			sc.MaxTextSize = 64
+			sc.MinTextSize = 28
+			sc.Parent      = title
+		end
+		TweenService:Create(
+			title,
+			TweenInfo.new(0.25, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ TextTransparency = 0, TextStrokeTransparency = 0.5 }
+		):Play()
+	end)
 end
 
--- Fill — animated below.
-local barFill = Instance.new("Frame")
-barFill.Name             = "BarFill"
-barFill.AnchorPoint      = Vector2.new(0, 0.5)
-barFill.Position         = UDim2.new(0, 0, 0.5, 0)
-barFill.Size             = UDim2.new(0, 0, 1, 0)
-barFill.BackgroundColor3 = Color3.fromRGB(127, 200, 50)
-barFill.BorderSizePixel  = 0
-barFill.Parent           = barBg
-do
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0.5, 0)
-	c.Parent       = barFill
-end
-
--- ── Fake progress tween ────────────────────────────────────────
--- Roblox doesn't expose a real percentage during the teleport →
--- destination-load handshake, so we tween linearly toward 95 % over
--- ~5 seconds and let it idle there until the destination place
--- finishes loading and the gui is dismissed by the engine. Looks
--- much better than a snapping 0→100 jump and never overshoots
--- "done" before the player is actually in-game.
-local tween = TweenService:Create(
-	barFill,
-	TweenInfo.new(5, Enum.EasingStyle.Linear, Enum.EasingDirection.Out),
-	{ Size = UDim2.new(0.95, 0, 1, 0) }
-)
-tween:Play()
-
--- ── Hand the GUI to TeleportService ────────────────────────────
-local ok, err = pcall(function()
-	TeleportService:SetTeleportGui(screenGui)
-end)
-if not ok then
-	warn("[TeleportLoadingScreen] SetTeleportGui failed: " .. tostring(err))
+local prepareEvent = ReplicatedStorage:WaitForChild("StartRoomTeleportPrepare", 10)
+if prepareEvent then
+	prepareEvent.OnClientEvent:Connect(function(payload)
+		playIrisOut()
+	end)
 end

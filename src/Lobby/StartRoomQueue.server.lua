@@ -21,9 +21,25 @@
 -- Barrier_Players polygon. Stepping out (or disconnecting) auto-
 -- leaves. No prompts.
 
-local Players        = game:GetService("Players")
-local RunService     = game:GetService("RunService")
-local TeleportService = game:GetService("TeleportService")
+local Players          = game:GetService("Players")
+local RunService       = game:GetService("RunService")
+local TeleportService  = game:GetService("TeleportService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
+-- RemoteEvent fired the moment a queue countdown ends so the client
+-- can play its iris-out transition (and the "Survive 100 Days"
+-- title) BEFORE the teleport actually starts. TeleportLoadingScreen
+-- on the client listens for this; the server waits
+-- IRIS_PRELUDE_SECS after firing so the animation has time to fill
+-- the screen before Roblox swaps over to the SetTeleportGui loader.
+local TELEPORT_PREPARE_EVENT_NAME = "StartRoomTeleportPrepare"
+local teleportPrepareEvent = ReplicatedStorage:FindFirstChild(TELEPORT_PREPARE_EVENT_NAME)
+if not teleportPrepareEvent then
+	teleportPrepareEvent = Instance.new("RemoteEvent")
+	teleportPrepareEvent.Name = TELEPORT_PREPARE_EVENT_NAME
+	teleportPrepareEvent.Parent = ReplicatedStorage
+end
+local IRIS_PRELUDE_SECS = 0.6
 
 -- ─── Config ───────────────────────────────────────────────────────
 
@@ -593,6 +609,20 @@ local function tickLock(state)
 		local p = Players:GetPlayerByUserId(uid)
 		if p then table.insert(players, p) end
 	end
+
+	-- Iris prelude: ping each queued client so it can play the
+	-- center-out black-circle reveal + "Survive 100 Days" title BEFORE
+	-- Roblox starts the actual teleport. Then wait long enough for
+	-- the animation to fill the screen so the handoff to the
+	-- SetTeleportGui-registered loader is seamless.
+	for _, p in players do
+		teleportPrepareEvent:FireClient(p, {
+			room    = state.room.Name,
+			subtitle = "Survive 100 Days",
+		})
+	end
+	task.wait(IRIS_PRELUDE_SECS)
+
 	if typeof(_G.OnRoomFull) == "function" then
 		pcall(_G.OnRoomFull, state.room, players)
 	else
