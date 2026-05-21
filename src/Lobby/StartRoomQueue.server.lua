@@ -39,7 +39,7 @@ if not teleportPrepareEvent then
 	teleportPrepareEvent.Name = TELEPORT_PREPARE_EVENT_NAME
 	teleportPrepareEvent.Parent = ReplicatedStorage
 end
-local IRIS_PRELUDE_SECS = 0.6
+local IRIS_PRELUDE_SECS = 0.4
 
 -- ─── Config ───────────────────────────────────────────────────────
 
@@ -471,14 +471,41 @@ end
 
 -- ─── Sweep loop ──────────────────────────────────────────────────
 
+-- Spin up a destination server in the background as soon as the lock
+-- countdown starts. By the time the 10 s timer ticks out, Roblox has
+-- (usually) finished the matchmaker / spin-up phase, so the actual
+-- TeleportAsync can drop the players straight into a running
+-- instance instead of waiting for one to come up. Cuts the post-
+-- iris black-screen wait significantly when it works; on failure
+-- we just fall through to the normal "Roblox picks any server"
+-- path so nothing breaks.
+local function startReserveAsync(state)
+	if state.reserveStarted then return end
+	state.reserveStarted = true
+	task.spawn(function()
+		local placeId = state.room:GetAttribute("DestinationPlaceId") or DEFAULT_PLACE_ID
+		local ok, codeOrErr, _serverInstanceId = pcall(function()
+			return TeleportService:ReserveServer(placeId)
+		end)
+		if ok and type(codeOrErr) == "string" then
+			state.reservedAccessCode = codeOrErr
+			print(string.format("%s %s pre-reserved destination server (place %d)",
+				LOG_TAG, state.room.Name, placeId))
+		else
+			-- ReserveServer can fail in Studio (no API access) or
+			-- when the live game is rate-limited. Don't warn — the
+			-- teleport falls back to the public matchmaker.
+		end
+	end)
+end
+
 -- Teleport the given players into the room's destination place.
 -- Each room can carry a `DestinationPlaceId` attribute on its
 -- Folder/Model to send players to a custom destination; falls back
 -- to DEFAULT_PLACE_ID (the same place LobbyServer's lobby/save flow
--- targets). Returns true on success so the caller can keep the
--- lock until the teleport actually fires off — that way a failed
--- TeleportAsync doesn't leave the room stuck "empty but countdown
--- ran" with players still standing on the pad.
+-- targets). If startReserveAsync had time to grab an access code
+-- the teleport piggy-backs on that already-running instance for a
+-- faster join.
 local function teleportPlayers(state, players)
 	if #players == 0 then return true end
 	local placeId = state.room:GetAttribute("DestinationPlaceId") or DEFAULT_PLACE_ID
@@ -488,6 +515,9 @@ local function teleportPlayers(state, players)
 		fromRoom    = state.room.Name,
 		playerCount = #players,
 	})
+	if state.reservedAccessCode then
+		teleportOptions.ReservedServerAccessCode = state.reservedAccessCode
+	end
 
 	local ok, err = pcall(function()
 		TeleportService:TeleportAsync(placeId, players, teleportOptions)
@@ -704,10 +734,14 @@ local function sweep()
 					-- Last queued player physically left the place
 					-- (teleport succeeded, or they timed out).
 					-- Fully reset the room.
-					state.teleporting     = false
-					state.teleportingSince = nil
-					state.locked          = false
-					state.timerExpires    = nil
+					state.teleporting       = false
+					state.teleportingSince  = nil
+					state.locked            = false
+					state.timerExpires      = nil
+					-- Reservation was spent on the teleport above;
+					-- next lock cycle needs a fresh pre-warm.
+					state.reservedAccessCode = nil
+					state.reserveStarted     = false
 					updateCount(state)
 					print(string.format("%s %s teleport complete — room reset",
 						LOG_TAG, state.room.Name))
@@ -722,9 +756,19 @@ local function sweep()
 					state.timerExpires = os.clock() + FULL_TIMER_SECS
 					print(string.format("%s %s reached capacity (%d) — %ds countdown started",
 						LOG_TAG, state.room.Name, state.maxPlayers, FULL_TIMER_SECS))
+					-- Pre-warm the destination instance in the
+					-- background so the actual teleport when the
+					-- countdown ends has a running server to land in
+					-- instead of waiting for Roblox to spin one up.
+					startReserveAsync(state)
 					updateCount(state)
 				elseif state.locked and size < state.maxPlayers then
 					state.locked = false
+					-- Lock was cancelled (player walked out). Clear
+					-- any reserved server so the next lock cycle
+					-- triggers a fresh reservation.
+					state.reservedAccessCode = nil
+					state.reserveStarted     = false
 					state.timerExpires = nil
 					updateCount(state)
 					print(string.format("%s %s lock cancelled — player left during countdown",
