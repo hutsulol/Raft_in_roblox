@@ -34,9 +34,17 @@ local LOG_TAG        = "[LobbyTeleportFX]"
 
 -- ── Iris-out played on the lobby client BEFORE teleport ───────
 
-local irisGui  -- single instance; replaced on every fresh trigger.
+local irisGui    -- single instance once it's been built.
+local irisActive = false
 
 local function playIrisOut()
+	-- If the iris is already on screen (or mid-grow), ignore extra
+	-- triggers. The server can occasionally double-fire the prepare
+	-- event during the lock→teleport hand-off, and destroying the
+	-- live GUI to restart from a tiny circle looks exactly like a
+	-- frame-stutter to the player.
+	if irisActive then return end
+	irisActive = true
 	if irisGui then irisGui:Destroy() end
 
 	irisGui = Instance.new("ScreenGui")

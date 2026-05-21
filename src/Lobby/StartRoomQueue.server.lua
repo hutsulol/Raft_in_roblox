@@ -640,6 +640,15 @@ local function tickLock(state)
 		if p then table.insert(players, p) end
 	end
 
+	-- Flip into the teleporting phase BEFORE the iris prelude wait.
+	-- tickLock runs on every sweep tick — if we yielded here while
+	-- still state.teleporting==false, the next tick would re-enter
+	-- this branch and fire the prepare event a second (and third…)
+	-- time, stacking iris animations on top of each other.
+	state.teleporting      = true
+	state.teleportingSince = os.clock()
+	updateCount(state)  -- flips the label to "Loading"
+
 	-- Iris prelude: ping each queued client so it can play the
 	-- center-out black-circle reveal + "Survive 100 Days" title BEFORE
 	-- Roblox starts the actual teleport. Then wait long enough for
@@ -666,10 +675,6 @@ local function tickLock(state)
 	for _, p in players do
 		freezePlayer(p)
 	end
-
-	state.teleporting     = true
-	state.teleportingSince = os.clock()
-	updateCount(state)  -- flips the label to "Loading"
 end
 
 local function sweep()
