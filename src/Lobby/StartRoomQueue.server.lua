@@ -114,12 +114,6 @@ local UTILITY_CLASSES = {
 	UICorner = true, UIStroke = true, UIGradient = true,
 }
 
-local function defaultMaxFor(roomModel)
-	local attr = roomModel:GetAttribute("MaxPlayers")
-	if type(attr) == "number" then return attr end
-	return DEFAULT_MAX_BY_NAME[roomModel.Name] or FALLBACK_MAX
-end
-
 -- Empty an entry's player-specific visuals — used both to scrub
 -- newly-cloned slots into a neutral state and to clear a slot when
 -- its assigned player walks out.
@@ -136,31 +130,22 @@ local function clearEntryVisuals(entry)
 	end
 end
 
--- Build exactly N visible slot entries inside `container` by cloning
--- `template`. Anything else (extra Studio-authored "Entry" duplicates,
--- leftover per-player entries from a previous session, …) is removed
--- so the slot count always matches MaxPlayers regardless of how many
--- placeholder entries the author dropped in.
-local function buildSlots(container, template, slotCount)
-	if not container or not template then return {} end
-
-	hideTemplate(template)
-
-	-- Sweep everything except the template + UI utility children.
-	for _, child in container:GetChildren() do
-		if not UTILITY_CLASSES[child.ClassName] and child ~= template then
-			child:Destroy()
-		end
-	end
-
+-- Pick up the Entry instances the Studio author already dropped into
+-- `container` and treat each one as a slot. We do NOT destroy /
+-- clone / reposition anything — the author's layout, count and
+-- positioning stays exactly as they built it. Per-player visuals
+-- (Name TextLabel, Headshot Image) get reset to a neutral idle
+-- state on script init, and filled / cleared by addPlayer /
+-- removePlayer.
+local function buildSlotsFromAuthoredEntries(container)
+	if not container then return {} end
 	local slots = {}
-	for i = 1, slotCount do
-		local entry = template:Clone()
-		entry.Name = "Slot_" .. i
-		pcall(function() entry.Visible = true end)
-		clearEntryVisuals(entry)
-		entry.Parent = container
-		table.insert(slots, { entry = entry, assignedTo = nil })
+	for _, child in container:GetChildren() do
+		if not UTILITY_CLASSES[child.ClassName] and child.Name == "Entry" then
+			pcall(function() child.Visible = true end)
+			clearEntryVisuals(child)
+			table.insert(slots, { entry = child, assignedTo = nil })
+		end
 	end
 	return slots
 end
@@ -175,10 +160,8 @@ local function ensureRoomState(roomModel)
 	local infoPart       = roomModel:FindFirstChild("InfoPart", true)
 	local bg             = infoPart and infoPart:FindFirstChild("Bg", true)
 	local bgContainer    = bg and bg:FindFirstChild("Container", true)
-	local bgTemplate     = bgContainer and bgContainer:FindFirstChild("Entry")
 	local partsGui       = infoPart and infoPart:FindFirstChild("ParticipantsGui", true)
 	local partsContainer = partsGui and partsGui:FindFirstChild("Container", true)
-	local partsTemplate  = partsContainer and partsContainer:FindFirstChild("Entry")
 	local countGui       = roomModel:FindFirstChild("CharacterCount", true)
 	local countLabel     = countGui and countGui:FindFirstChildWhichIsA("TextLabel", true)
 
@@ -191,13 +174,27 @@ local function ensureRoomState(roomModel)
 		barrierCF, barrierSize, attachCount = computeBarrierZone(barrier)
 	end
 
-	local maxPlayers = defaultMaxFor(roomModel)
+	-- Capacity derivation:
+	--   1. MaxPlayers attribute on the room (explicit override).
+	--   2. Number of authored "Entry" instances in either container
+	--      — lets the Studio author dictate capacity purely by how
+	--      many slot frames they dropped in.
+	--   3. DEFAULT_MAX_BY_NAME / FALLBACK_MAX.
+	local bgSlots    = buildSlotsFromAuthoredEntries(bgContainer)
+	local partsSlots = buildSlotsFromAuthoredEntries(partsContainer)
+	local maxPlayers = roomModel:GetAttribute("MaxPlayers")
+	if type(maxPlayers) ~= "number" then
+		maxPlayers = math.max(#bgSlots, #partsSlots)
+		if maxPlayers <= 0 then
+			maxPlayers = DEFAULT_MAX_BY_NAME[roomModel.Name] or FALLBACK_MAX
+		end
+	end
 
 	local state = {
 		room            = roomModel,
 		queue           = {},
-		bgSlots         = buildSlots(bgContainer,    bgTemplate,    maxPlayers),
-		partsSlots      = buildSlots(partsContainer, partsTemplate, maxPlayers),
+		bgSlots         = bgSlots,
+		partsSlots      = partsSlots,
 		countLabel      = countLabel,
 		maxPlayers      = maxPlayers,
 		ringCF          = ringCF,
@@ -222,14 +219,12 @@ local function ensureRoomState(roomModel)
 	roomState[roomModel] = state
 
 	print(string.format(
-		"%s registered %q. attachments=%s Ring=%s CountLabel=%s PartsTpl=%s BgTpl=%s Max=%d",
+		"%s registered %q. attachments=%s Ring=%s CountLabel=%s BgSlots=%d PartsSlots=%d Max=%d",
 		LOG_TAG, roomModel:GetFullName(),
 		tostring(attachCount),
 		tostring(ring and "ok" or "<missing>"),
 		tostring(countLabel and "ok" or "<missing>"),
-		tostring(partsTemplate and "ok" or "<missing>"),
-		tostring(bgTemplate and "ok" or "<missing>"),
-		state.maxPlayers))
+		#bgSlots, #partsSlots, state.maxPlayers))
 
 	return state
 end
