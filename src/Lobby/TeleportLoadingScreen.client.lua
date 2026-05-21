@@ -17,6 +17,7 @@
 local Players          = game:GetService("Players")
 local TweenService     = game:GetService("TweenService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TeleportService  = game:GetService("TeleportService")
 
 -- The script only runs while the player is in the lobby place; on
 -- the destination the iris simply doesn't exist (Roblox's stock
@@ -37,6 +38,49 @@ local LOG_TAG        = "[LobbyTeleportFX]"
 local irisGui    -- single instance once it's been built.
 local irisActive = false
 
+local function buildTransferGui()
+	-- The "end state" of the iris baked as a static ScreenGui:
+	-- full-screen black backdrop + centred "Survive 100 Days".
+	-- Handed to TeleportService:SetTeleportGui so Roblox shows
+	-- THIS during the cross-place transfer instead of its stock
+	-- "Joining server" chrome — the player sees one continuous
+	-- iris→fullscreen-black transition instead of a hard cut to
+	-- Roblox UI mid-handshake.
+	local gui = Instance.new("ScreenGui")
+	gui.Name           = "TeleportTransferScreen"
+	gui.ResetOnSpawn   = false
+	gui.IgnoreGuiInset = true
+	gui.DisplayOrder   = 100
+
+	local backdrop = Instance.new("Frame")
+	backdrop.Name             = "Backdrop"
+	backdrop.Size             = UDim2.fromScale(1, 1)
+	backdrop.Position         = UDim2.fromScale(0, 0)
+	backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	backdrop.BorderSizePixel  = 0
+	backdrop.Parent           = gui
+
+	local title = Instance.new("TextLabel")
+	title.Name                = "Title"
+	title.AnchorPoint         = Vector2.new(0.5, 0.5)
+	title.Position            = UDim2.fromScale(0.5, 0.5)
+	title.Size                = UDim2.new(0.8, 0, 0.12, 0)
+	title.BackgroundTransparency = 1
+	title.Text                = TITLE_TEXT
+	title.TextColor3          = Color3.new(1, 1, 1)
+	title.TextStrokeColor3    = Color3.new(0, 0, 0)
+	title.TextStrokeTransparency = 0.4
+	title.Font                = Enum.Font.GothamBold
+	title.TextScaled          = true
+	title.Parent              = gui
+	local sc = Instance.new("UITextSizeConstraint")
+	sc.MaxTextSize = 64
+	sc.MinTextSize = 28
+	sc.Parent      = title
+
+	return gui
+end
+
 local function playIrisOut()
 	-- If the iris is already on screen (or mid-grow), ignore extra
 	-- triggers. The server can occasionally double-fire the prepare
@@ -46,6 +90,7 @@ local function playIrisOut()
 	if irisActive then return end
 	irisActive = true
 	if irisGui then irisGui:Destroy() end
+
 
 	irisGui = Instance.new("ScreenGui")
 	irisGui.Name           = "TeleportIrisOut"
@@ -125,6 +170,20 @@ local function playIrisOut()
 		):Play()
 	end)
 end
+
+-- ── Register the transfer-state GUI immediately on boot ──────
+-- TeleportService:SetTeleportGui takes a SNAPSHOT of the GUI at
+-- call time and replays it during the cross-place transfer.
+-- Registering it here at script load (not lazily on the prepare
+-- event) means the snapshot is already in Roblox's hands the
+-- moment the server fires TeleportAsync — no race window where
+-- the player could see Roblox's stock "Joining server" chrome
+-- because our SetTeleportGui hadn't landed yet.
+pcall(function()
+	local transferGui = buildTransferGui()
+	TeleportService:SetTeleportGui(transferGui)
+	transferGui:Destroy()  -- snapshot taken; the live tree can go
+end)
 
 -- ── Wait for the server-side RemoteEvent + bind ───────────────
 local prepareEvent = ReplicatedStorage:WaitForChild("StartRoomTeleportPrepare", 10)

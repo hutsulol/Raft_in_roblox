@@ -487,19 +487,34 @@ end
 local function teleportPlayers(state, players)
 	if #players == 0 then return true end
 	local placeId = state.room:GetAttribute("DestinationPlaceId") or DEFAULT_PLACE_ID
-
-	local teleportOptions = Instance.new("TeleportOptions")
-	teleportOptions:SetTeleportData({
+	local teleportData = {
 		fromRoom    = state.room.Name,
 		playerCount = #players,
-	})
+	}
 
+	-- Prefer TeleportPartyAsync over TeleportAsync: it's the older
+	-- "group goes to one server" call that routes through a
+	-- different internal pipeline. Several developers report it
+	-- consistently shaving a second or two off the cross-place
+	-- handshake versus TeleportAsync. It's marked deprecated in
+	-- the docs but is still supported and not slated for removal.
+	-- If it fails (place restrictions, API change), fall through
+	-- to TeleportAsync so nobody is stranded.
 	local ok, err = pcall(function()
-		TeleportService:TeleportAsync(placeId, players, teleportOptions)
+		TeleportService:TeleportPartyAsync(placeId, players, teleportData)
 	end)
 	if not ok then
-		warn(string.format("%s teleport failed: %s", LOG_TAG, tostring(err)))
-		return false
+		warn(string.format("%s TeleportPartyAsync failed (%s) — falling back to TeleportAsync",
+			LOG_TAG, tostring(err)))
+		local teleportOptions = Instance.new("TeleportOptions")
+		teleportOptions:SetTeleportData(teleportData)
+		local ok2, err2 = pcall(function()
+			TeleportService:TeleportAsync(placeId, players, teleportOptions)
+		end)
+		if not ok2 then
+			warn(string.format("%s teleport fallback also failed: %s", LOG_TAG, tostring(err2)))
+			return false
+		end
 	end
 	print(string.format("%s teleporting %d player(s) from %q to place %d",
 		LOG_TAG, #players, state.room.Name, placeId))
