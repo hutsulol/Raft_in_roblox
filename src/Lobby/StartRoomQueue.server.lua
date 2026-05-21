@@ -57,7 +57,7 @@ local DEFAULT_MAX_BY_NAME = {
 local FALLBACK_MAX     = 4
 local POLL_INTERVAL    = 0.25
 local VERTICAL_SLACK   = 12  -- studs of Y room above/below the zone
-local FULL_TIMER_SECS  = 10  -- countdown once a room hits capacity
+local FULL_TIMER_SECS  = 6   -- countdown once a room hits capacity
 
 -- Destination for the countdown-finished teleport. Same place ID
 -- LobbyServer uses for its raft / save-pad teleports. Each room can
