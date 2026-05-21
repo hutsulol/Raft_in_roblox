@@ -21,32 +21,14 @@ local RunService       = game:GetService("RunService")
 local TweenService     = game:GetService("TweenService")
 
 local LOADING_BG_ASSET = "rbxassetid://111898515497348"
-local LOG_TAG          = "[DestLoadingScreen]"
 
-print(LOG_TAG .. " script booted in ReplicatedFirst")
-
--- Hide Roblox's default loading screen as soon as we can. Must be
--- called BEFORE the player's GUI shows up, hence the very first line
--- of the script.
+-- Hide Roblox's default loading screen as soon as we can.
 pcall(function()
 	ReplicatedFirst:RemoveDefaultLoadingScreen()
 end)
 
--- ReplicatedFirst LocalScripts can start running before
--- Players.LocalPlayer is populated. Spin briefly until it is.
-local player = Players.LocalPlayer
-local waited = 0
-while not player and waited < 5 do
-	task.wait(0.05)
-	waited = waited + 0.05
-	player = Players.LocalPlayer
-end
-if not player then
-	warn(LOG_TAG .. " LocalPlayer never resolved — aborting custom loader")
-	return
-end
+local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
-print(LOG_TAG .. " LocalPlayer + PlayerGui ready, building screen")
 
 -- ── Build the ScreenGui ────────────────────────────────────────
 local screenGui = Instance.new("ScreenGui")
@@ -134,7 +116,6 @@ task.spawn(function()
 	if not game:IsLoaded() then
 		game.Loaded:Wait()
 	end
-	print(LOG_TAG .. " game.Loaded — finishing bar, dismissing screen")
 	-- Snap the bar to 100 % so the player sees the fill complete.
 	approachTween:Cancel()
 	local finishTween = TweenService:Create(
