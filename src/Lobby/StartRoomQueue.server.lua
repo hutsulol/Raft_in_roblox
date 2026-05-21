@@ -28,10 +28,10 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 -- RemoteEvent fired the moment a queue countdown ends so the client
 -- can play its iris-out transition (and the "Survive 100 Days"
--- title) BEFORE the teleport actually starts. TeleportLoadingScreen
--- on the client listens for this; the server waits
--- IRIS_PRELUDE_SECS after firing so the animation has time to fill
--- the screen before Roblox swaps over to the SetTeleportGui loader.
+-- title) IN PARALLEL with Roblox's transfer handshake — the
+-- server now fires the prepare event and TeleportAsync back to
+-- back so the player doesn't sit on a static black mask waiting
+-- for the actual teleport to begin.
 local TELEPORT_PREPARE_EVENT_NAME = "StartRoomTeleportPrepare"
 local teleportPrepareEvent = ReplicatedStorage:FindFirstChild(TELEPORT_PREPARE_EVENT_NAME)
 if not teleportPrepareEvent then
@@ -39,7 +39,6 @@ if not teleportPrepareEvent then
 	teleportPrepareEvent.Name = TELEPORT_PREPARE_EVENT_NAME
 	teleportPrepareEvent.Parent = ReplicatedStorage
 end
-local IRIS_PRELUDE_SECS = 1.05
 
 -- ─── Config ───────────────────────────────────────────────────────
 
@@ -55,7 +54,7 @@ local DEFAULT_MAX_BY_NAME = {
 	DuelRing_4v4 = 8,
 }
 local FALLBACK_MAX     = 4
-local POLL_INTERVAL    = 0.25
+local POLL_INTERVAL    = 0.1   -- lower = teleport fires closer to T=0 of countdown end
 local VERTICAL_SLACK   = 12  -- studs of Y room above/below the zone
 local FULL_TIMER_SECS  = 10  -- countdown once a room hits capacity
 
@@ -649,12 +648,20 @@ local function tickLock(state)
 	state.teleportingSince = os.clock()
 	updateCount(state)  -- flips the label to "Loading"
 
-	-- Iris prelude: ping each queued client so it can play the
-	-- center-out black-circle reveal + "Survive 100 Days" title BEFORE
-	-- Roblox starts the actual teleport. Then wait long enough for
-	-- the animation to fill the screen so the handoff to the
-	-- SetTeleportGui-registered loader is seamless.
-	print(string.format("%s firing iris prepare event to %d player(s) for room %q",
+	-- Freeze each player immediately so they can't step out of the
+	-- zone during the teleport handshake.
+	for _, p in players do
+		freezePlayer(p)
+	end
+
+	-- Fire iris event + TeleportAsync simultaneously so the iris
+	-- animation plays in parallel with Roblox's transfer handshake
+	-- instead of preceding it. Skipping the prelude wait saves the
+	-- ~1 s the player previously sat staring at a
+	-- black mask before the actual teleport even began. The Roblox
+	-- transfer screen will replace the iris around the time it hits
+	-- the screen edges, so the visual handoff still reads smoothly.
+	print(string.format("%s firing iris prepare event + teleport to %d player(s) for room %q",
 		LOG_TAG, #players, state.room.Name))
 	for _, p in players do
 		teleportPrepareEvent:FireClient(p, {
@@ -662,18 +669,11 @@ local function tickLock(state)
 			subtitle = "Survive 100 Days",
 		})
 	end
-	task.wait(IRIS_PRELUDE_SECS)
 
 	if typeof(_G.OnRoomFull) == "function" then
 		pcall(_G.OnRoomFull, state.room, players)
 	else
 		teleportPlayers(state, players)
-	end
-
-	-- Freeze each player immediately so they can't step out of the
-	-- zone during the teleport handshake.
-	for _, p in players do
-		freezePlayer(p)
 	end
 end
 
