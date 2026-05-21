@@ -251,17 +251,33 @@ end
 
 -- ─── Discovery: pick rooms based on where the script lives ──────
 
+-- A "room container" is the closest Folder/Model ancestor of the
+-- barrier that ALSO carries one of the room's UI pieces (InfoPart or
+-- CharacterCount). That lets us climb through an intermediate
+-- RingBeams folder without stopping there, and stop before we hit a
+-- DuelRingsGroup-style wrapper that contains multiple rooms.
+local function isRoomContainer(container)
+	if not container then return false end
+	if not (container:IsA("Folder") or container:IsA("Model")) then return false end
+	return container:FindFirstChild("CharacterCount", true) ~= nil
+		or container:FindFirstChild("InfoPart", true) ~= nil
+end
+
 local function findRoomFor(barrier)
 	local cur = barrier.Parent
 	while cur and cur ~= workspace do
-		if cur:IsA("Model") then return cur end
+		if isRoomContainer(cur) then return cur end
 		cur = cur.Parent
 	end
 	return nil
 end
 
 local parent = script.Parent
-local isInsideRoom = parent and parent:IsA("Model")
+-- Per-room mode triggers when the script lives directly inside a
+-- container that already qualifies as a room (has CharacterCount /
+-- InfoPart under it). Accept Folder or Model — your DuelRing_*
+-- wrappers are Folders, not Models.
+local isInsideRoom = isRoomContainer(parent)
 
 if isInsideRoom then
 	-- Per-room mode: bind to script.Parent only.
