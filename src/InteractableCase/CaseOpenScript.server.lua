@@ -56,15 +56,24 @@ end
 
 local track = animator:LoadAnimation(animation)
 track.Priority = Enum.AnimationPriority.Action
-print(string.format("%s bound to prompt at %s", LOG_TAG, primaryPart:GetFullName()))
+print(string.format("%s bound to prompt at %s | animId=%q | trackLength=%.3f",
+	LOG_TAG, primaryPart:GetFullName(), tostring(animation.AnimationId), track.Length))
 
 local playing = false
-prompt.Triggered:Connect(function(_player)
+prompt.Triggered:Connect(function(player)
 	if caseModel:GetAttribute(OPEN_ATTR) or playing then return end
 	playing = true
 	prompt.Enabled = false
+	print(string.format("%s triggered by %s — playing animation", LOG_TAG, player.Name))
 	track:Play()
-	track.Stopped:Wait()
+	-- Some empty / mis-uploaded animations end before Stopped can
+	-- fire — fall back on a length-based wait instead.
+	if track.Length > 0 then
+		task.wait(track.Length)
+	else
+		warn(string.format("%s track length is 0 — animation %q may be empty / not uploaded / not owned by the game",
+			LOG_TAG, tostring(animation.AnimationId)))
+	end
 	caseModel:SetAttribute(OPEN_ATTR, true)
 	playing = false
 	-- Prompt stays disabled — case is one-shot per spec.
