@@ -20,6 +20,7 @@ local OPEN_ATTR          = "CaseOpened"
 local LOG_TAG            = "[CaseOpen]"
 
 local caseModel = script.Parent
+print(string.format("%s booting under %s", LOG_TAG, caseModel:GetFullName()))
 
 local function findStandard()
 	-- Accept the exact name first; fall back to any inner Model that
@@ -36,8 +37,15 @@ local function findStandard()
 end
 
 local function findPromptAnchor(standardModel)
-	-- Prefer the literal RootPart; fall back to PrimaryPart, then
-	-- to the first BasePart so authoring isn't tied to one naming.
+	-- Prefer a top-level PrimaryPart on the InteractableCase Model
+	-- (it's the part actually centred on the visible mesh, so the
+	-- prompt floats over the case rather than hidden inside its
+	-- inner geometry). Fall back through BoundingBox -> RootPart ->
+	-- standardModel.PrimaryPart -> first BasePart so the script
+	-- still works for cases authored without a specific anchor.
+	if caseModel.PrimaryPart then return caseModel.PrimaryPart end
+	local bb = standardModel:FindFirstChild("BoundingBox")
+	if bb and bb:IsA("BasePart") then return bb end
 	local root = standardModel:FindFirstChild("RootPart")
 	if root and root:IsA("BasePart") then return root end
 	if standardModel.PrimaryPart then return standardModel.PrimaryPart end
@@ -77,13 +85,21 @@ end
 -- create one. Either way force the key + display props so behaviour
 -- is consistent.
 local prompt = anchor:FindFirstChildOfClass("ProximityPrompt")
-	or Instance.new("ProximityPrompt", anchor)
+if not prompt then
+	prompt = Instance.new("ProximityPrompt")
+	prompt.Parent = anchor
+end
 prompt.KeyboardKeyCode       = Enum.KeyCode.E
 prompt.ActionText            = PROMPT_ACTION_TEXT
 prompt.ObjectText            = PROMPT_OBJECT_TEXT
 prompt.MaxActivationDistance = PROMPT_DISTANCE
 prompt.HoldDuration          = PROMPT_HOLD_SECS
 prompt.RequiresLineOfSight   = false
+prompt.Style                 = Enum.ProximityPromptStyle.Default
+prompt.Exclusivity           = Enum.ProximityPromptExclusivity.OnePerButton
+prompt.Enabled               = true
+print(string.format("%s prompt ready on %s (distance %d)",
+	LOG_TAG, anchor:GetFullName(), PROMPT_DISTANCE))
 
 local track = animator:LoadAnimation(animation)
 track.Priority = Enum.AnimationPriority.Action
