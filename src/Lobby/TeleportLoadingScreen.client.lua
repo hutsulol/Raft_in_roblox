@@ -91,6 +91,27 @@ local function playIrisOut()
 	irisActive = true
 	if irisGui then irisGui:Destroy() end
 
+	-- Play ReplicatedStorage.Sounds.fear_sound at the same moment
+	-- the iris starts growing so the audio cue rises in lockstep
+	-- with the black circle covering the screen. Cloned so the
+	-- template stays untouched; SoundService parent makes it a
+	-- 2D / non-positional play that survives until natural
+	-- completion (the iris itself only lives ~0.3 s; the teleport
+	-- takes the player out before this Destroy ever needs to fire).
+	pcall(function()
+		local SoundService = game:GetService("SoundService")
+		local soundsFolder = ReplicatedStorage:FindFirstChild("Sounds")
+		local template = soundsFolder and soundsFolder:FindFirstChild("fear_sound")
+		if template and template:IsA("Sound") then
+			local sound = template:Clone()
+			sound.Parent = SoundService
+			sound:Play()
+			sound.Stopped:Once(function() sound:Destroy() end)
+		else
+			warn(LOG_TAG .. " ReplicatedStorage.Sounds.fear_sound missing — skipping audio")
+		end
+	end)
+
 
 	irisGui = Instance.new("ScreenGui")
 	irisGui.Name           = "TeleportIrisOut"
