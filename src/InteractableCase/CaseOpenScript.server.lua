@@ -16,8 +16,11 @@
 --     │    └─ RootPart, BoundingBox, Lower_part, Upper_part, Neon, …
 --     └─ … (AbilityOrb, BundlePromptPart, etc.)
 
-local OPEN_ATTR = "CaseOpened"
-local LOG_TAG   = "[CaseOpen]"
+local OPEN_ATTR  = "CaseOpened"
+local LOG_TAG    = "[CaseOpen]"
+local SOUND_NAME = "fear_sound"
+
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local standardModel = script.Parent
 local caseModel     = standardModel.Parent
@@ -65,6 +68,23 @@ prompt.Triggered:Connect(function(player)
 	playing = true
 	prompt.Enabled = false
 	print(string.format("%s triggered by %s — playing animation", LOG_TAG, player.Name))
+
+	-- Play fear_sound (ReplicatedStorage/Sounds) positionally on
+	-- the case so it ducks with distance and stereo-pans toward
+	-- the player. Clone the template so concurrent triggers don't
+	-- interrupt each other; auto-destroy after Stopped.
+	local soundTemplate = ReplicatedStorage:FindFirstChild("Sounds")
+		and ReplicatedStorage.Sounds:FindFirstChild(SOUND_NAME)
+	if soundTemplate and soundTemplate:IsA("Sound") then
+		local sound = soundTemplate:Clone()
+		sound.Parent = primaryPart
+		sound:Play()
+		sound.Stopped:Once(function() sound:Destroy() end)
+	else
+		warn(string.format("%s ReplicatedStorage.Sounds.%s missing — skipping audio",
+			LOG_TAG, SOUND_NAME))
+	end
+
 	track:Play()
 	-- Some empty / mis-uploaded animations end before Stopped can
 	-- fire — fall back on a length-based wait instead.
