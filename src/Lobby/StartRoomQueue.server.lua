@@ -40,6 +40,13 @@ if not teleportPrepareEvent then
 	teleportPrepareEvent.Parent = ReplicatedStorage
 end
 
+-- Time the server holds between firing the iris event and calling
+-- TeleportAsync. Gives the client's iris + fear_sound a chance to
+-- play to a watchable state before Roblox's transfer screen
+-- replaces it. Effectively delays the actual teleport from T=10
+-- (countdown end) to T=11.
+local IRIS_PRELUDE_SECS = 1.0
+
 -- ─── Config ───────────────────────────────────────────────────────
 
 -- Capacity ("MAX" in the count label) reads from a MaxPlayers
@@ -645,14 +652,13 @@ local function tickLock(state)
 		freezePlayer(p)
 	end
 
-	-- Fire iris event + TeleportAsync simultaneously so the iris
-	-- animation plays in parallel with Roblox's transfer handshake
-	-- instead of preceding it. Skipping the prelude wait saves the
-	-- ~1 s the player previously sat staring at a
-	-- black mask before the actual teleport even began. The Roblox
-	-- transfer screen will replace the iris around the time it hits
-	-- the screen edges, so the visual handoff still reads smoothly.
-	print(string.format("%s firing iris prepare event + teleport to %d player(s) for room %q",
+	-- Fire the iris event first so the client can start its
+	-- black-circle + fear_sound build-up, then hold for 1 s before
+	-- calling TeleportAsync. Gives the animation room to play to
+	-- a watchable state before Roblox's transfer screen takes over.
+	-- state.teleporting is already true above, so sweep ticks during
+	-- this wait won't re-enter the timer-expired branch.
+	print(string.format("%s firing iris prepare event to %d player(s) for room %q",
 		LOG_TAG, #players, state.room.Name))
 	for _, p in players do
 		teleportPrepareEvent:FireClient(p, {
@@ -660,6 +666,7 @@ local function tickLock(state)
 			subtitle = "Survive 100 Days",
 		})
 	end
+	task.wait(IRIS_PRELUDE_SECS)
 
 	if typeof(_G.OnRoomFull) == "function" then
 		pcall(_G.OnRoomFull, state.room, players)
