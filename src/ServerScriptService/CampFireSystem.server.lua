@@ -40,6 +40,7 @@ local BONUS_THRESHOLD = 20    -- remaining < this → proportional bonus
 local GROWTH_PER_LOG  = 0.4   -- +40% intensity per extra log
 local TICK            = 0.5   -- burn-timer resolution
 local PROMPT_RANGE    = 12
+local ADD_COOLDOWN    = 0.2   -- min seconds between feeding logs
 
 -- Visual baseline @ 1 log.
 local SMOKE_OPACITY_BASE = 0.1
@@ -242,11 +243,32 @@ local function ensureBurnLoop(state)
 end
 
 -- ─── Feed a log ───────────────────────────────────────────────────
+local function playDropSound(state)
+	local template = state.dropSound
+	if not template then return end
+	-- Clone so rapid feeds overlap cleanly instead of cutting each other.
+	local clone = template:Clone()
+	clone.Parent = template.Parent
+	clone:Play()
+	clone.Ended:Once(function() clone:Destroy() end)
+	-- Fallback cleanup in case Ended never fires (asset not loaded).
+	task.delay((clone.TimeLength > 0 and clone.TimeLength or 3) + 1, function()
+		if clone and clone.Parent then clone:Destroy() end
+	end)
+end
+
 local function addLog(state, player)
 	if state.logsAdded >= MAX_LOGS then return end
 
+	-- Throttle feeds so a held / spammed E can't dump every log in a
+	-- single frame.
+	local now = os.clock()
+	if now - (state.lastAddAt or 0) < ADD_COOLDOWN then return end
+
 	local inv = _G.GetInventory and _G.GetInventory(player) or {}
 	if (inv.Log or 0) < 1 then return end
+
+	state.lastAddAt = now
 
 	if _G.RemoveResourceFromInventory then
 		_G.RemoveResourceFromInventory(player, "Log", 1)
@@ -254,6 +276,8 @@ local function addLog(state, player)
 		inv.Log = (inv.Log or 0) - 1
 	end
 	if _G.SendInventory then _G.SendInventory(player) end
+
+	playDropSound(state)
 
 	-- Contribution: a fresh start (no live fire) burns the flat base.
 	-- Topping up a dying fire converts the log into up to +50% so a
@@ -297,7 +321,10 @@ local function setupCampFire(model)
 	local bottomParts = collectBaseParts(bottom)
 
 	-- Effects (search the whole model so authoring depth doesn't matter).
-	local fireParticle, smoke, pointLight, sound
+	-- Two sounds: the looped "Drop Log" one-shot at the model root, and
+	-- the looped burning sound ("Camp Fire") inside the Fire part — tell
+	-- them apart by name so we don't fade the wrong one.
+	local fireParticle, smoke, pointLight, sound, dropSound
 	for _, d in model:GetDescendants() do
 		if not fireParticle and d:IsA("ParticleEmitter") and d.Name == "FireParticle" then
 			fireParticle = d
@@ -305,8 +332,12 @@ local function setupCampFire(model)
 			smoke = d
 		elseif not pointLight and d:IsA("Light") then
 			pointLight = d
-		elseif not sound and d:IsA("Sound") then
-			sound = d
+		elseif d:IsA("Sound") then
+			if d.Name == "Drop Log" then
+				dropSound = d
+			elseif not sound then
+				sound = d
+			end
 		end
 	end
 	-- Loose fallback: any ParticleEmitter if none was literally named FireParticle.
@@ -347,6 +378,8 @@ local function setupCampFire(model)
 		pointLight   = pointLight,
 		sound        = sound,
 		soundFullVolume = soundFullVolume,
+		dropSound    = dropSound,
+		lastAddAt    = 0,
 	}
 	states[model] = state
 
