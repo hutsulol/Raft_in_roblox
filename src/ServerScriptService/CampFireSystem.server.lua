@@ -505,10 +505,14 @@ local COOKED_SUFFIX  = "_Cooked"
 
 local cookProgress = {}  -- [droppedModel] = seconds accumulated in heat
 
+-- A fish is "adapted for cooking" if it carries a Decal named
+-- "cooked". The raw look is just the mesh's own texture showing
+-- through while that decal is transparent, so we don't require a
+-- separate "raw" Decal (it's often a SurfaceAppearance, not a Decal).
 local function findFishDecals(model)
 	local raw, cooked
 	for _, d in model:GetDescendants() do
-		if d:IsA("Decal") then
+		if d:IsA("Decal") or d:IsA("Texture") then
 			if d.Name == "raw" then raw = d
 			elseif d.Name == "cooked" then cooked = d end
 		end
@@ -581,11 +585,11 @@ task.spawn(function()
 				cookProgress[item] = nil
 			elseif not item:GetAttribute("Cooked") then
 				local raw, cooked = findFishDecals(item)
-				if raw and cooked then
+				if cooked then
 					local pos = itemPosition(item)
 					local inZone = pos ~= nil and #zones > 0 and posInZones(pos, zones)
 					if COOK_DEBUG then
-						print(string.format("%s cook-check %q: litZones=%d hasDecals=true inZone=%s progress=%.1f",
+						print(string.format("%s cook-check %q: litZones=%d inZone=%s progress=%.1f",
 							LOG_TAG, item.Name, #zones, tostring(inZone), cookProgress[item] or 0))
 					end
 					if inZone then
@@ -598,9 +602,6 @@ task.spawn(function()
 							cookProgress[item] = t
 						end
 					end
-				elseif COOK_DEBUG and (item.Name:lower():find("fish")) then
-					print(string.format("%s %q is a fish but missing decals (raw=%s cooked=%s)",
-						LOG_TAG, item.Name, tostring(raw ~= nil), tostring(cooked ~= nil)))
 				end
 			end
 		end
