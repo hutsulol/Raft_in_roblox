@@ -85,6 +85,7 @@ local function isPlacementBlocked(placeCF, ghostSize)
 		WorkBench = true, Purifier = true, Garden = true,
 		Bed_T = true,
 		Bed = true, Destitalor = true, bush = true, Furnace = true, Sawmill = true,
+		FireCamp = true,
 	}
 
 	for _, part in parts do

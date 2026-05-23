@@ -18,6 +18,15 @@ local recipes = {
 		description = "A workbench that allows crafting of advanced items when placed on the raft.",
 	},
 	{
+		name = "FireCamp",
+		displayName = "Campfire",
+		icon = "rbxassetid://116083064101694",
+		costs = {Log = 1},
+		craftType = "placeable",
+		category = "Technology",
+		description = "A campfire. Place it on your raft, then press E to feed it logs — more logs burn brighter and longer.",
+	},
+	{
 		name = "Hammer",
 		displayName = "Hammer",
 		icon = "rbxassetid://72168072336946",
