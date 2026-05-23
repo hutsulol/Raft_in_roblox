@@ -195,11 +195,16 @@ local function makeCookedFishTool(foodName)
 		if d:IsA("Script") or d:IsA("LocalScript") then d:Destroy() end
 	end
 
-	-- Show cooked, hide raw.
+	-- Show cooked, hide raw. Names are normalized (trim + lowercase)
+	-- because the raw decal is authored as " raw" with a leading space —
+	-- an exact == "raw" left it visible and overlapping the cooked look.
 	for _, d in tool:GetDescendants() do
-		if d:IsA("Decal") then
-			if d.Name == "raw" then d.Transparency = 1
-			elseif d.Name == "cooked" then d.Transparency = 0 end
+		if d:IsA("Decal") or d:IsA("Texture") then
+			local n = (d.Name:gsub("%s+", "")):lower()
+			if n == "raw" then d.Transparency = 1
+			elseif n == "cooked" then d.Transparency = 0 end
+		elseif d:IsA("SurfaceAppearance") and (d.Name:gsub("%s+", "")):lower() == "raw" then
+			d:Destroy()
 		end
 	end
 
@@ -332,16 +337,33 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 			local data = _G.GetFoodData(foodName)
 			local hum = tool.Parent and tool.Parent:FindFirstChildOfClass("Humanoid")
 			local animator = hum and hum:FindFirstChildOfClass("Animator")
+
+			-- Eating animation.
+			local track
 			local eatAnim = tool:FindFirstChild("Eat")
 			if animator and eatAnim and eatAnim:IsA("Animation") then
-				local ok, track = pcall(function() return animator:LoadAnimation(eatAnim) end)
-				if ok and track then track:Play() end
-			end
-			for _, d in tool:GetDescendants() do
-				if d:IsA("Sound") and d.Name == "Eat" then d:Play() break end
+				local ok, t = pcall(function() return animator:LoadAnimation(eatAnim) end)
+				if ok and t then track = t track:Play() end
 			end
 
-			task.wait(1)
+			-- Shared "Eating Sound" lives in ReplicatedStorage.Fish; clone
+			-- it onto the Handle so it plays positionally and per-bite.
+			local handle = tool:FindFirstChild("Handle")
+			local fishFolder = ReplicatedStorage:FindFirstChild("Fish")
+			local eatSound = fishFolder and fishFolder:FindFirstChild("Eating Sound")
+			if eatSound and eatSound:IsA("Sound") and handle then
+				local s = eatSound:Clone()
+				s.Parent = handle
+				s:Play()
+				s.Ended:Once(function() s:Destroy() end)
+				task.delay(6, function() if s and s.Parent then s:Destroy() end end)
+			end
+
+			-- Keep the fish in hand for the whole animation, then eat it.
+			-- (Destroying after a flat 1 s vanished it mid-animation; the
+			-- Eat clip runs a touch longer, so hold ~1.5 s.)
+			task.wait(1.5)
+
 			if data and player and player.Parent then
 				_G.RestoreHunger(player, data.hunger, data.hp)
 			end
