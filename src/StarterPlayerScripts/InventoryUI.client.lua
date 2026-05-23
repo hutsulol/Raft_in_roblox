@@ -88,7 +88,8 @@ local BAG_WITH_SAND_ICON = "rbxassetid://77748685223141"
 local GLASS_ICON = "rbxassetid://85347221722445"
 local GLASS_PANEL_ICON = "rbxassetid://79199838395462"
 
-local BLUE_FISH_ICON = "rbxassetid://95052485461834"
+local BLUE_FISH_ICON = "rbxassetid://79355503342560"
+local BLUE_FISH_COOKED_ICON = "rbxassetid://91351143221536"
 local CARP_FISH_ICON = "rbxassetid://122853256629696"
 local FISH_BONES_ICON = "rbxassetid://118274743954023"
 local FOIL_FISH_ICON = "rbxassetid://86978570169083"
@@ -126,7 +127,7 @@ local RESOURCE_ICONS = {
 	-- iterates RESOURCE_ICONS by its real keys to build resource
 	-- slots, and a metatable __index isn't iterable. Reuse the raw
 	-- fish icon for now (swap to a cooked-fish icon later).
-	Blue_Fish_Cooked      = BLUE_FISH_ICON,
+	Blue_Fish_Cooked      = BLUE_FISH_COOKED_ICON,
 	Carp_Fish_Cooked      = CARP_FISH_ICON,
 	Foil_Fish_Cooked      = FOIL_FISH_ICON,
 	Jelly_Fish_Cooked     = JELLY_FISH_ICON,
