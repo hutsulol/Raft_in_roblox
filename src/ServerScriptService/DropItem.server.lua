@@ -131,8 +131,6 @@ local function spawnPhysicalDrop(player, itemName, amount, isToolDrop, dropPosit
 	-- back to FALLBACK_TEMPLATE; tool drops use the fallback box.
 	local templateName = RESOURCE_TEMPLATES[itemName] or FALLBACK_TEMPLATE
 	local template = findTemplate(templateName)
-	print(string.format("[DropDebug] item=%q -> templateName=%q found=%s",
-		itemName, tostring(templateName), tostring(template ~= nil)))
 	if not template then
 		template = findTemplate(FALLBACK_TEMPLATE)
 	end

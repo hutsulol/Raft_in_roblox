@@ -506,18 +506,21 @@ local COOKED_SUFFIX  = "_Cooked"
 local cookProgress = {}  -- [droppedModel] = seconds accumulated in heat
 
 -- A fish is "adapted for cooking" if it carries a Decal named
--- "cooked". The raw look is just the mesh's own texture showing
--- through while that decal is transparent, so we don't require a
--- separate "raw" Decal (it's often a SurfaceAppearance, not a Decal).
+-- "cooked". The raw look may be a Decal/Texture OR a SurfaceAppearance
+-- named "raw"; we capture it whatever its class so cooking can hide
+-- it. Also collect the authored Scripts so we can stop the wiggle.
 local function findFishDecals(model)
-	local raw, cooked
+	local raw, cooked, scripts = nil, nil, {}
 	for _, d in model:GetDescendants() do
-		if d:IsA("Decal") or d:IsA("Texture") then
-			if d.Name == "raw" then raw = d
-			elseif d.Name == "cooked" then cooked = d end
+		if d.Name == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
+			cooked = d
+		elseif d.Name == "raw" then
+			raw = d
+		elseif d:IsA("BaseScript") then
+			table.insert(scripts, d)
 		end
 	end
-	return raw, cooked
+	return raw, cooked, scripts
 end
 
 local function itemPosition(item)
@@ -553,17 +556,35 @@ local function posInZones(pos, zones)
 	return false
 end
 
-local function cookFish(model, raw, cooked)
-	model:SetAttribute("Cooked", true)  -- authored wiggle Script stops on this
+local function cookFish(model, raw, cooked, scripts)
+	model:SetAttribute("Cooked", true)
 
+	-- Stop the authored flopping. The Cooked attribute is set above for
+	-- any script that watches it, but we also disable the scripts
+	-- outright so the fish goes still even if that wiring isn't present.
+	for _, s in scripts do
+		s.Disabled = true
+	end
+
+	-- Fade the cooked look in.
 	if cooked then
 		cooked.Transparency = 1
 		TweenService:Create(cooked, TweenInfo.new(COOK_FADE, Enum.EasingStyle.Linear),
 			{ Transparency = 0 }):Play()
 	end
+
+	-- Hide the raw look. A Decal/Texture can fade out; a SurfaceAppearance
+	-- has no Transparency, so remove it once the cooked decal has fully
+	-- faded in (otherwise the raw surface keeps showing through).
 	if raw then
-		TweenService:Create(raw, TweenInfo.new(COOK_FADE, Enum.EasingStyle.Linear),
-			{ Transparency = 1 }):Play()
+		if raw:IsA("Decal") or raw:IsA("Texture") then
+			TweenService:Create(raw, TweenInfo.new(COOK_FADE, Enum.EasingStyle.Linear),
+				{ Transparency = 1 }):Play()
+		else
+			task.delay(COOK_FADE, function()
+				if raw and raw.Parent then raw:Destroy() end
+			end)
+		end
 	end
 
 	-- Flip the resource so pickup yields the edible cooked variant.
@@ -572,8 +593,6 @@ local function cookFish(model, raw, cooked)
 		model:SetAttribute("ResourceType", resType .. COOKED_SUFFIX)
 	end
 end
-
-local COOK_DEBUG = true  -- flip off once cooking is verified
 
 task.spawn(function()
 	while true do
@@ -584,20 +603,14 @@ task.spawn(function()
 			if not item.Parent then
 				cookProgress[item] = nil
 			elseif not item:GetAttribute("Cooked") then
-				local raw, cooked = findFishDecals(item)
+				local raw, cooked, scripts = findFishDecals(item)
 				if cooked then
 					local pos = itemPosition(item)
-					local inZone = pos ~= nil and #zones > 0 and posInZones(pos, zones)
-					if COOK_DEBUG then
-						print(string.format("%s cook-check %q: litZones=%d inZone=%s progress=%.1f",
-							LOG_TAG, item.Name, #zones, tostring(inZone), cookProgress[item] or 0))
-					end
-					if inZone then
+					if pos and #zones > 0 and posInZones(pos, zones) then
 						local t = (cookProgress[item] or 0) + COOK_POLL
 						if t >= COOK_TIME then
 							cookProgress[item] = nil
-							cookFish(item, raw, cooked)
-							if COOK_DEBUG then print(LOG_TAG .. " COOKED " .. item.Name) end
+							cookFish(item, raw, cooked, scripts)
 						else
 							cookProgress[item] = t
 						end
