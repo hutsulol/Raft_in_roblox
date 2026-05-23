@@ -569,6 +569,8 @@ local function cookFish(model, raw, cooked)
 	end
 end
 
+local COOK_DEBUG = true  -- flip off once cooking is verified
+
 task.spawn(function()
 	while true do
 		task.wait(COOK_POLL)
@@ -581,15 +583,24 @@ task.spawn(function()
 				local raw, cooked = findFishDecals(item)
 				if raw and cooked then
 					local pos = itemPosition(item)
-					if pos and #zones > 0 and posInZones(pos, zones) then
+					local inZone = pos ~= nil and #zones > 0 and posInZones(pos, zones)
+					if COOK_DEBUG then
+						print(string.format("%s cook-check %q: litZones=%d hasDecals=true inZone=%s progress=%.1f",
+							LOG_TAG, item.Name, #zones, tostring(inZone), cookProgress[item] or 0))
+					end
+					if inZone then
 						local t = (cookProgress[item] or 0) + COOK_POLL
 						if t >= COOK_TIME then
 							cookProgress[item] = nil
 							cookFish(item, raw, cooked)
+							if COOK_DEBUG then print(LOG_TAG .. " COOKED " .. item.Name) end
 						else
 							cookProgress[item] = t
 						end
 					end
+				elseif COOK_DEBUG and (item.Name:lower():find("fish")) then
+					print(string.format("%s %q is a fish but missing decals (raw=%s cooked=%s)",
+						LOG_TAG, item.Name, tostring(raw ~= nil), tostring(cooked ~= nil)))
 				end
 			end
 		end
