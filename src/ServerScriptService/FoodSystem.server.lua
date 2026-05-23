@@ -335,34 +335,65 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 			tool:SetAttribute("Consumed", true)
 
 			local data = _G.GetFoodData(foodName)
-			local hum = tool.Parent and tool.Parent:FindFirstChildOfClass("Humanoid")
+			local char = player.Character
+			local hum = char and char:FindFirstChildOfClass("Humanoid")
 			local animator = hum and hum:FindFirstChildOfClass("Animator")
+			local hrp = char and char:FindFirstChild("HumanoidRootPart")
 
-			-- Eating animation.
+			-- Eating animation. Force non-looping so Stopped fires and we
+			-- can hold the fish for exactly the clip's length.
 			local track
 			local eatAnim = tool:FindFirstChild("Eat")
 			if animator and eatAnim and eatAnim:IsA("Animation") then
 				local ok, t = pcall(function() return animator:LoadAnimation(eatAnim) end)
-				if ok and t then track = t track:Play() end
+				if ok and t then
+					track = t
+					track.Looped = false
+					track:Play()
+				end
 			end
 
-			-- Shared "Eating Sound" lives in ReplicatedStorage.Fish; clone
-			-- it onto the Handle so it plays positionally and per-bite.
-			local handle = tool:FindFirstChild("Handle")
+			-- Shared eating sound lives in ReplicatedStorage.Fish. The
+			-- asset is named "Eating  Sound" (double space) — match on a
+			-- normalized name / "eating" substring so spacing/casing don't
+			-- matter. Parent it to the character (NOT the Handle) so it
+			-- survives the tool being destroyed and plays to the end.
 			local fishFolder = ReplicatedStorage:FindFirstChild("Fish")
-			local eatSound = fishFolder and fishFolder:FindFirstChild("Eating Sound")
-			if eatSound and eatSound:IsA("Sound") and handle then
+			local eatSound
+			if fishFolder then
+				for _, c in fishFolder:GetChildren() do
+					if c:IsA("Sound") then
+						local n = (c.Name:gsub("%s+", "")):lower()
+						if n == "eatingsound" or c.Name:lower():find("eating") then
+							eatSound = c
+							break
+						end
+					end
+				end
+			end
+			if eatSound then
 				local s = eatSound:Clone()
-				s.Parent = handle
+				s.Parent = hrp or workspace
 				s:Play()
 				s.Ended:Once(function() s:Destroy() end)
-				task.delay(6, function() if s and s.Parent then s:Destroy() end end)
+				task.delay(8, function() if s and s.Parent then s:Destroy() end end)
+			else
+				warn("[FoodSystem] no Eating Sound under ReplicatedStorage.Fish")
 			end
 
-			-- Keep the fish in hand for the whole animation, then eat it.
-			-- (Destroying after a flat 1 s vanished it mid-animation; the
-			-- Eat clip runs a touch longer, so hold ~1.5 s.)
-			task.wait(1.5)
+			-- Hold the fish in hand for the whole animation, then eat it.
+			-- Flat short waits cut the clip off; wait on Stopped, capped.
+			if track then
+				local done = false
+				track.Stopped:Once(function() done = true end)
+				local waited = 0
+				while not done and waited < 5 do
+					task.wait(0.1)
+					waited = waited + 0.1
+				end
+			else
+				task.wait(2)
+			end
 
 			if data and player and player.Parent then
 				_G.RestoreHunger(player, data.hunger, data.hp)
