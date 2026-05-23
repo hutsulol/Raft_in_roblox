@@ -556,6 +556,19 @@ local function posInZones(pos, zones)
 	return false
 end
 
+local function hideRaw(inst)
+	-- Decal/Texture fade out; SurfaceAppearance has no Transparency so
+	-- it's destroyed once the cooked decal has fully arrived.
+	if inst:IsA("Decal") or inst:IsA("Texture") then
+		TweenService:Create(inst, TweenInfo.new(COOK_FADE, Enum.EasingStyle.Linear),
+			{ Transparency = 1 }):Play()
+	else
+		task.delay(COOK_FADE, function()
+			if inst and inst.Parent then inst:Destroy() end
+		end)
+	end
+end
+
 local function cookFish(model, raw, cooked, scripts)
 	model:SetAttribute("Cooked", true)
 
@@ -566,24 +579,26 @@ local function cookFish(model, raw, cooked, scripts)
 		s.Disabled = true
 	end
 
-	-- Fade the cooked look in.
-	if cooked then
-		cooked.Transparency = 1
-		TweenService:Create(cooked, TweenInfo.new(COOK_FADE, Enum.EasingStyle.Linear),
-			{ Transparency = 0 }):Play()
+	-- One-time scan: log every appearance instance so we can see exactly
+	-- what produces the raw look (decal vs texture vs SurfaceAppearance
+	-- vs the mesh's own TextureID).
+	for _, d in model:GetDescendants() do
+		if d:IsA("Decal") or d:IsA("Texture") or d:IsA("SurfaceAppearance") then
+			print(string.format("%s appearance: %q class=%s", LOG_TAG, d.Name, d.ClassName))
+		elseif d:IsA("MeshPart") and d.TextureID ~= "" then
+			print(string.format("%s meshpart %q TextureID=%s", LOG_TAG, d.Name, d.TextureID))
+		end
 	end
 
-	-- Hide the raw look. A Decal/Texture can fade out; a SurfaceAppearance
-	-- has no Transparency, so remove it once the cooked decal has fully
-	-- faded in (otherwise the raw surface keeps showing through).
-	if raw then
-		if raw:IsA("Decal") or raw:IsA("Texture") then
-			TweenService:Create(raw, TweenInfo.new(COOK_FADE, Enum.EasingStyle.Linear),
-				{ Transparency = 1 }):Play()
-		else
-			task.delay(COOK_FADE, function()
-				if raw and raw.Parent then raw:Destroy() end
-			end)
+	-- Show every "cooked" overlay, hide every "raw" one (handles multiple
+	-- parts / mixed classes, not just the first found).
+	for _, d in model:GetDescendants() do
+		if d.Name == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
+			d.Transparency = 1
+			TweenService:Create(d, TweenInfo.new(COOK_FADE, Enum.EasingStyle.Linear),
+				{ Transparency = 0 }):Play()
+		elseif d.Name == "raw" then
+			hideRaw(d)
 		end
 	end
 

@@ -40,6 +40,12 @@ local RESOURCE_NAMES = {
 	"Iron_Ore", "Iron_Ingot",
 	"Blue_Fish", "Carp_Fish", "Fish_Bones", "Foil_Fish",
 	"Jelly_Fish", "Legendary_Fish", "Seabass_Fish", "Tilapia_Fish",
+	-- Cooked fish variants (produced by the campfire). Must be
+	-- registered so they sync to the client UI, persist, and count
+	-- toward stacks like any other resource.
+	"Blue_Fish_Cooked", "Carp_Fish_Cooked", "Foil_Fish_Cooked",
+	"Jelly_Fish_Cooked", "Legendary_Fish_Cooked", "Seabass_Fish_Cooked",
+	"Tilapia_Fish_Cooked",
 	"Banana", "Coconut", "Pineapple",
 	"Pineapple_Bush_Seed",
 }
