@@ -372,11 +372,15 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 				end
 			end
 			if eatSound then
-				local s = eatSound:Clone()
-				s.Parent = hrp or workspace
-				s:Play()
-				s.Ended:Once(function() s:Destroy() end)
-				task.delay(8, function() if s and s.Parent then s:Destroy() end end)
+				-- Lag the bite sound ~0.4 s behind the animation start so
+				-- it lands on the chomp, matching the fruit feel.
+				task.delay(0.4, function()
+					local s = eatSound:Clone()
+					s.Parent = hrp or workspace
+					s:Play()
+					s.Ended:Once(function() s:Destroy() end)
+					task.delay(8, function() if s and s.Parent then s:Destroy() end end)
+				end)
 			else
 				warn("[FoodSystem] no Eating Sound under ReplicatedStorage.Fish")
 			end
