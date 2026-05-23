@@ -9,6 +9,7 @@ local START_LOG = 200
 local START_PLASTIC = 0
 local START_STONE = 60
 local START_LEAVES = 60
+local START_SEABASS_FISH = 10  -- raw fish for campfire-cooking tests
 
 local Players = game:GetService("Players")
 
@@ -27,6 +28,7 @@ local function giveStartResources(player)
 	if START_PLASTIC > 0 then _G.AddResourceToInventory(player, "Plastic", START_PLASTIC, nil, true) end
 	if START_STONE > 0 then _G.AddResourceToInventory(player, "Stone", START_STONE, nil, true) end
 	if START_LEAVES > 0 then _G.AddResourceToInventory(player, "Leaves", START_LEAVES, nil, true) end
+	if START_SEABASS_FISH > 0 then _G.AddResourceToInventory(player, "Seabass_Fish", START_SEABASS_FISH, nil, true) end
 end
 
 Players.PlayerAdded:Connect(function(player)
