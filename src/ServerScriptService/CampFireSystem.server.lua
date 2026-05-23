@@ -505,6 +505,13 @@ local COOKED_SUFFIX  = "_Cooked"
 
 local cookProgress = {}  -- [droppedModel] = seconds accumulated in heat
 
+-- Decals are matched on a normalized name (trimmed + lowercased)
+-- because the authored "raw" decal is actually named " raw" with a
+-- leading space — an exact == "raw" never matched it.
+local function normName(inst)
+	return (inst.Name:gsub("%s+", "")):lower()
+end
+
 -- A fish is "adapted for cooking" if it carries a Decal named
 -- "cooked". The raw look may be a Decal/Texture OR a SurfaceAppearance
 -- named "raw"; we capture it whatever its class so cooking can hide
@@ -512,9 +519,10 @@ local cookProgress = {}  -- [droppedModel] = seconds accumulated in heat
 local function findFishDecals(model)
 	local raw, cooked, scripts = nil, nil, {}
 	for _, d in model:GetDescendants() do
-		if d.Name == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
+		local n = (d:IsA("Decal") or d:IsA("Texture") or d:IsA("SurfaceAppearance")) and normName(d)
+		if n == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
 			cooked = d
-		elseif d.Name == "raw" then
+		elseif n == "raw" then
 			raw = d
 		elseif d:IsA("BaseScript") then
 			table.insert(scripts, d)
@@ -579,26 +587,18 @@ local function cookFish(model, raw, cooked, scripts)
 		s.Disabled = true
 	end
 
-	-- One-time scan: log every appearance instance so we can see exactly
-	-- what produces the raw look (decal vs texture vs SurfaceAppearance
-	-- vs the mesh's own TextureID).
+	-- Show every "cooked" overlay, hide every "raw" one (handles multiple
+	-- parts / mixed classes / whitespace in names, not just the first).
 	for _, d in model:GetDescendants() do
 		if d:IsA("Decal") or d:IsA("Texture") or d:IsA("SurfaceAppearance") then
-			print(string.format("%s appearance: %q class=%s", LOG_TAG, d.Name, d.ClassName))
-		elseif d:IsA("MeshPart") and d.TextureID ~= "" then
-			print(string.format("%s meshpart %q TextureID=%s", LOG_TAG, d.Name, d.TextureID))
-		end
-	end
-
-	-- Show every "cooked" overlay, hide every "raw" one (handles multiple
-	-- parts / mixed classes, not just the first found).
-	for _, d in model:GetDescendants() do
-		if d.Name == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
-			d.Transparency = 1
-			TweenService:Create(d, TweenInfo.new(COOK_FADE, Enum.EasingStyle.Linear),
-				{ Transparency = 0 }):Play()
-		elseif d.Name == "raw" then
-			hideRaw(d)
+			local n = normName(d)
+			if n == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
+				d.Transparency = 1
+				TweenService:Create(d, TweenInfo.new(COOK_FADE, Enum.EasingStyle.Linear),
+					{ Transparency = 0 }):Play()
+			elseif n == "raw" then
+				hideRaw(d)
+			end
 		end
 	end
 

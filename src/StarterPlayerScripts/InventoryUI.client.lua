@@ -122,6 +122,17 @@ local RESOURCE_ICONS = {
 	Legendary_Fish = LEGENDARY_FISH_ICON,
 	Seabass_Fish = SEABASS_FISH_ICON,
 	Tilapia_Fish = TILAPIA_FISH_ICON,
+	-- Cooked fish variants need EXPLICIT keys here: rebuildSlotData
+	-- iterates RESOURCE_ICONS by its real keys to build resource
+	-- slots, and a metatable __index isn't iterable. Reuse the raw
+	-- fish icon for now (swap to a cooked-fish icon later).
+	Blue_Fish_Cooked      = BLUE_FISH_ICON,
+	Carp_Fish_Cooked      = CARP_FISH_ICON,
+	Foil_Fish_Cooked      = FOIL_FISH_ICON,
+	Jelly_Fish_Cooked     = JELLY_FISH_ICON,
+	Legendary_Fish_Cooked = LEGENDARY_FISH_ICON,
+	Seabass_Fish_Cooked   = SEABASS_FISH_ICON,
+	Tilapia_Fish_Cooked   = TILAPIA_FISH_ICON,
 	-- Fruits dropped from trees (Banana/Coconut) and the new
 	-- hand-harvested Pineapple, plus the matching seeds the player
 	-- can replant.
