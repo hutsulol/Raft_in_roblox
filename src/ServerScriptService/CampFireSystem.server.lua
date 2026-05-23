@@ -26,6 +26,7 @@
 
 local rs      = game:GetService("ReplicatedStorage")
 local Players  = game:GetService("Players")
+local TweenService = game:GetService("TweenService")
 
 local cupActionEvent = rs:WaitForChild("CupAction")
 
@@ -54,6 +55,12 @@ local SMOKE_SIZE_OUT    = 0.12
 local LIGHT_BRIGHT_OUT  = 0.2
 local LIGHT_RANGE_OUT   = 6
 local LIGHT_COLOR_OUT   = Color3.fromRGB(171, 76, 28)    -- #ab4c1c dim embers
+
+-- Burning-sound reach. RollOffMaxDistance @ 1 log, growing with the
+-- same +40%/log curve so a roaring fire is heard from further away.
+local SOUND_DIST_BASE = 60
+local SOUND_FADE_IN   = 1.5   -- volume ramp when the fire lights
+local SOUND_FADE_OUT  = 2.0   -- volume ramp when the fire dies
 
 local ORIG_ATTR = "CampFireOrigTransparency"
 
@@ -90,6 +97,50 @@ end
 local function setHidden(parts, hidden)
 	for _, p in parts do
 		p.Transparency = hidden and 1 or shownTransparency(p)
+	end
+end
+
+-- ─── Burning-sound fade / reach ──────────────────────────────────
+local function updateSound(state)
+	local sound = state.sound
+	if not sound then return end
+
+	if state.soundTween then
+		state.soundTween:Cancel()
+		state.soundTween = nil
+	end
+
+	if state.logsAdded >= 1 then
+		-- Fade up to full volume and push the audible range out with
+		-- the log count. If it wasn't already going, start it silent
+		-- so the ramp is from zero (smooth light-up).
+		local factor = 1 + GROWTH_PER_LOG * (state.logsAdded - 1)
+		sound.Looped = true
+		if not sound.IsPlaying then
+			sound.Volume = 0
+			sound:Play()
+		end
+		state.soundTween = TweenService:Create(
+			sound,
+			TweenInfo.new(SOUND_FADE_IN, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Volume = state.soundFullVolume, RollOffMaxDistance = SOUND_DIST_BASE * factor }
+		)
+		state.soundTween:Play()
+	elseif sound.IsPlaying then
+		-- Fire died: ease the volume down rather than cutting it, then
+		-- stop — but only if the player didn't re-light mid-fade.
+		local tween = TweenService:Create(
+			sound,
+			TweenInfo.new(SOUND_FADE_OUT, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ Volume = 0 }
+		)
+		state.soundTween = tween
+		tween:Play()
+		tween.Completed:Connect(function()
+			if state.logsAdded == 0 and sound.Volume <= 0.001 then
+				sound:Stop()
+			end
+		end)
 	end
 end
 
@@ -157,6 +208,8 @@ local function applyVisuals(state)
 		if state.smoke then state.smoke.Enabled = false end
 		if state.pointLight then state.pointLight.Enabled = false end
 	end
+
+	updateSound(state)
 end
 
 -- ─── Burn timer ───────────────────────────────────────────────────
@@ -244,7 +297,7 @@ local function setupCampFire(model)
 	local bottomParts = collectBaseParts(bottom)
 
 	-- Effects (search the whole model so authoring depth doesn't matter).
-	local fireParticle, smoke, pointLight
+	local fireParticle, smoke, pointLight, sound
 	for _, d in model:GetDescendants() do
 		if not fireParticle and d:IsA("ParticleEmitter") and d.Name == "FireParticle" then
 			fireParticle = d
@@ -252,6 +305,8 @@ local function setupCampFire(model)
 			smoke = d
 		elseif not pointLight and d:IsA("Light") then
 			pointLight = d
+		elseif not sound and d:IsA("Sound") then
+			sound = d
 		end
 	end
 	-- Loose fallback: any ParticleEmitter if none was literally named FireParticle.
@@ -259,6 +314,16 @@ local function setupCampFire(model)
 		for _, d in model:GetDescendants() do
 			if d:IsA("ParticleEmitter") then fireParticle = d break end
 		end
+	end
+
+	-- Capture the authored volume as the fade-in target, then mute +
+	-- stop so a fresh campfire is silent until the first log lights it.
+	local soundFullVolume = 0.5
+	if sound then
+		soundFullVolume = (sound.Volume > 0) and sound.Volume or 0.5
+		sound.Looped = true
+		sound.Volume = 0
+		sound:Stop()
 	end
 
 	for _, parts in logParts do cacheOriginals(parts) end
@@ -280,6 +345,8 @@ local function setupCampFire(model)
 		fireParticle = fireParticle,
 		smoke        = smoke,
 		pointLight   = pointLight,
+		sound        = sound,
+		soundFullVolume = soundFullVolume,
 	}
 	states[model] = state
 
