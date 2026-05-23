@@ -44,14 +44,16 @@ local PROMPT_RANGE    = 12
 local SMOKE_OPACITY_BASE = 0.1
 local SMOKE_SIZE_BASE    = 0.16
 local FIRE_BRIGHT_BASE   = 0.085
-local LIGHT_BRIGHT_BASE  = 0.34
-local LIGHT_RANGE_BASE   = 6
+local LIGHT_BRIGHT_BASE  = 0.3
+local LIGHT_RANGE_BASE   = 8
+local LIGHT_COLOR_ON     = Color3.fromRGB(255, 188, 20)  -- #ffbc14 lively flame
 
 -- Smouldering aftermath (burned out, 0 logs).
 local SMOKE_OPACITY_OUT = 0.1
 local SMOKE_SIZE_OUT    = 0.12
-local LIGHT_BRIGHT_OUT  = 0.1
-local LIGHT_RANGE_OUT   = 3
+local LIGHT_BRIGHT_OUT  = 0.2
+local LIGHT_RANGE_OUT   = 6
+local LIGHT_COLOR_OUT   = Color3.fromRGB(171, 76, 28)    -- #ab4c1c dim embers
 
 local ORIG_ATTR = "CampFireOrigTransparency"
 
@@ -133,6 +135,7 @@ local function applyVisuals(state)
 			state.pointLight.Enabled    = true
 			state.pointLight.Brightness = LIGHT_BRIGHT_BASE * factor
 			state.pointLight.Range      = LIGHT_RANGE_BASE * factor
+			state.pointLight.Color      = LIGHT_COLOR_ON
 		end
 	elseif aftermath then
 		-- Embers: no flame, faint smoke, dim glow.
@@ -146,6 +149,7 @@ local function applyVisuals(state)
 			state.pointLight.Enabled    = true
 			state.pointLight.Brightness = LIGHT_BRIGHT_OUT
 			state.pointLight.Range      = LIGHT_RANGE_OUT
+			state.pointLight.Color      = LIGHT_COLOR_OUT
 		end
 	else
 		-- Fresh, never lit: everything off.
