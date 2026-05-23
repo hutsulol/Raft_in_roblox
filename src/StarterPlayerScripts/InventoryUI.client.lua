@@ -32,11 +32,21 @@ if not equipFoodEvent then
 	equipFoodEvent = ReplicatedStorage:WaitForChild("EquipFoodAsTool", 5)
 end
 
-local FOOD_RESOURCE_SET = {
+-- Any "<fish>_Cooked" key (produced by the campfire) is edible like a
+-- fruit, so the metatable returns true for them without needing a
+-- per-fish entry when a new fish is adapted.
+local FOOD_RESOURCE_SET = setmetatable({
 	Banana    = true,
 	Coconut   = true,
 	Pineapple = true,
-}
+}, {
+	__index = function(_, k)
+		if type(k) == "string" and #k > 7 and k:sub(-7) == "_Cooked" then
+			return true
+		end
+		return nil
+	end,
+})
 
 -- Bush-seed-as-Tool flow. Riding on the same BushAction RemoteEvent
 -- HungerSystem already exposes for berry-bush placement avoids
@@ -126,6 +136,17 @@ local RESOURCE_ICONS = {
 	-- drives CupPurifier's ghost just like the berry bush.
 	Pineapple_Bush_Seed = "rbxassetid://128520746024640",
 }
+
+-- Cooked fish ("<fish>_Cooked") reuse their raw fish's icon so a newly
+-- adapted fish needs no extra entry here.
+setmetatable(RESOURCE_ICONS, {
+	__index = function(t, k)
+		if type(k) == "string" and #k > 7 and k:sub(-7) == "_Cooked" then
+			return rawget(t, k:sub(1, #k - 7))
+		end
+		return nil
+	end,
+})
 
 local TOOL_ICONS = {
 	["Hammer"] = "rbxassetid://72168072336946",

@@ -485,3 +485,114 @@ for _, child in workspace:GetDescendants() do
 		setupCampFire(child)
 	end
 end
+
+-- ═══════════════════════════════════════════════════════════════════
+-- COOKING
+-- A dropped fish (any item carrying both a "raw" and a "cooked" Decal)
+-- left inside a LIT campfire's bounds cooks over COOK_TIME. On
+-- completion the raw decal cross-fades into the cooked one, the fish
+-- is flagged Cooked (its authored wiggle Script reads this attribute
+-- to stop flopping), and its ResourceType flips to the "_Cooked"
+-- variant so picking it up yields the edible cooked fish.
+-- ═══════════════════════════════════════════════════════════════════
+local CollectionService = game:GetService("CollectionService")
+
+local COOK_TIME      = 10    -- seconds in the heat to finish
+local COOK_FADE      = 1     -- decal cross-fade duration
+local COOK_POLL      = 0.5   -- detection cadence
+local COOK_ZONE_PAD  = 3     -- vertical slack above/below the model bbox
+local COOKED_SUFFIX  = "_Cooked"
+
+local cookProgress = {}  -- [droppedModel] = seconds accumulated in heat
+
+local function findFishDecals(model)
+	local raw, cooked
+	for _, d in model:GetDescendants() do
+		if d:IsA("Decal") then
+			if d.Name == "raw" then raw = d
+			elseif d.Name == "cooked" then cooked = d end
+		end
+	end
+	return raw, cooked
+end
+
+local function itemPosition(item)
+	if item:IsA("BasePart") then return item.Position end
+	if item:IsA("Model") then
+		local ok, cf = pcall(function() return item:GetPivot() end)
+		if ok then return cf.Position end
+	end
+	return nil
+end
+
+-- Bounds of every campfire that's actually burning (≥1 live log).
+local function litCampfireZones()
+	local zones = {}
+	for model, state in pairs(states) do
+		if model.Parent and state.logsAdded >= 1 then
+			local cf, size = model:GetBoundingBox()
+			table.insert(zones, { cf = cf, half = size * 0.5 })
+		end
+	end
+	return zones
+end
+
+local function posInZones(pos, zones)
+	for _, z in zones do
+		local rel = z.cf:PointToObjectSpace(pos)
+		if math.abs(rel.X) <= z.half.X
+			and math.abs(rel.Z) <= z.half.Z
+			and math.abs(rel.Y) <= z.half.Y + COOK_ZONE_PAD then
+			return true
+		end
+	end
+	return false
+end
+
+local function cookFish(model, raw, cooked)
+	model:SetAttribute("Cooked", true)  -- authored wiggle Script stops on this
+
+	if cooked then
+		cooked.Transparency = 1
+		TweenService:Create(cooked, TweenInfo.new(COOK_FADE, Enum.EasingStyle.Linear),
+			{ Transparency = 0 }):Play()
+	end
+	if raw then
+		TweenService:Create(raw, TweenInfo.new(COOK_FADE, Enum.EasingStyle.Linear),
+			{ Transparency = 1 }):Play()
+	end
+
+	-- Flip the resource so pickup yields the edible cooked variant.
+	local resType = model:GetAttribute("ResourceType")
+	if typeof(resType) == "string" and resType:sub(-#COOKED_SUFFIX) ~= COOKED_SUFFIX then
+		model:SetAttribute("ResourceType", resType .. COOKED_SUFFIX)
+	end
+end
+
+task.spawn(function()
+	while true do
+		task.wait(COOK_POLL)
+		local zones = litCampfireZones()
+
+		for _, item in CollectionService:GetTagged("DroppedItem") do
+			if not item.Parent then
+				cookProgress[item] = nil
+			elseif not item:GetAttribute("Cooked") then
+				local raw, cooked = findFishDecals(item)
+				if raw and cooked then
+					local pos = itemPosition(item)
+					if pos and #zones > 0 and posInZones(pos, zones) then
+						local t = (cookProgress[item] or 0) + COOK_POLL
+						if t >= COOK_TIME then
+							cookProgress[item] = nil
+							cookFish(item, raw, cooked)
+						else
+							cookProgress[item] = t
+						end
+					end
+				end
+			end
+		end
+	end
+end)
+

@@ -42,6 +42,17 @@ local RESOURCE_TEMPLATES = {
 	Seabass_Fish    = "Seabass Fish",
 	Tilapia_Fish    = "Tilapia Fish",
 }
+-- Cooked fish ("<fish>_Cooked") re-drop using the same fish model as
+-- their raw counterpart, so dropping a cooked fish from the inventory
+-- spawns the fish (not the fallback box).
+setmetatable(RESOURCE_TEMPLATES, {
+	__index = function(t, k)
+		if type(k) == "string" and #k > 7 and k:sub(-7) == "_Cooked" then
+			return rawget(t, k:sub(1, #k - 7))
+		end
+		return nil
+	end,
+})
 
 -- Known resource names (items stored as counts in inventory, not as
 -- Tool instances in the backpack). Anything not in this set is handled
@@ -70,6 +81,15 @@ local RESOURCE_ITEMS = {
 	Seabass_Fish    = true,
 	Tilapia_Fish    = true,
 }
+-- Cooked fish behave as stackable resources just like their raw form.
+setmetatable(RESOURCE_ITEMS, {
+	__index = function(_, k)
+		if type(k) == "string" and #k > 7 and k:sub(-7) == "_Cooked" then
+			return true
+		end
+		return nil
+	end,
+})
 
 -- Fallback template for any unmapped items (tools, etc.)
 local FALLBACK_TEMPLATE = "box_model"

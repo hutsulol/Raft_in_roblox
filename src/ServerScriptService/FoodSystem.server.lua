@@ -22,12 +22,30 @@ local FOOD_DATA = {
 	PineApple = { hunger = 20, hp = 5 },
 }
 
+-- Cooked fish are an open-ended family: any inventory key ending in
+-- "_Cooked" (produced by the campfire from a raw fish) is edible for
+-- a flat ~35 % hunger. Keeping it a suffix rule means a newly adapted
+-- fish needs zero changes here.
+local COOKED_SUFFIX     = "_Cooked"
+local COOKED_FISH_HUNGER = 35   -- ~35 % of MAX_HUNGER (100)
+local COOKED_FISH_HP     = 5
+
+local function isCookedFish(name)
+	return type(name) == "string"
+		and #name > #COOKED_SUFFIX
+		and name:sub(-#COOKED_SUFFIX) == COOKED_SUFFIX
+end
+
 -- Published for the in-Tool Script (src/Fruits/<Name> ( Tool )/Script).
 -- The Script calls this on Tool.Activated to figure out how much
 -- hunger / HP to grant, so the values stay in one place and a tuning
 -- pass touches only this table.
 _G.GetFoodData = function(name)
-	return FOOD_DATA[name]
+	if FOOD_DATA[name] then return FOOD_DATA[name] end
+	if isCookedFish(name) then
+		return { hunger = COOKED_FISH_HUNGER, hp = COOKED_FISH_HP }
+	end
+	return nil
 end
 
 -- Shared eating animation. Anything held as a food Tool plays this
@@ -153,7 +171,47 @@ local function wrapModelAsTool(modelClone, foodName)
 	return tool
 end
 
+-- Build an edible Tool for a cooked fish. There is no separate cooked
+-- template — we reuse the raw fish model, strip its authored (wiggle)
+-- scripts so it sits still in hand, and show the "cooked" decal.
+local function makeCookedFishTool(foodName)
+	local rawKey = foodName:sub(1, #foodName - #COOKED_SUFFIX)
+	local template = findFoodTemplate(rawKey)
+		or findFoodTemplate((rawKey:gsub("_", " ")))
+	if not template then return nil end
+
+	local tool
+	if template:IsA("Tool") then
+		tool = template:Clone()
+		tool.Name = foodName
+		for _, d in tool:GetDescendants() do prepHoldablePart(d) end
+	else
+		tool = wrapModelAsTool(template:Clone(), foodName)
+	end
+	if not tool then return nil end
+
+	-- Kill the authored wiggle/flop logic so the held fish is static.
+	for _, d in tool:GetDescendants() do
+		if d:IsA("Script") or d:IsA("LocalScript") then d:Destroy() end
+	end
+
+	-- Show cooked, hide raw.
+	for _, d in tool:GetDescendants() do
+		if d:IsA("Decal") then
+			if d.Name == "raw" then d.Transparency = 1
+			elseif d.Name == "cooked" then d.Transparency = 0 end
+		end
+	end
+
+	return tool
+end
+
 local function makeFoodTool(foodName)
+	if isCookedFish(foodName) then
+		local fishTool = makeCookedFishTool(foodName)
+		if fishTool then return fishTool end
+	end
+
 	local template = findFoodTemplate(foodName)
 	if template then
 		if template:IsA("Tool") then
@@ -219,8 +277,8 @@ end
 equipEvent.OnServerEvent:Connect(function(player, foodName)
 	if typeof(foodName) ~= "string" then return end
 	-- Whitelist check only — the actual hunger / hp values live
-	-- in the in-tool Script and are looked up via _G.GetFoodData.
-	if not FOOD_DATA[foodName] then return end
+	-- in the in-tool Script (fruits) or _G.GetFoodData (cooked fish).
+	if not _G.GetFoodData(foodName) then return end
 
 	local inv = _G.GetInventory(player)
 	if (inv[foodName] or 0) < 1 then return end
@@ -262,11 +320,34 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 		tool:SetAttribute("Ready", true)
 	end)
 
-	-- Tool.Activated → eating is now handled by the per-Tool Script
-	-- (src/Fruits/<Name> ( Tool )/Script): plays the Eat animation,
-	-- plays the shared "Eating Fruit Sound", waits the 0.5 s eat
-	-- delay, then calls _G.RestoreHunger + Destroy. FoodSystem only
-	-- owns the equip / refund plumbing now.
+	-- Fruits handle Tool.Activated via their own per-Tool Script. Cooked
+	-- fish have no such script (we strip the authored one so it doesn't
+	-- wiggle in hand), so eat them here: play the Eat animation + the
+	-- authored "Eat" sound, then restore hunger and consume.
+	if isCookedFish(foodName) then
+		tool.Activated:Connect(function()
+			if tool:GetAttribute("Consumed") then return end
+			tool:SetAttribute("Consumed", true)
+
+			local data = _G.GetFoodData(foodName)
+			local hum = tool.Parent and tool.Parent:FindFirstChildOfClass("Humanoid")
+			local animator = hum and hum:FindFirstChildOfClass("Animator")
+			local eatAnim = tool:FindFirstChild("Eat")
+			if animator and eatAnim and eatAnim:IsA("Animation") then
+				local ok, track = pcall(function() return animator:LoadAnimation(eatAnim) end)
+				if ok and track then track:Play() end
+			end
+			for _, d in tool:GetDescendants() do
+				if d:IsA("Sound") and d.Name == "Eat" then d:Play() break end
+			end
+
+			task.wait(1)
+			if data and player and player.Parent then
+				_G.RestoreHunger(player, data.hunger, data.hp)
+			end
+			tool:Destroy()
+		end)
+	end
 
 	tool.AncestryChanged:Connect(function(_, newParent)
 		if not tool:GetAttribute("Ready") then return end
