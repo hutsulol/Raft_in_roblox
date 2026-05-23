@@ -160,6 +160,23 @@ local function spawnPhysicalDrop(player, itemName, amount, isToolDrop, dropPosit
 	clone:SetAttribute("IsToolDrop", isToolDrop and true or false)
 	clone:SetAttribute("DropperUserId", player.UserId)
 
+	-- Fish ship with both a "raw" and a "cooked" Decal authored visible,
+	-- which overlap. Show only the one matching this drop's state so the
+	-- fish looks raw (or cooked, if it's already a "_Cooked" variant).
+	local isCookedFish = itemName:sub(-7) == "_Cooked"
+	for _, d in clone:GetDescendants() do
+		if d:IsA("Decal") then
+			if d.Name == "raw" then
+				d.Transparency = isCookedFish and 1 or 0
+			elseif d.Name == "cooked" then
+				d.Transparency = isCookedFish and 0 or 1
+			end
+		end
+	end
+	if isCookedFish then
+		clone:SetAttribute("Cooked", true)
+	end
+
 	-- Strip "Resource" tags and add "DroppedItem" BEFORE parenting to
 	-- workspace. This closes the race window where a client could detect
 	-- the clone with a stale "Resource" tag and fire CollectResource,
