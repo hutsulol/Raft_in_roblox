@@ -110,6 +110,13 @@ local function applyVisuals(state)
 	local aftermath = (n == 0 and state.burnedOnce)
 	setHidden(state.burnedParts, not aftermath)
 
+	-- Hide the "Add Log" prompt once the fire is at max capacity;
+	-- bring it back when there's room again (after a burnout resets
+	-- the count, or a re-light cycle begins).
+	if state.prompt then
+		state.prompt.Enabled = (state.logsAdded < MAX_LOGS)
+	end
+
 	-- Fire / smoke / light.
 	if n >= 1 then
 		local factor = 1 + GROWTH_PER_LOG * (n - 1)
@@ -289,6 +296,7 @@ local function setupCampFire(model)
 		prompt.MaxActivationDistance = PROMPT_RANGE
 		prompt.RequiresLineOfSight   = false
 		prompt.Enabled               = true
+		state.prompt = prompt
 		prompt.Triggered:Connect(function(player)
 			addLog(state, player)
 		end)
