@@ -378,26 +378,25 @@ local function refundFood(player, tool)
 	tool:SetAttribute("Refunded", true)
 	local foodName = tool:GetAttribute("FoodResource")
 	if foodName and player and player.Parent then
-		-- Refund should NEVER materialize as a world drop. We restore the
-		-- exact unit directly into the inventory table and avoid overflow
-		-- helpers entirely (those can spawn drops when capacity is full).
-		local inv = nil
-		if _G.GetInventory then
-			inv = _G.GetInventory(player)
-			if not inv then
-				-- Inventory may be initializing during character/tool swap.
-				for _ = 1, 10 do
-					task.wait(0.05)
-					inv = _G.GetInventory(player)
-					if inv then break end
-				end
-			end
-		end
-		if inv then
+		-- Refund should NEVER materialize as a world drop. Retry inventory
+		-- fetch for swap races and guarantee direct table restore.
+		local function tryRefund()
+			if not (_G.GetInventory and player and player.Parent) then return false end
+			local inv = _G.GetInventory(player)
+			if not inv then return false end
 			inv[foodName] = (inv[foodName] or 0) + 1
 			if _G.SendInventory then _G.SendInventory(player) end
-		else
-			warn("[FoodSystem] refund skipped (inventory unavailable) for " .. tostring(foodName))
+			return true
+		end
+
+		if not tryRefund() then
+			task.spawn(function()
+				for _ = 1, 60 do -- up to ~3s for profile/inventory handoff
+					task.wait(0.05)
+					if tryRefund() then return end
+				end
+				warn("[FoodSystem] refund failed after retries for " .. tostring(foodName))
+			end)
 		end
 	end
 	tool:Destroy()
