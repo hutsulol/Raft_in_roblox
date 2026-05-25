@@ -502,6 +502,8 @@ local COOK_FADE      = 1     -- decal cross-fade duration
 local COOK_POLL      = 0.5   -- detection cadence
 local COOK_ZONE_PAD  = 3     -- vertical slack above/below the model bbox
 local COOKED_SUFFIX  = "_Cooked"
+local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
+local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
 
 local cookProgress = {}  -- [droppedModel] = seconds accumulated in heat
 
@@ -577,6 +579,17 @@ local function hideRaw(inst)
 	end
 end
 
+local function swapMeshTextureIds(model)
+	-- Some fish (Tilapia) are authored without separate raw/cooked
+	-- decals. Their MeshPart carries a baked TextureID that must be
+	-- swapped directly when cooking completes.
+	for _, d in model:GetDescendants() do
+		if d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
+			d.TextureID = TILAPIA_COOKED_TEXTURE_ID
+		end
+	end
+end
+
 local function cookFish(model, raw, cooked, scripts)
 	model:SetAttribute("Cooked", true)
 
@@ -601,6 +614,7 @@ local function cookFish(model, raw, cooked, scripts)
 			end
 		end
 	end
+	swapMeshTextureIds(model)
 
 	-- Flip the resource so pickup yields the edible cooked variant.
 	local resType = model:GetAttribute("ResourceType")
@@ -635,4 +649,3 @@ task.spawn(function()
 		end
 	end
 end)
-
