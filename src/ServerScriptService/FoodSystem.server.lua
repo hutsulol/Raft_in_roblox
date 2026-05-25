@@ -402,6 +402,32 @@ local function refundFood(player, tool)
 	tool:Destroy()
 end
 
+local function refundHeldFoodTools(player)
+	local inv = _G.GetInventory and _G.GetInventory(player)
+	if not inv then return false end
+	local refundedAny = false
+	local char = player.Character
+	local backpack = player:FindFirstChild("Backpack")
+	for _, container in ipairs({ char, backpack }) do
+		if container then
+			for _, t in container:GetChildren() do
+				if t:IsA("Tool")
+					and t:GetAttribute("FoodResource")
+					and not t:GetAttribute("Consumed")
+					and not t:GetAttribute("Refunded") then
+					local key = t:GetAttribute("FoodResource")
+					inv[key] = (inv[key] or 0) + 1
+					t:SetAttribute("Refunded", true)
+					t:Destroy()
+					refundedAny = true
+				end
+			end
+		end
+	end
+	if refundedAny and _G.SendInventory then _G.SendInventory(player) end
+	return true
+end
+
 equipEvent.OnServerEvent:Connect(function(player, foodName)
 	if typeof(foodName) ~= "string" then return end
 	-- Whitelist check only — the actual hunger / hp values live
@@ -409,6 +435,12 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 	if not _G.GetFoodData(foodName) then return end
 
 	local inv = _G.GetInventory(player)
+	-- Deterministic swap: return any currently held food-tools BEFORE
+	-- removing the newly requested one, so fast fish-to-fish switching
+	-- can't bleed stack counts during ancestry/replication races.
+	if not refundHeldFoodTools(player) then return end
+	inv = _G.GetInventory(player)
+	if not inv then return end
 	if (inv[foodName] or 0) < 1 then return end
 
 	if alreadyHoldingFood(player, foodName) then return end
