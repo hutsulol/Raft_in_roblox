@@ -168,10 +168,10 @@ local function spawnPhysicalDrop(player, itemName, amount, isToolDrop, dropPosit
 	local isCookedFish = itemName:sub(-7) == "_Cooked"
 	for _, d in clone:GetDescendants() do
 		if d:IsA("Decal") or d:IsA("Texture") then
-			local n = (d.Name:gsub("%s+", "")):lower()
-			if n == "raw" then
+			local n = (d.Name:gsub("[%s_]+", "")):lower()
+			if n:find("raw", 1, true) then
 				d.Transparency = isCookedFish and 1 or 0
-			elseif n == "cooked" then
+			elseif n:find("cooked", 1, true) then
 				d.Transparency = isCookedFish and 0 or 1
 			end
 		end

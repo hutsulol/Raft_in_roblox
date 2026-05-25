@@ -515,6 +515,13 @@ local function normName(inst)
 	return (inst.Name:gsub("[%s_]+", "")):lower()
 end
 
+local function fishDecalState(inst)
+	local n = normName(inst)
+	if n:find("cooked", 1, true) then return "cooked" end
+	if n:find("raw", 1, true) then return "raw" end
+	return nil
+end
+
 -- A fish is "adapted for cooking" if it carries a Decal named
 -- "cooked". The raw look may be a Decal/Texture OR a SurfaceAppearance
 -- named "raw"; we capture it whatever its class so cooking can hide
@@ -522,10 +529,10 @@ end
 local function findFishDecals(model)
 	local raw, cooked, scripts = nil, nil, {}
 	for _, d in model:GetDescendants() do
-		local n = (d:IsA("Decal") or d:IsA("Texture") or d:IsA("SurfaceAppearance")) and normName(d)
-		if n == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
+		local state = (d:IsA("Decal") or d:IsA("Texture") or d:IsA("SurfaceAppearance")) and fishDecalState(d)
+		if state == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
 			cooked = d
-		elseif n == "raw" then
+		elseif state == "raw" then
 			raw = d
 		elseif d:IsA("BaseScript") then
 			table.insert(scripts, d)
@@ -634,12 +641,12 @@ local function cookFish(model, raw, cooked, scripts)
 	-- parts / mixed classes / whitespace in names, not just the first).
 	for _, d in model:GetDescendants() do
 		if d:IsA("Decal") or d:IsA("Texture") or d:IsA("SurfaceAppearance") then
-			local n = normName(d)
-			if n == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
+			local state = fishDecalState(d)
+			if state == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
 				d.Transparency = 1
 				TweenService:Create(d, TweenInfo.new(COOK_FADE, Enum.EasingStyle.Linear),
 					{ Transparency = 0 }):Play()
-			elseif n == "raw" then
+			elseif state == "raw" then
 				hideRaw(d)
 			end
 		end
