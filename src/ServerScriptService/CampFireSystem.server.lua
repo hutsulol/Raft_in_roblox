@@ -502,6 +502,7 @@ local COOK_FADE      = 1     -- decal cross-fade duration
 local COOK_POLL      = 0.5   -- detection cadence
 local COOK_ZONE_PAD  = 3     -- vertical slack above/below the model bbox
 local COOKED_SUFFIX  = "_Cooked"
+local COOK_STACK_EXTRA_PER_FISH = 0.4 -- +40% of base time per extra fish in stack-drop
 local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
 local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
 
@@ -551,6 +552,15 @@ local function canCookFish(model, cookedDecal)
 	-- with different mesh setup but same inventory resource type.
 	local resType = model:GetAttribute("ResourceType")
 	return resType == "Tilapia_Fish"
+end
+
+local function requiredCookTime(item)
+	-- Dropped stacks can represent multiple fish in one world model
+	-- (ResourceAmount > 1). Keep the single-fish baseline and add
+	-- +40% * COOK_TIME for each extra fish for more realistic batches.
+	local amount = tonumber(item:GetAttribute("ResourceAmount")) or 1
+	amount = math.max(1, math.floor(amount + 0.0001))
+	return COOK_TIME * (1 + COOK_STACK_EXTRA_PER_FISH * (amount - 1))
 end
 
 local function itemPosition(item)
@@ -657,7 +667,8 @@ task.spawn(function()
 					local pos = itemPosition(item)
 					if pos and #zones > 0 and posInZones(pos, zones) then
 						local t = (cookProgress[item] or 0) + COOK_POLL
-						if t >= COOK_TIME then
+						local need = requiredCookTime(item)
+						if t >= need then
 							cookProgress[item] = nil
 							cookFish(item, raw, cooked, scripts)
 						else
