@@ -539,13 +539,17 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 			-- can hold the fish for exactly the clip's length.
 			local track
 			local eatAnim = tool:FindFirstChild("Eat")
-			if eatAnim and eatAnim:IsA("Animation") then
-				track = loadEatTrack(hum, animator, eatAnim)
-				if track then
-					track.Looped = false
-					track:Play()
+				if eatAnim and eatAnim:IsA("Animation") then
+					track = loadEatTrack(hum, animator, eatAnim)
+					if track then
+						-- Match the Banana/Coconut/PineApple in-tool scripts:
+						-- Action priority ensures the eat pose drives the arm
+						-- even while a Tool is equipped.
+						track.Priority = Enum.AnimationPriority.Action
+						track.Looped = false
+						track:Play()
+					end
 				end
-			end
 
 			-- Shared eating sound lives in ReplicatedStorage.Fish. The
 			-- asset is named "Eating  Sound" (double space) — match on a
