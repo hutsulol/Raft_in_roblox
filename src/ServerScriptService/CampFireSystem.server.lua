@@ -533,6 +533,26 @@ local function findFishDecals(model)
 	return raw, cooked, scripts
 end
 
+local function hasTilapiaMeshTexture(model)
+	for _, d in model:GetDescendants() do
+		if d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
+			return true
+		end
+	end
+	return false
+end
+
+local function canCookFish(model, cookedDecal)
+	-- Legacy fish path: explicit cooked overlay exists.
+	if cookedDecal then return true end
+	-- Tilapia path: mesh-authored look (no cooked decal).
+	if hasTilapiaMeshTexture(model) then return true end
+	-- Fallback by resource key in case a future Tilapia variant ships
+	-- with different mesh setup but same inventory resource type.
+	local resType = model:GetAttribute("ResourceType")
+	return resType == "Tilapia_Fish"
+end
+
 local function itemPosition(item)
 	if item:IsA("BasePart") then return item.Position end
 	if item:IsA("Model") then
@@ -633,7 +653,7 @@ task.spawn(function()
 				cookProgress[item] = nil
 			elseif not item:GetAttribute("Cooked") then
 				local raw, cooked, scripts = findFishDecals(item)
-				if cooked then
+				if canCookFish(item, cooked) then
 					local pos = itemPosition(item)
 					if pos and #zones > 0 and posInZones(pos, zones) then
 						local t = (cookProgress[item] or 0) + COOK_POLL
