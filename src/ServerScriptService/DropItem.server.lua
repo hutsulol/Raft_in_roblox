@@ -114,6 +114,8 @@ local PICKUP_DISTANCE = 15
 local lastDropTime = {}
 local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
 local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
+local LEGENDARY_RAW_TEXTURE_ID = "http://www.roblox.com/asset/?id=155812542"
+local LEGENDARY_COOKED_TEXTURE_ID = "rbxassetid://138934138408588"
 
 -- Spawn a physical dropped-item in the world near the player. Shared
 -- between the explicit "drop from inventory" event and the
@@ -186,6 +188,10 @@ local function spawnPhysicalDrop(player, itemName, amount, isToolDrop, dropPosit
 		for _, d in clone:GetDescendants() do
 			if d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
 				d.TextureID = TILAPIA_COOKED_TEXTURE_ID
+			elseif d:IsA("MeshPart") and d.TextureID == LEGENDARY_RAW_TEXTURE_ID then
+				d.TextureID = LEGENDARY_COOKED_TEXTURE_ID
+			elseif d:IsA("SpecialMesh") and d.TextureId == LEGENDARY_RAW_TEXTURE_ID then
+				d.TextureId = LEGENDARY_COOKED_TEXTURE_ID
 			end
 		end
 

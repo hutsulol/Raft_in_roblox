@@ -33,6 +33,8 @@ local RAW_FISH_HUNGER_MULT = 0.2 -- raw fish gives 20% of cooked nutrition
 local RAW_FISH_HP_MULT     = 0.2
 local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
 local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
+local LEGENDARY_RAW_TEXTURE_ID = "http://www.roblox.com/asset/?id=155812542"
+local LEGENDARY_COOKED_TEXTURE_ID = "rbxassetid://138934138408588"
 
 local function isCookedFish(name)
 	return type(name) == "string"
@@ -247,6 +249,10 @@ local function makeCookedFishTool(foodName)
 			-- rather than raw/cooked decals, so convert it explicitly
 			-- for the held Tool variant.
 			d.TextureID = TILAPIA_COOKED_TEXTURE_ID
+		elseif d:IsA("MeshPart") and d.TextureID == LEGENDARY_RAW_TEXTURE_ID then
+			d.TextureID = LEGENDARY_COOKED_TEXTURE_ID
+		elseif d:IsA("SpecialMesh") and d.TextureId == LEGENDARY_RAW_TEXTURE_ID then
+			d.TextureId = LEGENDARY_COOKED_TEXTURE_ID
 		end
 	end
 

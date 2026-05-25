@@ -505,6 +505,8 @@ local COOKED_SUFFIX  = "_Cooked"
 local COOK_STACK_EXTRA_PER_FISH = 0.4 -- +40% of base time per extra fish in stack-drop
 local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
 local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
+local LEGENDARY_RAW_TEXTURE_ID = "http://www.roblox.com/asset/?id=155812542"
+local LEGENDARY_COOKED_TEXTURE_ID = "rbxassetid://138934138408588"
 
 local cookProgress = {}  -- [droppedModel] = seconds accumulated in heat
 
@@ -550,15 +552,26 @@ local function hasTilapiaMeshTexture(model)
 	return false
 end
 
+local function hasLegendaryMeshTexture(model)
+	for _, d in model:GetDescendants() do
+		if (d:IsA("MeshPart") and d.TextureID == LEGENDARY_RAW_TEXTURE_ID)
+			or (d:IsA("SpecialMesh") and d.TextureId == LEGENDARY_RAW_TEXTURE_ID) then
+			return true
+		end
+	end
+	return false
+end
+
 local function canCookFish(model, cookedDecal)
 	-- Legacy fish path: explicit cooked overlay exists.
 	if cookedDecal then return true end
 	-- Mesh-authored path (Tilapia): no cooked decal.
 	if hasTilapiaMeshTexture(model) then return true end
+	if hasLegendaryMeshTexture(model) then return true end
 	-- Resource-key fallback for fish that should be cookable even if
 	-- authored decals are inconsistent in a given asset revision.
 	local resType = model:GetAttribute("ResourceType")
-	return resType == "Tilapia_Fish" or resType == "Carp_Fish"
+	return resType == "Tilapia_Fish" or resType == "Carp_Fish" or resType == "Legendary_Fish"
 end
 
 local function requiredCookTime(item)
@@ -623,6 +636,10 @@ local function swapMeshTextureIds(model)
 	for _, d in model:GetDescendants() do
 		if d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
 			d.TextureID = TILAPIA_COOKED_TEXTURE_ID
+		elseif d:IsA("MeshPart") and d.TextureID == LEGENDARY_RAW_TEXTURE_ID then
+			d.TextureID = LEGENDARY_COOKED_TEXTURE_ID
+		elseif d:IsA("SpecialMesh") and d.TextureId == LEGENDARY_RAW_TEXTURE_ID then
+			d.TextureId = LEGENDARY_COOKED_TEXTURE_ID
 		end
 	end
 end
