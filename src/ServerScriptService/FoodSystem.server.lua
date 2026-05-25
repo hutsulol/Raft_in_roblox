@@ -29,6 +29,8 @@ local FOOD_DATA = {
 local COOKED_SUFFIX     = "_Cooked"
 local COOKED_FISH_HUNGER = 35   -- ~35 % of MAX_HUNGER (100)
 local COOKED_FISH_HP     = 5
+local RAW_FISH_HUNGER_MULT = 0.2 -- raw fish gives 20% of cooked nutrition
+local RAW_FISH_HP_MULT     = 0.2
 local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
 local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
 
@@ -36,6 +38,12 @@ local function isCookedFish(name)
 	return type(name) == "string"
 		and #name > #COOKED_SUFFIX
 		and name:sub(-#COOKED_SUFFIX) == COOKED_SUFFIX
+end
+
+local function isRawFish(name)
+	if type(name) ~= "string" then return false end
+	-- Raw fish inventory keys are authored as "<Type>_Fish".
+	return #name > 5 and name:sub(-5) == "_Fish"
 end
 
 -- Published for the in-Tool Script (src/Fruits/<Name> ( Tool )/Script).
@@ -46,6 +54,12 @@ _G.GetFoodData = function(name)
 	if FOOD_DATA[name] then return FOOD_DATA[name] end
 	if isCookedFish(name) then
 		return { hunger = COOKED_FISH_HUNGER, hp = COOKED_FISH_HP }
+	end
+	if isRawFish(name) then
+		return {
+			hunger = COOKED_FISH_HUNGER * RAW_FISH_HUNGER_MULT,
+			hp = COOKED_FISH_HP * RAW_FISH_HP_MULT,
+		}
 	end
 	return nil
 end

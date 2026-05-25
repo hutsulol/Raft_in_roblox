@@ -39,6 +39,13 @@ local FOOD_RESOURCE_SET = setmetatable({
 	Banana    = true,
 	Coconut   = true,
 	Pineapple = true,
+	Blue_Fish = true,
+	Carp_Fish = true,
+	Foil_Fish = true,
+	Jelly_Fish = true,
+	Legendary_Fish = true,
+	Seabass_Fish = true,
+	Tilapia_Fish = true,
 }, {
 	__index = function(_, k)
 		if type(k) == "string" and #k > 7 and k:sub(-7) == "_Cooked" then
