@@ -507,6 +507,7 @@ local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
 local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
 local LEGENDARY_RAW_TEXTURE_ID = "http://www.roblox.com/asset/?id=155812542"
 local LEGENDARY_COOKED_TEXTURE_ID = "rbxassetid://138934138408588"
+local LEGENDARY_RAW_TEXTURE_NUM = "155812542"
 
 local cookProgress = {}  -- [droppedModel] = seconds accumulated in heat
 
@@ -554,8 +555,8 @@ end
 
 local function hasLegendaryMeshTexture(model)
 	for _, d in model:GetDescendants() do
-		if (d:IsA("MeshPart") and d.TextureID == LEGENDARY_RAW_TEXTURE_ID)
-			or (d:IsA("SpecialMesh") and d.TextureId == LEGENDARY_RAW_TEXTURE_ID) then
+		local tex = (d:IsA("MeshPart") and d.TextureID) or (d:IsA("SpecialMesh") and d.TextureId)
+		if type(tex) == "string" and tex:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) then
 			return true
 		end
 	end
@@ -636,9 +637,11 @@ local function swapMeshTextureIds(model)
 	for _, d in model:GetDescendants() do
 		if d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
 			d.TextureID = TILAPIA_COOKED_TEXTURE_ID
-		elseif d:IsA("MeshPart") and d.TextureID == LEGENDARY_RAW_TEXTURE_ID then
+		elseif d:IsA("MeshPart") and type(d.TextureID) == "string"
+			and d.TextureID:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) then
 			d.TextureID = LEGENDARY_COOKED_TEXTURE_ID
-		elseif d:IsA("SpecialMesh") and d.TextureId == LEGENDARY_RAW_TEXTURE_ID then
+		elseif d:IsA("SpecialMesh") and type(d.TextureId) == "string"
+			and d.TextureId:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) then
 			d.TextureId = LEGENDARY_COOKED_TEXTURE_ID
 		end
 	end

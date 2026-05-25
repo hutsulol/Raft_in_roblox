@@ -35,6 +35,8 @@ local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
 local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
 local LEGENDARY_RAW_TEXTURE_ID = "http://www.roblox.com/asset/?id=155812542"
 local LEGENDARY_COOKED_TEXTURE_ID = "rbxassetid://138934138408588"
+local LEGENDARY_RAW_TEXTURE_NUM = "155812542"
+local LEGENDARY_COOKED_TEXTURE_NUM = "138934138408588"
 
 local function isCookedFish(name)
 	return type(name) == "string"
@@ -70,6 +72,26 @@ local function applyFishVisualState(tool, wantCooked)
 			end
 		elseif d:IsA("SurfaceAppearance") and fishDecalState(d) == "raw" and wantCooked then
 			d:Destroy()
+		end
+	end
+end
+
+local function applyFishMeshVisualState(tool, wantCooked)
+	for _, d in tool:GetDescendants() do
+		if d:IsA("MeshPart") then
+			local tex = d.TextureID
+			if type(tex) == "string" and tex:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) and wantCooked then
+				d.TextureID = LEGENDARY_COOKED_TEXTURE_ID
+			elseif type(tex) == "string" and tex:find(LEGENDARY_COOKED_TEXTURE_NUM, 1, true) and (not wantCooked) then
+				d.TextureID = LEGENDARY_RAW_TEXTURE_ID
+			end
+		elseif d:IsA("SpecialMesh") then
+			local tex = d.TextureId
+			if type(tex) == "string" and tex:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) and wantCooked then
+				d.TextureId = LEGENDARY_COOKED_TEXTURE_ID
+			elseif type(tex) == "string" and tex:find(LEGENDARY_COOKED_TEXTURE_NUM, 1, true) and (not wantCooked) then
+				d.TextureId = LEGENDARY_RAW_TEXTURE_ID
+			end
 		end
 	end
 end
@@ -243,6 +265,7 @@ local function makeCookedFishTool(foodName)
 	-- because the raw decal is authored as " raw" with a leading space —
 	-- an exact == "raw" left it visible and overlapping the cooked look.
 	applyFishVisualState(tool, true)
+	applyFishMeshVisualState(tool, true)
 	for _, d in tool:GetDescendants() do
 		if d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
 			-- Tilapia cooked visual is authored via MeshPart.TextureID
@@ -285,6 +308,7 @@ local function makeFoodTool(foodName)
 			end
 			if isRawFish(foodName) then
 				applyFishVisualState(clone, false)
+				applyFishMeshVisualState(clone, false)
 			end
 			return clone
 		else
@@ -295,6 +319,7 @@ local function makeFoodTool(foodName)
 			if tool then
 				if isRawFish(foodName) then
 					applyFishVisualState(tool, false)
+					applyFishMeshVisualState(tool, false)
 				end
 				return tool
 			end
