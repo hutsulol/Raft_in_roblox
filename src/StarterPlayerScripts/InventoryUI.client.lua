@@ -97,6 +97,7 @@ local JELLY_FISH_ICON = "rbxassetid://139713210103014"
 local LEGENDARY_FISH_ICON = "rbxassetid://73775072217611"
 local SEABASS_FISH_ICON = "rbxassetid://112734818459787"
 local TILAPIA_FISH_ICON = "rbxassetid://128104970819877"
+local TILAPIA_FISH_COOKED_ICON = "rbxassetid://121725790433759"
 
 local RESOURCE_ICONS = {
 	Log = LOG_ICON,
@@ -133,7 +134,7 @@ local RESOURCE_ICONS = {
 	Jelly_Fish_Cooked     = JELLY_FISH_ICON,
 	Legendary_Fish_Cooked = LEGENDARY_FISH_ICON,
 	Seabass_Fish_Cooked   = SEABASS_FISH_ICON,
-	Tilapia_Fish_Cooked   = TILAPIA_FISH_ICON,
+	Tilapia_Fish_Cooked   = TILAPIA_FISH_COOKED_ICON,
 	-- Fruits dropped from trees (Banana/Coconut) and the new
 	-- hand-harvested Pineapple, plus the matching seeds the player
 	-- can replant.
