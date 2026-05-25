@@ -46,6 +46,7 @@ local FOOD_RESOURCE_SET = setmetatable({
 	Legendary_Fish = true,
 	Seabass_Fish = true,
 	Tilapia_Fish = true,
+	Meat = true,
 }, {
 	__index = function(_, k)
 		if type(k) == "string" and #k > 7 and k:sub(-7) == "_Cooked" then
@@ -107,6 +108,8 @@ local LEGENDARY_FISH_COOKED_ICON = "rbxassetid://100932404198778"
 local SEABASS_FISH_ICON = "rbxassetid://112734818459787"
 local TILAPIA_FISH_ICON = "rbxassetid://102206483084738"
 local TILAPIA_FISH_COOKED_ICON = "rbxassetid://127252371837787"
+local MEAT_ICON = "rbxassetid://140237721809215"
+local MEAT_COOKED_ICON = "rbxassetid://110578314998395"
 
 local RESOURCE_ICONS = {
 	Log = LOG_ICON,
@@ -133,6 +136,7 @@ local RESOURCE_ICONS = {
 	Legendary_Fish = LEGENDARY_FISH_ICON,
 	Seabass_Fish = SEABASS_FISH_ICON,
 	Tilapia_Fish = TILAPIA_FISH_ICON,
+	Meat = MEAT_ICON,
 	-- Cooked fish variants need EXPLICIT keys here: rebuildSlotData
 	-- iterates RESOURCE_ICONS by its real keys to build resource
 	-- slots, and a metatable __index isn't iterable. Reuse the raw
@@ -144,6 +148,7 @@ local RESOURCE_ICONS = {
 	Legendary_Fish_Cooked = LEGENDARY_FISH_COOKED_ICON,
 	Seabass_Fish_Cooked   = SEABASS_FISH_ICON,
 	Tilapia_Fish_Cooked   = TILAPIA_FISH_COOKED_ICON,
+	Meat_Cooked           = MEAT_COOKED_ICON,
 	-- Fruits dropped from trees (Banana/Coconut) and the new
 	-- hand-harvested Pineapple, plus the matching seeds the player
 	-- can replant.

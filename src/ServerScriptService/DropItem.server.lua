@@ -41,6 +41,7 @@ local RESOURCE_TEMPLATES = {
 	Legendary_Fish  = "Legendary Fish",
 	Seabass_Fish    = "Seabass Fish",
 	Tilapia_Fish    = "Tilapia Fish",
+	Meat            = "Meat",
 }
 -- Cooked fish ("<fish>_Cooked") re-drop using the same fish model as
 -- their raw counterpart, so dropping a cooked fish from the inventory
@@ -80,6 +81,7 @@ local RESOURCE_ITEMS = {
 	Legendary_Fish  = true,
 	Seabass_Fish    = true,
 	Tilapia_Fish    = true,
+	Meat            = true,
 }
 -- Cooked fish behave as stackable resources just like their raw form.
 setmetatable(RESOURCE_ITEMS, {

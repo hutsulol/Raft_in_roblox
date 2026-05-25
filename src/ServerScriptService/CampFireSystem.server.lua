@@ -508,6 +508,9 @@ local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
 local LEGENDARY_RAW_TEXTURE_ID = "http://www.roblox.com/asset/?id=155812542"
 local LEGENDARY_COOKED_TEXTURE_ID = "rbxassetid://138934138408588"
 local LEGENDARY_RAW_TEXTURE_NUM = "155812542"
+local MEAT_RAW_TEXTURE_ID = "rbxassetid://96631156827637"
+local MEAT_COOKED_TEXTURE_ID = "rbxassetid://81212406244264"
+local MEAT_BASE_COOK_MULT = 2 -- meat cooks 2x slower than fish baseline
 
 local cookProgress = {}  -- [droppedModel] = seconds accumulated in heat
 
@@ -572,7 +575,13 @@ local function canCookFish(model, cookedDecal)
 	-- Resource-key fallback for fish that should be cookable even if
 	-- authored decals are inconsistent in a given asset revision.
 	local resType = model:GetAttribute("ResourceType")
-	return resType == "Tilapia_Fish" or resType == "Carp_Fish" or resType == "Legendary_Fish"
+	if resType == "Tilapia_Fish" or resType == "Carp_Fish" or resType == "Legendary_Fish" or resType == "Meat" then
+		return true
+	end
+	for _, d in model:GetDescendants() do
+		if d:IsA("MeshPart") and d.TextureID == MEAT_RAW_TEXTURE_ID then return true end
+	end
+	return false
 end
 
 local function requiredCookTime(item)
@@ -581,7 +590,11 @@ local function requiredCookTime(item)
 	-- +40% * COOK_TIME for each extra fish for more realistic batches.
 	local amount = tonumber(item:GetAttribute("ResourceAmount")) or 1
 	amount = math.max(1, math.floor(amount + 0.0001))
-	return COOK_TIME * (1 + COOK_STACK_EXTRA_PER_FISH * (amount - 1))
+	local base = COOK_TIME
+	if item:GetAttribute("ResourceType") == "Meat" then
+		base = base * MEAT_BASE_COOK_MULT
+	end
+	return base * (1 + COOK_STACK_EXTRA_PER_FISH * (amount - 1))
 end
 
 local function itemPosition(item)
@@ -643,6 +656,8 @@ local function swapMeshTextureIds(model)
 		elseif d:IsA("SpecialMesh") and type(d.TextureId) == "string"
 			and d.TextureId:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) then
 			d.TextureId = LEGENDARY_COOKED_TEXTURE_ID
+		elseif d:IsA("MeshPart") and d.TextureID == MEAT_RAW_TEXTURE_ID then
+			d.TextureID = MEAT_COOKED_TEXTURE_ID
 		end
 	end
 end
