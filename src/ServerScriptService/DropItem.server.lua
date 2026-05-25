@@ -112,6 +112,8 @@ local DROPPED_LIFETIME = 120
 local MAX_DROP_DISTANCE = 80
 local PICKUP_DISTANCE = 15
 local lastDropTime = {}
+local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
+local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
 
 -- Spawn a physical dropped-item in the world near the player. Shared
 -- between the explicit "drop from inventory" event and the
@@ -178,6 +180,22 @@ local function spawnPhysicalDrop(player, itemName, amount, isToolDrop, dropPosit
 	end
 	if isCookedFish then
 		clone:SetAttribute("Cooked", true)
+
+		-- Cooked drops must look cooked even for fish authored via
+		-- MeshPart.TextureID (Tilapia has no separate cooked decals).
+		for _, d in clone:GetDescendants() do
+			if d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
+				d.TextureID = TILAPIA_COOKED_TEXTURE_ID
+			end
+		end
+
+		-- Cooked fish are "dead"/static; disable any authored movement
+		-- scripts (flop/alive logic) so they don't animate on the ground.
+		for _, d in clone:GetDescendants() do
+			if d:IsA("Script") or d:IsA("LocalScript") then
+				d.Disabled = true
+			end
+		end
 	end
 
 	-- Strip "Resource" tags and add "DroppedItem" BEFORE parenting to
