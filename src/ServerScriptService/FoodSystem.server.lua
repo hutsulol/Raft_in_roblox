@@ -29,6 +29,8 @@ local FOOD_DATA = {
 local COOKED_SUFFIX     = "_Cooked"
 local COOKED_FISH_HUNGER = 35   -- ~35 % of MAX_HUNGER (100)
 local COOKED_FISH_HP     = 5
+local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
+local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
 
 local function isCookedFish(name)
 	return type(name) == "string"
@@ -205,6 +207,11 @@ local function makeCookedFishTool(foodName)
 			elseif n == "cooked" then d.Transparency = 0 end
 		elseif d:IsA("SurfaceAppearance") and (d.Name:gsub("%s+", "")):lower() == "raw" then
 			d:Destroy()
+		elseif d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
+			-- Tilapia cooked visual is authored via MeshPart.TextureID
+			-- rather than raw/cooked decals, so convert it explicitly
+			-- for the held Tool variant.
+			d.TextureID = TILAPIA_COOKED_TEXTURE_ID
 		end
 	end
 
