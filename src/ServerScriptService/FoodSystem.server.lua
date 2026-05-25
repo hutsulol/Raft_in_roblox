@@ -67,6 +67,10 @@ local function isAnyFish(name)
 	return isRawFish(name) or isCookedFish(name)
 end
 
+local function isMeat(name)
+	return isRawMeat(name) or isCookedMeat(name)
+end
+
 local function fishDecalState(inst)
 	local n = inst.Name:lower():gsub("[%s_]+", "")
 	if n:find("cooked", 1, true) then return "cooked" end
@@ -520,7 +524,7 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 	-- fish have no such script (we strip the authored one so it doesn't
 	-- wiggle in hand), so eat them here: play the Eat animation + the
 	-- authored "Eat" sound, then restore hunger and consume.
-	if isAnyFish(foodName) then
+	if isAnyFish(foodName) or isMeat(foodName) then
 		tool.Activated:Connect(function()
 			if tool:GetAttribute("Consumed") then return end
 			tool:SetAttribute("Consumed", true)
