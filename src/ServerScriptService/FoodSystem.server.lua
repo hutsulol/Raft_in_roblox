@@ -50,6 +50,28 @@ local function isAnyFish(name)
 	return isRawFish(name) or isCookedFish(name)
 end
 
+local function fishDecalState(inst)
+	local n = inst.Name:lower():gsub("[%s_]+", "")
+	if n:find("cooked", 1, true) then return "cooked" end
+	if n:find("raw", 1, true) then return "raw" end
+	return nil
+end
+
+local function applyFishVisualState(tool, wantCooked)
+	for _, d in tool:GetDescendants() do
+		if d:IsA("Decal") or d:IsA("Texture") then
+			local state = fishDecalState(d)
+			if state == "raw" then
+				d.Transparency = wantCooked and 1 or 0
+			elseif state == "cooked" then
+				d.Transparency = wantCooked and 0 or 1
+			end
+		elseif d:IsA("SurfaceAppearance") and fishDecalState(d) == "raw" and wantCooked then
+			d:Destroy()
+		end
+	end
+end
+
 -- Published for the in-Tool Script (src/Fruits/<Name> ( Tool )/Script).
 -- The Script calls this on Tool.Activated to figure out how much
 -- hunger / HP to grant, so the values stay in one place and a tuning
@@ -218,14 +240,9 @@ local function makeCookedFishTool(foodName)
 	-- Show cooked, hide raw. Names are normalized (trim + lowercase)
 	-- because the raw decal is authored as " raw" with a leading space —
 	-- an exact == "raw" left it visible and overlapping the cooked look.
+	applyFishVisualState(tool, true)
 	for _, d in tool:GetDescendants() do
-		if d:IsA("Decal") or d:IsA("Texture") then
-			local n = (d.Name:gsub("%s+", "")):lower()
-			if n == "raw" then d.Transparency = 1
-			elseif n == "cooked" then d.Transparency = 0 end
-		elseif d:IsA("SurfaceAppearance") and (d.Name:gsub("%s+", "")):lower() == "raw" then
-			d:Destroy()
-		elseif d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
+		if d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
 			-- Tilapia cooked visual is authored via MeshPart.TextureID
 			-- rather than raw/cooked decals, so convert it explicitly
 			-- for the held Tool variant.
@@ -260,13 +277,21 @@ local function makeFoodTool(foodName)
 			for _, desc in clone:GetDescendants() do
 				prepHoldablePart(desc)
 			end
+			if isRawFish(foodName) then
+				applyFishVisualState(clone, false)
+			end
 			return clone
 		else
 			-- Model or BasePart → wrap into a Tool so the player can
 			-- actually hold it. Failed wrap (no BasePart inside) falls
 			-- through to the placeholder below.
 			local tool = wrapModelAsTool(template:Clone(), foodName)
-			if tool then return tool end
+			if tool then
+				if isRawFish(foodName) then
+					applyFishVisualState(tool, false)
+				end
+				return tool
+			end
 		end
 	end
 	-- Placeholder Tool — invisible Handle so the equip mechanic still

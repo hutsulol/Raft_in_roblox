@@ -512,7 +512,7 @@ local cookProgress = {}  -- [droppedModel] = seconds accumulated in heat
 -- because the authored "raw" decal is actually named " raw" with a
 -- leading space — an exact == "raw" never matched it.
 local function normName(inst)
-	return (inst.Name:gsub("%s+", "")):lower()
+	return (inst.Name:gsub("[%s_]+", "")):lower()
 end
 
 -- A fish is "adapted for cooking" if it carries a Decal named
