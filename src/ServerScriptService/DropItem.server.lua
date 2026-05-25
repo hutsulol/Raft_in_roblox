@@ -116,6 +116,8 @@ local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
 local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
 local LEGENDARY_RAW_TEXTURE_ID = "http://www.roblox.com/asset/?id=155812542"
 local LEGENDARY_COOKED_TEXTURE_ID = "rbxassetid://138934138408588"
+local LEGENDARY_RAW_TEXTURE_NUM = "155812542"
+local LEGENDARY_COOKED_TEXTURE_NUM = "138934138408588"
 
 -- Spawn a physical dropped-item in the world near the player. Shared
 -- between the explicit "drop from inventory" event and the
@@ -180,20 +182,38 @@ local function spawnPhysicalDrop(player, itemName, amount, isToolDrop, dropPosit
 			end
 		end
 	end
-	if isCookedFish then
-		clone:SetAttribute("Cooked", true)
-
-		-- Cooked drops must look cooked even for fish authored via
-		-- MeshPart.TextureID (Tilapia has no separate cooked decals).
-		for _, d in clone:GetDescendants() do
-			if d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
-				d.TextureID = TILAPIA_COOKED_TEXTURE_ID
-			elseif d:IsA("MeshPart") and d.TextureID == LEGENDARY_RAW_TEXTURE_ID then
-				d.TextureID = LEGENDARY_COOKED_TEXTURE_ID
-			elseif d:IsA("SpecialMesh") and d.TextureId == LEGENDARY_RAW_TEXTURE_ID then
-				d.TextureId = LEGENDARY_COOKED_TEXTURE_ID
+	-- Mesh-authored fish need explicit raw/cooked texture enforcement,
+	-- otherwise a stale authored texture can make a raw drop look cooked
+	-- (or vice versa).
+	for _, d in clone:GetDescendants() do
+		if d:IsA("MeshPart") then
+			if isCookedFish then
+				if d.TextureID == TILAPIA_RAW_TEXTURE_ID then
+					d.TextureID = TILAPIA_COOKED_TEXTURE_ID
+				elseif type(d.TextureID) == "string" and d.TextureID:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) then
+					d.TextureID = LEGENDARY_COOKED_TEXTURE_ID
+				end
+			else
+				if d.TextureID == TILAPIA_COOKED_TEXTURE_ID then
+					d.TextureID = TILAPIA_RAW_TEXTURE_ID
+				elseif type(d.TextureID) == "string" and d.TextureID:find(LEGENDARY_COOKED_TEXTURE_NUM, 1, true) then
+					d.TextureID = LEGENDARY_RAW_TEXTURE_ID
+				end
+			end
+		elseif d:IsA("SpecialMesh") then
+			if isCookedFish then
+				if type(d.TextureId) == "string" and d.TextureId:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) then
+					d.TextureId = LEGENDARY_COOKED_TEXTURE_ID
+				end
+			else
+				if type(d.TextureId) == "string" and d.TextureId:find(LEGENDARY_COOKED_TEXTURE_NUM, 1, true) then
+					d.TextureId = LEGENDARY_RAW_TEXTURE_ID
+				end
 			end
 		end
+	end
+	if isCookedFish then
+		clone:SetAttribute("Cooked", true)
 
 		-- Cooked fish are "dead"/static; disable any authored movement
 		-- scripts (flop/alive logic) so they don't animate on the ground.

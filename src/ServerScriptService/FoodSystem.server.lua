@@ -363,7 +363,17 @@ local function refundFood(player, tool)
 	tool:SetAttribute("Refunded", true)
 	local foodName = tool:GetAttribute("FoodResource")
 	if foodName and player and player.Parent then
-		_G.AddResourceToInventory(player, foodName, 1, nil, true)
+		-- Refund should return the exact unit we removed on equip. Using
+		-- AddResourceToInventory can overflow to a world drop when the
+		-- inventory is currently full, which feels like an unintended
+		-- auto-drop while just switching tools.
+		local inv = _G.GetInventory and _G.GetInventory(player)
+		if inv then
+			inv[foodName] = (inv[foodName] or 0) + 1
+			if _G.SendInventory then _G.SendInventory(player) end
+		else
+			_G.AddResourceToInventory(player, foodName, 1, nil, true)
+		end
 	end
 	tool:Destroy()
 end
