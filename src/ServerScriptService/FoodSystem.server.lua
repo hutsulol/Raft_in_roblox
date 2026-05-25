@@ -136,6 +136,21 @@ local function ensureEatAnimation(tool)
 	return anim
 end
 
+local function loadEatTrack(humanoid, animator, eatAnim)
+	if not eatAnim or not eatAnim:IsA("Animation") then return nil end
+	-- Prefer Animator, but fall back to Humanoid:LoadAnimation for rigs
+	-- where Animator hasn't replicated/initialized yet.
+	if animator then
+		local ok, t = pcall(function() return animator:LoadAnimation(eatAnim) end)
+		if ok and t then return t end
+	end
+	if humanoid then
+		local ok, t = pcall(function() return humanoid:LoadAnimation(eatAnim) end)
+		if ok and t then return t end
+	end
+	return nil
+end
+
 local equipEvent = ReplicatedStorage:FindFirstChild("EquipFoodAsTool")
 if not equipEvent then
 	equipEvent = Instance.new("RemoteEvent")
@@ -457,16 +472,19 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 			local char = player.Character
 			local hum = char and char:FindFirstChildOfClass("Humanoid")
 			local animator = hum and hum:FindFirstChildOfClass("Animator")
+			if hum and not animator then
+				animator = Instance.new("Animator")
+				animator.Parent = hum
+			end
 			local hrp = char and char:FindFirstChild("HumanoidRootPart")
 
 			-- Eating animation. Force non-looping so Stopped fires and we
 			-- can hold the fish for exactly the clip's length.
 			local track
 			local eatAnim = tool:FindFirstChild("Eat")
-			if animator and eatAnim and eatAnim:IsA("Animation") then
-				local ok, t = pcall(function() return animator:LoadAnimation(eatAnim) end)
-				if ok and t then
-					track = t
+			if eatAnim and eatAnim:IsA("Animation") then
+				track = loadEatTrack(hum, animator, eatAnim)
+				if track then
 					track.Looped = false
 					track:Play()
 				end
