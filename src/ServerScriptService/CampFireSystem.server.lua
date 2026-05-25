@@ -553,12 +553,12 @@ end
 local function canCookFish(model, cookedDecal)
 	-- Legacy fish path: explicit cooked overlay exists.
 	if cookedDecal then return true end
-	-- Tilapia path: mesh-authored look (no cooked decal).
+	-- Mesh-authored path (Tilapia): no cooked decal.
 	if hasTilapiaMeshTexture(model) then return true end
-	-- Fallback by resource key in case a future Tilapia variant ships
-	-- with different mesh setup but same inventory resource type.
+	-- Resource-key fallback for fish that should be cookable even if
+	-- authored decals are inconsistent in a given asset revision.
 	local resType = model:GetAttribute("ResourceType")
-	return resType == "Tilapia_Fish"
+	return resType == "Tilapia_Fish" or resType == "Carp_Fish"
 end
 
 local function requiredCookTime(item)
