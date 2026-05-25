@@ -239,6 +239,14 @@ local function makeFoodTool(foodName)
 	end
 
 	local template = findFoodTemplate(foodName)
+	-- Raw fish inventory keys are snake_case (e.g. Tilapia_Fish), while
+	-- the authored 3D templates live under ReplicatedStorage.Fish with
+	-- spaces (e.g. "Tilapia Fish"). Mirror cooked-fish lookup so raw
+	-- fish can be equipped with their real model instead of falling back
+	-- to the invisible placeholder handle.
+	if (not template) and isRawFish(foodName) then
+		template = findFoodTemplate((foodName:gsub("_", " ")))
+	end
 	if template then
 		if template:IsA("Tool") then
 			local clone = template:Clone()
