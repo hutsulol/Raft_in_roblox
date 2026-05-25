@@ -46,6 +46,10 @@ local function isRawFish(name)
 	return #name > 5 and name:sub(-5) == "_Fish"
 end
 
+local function isAnyFish(name)
+	return isRawFish(name) or isCookedFish(name)
+end
+
 -- Published for the in-Tool Script (src/Fruits/<Name> ( Tool )/Script).
 -- The Script calls this on Tool.Activated to figure out how much
 -- hunger / HP to grant, so the values stay in one place and a tuning
@@ -331,6 +335,16 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 	local tool = makeFoodTool(foodName)
 	if not tool then return end
 
+	-- Fish templates may ship with authored movement/flop scripts that
+	-- should never run while the fish is a held food item.
+	if isAnyFish(foodName) then
+		for _, d in tool:GetDescendants() do
+			if d:IsA("Script") or d:IsA("LocalScript") then
+				d.Disabled = true
+			end
+		end
+	end
+
 	tool:SetAttribute("FoodResource", foodName)
 	tool:SetAttribute("OwnerUserId", player.UserId)
 	tool.CanBeDropped = false
@@ -358,7 +372,7 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 	-- fish have no such script (we strip the authored one so it doesn't
 	-- wiggle in hand), so eat them here: play the Eat animation + the
 	-- authored "Eat" sound, then restore hunger and consume.
-	if isCookedFish(foodName) then
+	if isAnyFish(foodName) then
 		tool.Activated:Connect(function()
 			if tool:GetAttribute("Consumed") then return end
 			tool:SetAttribute("Consumed", true)
