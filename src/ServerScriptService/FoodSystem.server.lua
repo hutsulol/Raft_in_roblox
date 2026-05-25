@@ -40,6 +40,8 @@ local LEGENDARY_RAW_TEXTURE_ID = "http://www.roblox.com/asset/?id=155812542"
 local LEGENDARY_COOKED_TEXTURE_ID = "rbxassetid://138934138408588"
 local LEGENDARY_RAW_TEXTURE_NUM = "155812542"
 local LEGENDARY_COOKED_TEXTURE_NUM = "138934138408588"
+local MEAT_RAW_TEXTURE_ID = "rbxassetid://96631156827637"
+local MEAT_COOKED_TEXTURE_ID = "rbxassetid://81212406244264"
 
 local function isCookedFish(name)
 	return type(name) == "string"
@@ -95,6 +97,10 @@ local function applyFishMeshVisualState(tool, wantCooked)
 				d.TextureID = LEGENDARY_COOKED_TEXTURE_ID
 			elseif type(tex) == "string" and tex:find(LEGENDARY_COOKED_TEXTURE_NUM, 1, true) and (not wantCooked) then
 				d.TextureID = LEGENDARY_RAW_TEXTURE_ID
+			elseif tex == MEAT_RAW_TEXTURE_ID and wantCooked then
+				d.TextureID = MEAT_COOKED_TEXTURE_ID
+			elseif tex == MEAT_COOKED_TEXTURE_ID and (not wantCooked) then
+				d.TextureID = MEAT_RAW_TEXTURE_ID
 			end
 		elseif d:IsA("SpecialMesh") then
 			local tex = d.TextureId
