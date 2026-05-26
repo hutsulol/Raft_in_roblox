@@ -1,42 +1,47 @@
 -- SheepPlayAnimation.server.lua
--- Dev helper: put this Script under the sheep Model (or reference it
--- directly below) and it will play the Animation instance named
--- "Animation" that already exists inside the same model.
+-- Dev helper: run from anywhere (e.g. ServerScriptService or DevScripts).
+-- It auto-finds sheep-like models in Workspace that contain an
+-- Animation child named "Animation" and starts it on their
+-- AnimationController/Animator.
 
-local model = script.Parent
-if not model or not model:IsA("Model") then
-	warn("[SheepAnim] Script must be parented to the sheep Model")
-	return
+local Workspace = game:GetService("Workspace")
+
+local function playOnModel(model)
+	local animObj = model:FindFirstChild("Animation")
+	if not (animObj and animObj:IsA("Animation")) then return false end
+
+	local controller = model:FindFirstChildOfClass("AnimationController")
+	if not controller then
+		controller = Instance.new("AnimationController")
+		controller.Name = "AnimationController"
+		controller.Parent = model
+	end
+
+	local animator = controller:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = controller
+	end
+
+	local ok, track = pcall(function()
+		return animator:LoadAnimation(animObj)
+	end)
+	if not ok or not track then
+		warn("[SheepAnim] Failed to load animation for " .. model:GetFullName())
+		return false
+	end
+
+	track.Priority = Enum.AnimationPriority.Action
+	track.Looped = true
+	track:Play(0.1, 1, 1)
+	print("[SheepAnim] Playing animation on", model:GetFullName())
+	return true
 end
 
-local animObj = model:FindFirstChild("Animation")
-if not animObj or not animObj:IsA("Animation") then
-	warn("[SheepAnim] Animation object named 'Animation' not found in model: " .. model:GetFullName())
-	return
+local started = 0
+for _, inst in Workspace:GetDescendants() do
+	if inst:IsA("Model") and playOnModel(inst) then
+		started += 1
+	end
 end
-
-local controller = model:FindFirstChildOfClass("AnimationController")
-if not controller then
-	controller = Instance.new("AnimationController")
-	controller.Name = "AnimationController"
-	controller.Parent = model
-end
-
-local animator = controller:FindFirstChildOfClass("Animator")
-if not animator then
-	animator = Instance.new("Animator")
-	animator.Parent = controller
-end
-
-local ok, track = pcall(function()
-	return animator:LoadAnimation(animObj)
-end)
-if not ok or not track then
-	warn("[SheepAnim] Failed to load animation for " .. model:GetFullName())
-	return
-end
-
-track.Looped = true
-track:Play()
-
-print("[SheepAnim] Playing animation on", model:GetFullName())
+print(("[SheepAnim] started tracks: %d"):format(started))
