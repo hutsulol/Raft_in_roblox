@@ -23,17 +23,18 @@ local FILL_COLOR    = Color3.fromRGB(255, 255, 255)
 -- The whole surface glows white and breathes. Fill + outline pulse
 -- together between their bright (MIN) and faint (MAX) transparency.
 local SHOW_OUTLINE  = false  -- toggle the edge outline (the glow fill stays either way)
-local FILL_MIN      = 0.25   -- strongest glow (lower = more white)
-local FILL_MAX      = 0.7    -- faintest glow — the gap MIN..MAX is the visible "breath"
+local FILL_MIN      = 0.85   -- strongest glow (lower = more white)
+local FILL_MAX      = 0.95   -- faintest glow — the gap MIN..MAX is the visible "breath"
 local OUTLINE_MIN   = 0.0
 local OUTLINE_MAX   = 0.4
 local PULSE_SPEED   = 4      -- higher = faster pulse
 local DEPTH_MODE    = Enum.HighlightDepthMode.Occluded  -- hide highlight behind walls/occluders
-
+local HIGHLIGHT_BUILD_DELAY = 0.06 -- short delay prevents visible flicker right after helper Humanoid insertion
 
 local highlights   = {}  -- [target Instance] = Highlight
 local shownPrompts = {}  -- [ProximityPrompt] = true while its prompt is visible
-local helperHumanoids = {} -- [target Model] = Humanoid created locally for transparent highlight support
+local helperHumanoids = {} -- [target Model] = persistent Humanoid for transparent highlight support
+local pendingHighlight = {} -- [target] = timestamp; delay highlight until model settles
 
 -- ─── Helpers ──────────────────────────────────────────────────────
 local function targetForPrompt(prompt)
@@ -62,21 +63,38 @@ local function resolveTarget(inst)
 	return model or inst
 end
 
+local function ensureHelperHumanoid(model)
+	local existing = model:FindFirstChildOfClass("Humanoid")
+	if existing then return existing end
+	local cached = helperHumanoids[model]
+	if cached and cached.Parent == model then return cached end
+
+	local hum = Instance.new("Humanoid")
+	hum.Name = "_InteractHighlightHumanoid"
+	hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	hum.BreakJointsOnDeath = false
+	hum.RequiresNeck = false
+	hum.Parent = model
+	helperHumanoids[model] = hum
+	return hum
+end
+
 local function ensureHighlight(target)
 	if highlights[target] then return end
 
-	-- Roblox Highlight can fail on transparent/glass meshes. A practical
-	-- workaround: for Models, add a local Humanoid. This makes Highlight
-	-- render reliably without changing part transparency/materials.
-	if target:IsA("Model") and not target:FindFirstChildOfClass("Humanoid") then
-		local hum = Instance.new("Humanoid")
-		hum.Name = "_InteractHighlightHumanoid"
-		hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
-		hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
-		hum.BreakJointsOnDeath = false
-		hum.RequiresNeck = false
-		hum.Parent = target
-		helperHumanoids[target] = hum
+	-- Roblox Highlight can fail on transparent/glass meshes. We add a
+	-- local helper Humanoid once, then wait a tiny moment so rendering
+	-- settles before showing the Highlight (prevents pop/flicker).
+	if target:IsA("Model") then
+		ensureHelperHumanoid(target)
+		local t0 = pendingHighlight[target]
+		if not t0 then
+			pendingHighlight[target] = os.clock()
+			return
+		end
+		if os.clock() - t0 < HIGHLIGHT_BUILD_DELAY then return end
+		pendingHighlight[target] = nil
 	end
 
 	local hl = Instance.new("Highlight")
@@ -97,9 +115,7 @@ local function clearHighlight(target)
 		hl:Destroy()
 		highlights[target] = nil
 	end
-	local hum = helperHumanoids[target]
-	if hum and hum.Parent then hum:Destroy() end
-	helperHumanoids[target] = nil
+	pendingHighlight[target] = nil
 end
 
 -- ─── ProximityPrompt source ───────────────────────────────────────
@@ -114,6 +130,21 @@ end
 
 for _, d in workspace:GetDescendants() do hookPrompt(d) end
 workspace.DescendantAdded:Connect(hookPrompt)
+
+-- Pre-warm helper Humanoids for tagged models so the first nearby
+-- highlight does not cause a visible model pop.
+for _, inst in CollectionService:GetTagged(TAG) do
+	local tgt = resolveTarget(inst)
+	if tgt and tgt:IsA("Model") then
+		ensureHelperHumanoid(tgt)
+	end
+end
+CollectionService:GetInstanceAddedSignal(TAG):Connect(function(inst)
+	local tgt = resolveTarget(inst)
+	if tgt and tgt:IsA("Model") then
+		ensureHelperHumanoid(tgt)
+	end
+end)
 
 -- ─── Per-frame: decide who glows, then pulse ──────────────────────
 RunService.RenderStepped:Connect(function()
@@ -144,7 +175,10 @@ RunService.RenderStepped:Connect(function()
 	-- Sync highlights to the wanted set.
 	for tgt in pairs(wanted) do ensureHighlight(tgt) end
 	for tgt in pairs(highlights) do
-		if not wanted[tgt] or not tgt.Parent then clearHighlight(tgt) end
+		if not wanted[tgt] or not tgt.Parent then
+			clearHighlight(tgt)
+			if not tgt.Parent then helperHumanoids[tgt] = nil end
+		end
 	end
 
 	-- Pulse fill + outline together — the whole surface breathes white.
