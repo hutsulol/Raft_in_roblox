@@ -30,11 +30,13 @@ local OUTLINE_MAX   = 0.4
 local PULSE_SPEED   = 4      -- higher = faster pulse
 local DEPTH_MODE    = Enum.HighlightDepthMode.Occluded  -- hide highlight behind walls/occluders
 local HIGHLIGHT_BUILD_DELAY = 0.06 -- short delay prevents visible flicker right after helper Humanoid insertion
+local RAMP_SPEED_MULTIPLIER = 0.5 -- first and last pulse are slower (half speed)
 
 local highlights   = {}  -- [target Instance] = Highlight
 local shownPrompts = {}  -- [ProximityPrompt] = true while its prompt is visible
 local helperHumanoids = {} -- [target Model] = persistent Humanoid for transparent highlight support
 local pendingHighlight = {} -- [target] = timestamp; delay highlight until model settles
+local pulseState = {} -- [target] = {phase="ramp_in"|"steady"|"ramp_out", startedAt=number, holdFill=number}
 
 -- ─── Helpers ──────────────────────────────────────────────────────
 local function targetForPrompt(prompt)
@@ -107,6 +109,17 @@ local function ensureHighlight(target)
 	hl.Adornee             = target
 	hl.Parent              = target
 	highlights[target] = hl
+	pulseState[target] = { phase = "ramp_in", startedAt = os.clock() }
+end
+
+local function beginRampOut(target, holdFill)
+	local st = pulseState[target]
+	if st and st.phase == "ramp_out" then return end
+	pulseState[target] = {
+		phase = "ramp_out",
+		startedAt = os.clock(),
+		holdFill = holdFill or FILL_MIN,
+	}
 end
 
 local function clearHighlight(target)
@@ -116,6 +129,7 @@ local function clearHighlight(target)
 		highlights[target] = nil
 	end
 	pendingHighlight[target] = nil
+	pulseState[target] = nil
 end
 
 -- ─── ProximityPrompt source ───────────────────────────────────────
@@ -173,22 +187,58 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	-- Sync highlights to the wanted set.
-	for tgt in pairs(wanted) do ensureHighlight(tgt) end
-	for tgt in pairs(highlights) do
-		if not wanted[tgt] or not tgt.Parent then
-			clearHighlight(tgt)
-			if not tgt.Parent then helperHumanoids[tgt] = nil end
+	for tgt in pairs(wanted) do
+		ensureHighlight(tgt)
+		local st = pulseState[tgt]
+		if st and st.phase == "ramp_out" then
+			pulseState[tgt] = { phase = "steady", startedAt = os.clock() }
+		end
+	end
+	for tgt, hl in pairs(highlights) do
+		if (not wanted[tgt] or not tgt.Parent) then
+			if tgt.Parent then
+				beginRampOut(tgt, hl.FillTransparency)
+			else
+				clearHighlight(tgt)
+				helperHumanoids[tgt] = nil
+			end
 		end
 	end
 
-	-- Pulse fill + outline together — the whole surface breathes white.
-	if next(highlights) then
-		local t = (math.sin(os.clock() * PULSE_SPEED) + 1) / 2
-		local fill    = FILL_MIN + (FILL_MAX - FILL_MIN) * t
-		local outline = SHOW_OUTLINE and (OUTLINE_MIN + (OUTLINE_MAX - OUTLINE_MIN) * t) or 1
-		for _, hl in pairs(highlights) do
-			hl.FillTransparency    = fill
-			hl.OutlineTransparency = outline
+	-- Per-target pulse with smooth ramp-in/ramp-out phases.
+	local now = os.clock()
+	for tgt, hl in pairs(highlights) do
+		local st = pulseState[tgt] or { phase = "steady", startedAt = now }
+		pulseState[tgt] = st
+		local fill = FILL_MIN
+		local outline = SHOW_OUTLINE and OUTLINE_MIN or 1
+
+		if st.phase == "ramp_in" then
+			local dur = (1 / PULSE_SPEED) / RAMP_SPEED_MULTIPLIER
+			local a = math.clamp((now - st.startedAt) / dur, 0, 1)
+			fill = 1 + (FILL_MIN - 1) * a
+			outline = SHOW_OUTLINE and (1 + (OUTLINE_MIN - 1) * a) or 1
+			if a >= 1 then
+				st.phase = "steady"
+				st.startedAt = now
+			end
+		elseif st.phase == "ramp_out" then
+			local dur = (1 / PULSE_SPEED) / RAMP_SPEED_MULTIPLIER
+			local a = math.clamp((now - st.startedAt) / dur, 0, 1)
+			local fromFill = st.holdFill or FILL_MIN
+			fill = fromFill + (1 - fromFill) * a
+			local fromOutline = SHOW_OUTLINE and OUTLINE_MIN or 1
+			outline = SHOW_OUTLINE and (fromOutline + (1 - fromOutline) * a) or 1
+			if a >= 1 then
+				clearHighlight(tgt)
+			end
+		else
+			local t = (math.sin(now * PULSE_SPEED) + 1) / 2
+			fill = FILL_MIN + (FILL_MAX - FILL_MIN) * t
+			outline = SHOW_OUTLINE and (OUTLINE_MIN + (OUTLINE_MAX - OUTLINE_MIN) * t) or 1
 		end
+
+		hl.FillTransparency = fill
+		hl.OutlineTransparency = outline
 	end
 end)
