@@ -22,14 +22,14 @@ gui.Parent = player:WaitForChild("PlayerGui")
 
 local holder = Instance.new("Frame")
 holder.BackgroundTransparency = 1
-holder.Size = UDim2.fromOffset(220, 80)
+holder.Size = UDim2.fromOffset(170, 52)
 holder.AnchorPoint = Vector2.new(0.5, 1)
 holder.Visible = false
 holder.Parent = gui
 
 local keyImage = Instance.new("ImageLabel")
 keyImage.BackgroundTransparency = 1
-keyImage.Size = UDim2.fromOffset(38, 38)
+keyImage.Size = UDim2.fromOffset(22, 22)
 keyImage.AnchorPoint = Vector2.new(0.5, 0)
 keyImage.Position = UDim2.fromScale(0.5, 0)
 keyImage.Image = KEY_ICON
@@ -37,10 +37,10 @@ keyImage.Parent = holder
 
 local txt = Instance.new("TextLabel")
 txt.BackgroundTransparency = 1
-txt.Size = UDim2.new(1, 0, 0, 28)
-txt.Position = UDim2.fromOffset(0, 42)
+txt.Size = UDim2.new(1, 0, 0, 20)
+txt.Position = UDim2.fromOffset(0, 24)
 txt.Font = Enum.Font.GothamSemibold
-txt.TextSize = 18
+txt.TextSize = 12
 txt.TextColor3 = Color3.fromRGB(255, 238, 196)
 txt.TextStrokeTransparency = 0.5
 txt.Text = "Pick up"
@@ -96,7 +96,7 @@ RunService.RenderStepped:Connect(function()
 			currentTarget = target
 			local name = target:GetAttribute("PickupDisplayName") or target.Name
 			txt.Text = "Pick up: " .. tostring(name)
-			holder.Position = UDim2.fromOffset(vp.X / 2, vp.Y / 2 - 20)
+			holder.Position = UDim2.fromOffset(vp.X / 2, vp.Y / 2 - 12)
 			holder.Visible = true
 			return
 		end
