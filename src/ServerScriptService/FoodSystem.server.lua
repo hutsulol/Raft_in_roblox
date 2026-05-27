@@ -29,11 +29,92 @@ local FOOD_DATA = {
 local COOKED_SUFFIX     = "_Cooked"
 local COOKED_FISH_HUNGER = 35   -- ~35 % of MAX_HUNGER (100)
 local COOKED_FISH_HP     = 5
+local MEAT_NUTRITION_MULT = 1.5 -- cooked meat is 1.5x cooked fish nutrition
+local COOKED_MEAT_HUNGER = COOKED_FISH_HUNGER * MEAT_NUTRITION_MULT
+local COOKED_MEAT_HP     = COOKED_FISH_HP * MEAT_NUTRITION_MULT
+local RAW_FISH_HUNGER_MULT = 0.2 -- raw fish gives 20% of cooked nutrition
+local RAW_FISH_HP_MULT     = 0.2
+local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
+local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
+local LEGENDARY_RAW_TEXTURE_ID = "http://www.roblox.com/asset/?id=155812542"
+local LEGENDARY_COOKED_TEXTURE_ID = "rbxassetid://138934138408588"
+local LEGENDARY_RAW_TEXTURE_NUM = "155812542"
+local LEGENDARY_COOKED_TEXTURE_NUM = "138934138408588"
+local MEAT_RAW_TEXTURE_ID = "rbxassetid://96631156827637"
+local MEAT_COOKED_TEXTURE_ID = "rbxassetid://81212406244264"
 
 local function isCookedFish(name)
 	return type(name) == "string"
 		and #name > #COOKED_SUFFIX
 		and name:sub(-#COOKED_SUFFIX) == COOKED_SUFFIX
+end
+
+local function isRawFish(name)
+	if type(name) ~= "string" then return false end
+	-- Raw fish inventory keys are authored as "<Type>_Fish".
+	return #name > 5 and name:sub(-5) == "_Fish"
+end
+
+local function isRawMeat(name)
+	return name == "Meat"
+end
+
+local function isCookedMeat(name)
+	return name == "Meat_Cooked"
+end
+
+local function isAnyFish(name)
+	return isRawFish(name) or isCookedFish(name)
+end
+
+local function isMeat(name)
+	return isRawMeat(name) or isCookedMeat(name)
+end
+
+local function fishDecalState(inst)
+	local n = inst.Name:lower():gsub("[%s_]+", "")
+	if n:find("cooked", 1, true) then return "cooked" end
+	if n:find("raw", 1, true) then return "raw" end
+	return nil
+end
+
+local function applyFishVisualState(tool, wantCooked)
+	for _, d in tool:GetDescendants() do
+		if d:IsA("Decal") or d:IsA("Texture") then
+			local state = fishDecalState(d)
+			if state == "raw" then
+				d.Transparency = wantCooked and 1 or 0
+			elseif state == "cooked" then
+				d.Transparency = wantCooked and 0 or 1
+			end
+		elseif d:IsA("SurfaceAppearance") and fishDecalState(d) == "raw" and wantCooked then
+			d:Destroy()
+		end
+	end
+end
+
+local function applyFishMeshVisualState(tool, wantCooked)
+	for _, d in tool:GetDescendants() do
+		if d:IsA("MeshPart") then
+			local tex = d.TextureID
+			if type(tex) == "string" and tex:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) and wantCooked then
+				d.TextureID = LEGENDARY_COOKED_TEXTURE_ID
+			elseif type(tex) == "string" and tex:find(LEGENDARY_COOKED_TEXTURE_NUM, 1, true) and (not wantCooked) then
+				d.TextureID = LEGENDARY_RAW_TEXTURE_ID
+			elseif tex == MEAT_RAW_TEXTURE_ID and wantCooked then
+				d.TextureID = MEAT_COOKED_TEXTURE_ID
+			elseif tex == MEAT_COOKED_TEXTURE_ID and (not wantCooked) then
+				d.TextureID = MEAT_RAW_TEXTURE_ID
+			end
+		elseif d:IsA("SpecialMesh") then
+			local tex = d.TextureId
+			if type(tex) == "string" and tex:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) and wantCooked then
+				d.TextureId = LEGENDARY_COOKED_TEXTURE_ID
+			elseif type(tex) == "string" and tex:find(LEGENDARY_COOKED_TEXTURE_NUM, 1, true) and (not wantCooked) then
+				d.TextureId = LEGENDARY_RAW_TEXTURE_ID
+			end
+		end
+	end
 end
 
 -- Published for the in-Tool Script (src/Fruits/<Name> ( Tool )/Script).
@@ -42,8 +123,23 @@ end
 -- pass touches only this table.
 _G.GetFoodData = function(name)
 	if FOOD_DATA[name] then return FOOD_DATA[name] end
+	if isCookedMeat(name) then
+		return { hunger = COOKED_MEAT_HUNGER, hp = COOKED_MEAT_HP }
+	end
+	if isRawMeat(name) then
+		return {
+			hunger = COOKED_MEAT_HUNGER * RAW_FISH_HUNGER_MULT,
+			hp = COOKED_MEAT_HP * RAW_FISH_HP_MULT,
+		}
+	end
 	if isCookedFish(name) then
 		return { hunger = COOKED_FISH_HUNGER, hp = COOKED_FISH_HP }
+	end
+	if isRawFish(name) then
+		return {
+			hunger = COOKED_FISH_HUNGER * RAW_FISH_HUNGER_MULT,
+			hp = COOKED_FISH_HP * RAW_FISH_HP_MULT,
+		}
 	end
 	return nil
 end
@@ -68,6 +164,21 @@ local function ensureEatAnimation(tool)
 	anim.AnimationId = EAT_ANIMATION_ID
 	anim.Parent      = tool
 	return anim
+end
+
+local function loadEatTrack(humanoid, animator, eatAnim)
+	if not eatAnim or not eatAnim:IsA("Animation") then return nil end
+	-- Prefer Animator, but fall back to Humanoid:LoadAnimation for rigs
+	-- where Animator hasn't replicated/initialized yet.
+	if animator then
+		local ok, t = pcall(function() return animator:LoadAnimation(eatAnim) end)
+		if ok and t then return t end
+	end
+	if humanoid then
+		local ok, t = pcall(function() return humanoid:LoadAnimation(eatAnim) end)
+		if ok and t then return t end
+	end
+	return nil
 end
 
 local equipEvent = ReplicatedStorage:FindFirstChild("EquipFoodAsTool")
@@ -198,13 +309,18 @@ local function makeCookedFishTool(foodName)
 	-- Show cooked, hide raw. Names are normalized (trim + lowercase)
 	-- because the raw decal is authored as " raw" with a leading space —
 	-- an exact == "raw" left it visible and overlapping the cooked look.
+	applyFishVisualState(tool, true)
+	applyFishMeshVisualState(tool, true)
 	for _, d in tool:GetDescendants() do
-		if d:IsA("Decal") or d:IsA("Texture") then
-			local n = (d.Name:gsub("%s+", "")):lower()
-			if n == "raw" then d.Transparency = 1
-			elseif n == "cooked" then d.Transparency = 0 end
-		elseif d:IsA("SurfaceAppearance") and (d.Name:gsub("%s+", "")):lower() == "raw" then
-			d:Destroy()
+		if d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
+			-- Tilapia cooked visual is authored via MeshPart.TextureID
+			-- rather than raw/cooked decals, so convert it explicitly
+			-- for the held Tool variant.
+			d.TextureID = TILAPIA_COOKED_TEXTURE_ID
+		elseif d:IsA("MeshPart") and d.TextureID == LEGENDARY_RAW_TEXTURE_ID then
+			d.TextureID = LEGENDARY_COOKED_TEXTURE_ID
+		elseif d:IsA("SpecialMesh") and d.TextureId == LEGENDARY_RAW_TEXTURE_ID then
+			d.TextureId = LEGENDARY_COOKED_TEXTURE_ID
 		end
 	end
 
@@ -218,6 +334,14 @@ local function makeFoodTool(foodName)
 	end
 
 	local template = findFoodTemplate(foodName)
+	-- Raw fish inventory keys are snake_case (e.g. Tilapia_Fish), while
+	-- the authored 3D templates live under ReplicatedStorage.Fish with
+	-- spaces (e.g. "Tilapia Fish"). Mirror cooked-fish lookup so raw
+	-- fish can be equipped with their real model instead of falling back
+	-- to the invisible placeholder handle.
+	if (not template) and isRawFish(foodName) then
+		template = findFoodTemplate((foodName:gsub("_", " ")))
+	end
 	if template then
 		if template:IsA("Tool") then
 			local clone = template:Clone()
@@ -227,13 +351,23 @@ local function makeFoodTool(foodName)
 			for _, desc in clone:GetDescendants() do
 				prepHoldablePart(desc)
 			end
+			if isRawFish(foodName) then
+				applyFishVisualState(clone, false)
+				applyFishMeshVisualState(clone, false)
+			end
 			return clone
 		else
 			-- Model or BasePart → wrap into a Tool so the player can
 			-- actually hold it. Failed wrap (no BasePart inside) falls
 			-- through to the placeholder below.
 			local tool = wrapModelAsTool(template:Clone(), foodName)
-			if tool then return tool end
+			if tool then
+				if isRawFish(foodName) then
+					applyFishVisualState(tool, false)
+					applyFishMeshVisualState(tool, false)
+				end
+				return tool
+			end
 		end
 	end
 	-- Placeholder Tool — invisible Handle so the equip mechanic still
@@ -274,9 +408,54 @@ local function refundFood(player, tool)
 	tool:SetAttribute("Refunded", true)
 	local foodName = tool:GetAttribute("FoodResource")
 	if foodName and player and player.Parent then
-		_G.AddResourceToInventory(player, foodName, 1, nil, true)
+		-- Refund should NEVER materialize as a world drop. Retry inventory
+		-- fetch for swap races and guarantee direct table restore.
+		local function tryRefund()
+			if not (_G.GetInventory and player and player.Parent) then return false end
+			local inv = _G.GetInventory(player)
+			if not inv then return false end
+			inv[foodName] = (inv[foodName] or 0) + 1
+			if _G.SendInventory then _G.SendInventory(player) end
+			return true
+		end
+
+		if not tryRefund() then
+			task.spawn(function()
+				for _ = 1, 60 do -- up to ~3s for profile/inventory handoff
+					task.wait(0.05)
+					if tryRefund() then return end
+				end
+				warn("[FoodSystem] refund failed after retries for " .. tostring(foodName))
+			end)
+		end
 	end
 	tool:Destroy()
+end
+
+local function refundHeldFoodTools(player)
+	local inv = _G.GetInventory and _G.GetInventory(player)
+	if not inv then return false end
+	local refundedAny = false
+	local char = player.Character
+	local backpack = player:FindFirstChild("Backpack")
+	for _, container in ipairs({ char, backpack }) do
+		if container then
+			for _, t in container:GetChildren() do
+				if t:IsA("Tool")
+					and t:GetAttribute("FoodResource")
+					and not t:GetAttribute("Consumed")
+					and not t:GetAttribute("Refunded") then
+					local key = t:GetAttribute("FoodResource")
+					inv[key] = (inv[key] or 0) + 1
+					t:SetAttribute("Refunded", true)
+					t:Destroy()
+					refundedAny = true
+				end
+			end
+		end
+	end
+	if refundedAny and _G.SendInventory then _G.SendInventory(player) end
+	return true
 end
 
 equipEvent.OnServerEvent:Connect(function(player, foodName)
@@ -286,6 +465,12 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 	if not _G.GetFoodData(foodName) then return end
 
 	local inv = _G.GetInventory(player)
+	-- Deterministic swap: return any currently held food-tools BEFORE
+	-- removing the newly requested one, so fast fish-to-fish switching
+	-- can't bleed stack counts during ancestry/replication races.
+	if not refundHeldFoodTools(player) then return end
+	inv = _G.GetInventory(player)
+	if not inv then return end
 	if (inv[foodName] or 0) < 1 then return end
 
 	if alreadyHoldingFood(player, foodName) then return end
@@ -301,6 +486,16 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 
 	local tool = makeFoodTool(foodName)
 	if not tool then return end
+
+	-- Fish templates may ship with authored movement/flop scripts that
+	-- should never run while the fish is a held food item.
+	if isAnyFish(foodName) then
+		for _, d in tool:GetDescendants() do
+			if d:IsA("Script") or d:IsA("LocalScript") then
+				d.Disabled = true
+			end
+		end
+	end
 
 	tool:SetAttribute("FoodResource", foodName)
 	tool:SetAttribute("OwnerUserId", player.UserId)
@@ -329,7 +524,7 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 	-- fish have no such script (we strip the authored one so it doesn't
 	-- wiggle in hand), so eat them here: play the Eat animation + the
 	-- authored "Eat" sound, then restore hunger and consume.
-	if isCookedFish(foodName) then
+	if isAnyFish(foodName) or isMeat(foodName) then
 		tool.Activated:Connect(function()
 			if tool:GetAttribute("Consumed") then return end
 			tool:SetAttribute("Consumed", true)
@@ -338,20 +533,27 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 			local char = player.Character
 			local hum = char and char:FindFirstChildOfClass("Humanoid")
 			local animator = hum and hum:FindFirstChildOfClass("Animator")
+			if hum and not animator then
+				animator = Instance.new("Animator")
+				animator.Parent = hum
+			end
 			local hrp = char and char:FindFirstChild("HumanoidRootPart")
 
 			-- Eating animation. Force non-looping so Stopped fires and we
 			-- can hold the fish for exactly the clip's length.
 			local track
 			local eatAnim = tool:FindFirstChild("Eat")
-			if animator and eatAnim and eatAnim:IsA("Animation") then
-				local ok, t = pcall(function() return animator:LoadAnimation(eatAnim) end)
-				if ok and t then
-					track = t
-					track.Looped = false
-					track:Play()
+				if eatAnim and eatAnim:IsA("Animation") then
+					track = loadEatTrack(hum, animator, eatAnim)
+					if track then
+						-- Match the Banana/Coconut/PineApple in-tool scripts:
+						-- Action priority ensures the eat pose drives the arm
+						-- even while a Tool is equipped.
+						track.Priority = Enum.AnimationPriority.Action
+						track.Looped = false
+						track:Play()
+					end
 				end
-			end
 
 			-- Shared eating sound lives in ReplicatedStorage.Fish. The
 			-- asset is named "Eating  Sound" (double space) — match on a
