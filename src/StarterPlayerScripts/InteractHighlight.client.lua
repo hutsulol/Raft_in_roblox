@@ -23,22 +23,22 @@ local FILL_COLOR    = Color3.fromRGB(255, 255, 255)
 -- The whole surface glows white and breathes. Fill + outline pulse
 -- together between their bright (MIN) and faint (MAX) transparency.
 local SHOW_OUTLINE  = false  -- toggle the edge outline (the glow fill stays either way)
-local FILL_MIN      = 0.45   -- strongest glow (lower = more white). Kept soft so
-local FILL_MAX      = 0.75   -- the object's own texture still shows through.
+local FILL_MIN      = 0.25   -- strongest glow (lower = more white)
+local FILL_MAX      = 0.7    -- faintest glow — the gap MIN..MAX is the visible "breath"
 local OUTLINE_MIN   = 0.0
 local OUTLINE_MAX   = 0.4
 local PULSE_SPEED   = 4      -- higher = faster pulse
 local DEPTH_MODE    = Enum.HighlightDepthMode.AlwaysOnTop  -- single clean silhouette of the whole model; Occluded fragments per-part
 
--- Highlight only fully fails to render on parts that are VERY
--- transparent. For a slightly-transparent object (e.g. this bottle)
--- the glow shows fine and we want to KEEP the see-through look, so
--- leave transparency alone by default. Only parts more transparent
--- than FORCE_OPAQUE_ABOVE get nudged to FORCE_OPAQUE_TO so they don't
--- vanish from the glow entirely. Set FORCE_OPAQUE_ABOVE = 1 to never
--- touch transparency at all.
-local FORCE_OPAQUE_ABOVE = 0.7   -- only parts more transparent than this get nudged
-local FORCE_OPAQUE_TO    = 0.5   -- the (still see-through) value they're nudged to
+-- The glow fill renders PROPORTIONALLY to a part's opacity, so on very
+-- see-through glass it's nearly invisible (no visible flicker). While
+-- lit we pull transparent parts toward FORCE_OPAQUE_TO so the glow is
+-- actually visible — but only part-way, so you can still tell it's a
+-- bottle with liquid. Tune FORCE_OPAQUE_TO: lower = stronger glow but
+-- more solid; higher = more see-through but fainter glow. Set
+-- FORCE_OPAQUE_ABOVE = 1 to never touch transparency.
+local FORCE_OPAQUE_ABOVE = 0.3   -- parts more transparent than this get pulled in
+local FORCE_OPAQUE_TO    = 0.5   -- ~half see-through while lit (glow stays visible)
 
 local highlights   = {}  -- [target Instance] = Highlight
 local shownPrompts = {}  -- [ProximityPrompt] = true while its prompt is visible
