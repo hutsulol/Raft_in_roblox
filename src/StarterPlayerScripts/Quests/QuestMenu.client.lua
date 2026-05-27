@@ -40,7 +40,9 @@ local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
 -- PANEL_W - TAB_RAIL_W - CONTENT_GAP = 578 px; QuestsTab puts 4×130-px
 -- cards with 10-px gaps + 12-px side padding into that band.
 local PANEL_W      = 720
-local PANEL_H      = 360
+-- Bumped from 360 → 420 so the new full-width title bar at the top
+-- doesn't squeeze the tab rail / content area below it.
+local PANEL_H      = 420
 local PANEL_RADIUS = 18
 local PANEL_PAD    = 14
 
@@ -51,10 +53,11 @@ local TAB_RAIL_W   = 130
 local TAB_HEIGHT   = 38
 local TAB_GAP      = 6
 local TAB_RADIUS   = 8
--- Y offset where the tab list starts inside the rail. Leaves room
--- above for the QUESTS header (B7) so the first tab doesn't sit
--- directly under it.
-local TAB_LIST_TOP = 56
+-- Tabs now start at the top of the rail because the QUESTS title +
+-- scroll glyph + close button live in their own full-width title bar
+-- above the rail (TITLE_BAR_H below). Older builds reserved
+-- TAB_LIST_TOP = 56 inside the rail for the title.
+local TAB_LIST_TOP = 0
 
 -- Right-side content area sits to the right of the tab rail with a
 -- small gap so the rail's active-tab fill doesn't kiss the content
@@ -62,6 +65,17 @@ local TAB_LIST_TOP = 56
 -- one matching activeTabId is Visible at any time (B9).
 local CONTENT_GAP   = 12
 local CONTENT_RADIUS = 12
+
+-- Title bar (top of the panel, spans the full content width).
+-- Scroll glyph + "QUESTS" label on the left, X close button on the
+-- right. Tab rail + content root sit below this bar with a small
+-- gap so the wood panel reads as title-on-top, browser-below, like
+-- the reference mockup.
+local TITLE_BAR_H   = 46
+local TITLE_BAR_GAP = 12
+local QUEST_ICON_ASSET  = "rbxassetid://104397826961228"
+local TITLE_GLYPH_SIZE  = 36
+local TITLE_GLYPH_GAP   = 10
 
 -- Header (top-left of the panel content). Scroll/parchment glyph
 -- followed by the "QUESTS" label. Same on every tab — only the right
@@ -71,11 +85,11 @@ local CONTENT_RADIUS = 12
 local HEADER_HEIGHT     = 36
 local HEADER_GLYPH_SIZE = 30
 local HEADER_GLYPH_GAP  = 8
-local QUEST_ICON_ASSET  = "rbxassetid://121862782555497"
 
--- Close button (top-right of the panel). Same dimensions + recipe as
--- the OnboardingTooltip's X so the wood-style UIs read as one set.
-local CLOSE_BTN_SIZE = 26
+-- Close button (top-right of the panel). Now an illustrated wood-X
+-- asset, sized a touch larger than the legacy plain-square button so
+-- the bezel + cross have room to read.
+local CLOSE_BTN_SIZE = 36
 local CLOSE_BTN_RADIUS = 8
 
 -- ─── Tab catalog ─────────────────────────────────────────────────────
@@ -234,8 +248,10 @@ local function buildTabRail(parent)
 	tabRail = Instance.new("Frame")
 	tabRail.Name = "TabRail"
 	tabRail.AnchorPoint = Vector2.new(0, 0)
-	tabRail.Position = UDim2.fromOffset(0, 0)
-	tabRail.Size = UDim2.new(0, TAB_RAIL_W, 1, 0)
+	-- Pushed below the title bar so the QUESTS title sits above all
+	-- tabs, matching the reference mockup.
+	tabRail.Position = UDim2.fromOffset(0, TITLE_BAR_H + TITLE_BAR_GAP)
+	tabRail.Size = UDim2.new(0, TAB_RAIL_W, 1, -(TITLE_BAR_H + TITLE_BAR_GAP))
 	tabRail.BackgroundTransparency = 1
 	tabRail.BorderSizePixel = 0
 	tabRail.ZIndex = 4
@@ -373,8 +389,11 @@ local function buildContentRoot(parent)
 	contentRoot = Instance.new("Frame")
 	contentRoot.Name = "Content"
 	contentRoot.AnchorPoint = Vector2.new(0, 0)
-	contentRoot.Position = UDim2.fromOffset(TAB_RAIL_W + CONTENT_GAP, 0)
-	contentRoot.Size = UDim2.new(1, -(TAB_RAIL_W + CONTENT_GAP), 1, 0)
+	-- Below the title bar; same horizontal layout as before
+	-- (content sits to the right of the tab rail with CONTENT_GAP
+	-- between).
+	contentRoot.Position = UDim2.fromOffset(TAB_RAIL_W + CONTENT_GAP, TITLE_BAR_H + TITLE_BAR_GAP)
+	contentRoot.Size = UDim2.new(1, -(TAB_RAIL_W + CONTENT_GAP), 1, -(TITLE_BAR_H + TITLE_BAR_GAP))
 	contentRoot.BackgroundColor3 = COLOR_PAPER
 	contentRoot.BackgroundTransparency = 0.15
 	contentRoot.BorderSizePixel = 0
@@ -414,21 +433,25 @@ end
 -- Lives inside the tab rail's column so the label sits flush above
 -- the first tab; the dot indicator aligns with the QUESTS column.
 local function buildHeader(parent)
+	-- Full-width title bar pinned to the top of the panel. Reserves
+	-- room on the right for the close button so the title and X
+	-- never collide on narrow widths.
 	local header = Instance.new("Frame")
-	header.Name = "Header"
+	header.Name = "TitleBar"
 	header.AnchorPoint = Vector2.new(0, 0)
 	header.Position = UDim2.fromOffset(0, 0)
-	header.Size = UDim2.new(0, TAB_RAIL_W, 0, HEADER_HEIGHT)
+	header.Size = UDim2.new(1, -(CLOSE_BTN_SIZE + 12), 0, TITLE_BAR_H)
 	header.BackgroundTransparency = 1
 	header.BorderSizePixel = 0
 	header.ZIndex = 5
 	header.Parent = parent
 
+	-- Scroll glyph on the very left, sized to dominate the bar.
 	local glyph = Instance.new("ImageLabel")
 	glyph.Name = "Glyph"
 	glyph.AnchorPoint = Vector2.new(0, 0.5)
 	glyph.Position = UDim2.new(0, 0, 0.5, 0)
-	glyph.Size = UDim2.fromOffset(HEADER_GLYPH_SIZE, HEADER_GLYPH_SIZE)
+	glyph.Size = UDim2.fromOffset(TITLE_GLYPH_SIZE, TITLE_GLYPH_SIZE)
 	glyph.BackgroundTransparency = 1
 	glyph.BorderSizePixel = 0
 	glyph.Image = QUEST_ICON_ASSET
@@ -439,12 +462,12 @@ local function buildHeader(parent)
 	local label = Instance.new("TextLabel")
 	label.Name = "Label"
 	label.AnchorPoint = Vector2.new(0, 0.5)
-	label.Position = UDim2.new(0, HEADER_GLYPH_SIZE + HEADER_GLYPH_GAP, 0.5, 0)
-	label.Size = UDim2.new(1, -(HEADER_GLYPH_SIZE + HEADER_GLYPH_GAP), 1, 0)
+	label.Position = UDim2.new(0, TITLE_GLYPH_SIZE + TITLE_GLYPH_GAP, 0.5, 0)
+	label.Size = UDim2.new(1, -(TITLE_GLYPH_SIZE + TITLE_GLYPH_GAP), 1, 0)
 	label.BackgroundTransparency = 1
 	label.BorderSizePixel = 0
 	label.Font = Enum.Font.GothamBold
-	label.TextSize = 18
+	label.TextSize = 22
 	label.TextColor3 = COLOR_PAPER_LIGHT
 	label.TextXAlignment = Enum.TextXAlignment.Left
 	label.TextYAlignment = Enum.TextYAlignment.Center
@@ -461,8 +484,14 @@ end
 -- AnchorPoint (1, 0) with positive offset moves it past the parent
 -- UIPadding so the button kisses the visual edge instead of the
 -- padded box.
+local CLOSE_BTN_ASSET = "rbxassetid://76127527205295"
+
 local function buildCloseButton(parent)
-	local close = Instance.new("TextButton")
+	-- ImageButton instead of TextButton + glyph: the close art the
+	-- user supplied is a fully self-contained illustration (wood
+	-- bezel + cream X), so we just render the asset and skip the
+	-- BackgroundColor / corner / stroke chrome we used to draw.
+	local close = Instance.new("ImageButton")
 	close.Name = "CloseButton"
 	close.AnchorPoint = Vector2.new(1, 0)
 	-- (PANEL_PAD - 8) lifts the button past the parent's 14-px
@@ -470,39 +499,19 @@ local function buildCloseButton(parent)
 	-- outer rect matches the mockup's `top: 8px; right: 8px`.
 	close.Position = UDim2.new(1, PANEL_PAD - 8, 0, -(PANEL_PAD - 8))
 	close.Size = UDim2.fromOffset(CLOSE_BTN_SIZE, CLOSE_BTN_SIZE)
-	close.BackgroundColor3 = COLOR_WOOD_MID
+	close.BackgroundTransparency = 1
 	close.BorderSizePixel = 0
 	close.AutoButtonColor = false
-	close.Text = ""
+	close.Image = CLOSE_BTN_ASSET
+	close.ScaleType = Enum.ScaleType.Fit
 	close.ZIndex = 7
 	close.Parent = parent
 
-	local cCorner = Instance.new("UICorner")
-	cCorner.CornerRadius = UDim.new(0, CLOSE_BTN_RADIUS)
-	cCorner.Parent = close
-
-	local cStroke = Instance.new("UIStroke")
-	cStroke.Color = COLOR_WOOD_DARK
-	cStroke.Thickness = 2
-	cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	cStroke.Parent = close
-
-	local glyph = Instance.new("TextLabel")
-	glyph.BackgroundTransparency = 1
-	glyph.BorderSizePixel = 0
-	glyph.Size = UDim2.fromScale(1, 1)
-	glyph.Font = Enum.Font.GothamBold
-	glyph.TextSize = 14
-	glyph.TextColor3 = COLOR_PAPER_LIGHT
-	glyph.Text = "✕"
-	glyph.ZIndex = 8
-	glyph.Parent = close
-
 	close.MouseEnter:Connect(function()
-		close.BackgroundColor3 = COLOR_WOOD_DARK
+		close.ImageTransparency = 0.15
 	end)
 	close.MouseLeave:Connect(function()
-		close.BackgroundColor3 = COLOR_WOOD_MID
+		close.ImageTransparency = 0
 	end)
 
 	close.MouseButton1Click:Connect(function()
@@ -611,7 +620,11 @@ local function ensureScreenGui()
 	screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "QuestMenuGui"
 	screenGui.ResetOnSpawn = false
-	screenGui.IgnoreGuiInset = false
+	-- IgnoreGuiInset=true so the backdrop tween covers the entire
+	-- screen, including the topbar inset area. Without this, the
+	-- top ~36px stripe shows through bright while the rest of the
+	-- screen is dimmed.
+	screenGui.IgnoreGuiInset = true
 	screenGui.DisplayOrder = SCREENGUI_DISPLAY_ORDER
 	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	screenGui.Enabled = false   -- shown only after openQuestMenu()

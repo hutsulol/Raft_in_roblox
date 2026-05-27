@@ -15,13 +15,39 @@ local DEFAULT_BASE_GRID_SLOTS = 5
 local DEFAULT_UNLOCKED = DEFAULT_HOTBAR_SLOTS + DEFAULT_BASE_GRID_SLOTS -- 13
 local AUTO_SAVE_INTERVAL = 120 -- seconds
 
--- All known resource names (keys the inventory can hold)
+-- All known resource names (keys the inventory can hold).
+-- Items missing from this list still get added to the inv table by
+-- AddResourceToInventory — Lua doesn't care about schema — but they
+-- (a) aren't restored on respawn / re-join because loadInventory only
+-- reads RESOURCE_SET-listed names from DataStore, and (b) aren't
+-- counted by getTotalResourceStacks so the trim guard skips them
+-- which can leave the player's slot count silently inconsistent. So
+-- every resource the player can legitimately end up holding must be
+-- registered here.
+--
+-- Seeds (Banana_Seed / Coconut_Seed / Pineapple_Seed) are intentionally
+-- absent — they live exclusively in the leaf bag Tool (see
+-- SeedBagSystem.server.lua) rather than the main inventory.
+-- Sand and Clay are likewise absent — both live in the Sand Bag tool
+-- (see SandBagSystem.server.lua) and never occupy an inventory slot;
+-- crafting drains them straight from the bag.
+-- Pineapple_Bush_Seed IS a regular inventory item — bush seeds are
+-- separate from tree seeds (no bag involvement) and equip-to-place
+-- mirrors the berry-bush Tool flow.
 local RESOURCE_NAMES = {
 	"Log", "Plastic", "Stone", "Plank", "Leaves", "Rope",
-	"Sand", "Clay", "Wet_Brick", "Dry_Brick",
+	"Wet_Brick", "Dry_Brick",
 	"Iron_Ore", "Iron_Ingot",
 	"Blue_Fish", "Carp_Fish", "Fish_Bones", "Foil_Fish",
 	"Jelly_Fish", "Legendary_Fish", "Seabass_Fish", "Tilapia_Fish",
+	-- Cooked fish variants (produced by the campfire). Must be
+	-- registered so they sync to the client UI, persist, and count
+	-- toward stacks like any other resource.
+	"Blue_Fish_Cooked", "Carp_Fish_Cooked", "Foil_Fish_Cooked",
+	"Jelly_Fish_Cooked", "Legendary_Fish_Cooked", "Seabass_Fish_Cooked",
+	"Tilapia_Fish_Cooked",
+	"Banana", "Coconut", "Pineapple",
+	"Pineapple_Bush_Seed",
 }
 
 local RESOURCE_SET = {}
@@ -420,10 +446,46 @@ _G.SendInventory = function(player)
 	inventoryEvent:FireClient(player, inv)
 end
 
-_G.AddResourceToInventory = function(player, itemName, amount, dropPosition)
+-- Inventory-add notification. Fires the "InventoryNotify" RemoteEvent
+-- so a generic client UI (StarterPlayerScripts/InventoryNotify) can
+-- render bottom-right "+N item" cards. Container takeouts pass
+-- silent=true to skip — see SmallContainerSystem / PlasticContainerSystem
+-- / MercenaryEquipment for those call sites.
+local notifyEvent = ReplicatedStorage:FindFirstChild("InventoryNotify")
+if not notifyEvent then
+	notifyEvent = Instance.new("RemoteEvent")
+	notifyEvent.Name = "InventoryNotify"
+	notifyEvent.Parent = ReplicatedStorage
+end
+
+_G.AddResourceToInventory = function(player, itemName, amount, dropPosition, silent)
 	if type(itemName) ~= "string" or itemName == "" then return 0, 0 end
 	amount = tonumber(amount) or 0
 	if amount <= 0 then return 0, 0 end
+
+	-- Sand and Clay never enter the regular inventory — both route
+	-- through the Sand Bag system. If the player has no compatible bag
+	-- (no bag at all, or every bag is full / locked to the other type)
+	-- the remainder spills out as a ground drop so the resource isn't
+	-- silently lost.
+	if itemName == "Sand" or itemName == "Clay" then
+		local perUnit = typeof(_G.GetBagPercentPerUnit) == "function"
+			and _G.GetBagPercentPerUnit() or 5
+		local unitsLanded = 0
+		if typeof(_G.AddToBag) == "function" and typeof(_G.GetBagSpaceFor) == "function" then
+			local space    = _G.GetBagSpaceFor(player, itemName) or 0
+			local maxUnits = math.floor(space / perUnit)
+			unitsLanded    = math.min(amount, maxUnits)
+			if unitsLanded > 0 then
+				_G.AddToBag(player, itemName, unitsLanded * perUnit, dropPosition)
+			end
+		end
+		local leftover = amount - unitsLanded
+		if leftover > 0 and _G.SpawnResourceDrop then
+			_G.SpawnResourceDrop(player, itemName, leftover, dropPosition)
+		end
+		return unitsLanded, leftover
+	end
 
 	local inv = _G.GetInventory(player)
 	local cap = _G.GetInventoryCapacity(player, itemName)
@@ -437,6 +499,12 @@ _G.AddResourceToInventory = function(player, itemName, amount, dropPosition)
 	if toAdd > 0 then
 		inv[itemName] = (inv[itemName] or 0) + toAdd
 		addPendingDelta(player, itemName, toAdd)
+		-- Generic "+N item" notification. Skipped for container /
+		-- merc-backpack takeouts (silent flag) so chest extraction
+		-- doesn't spam the corner with cards.
+		if not silent then
+			notifyEvent:FireClient(player, itemName, toAdd)
+		end
 	end
 
 	if overflow > 0 and _G.SpawnResourceDrop then

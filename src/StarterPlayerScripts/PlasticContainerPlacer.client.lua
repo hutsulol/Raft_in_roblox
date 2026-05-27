@@ -85,6 +85,7 @@ end
 
 local PLACED_NAMES = {
 	WorkBench = true, Purifier = true, Garden = true,
+	Bed_T = true,
 	Bed = true, Destitalor = true, bush = true,
 	Furnace = true, Sawmill = true,
 	SmallContainer = true, PlasticContainer = true,
@@ -204,7 +205,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
+	if UserInputService:GetFocusedTextBox() then return end
 	if input.KeyCode == Enum.KeyCode.R and placing then
 		rotationAngle = rotationAngle + math.rad(90)
 	end

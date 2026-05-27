@@ -293,7 +293,31 @@ local MERC_THEMES = {
 		level       = 1,
 		xp          = 0,
 		xpMax       = 500,
-		charStats   = { str = 72, spd = 48, luck = 35 },
+		-- Strength / Speed / Luck per the StatsSystem.md design doc.
+		-- Pirate is the lowest tier — base 10/10/10 on the universal
+		-- 10–200 scale. Bar fill normalises against UNIVERSAL_MAX in
+		-- refreshRight below.
+		charStats   = { str = 10, spd = 10, luck = 10 },
+		portraitIcon = ICON_PIRATE,
+	},
+	["Corsair"] = {
+		-- Mid-tier sea raider — between the basic Pirate (1★) and the
+		-- Soldier (2★). Same Pirate-family loadout (Sword / FishingRod
+		-- / Unarmed) so the existing weapon restrictedTo lists keep
+		-- working without per-merc plumbing.
+		accent      = Color3.fromRGB(230, 175, 55),
+		displayName = "Corsair",
+		stars       = 2,
+		role        = "Sea Raider · Melee",
+		stats       = { hp = 320, damage = 24, mana = "25/min" },
+		spawnModel  = "Corsair",
+		defaultWeapon = "Sword",
+		viewportPivotY = 0.4,
+		level       = 1,
+		xp          = 0,
+		xpMax       = 650,
+		-- Marauder tier from StatsSystem.md (mid-rung): 30/62/35 base.
+		charStats   = { str = 30, spd = 62, luck = 35 },
 		portraitIcon = ICON_PIRATE,
 	},
 	["Infected Military"] = {
@@ -328,14 +352,15 @@ local MERC_THEMES = {
 		rigBuiltinWeapons = {
 			Firearm = "AK-47",
 		},
-		-- Soldier rig sits lower in the bind pose than Pirate, which
-		-- pushed the head to the bottom of the viewport. Lifting the
-		-- pivot up centres him with the camera at (0.6, 2.3, 6.2).
-		viewportPivotY = 1.8,
+		-- Soldier rig is taller / wider than the Pirate; tweaked
+		-- toward the middle so the camera at (0.6, 2.3, 6.2) frames
+		-- his torso similar to how the Pirate's is framed.
+		viewportPivotY = 0.3,
 		level       = 1,
 		xp          = 0,
 		xpMax       = 800,
-		charStats   = { str = 90, spd = 62, luck = 40 },
+		-- Military tier from StatsSystem.md: 110/131/75 base.
+		charStats   = { str = 110, spd = 131, luck = 75 },
 		portraitIcon = ICON_PIRATE,
 	},
 }
@@ -348,8 +373,43 @@ local DEFAULT_THEME = {
 	level       = 1,
 	xp          = 0,
 	xpMax       = 100,
-	charStats   = { str = 30, spd = 30, luck = 30 },
+	-- Default (Pirate-tier) stats — same 10/10/10 baseline as the
+	-- weakest registered merc. Bars + numbers normalise against the
+	-- 10–200 universal scale from StatsSystem.md.
+	charStats   = { str = 10, spd = 10, luck = 10 },
 }
+
+-- Per-merc weapon allow-list. Mirrored from
+-- MercenaryEquipment.server.ALLOWED_WEAPONS_BY_MERC; the client uses
+-- it to scrub stale EquippedWeapon attributes that point at a weapon
+-- this merc can't actually hold. Without this, a Soldier who carried
+-- "Sword" across a session before per-merc restrictedTo was enforced
+-- would keep getting ClassicSword welded onto him in every viewport.
+local ALLOWED_WEAPONS_BY_MERC = {
+	["Pirate lvl1"]       = { Sword = true, FishingRod = true, Unarmed = true },
+	["Corsair"]           = { Sword = true, FishingRod = true, Unarmed = true },
+	["Infected Military"] = { Firearm = true, Shotgun = true, FishingRod = true, Unarmed = true },
+}
+
+-- Single source of truth for "what weapon should this merc actually
+-- hold right now": prefer the EquippedWeapon attribute, fall back to
+-- the merc's defaultWeapon, then "Sword" (legacy). Disallowed
+-- attributes are cleared in place so subsequent reads land on the
+-- default — keeps the menu / handling / body-select pages in sync
+-- without having to wait for a server-side validation round-trip.
+local function resolveMercWeapon(mercName, mercEntry, themeOverride)
+	local theme = themeOverride or MERC_THEMES[mercName] or DEFAULT_THEME
+	local default = (theme and theme.defaultWeapon) or "Sword"
+	if not mercEntry then return default end
+	local cur = mercEntry:GetAttribute("EquippedWeapon")
+	if not cur or cur == "" then return default end
+	local allowed = ALLOWED_WEAPONS_BY_MERC[mercName]
+	if allowed and not allowed[cur] then
+		mercEntry:SetAttribute("EquippedWeapon", nil)
+		return default
+	end
+	return cur
+end
 
 -- ─── Small UI helpers ───────────────────────────────────────────────────
 
@@ -1068,6 +1128,132 @@ local function detachCachedViewports()
 		end
 	end
 end
+
+-- ─── Cached-viewport skin sync ──────────────────────────────────────
+-- The cached merc rig that powers MANAGE / Handling / SkinSelect lives
+-- inside a ViewportFrame on the client, so it isn't tagged
+-- "SpawnedMercenary" — the server's live retro-fit can't reach it.
+-- We mirror MercenarySkin's snapshot here and swap the clone's Shirt /
+-- Pants whenever a state push arrives so the centre preview always
+-- shows the equipped skin alongside the in-world rigs.
+--
+-- Catalog is loaded asynchronously from the shared ReplicatedStorage
+-- module. We MUST NOT block the LocalScript's top level on it: if the
+-- module hasn't replicated yet (rare boot race), require(nil) throws
+-- and takes the whole menu down with it. Hold the reference in a
+-- nullable upvalue and short-circuit the swap when it isn't loaded —
+-- the rig will catch up the next time a "state" snapshot arrives
+-- after the require resolves.
+local SkinCatalog
+task.spawn(function()
+	local mod = ReplicatedStorage:WaitForChild("SkinCatalog", 30)
+	if mod then
+		local ok, result = pcall(require, mod)
+		if ok then SkinCatalog = result end
+	end
+end)
+
+local function findSkinsFolder()
+	return ReplicatedStorage:FindFirstChild("Skins")
+end
+
+-- Resolve the source ShirtTemplate / PantsTemplate asset ids from
+-- ReplicatedStorage.Skins. The earlier "destroy + Instance.new"
+-- approach left the rig naked when one of the two paths failed; we
+-- now mutate the rig's existing Shirt / Pants in place where possible
+-- and only fall back to creating fresh ones when they're missing.
+local function readTemplate(skinsFolder, name)
+	if not skinsFolder then return nil, nil end
+	if typeof(name) ~= "string" or name == "" then return nil, nil end
+	local node = skinsFolder:FindFirstChild(name)
+	if not node then return nil, nil end
+	if node:IsA("Shirt") then
+		return "Shirt", node.ShirtTemplate
+	elseif node:IsA("Pants") then
+		return "Pants", node.PantsTemplate
+	end
+	return nil, nil
+end
+
+local function applySkinToCachedClone(clone, skinId)
+	if not (clone and clone.Parent) then return end
+	local def = SkinCatalog and SkinCatalog.get(skinId)
+	if not def then return end
+	local skinsFolder = findSkinsFolder()
+	if not skinsFolder then
+		warn("[MercenariesMenu] ReplicatedStorage.Skins folder missing")
+		return
+	end
+
+	local _, shirtAsset = readTemplate(skinsFolder, def.shirtName)
+	local _, pantsAsset = readTemplate(skinsFolder, def.pantsName)
+
+	if not shirtAsset and not pantsAsset then
+		warn(string.format(
+			"[MercenariesMenu] skin %q: neither %q (Shirt) nor %q (Pants) "
+				.. "resolved under ReplicatedStorage.Skins — rig will keep "
+				.. "its current clothing",
+			tostring(skinId),
+			tostring(def.shirtName),
+			tostring(def.pantsName)
+		))
+		return
+	end
+
+	-- ViewportFrames don't re-paint Shirt / Pants when their template
+	-- ids change after the model is already parented in. Detach the
+	-- rig from its current parent, do the swap with the rig in
+	-- limbo, then reparent — the viewport renders the new clothing
+	-- on re-attach. We also rebuild fresh Shirt / Pants instances
+	-- (instead of mutating in place) for the same reason: the swap
+	-- has to look like "model just gained clothing" to the renderer.
+	local previousParent = clone.Parent
+	clone.Parent = nil
+
+	for _, child in clone:GetChildren() do
+		if child:IsA("Shirt") or child:IsA("Pants") then
+			child:Destroy()
+		end
+	end
+
+	if shirtAsset then
+		local s = Instance.new("Shirt")
+		s.Name = def.shirtName or "Shirt"
+		s.ShirtTemplate = shirtAsset
+		s.Parent = clone
+	end
+
+	if pantsAsset then
+		local p = Instance.new("Pants")
+		p.Name = def.pantsName or "Pants"
+		p.PantsTemplate = pantsAsset
+		p.Parent = clone
+	end
+
+	clone.Parent = previousParent
+end
+
+task.spawn(function()
+	local skinEvent = ReplicatedStorage:WaitForChild("MercenarySkin", 30)
+	if not skinEvent then return end
+	skinEvent.OnClientEvent:Connect(function(action, payload)
+		if action ~= "state" or type(payload) ~= "table" then return end
+		-- Catalog is read from the shared module, not the payload, so
+		-- shirtName / pantsName are guaranteed present. We only need
+		-- the equipped map from the snapshot to know which skin to
+		-- apply per cached merc rig.
+		local equipped = payload.equipped or {}
+		for mercName, skinId in pairs(equipped) do
+			local entry = viewportCache[mercName]
+			if entry and entry.clone then
+				applySkinToCachedClone(entry.clone, skinId)
+			end
+		end
+	end)
+	-- Ask for an initial state so the cached rigs born before the
+	-- player ever opens the wardrobe are still skinned correctly.
+	skinEvent:FireServer("getState")
+end)
 
 -- Hide all phone-menu panels (direct children of root) except the
 -- mercenaries page itself.
@@ -2519,9 +2705,7 @@ buildPage = function(mercNames)
 		local mercFolder = player:FindFirstChild("Mercenaries")
 		local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
 		local mercTheme = MERC_THEMES[mercName] or DEFAULT_THEME
-		local weaponId = (mercEntry and mercEntry:GetAttribute("EquippedWeapon"))
-			or mercTheme.defaultWeapon
-			or "Sword"
+		local weaponId = resolveMercWeapon(mercName, mercEntry, mercTheme)
 
 		local profession = "ASSISTANT"
 		if weaponId == "FishingRod" then
@@ -2962,6 +3146,7 @@ buildPage = function(mercNames)
 				mercNames             = mercNames,
 				theme                 = MERC_THEMES[mercName] or DEFAULT_THEME,
 				equipItems            = EQUIP_ITEMS,
+				resolveMercWeapon     = resolveMercWeapon,
 				hidePhonePanels       = hidePhonePanels,
 				detachCachedViewports = detachCachedViewports,
 				buildMercViewport     = buildMercViewport,
@@ -3000,11 +3185,17 @@ buildPage = function(mercNames)
 		local availablePoints = math.max(0, totalFromXp - mercSpentUpgradePoints[mercName])
 		pointsLabel.Text = string.format("UPGRADE POINTS: %d", availablePoints)
 
+		-- charStats are the doc's level-1 base values on the universal
+		-- 10–200 scale (see src/GameDesign/StatsSystem.md and the
+		-- MercStats ReplicatedStorage module). The displayed number
+		-- IS the stat value — no hidden multiplier — so the player
+		-- can correlate the menu bar with the in-rig damage / gather
+		-- time formulas applied server-side.
 		local s = theme.charStats or DEFAULT_THEME.charStats
 		for key, rec in pairs(statRefs) do
 			local base = s[key] or 0
 			local upgraded = base + (mercStatUpgrades[mercName][key] or 0)
-			local shown = upgraded * 2
+			local shown = math.floor(upgraded + 0.5)
 			rec.value.Text = tostring(shown)
 			rec.fill.Size = UDim2.new(math.clamp(shown / 200, 0, 1), 0, 1, 0)
 
@@ -3077,8 +3268,10 @@ EQUIP_ITEMS = {
 			baseAttack    = 10,
 			description   = "A basic pirate cutlass. Short range but reliable in close combat.",
 			alwaysUnlocked = true,
-			-- Pirate-only — Soldier never sees this in the arsenal grid.
-			restrictedTo  = { "Pirate lvl1" },
+			-- Pirate-family weapon — Soldier never sees this in the
+			-- arsenal grid. Corsair shares the Pirate's melee loadout so
+			-- it appears on his arsenal too.
+			restrictedTo  = { "Pirate lvl1", "Corsair" },
 		},
 		{
 			id            = "FishingRod",
@@ -3155,13 +3348,11 @@ buildEquipmentPage = function(mercName, mercNames)
 
 	-- Read currently equipped weapon from attribute
 	local mercFolder = player:FindFirstChild("Mercenaries")
-	if mercFolder then
-		local entry = mercFolder:FindFirstChild(mercName)
-		if entry then
-			local eq = entry:GetAttribute("EquippedWeapon")
-			if eq then selectedItemId = eq end
-		end
-	end
+	local entry = mercFolder and mercFolder:FindFirstChild(mercName)
+	-- Use the shared resolver so a stale "Sword" attribute on the
+	-- Soldier (or any disallowed combo) gets scrubbed and the page
+	-- opens to the merc's defaultWeapon instead.
+	selectedItemId = resolveMercWeapon(mercName, entry, theme)
 
 	-- Read unlocked equipment
 	local unlockedSet = {}
@@ -3406,9 +3597,7 @@ buildEquipmentPage = function(mercName, mercNames)
 		if activeCategory ~= "Weapons" then
 			-- If browsing artifacts, show currently equipped weapon
 			local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
-			weaponToShow = (mercEntry and mercEntry:GetAttribute("EquippedWeapon"))
-				or theme.defaultWeapon
-				or "Sword"
+			weaponToShow = resolveMercWeapon(mercName, mercEntry, theme)
 		end
 		currentViewport = buildMercViewport(page, mercName, weaponToShow)
 	end
@@ -3468,9 +3657,7 @@ buildEquipmentPage = function(mercName, mercNames)
 		if activeCategory == "Artifacts" then
 			currentEquip = mercEntry and mercEntry:GetAttribute("EquippedBackpack") or ""
 		else
-			currentEquip = (mercEntry and mercEntry:GetAttribute("EquippedWeapon"))
-				or theme.defaultWeapon
-				or "Sword"
+			currentEquip = resolveMercWeapon(mercName, mercEntry, theme)
 		end
 		if currentEquip == selectedItemId then
 			equipBtn.Text = "EQUIPPED"

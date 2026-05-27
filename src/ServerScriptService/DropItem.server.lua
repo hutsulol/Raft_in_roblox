@@ -42,6 +42,17 @@ local RESOURCE_TEMPLATES = {
 	Seabass_Fish    = "Seabass Fish",
 	Tilapia_Fish    = "Tilapia Fish",
 }
+-- Cooked fish ("<fish>_Cooked") re-drop using the same fish model as
+-- their raw counterpart, so dropping a cooked fish from the inventory
+-- spawns the fish (not the fallback box).
+setmetatable(RESOURCE_TEMPLATES, {
+	__index = function(t, k)
+		if type(k) == "string" and #k > 7 and k:sub(-7) == "_Cooked" then
+			return rawget(t, k:sub(1, #k - 7))
+		end
+		return nil
+	end,
+})
 
 -- Known resource names (items stored as counts in inventory, not as
 -- Tool instances in the backpack). Anything not in this set is handled
@@ -70,6 +81,15 @@ local RESOURCE_ITEMS = {
 	Seabass_Fish    = true,
 	Tilapia_Fish    = true,
 }
+-- Cooked fish behave as stackable resources just like their raw form.
+setmetatable(RESOURCE_ITEMS, {
+	__index = function(_, k)
+		if type(k) == "string" and #k > 7 and k:sub(-7) == "_Cooked" then
+			return true
+		end
+		return nil
+	end,
+})
 
 -- Fallback template for any unmapped items (tools, etc.)
 local FALLBACK_TEMPLATE = "box_model"
@@ -139,6 +159,26 @@ local function spawnPhysicalDrop(player, itemName, amount, isToolDrop, dropPosit
 	clone:SetAttribute("ResourceAmount", amount)
 	clone:SetAttribute("IsToolDrop", isToolDrop and true or false)
 	clone:SetAttribute("DropperUserId", player.UserId)
+
+	-- Fish ship with both a "raw" and a "cooked" Decal authored visible,
+	-- which overlap. Show only the one matching this drop's state so the
+	-- fish looks raw (or cooked, if it's already a "_Cooked" variant).
+	-- Names are normalized (trim + lowercase) because the raw decal is
+	-- authored as " raw" with a leading space.
+	local isCookedFish = itemName:sub(-7) == "_Cooked"
+	for _, d in clone:GetDescendants() do
+		if d:IsA("Decal") or d:IsA("Texture") then
+			local n = (d.Name:gsub("%s+", "")):lower()
+			if n == "raw" then
+				d.Transparency = isCookedFish and 1 or 0
+			elseif n == "cooked" then
+				d.Transparency = isCookedFish and 0 or 1
+			end
+		end
+	end
+	if isCookedFish then
+		clone:SetAttribute("Cooked", true)
+	end
 
 	-- Strip "Resource" tags and add "DroppedItem" BEFORE parenting to
 	-- workspace. This closes the race window where a client could detect
@@ -389,6 +429,67 @@ pickupEvent.OnServerEvent:Connect(function(player, targetPart)
 		droppedItem:Destroy()
 		if _G.SendInventory then _G.SendInventory(player) end
 	else
+		-- Seeds (Banana_Seed / Coconut_Seed / Pineapple_Seed) live in
+		-- the leaf bag rather than the main inventory. Route them
+		-- through _G.AddSeedToBag and reject the pickup outright if
+		-- the player has no bag at all — the client surfaces a hint
+		-- so the player knows they need to craft one first.
+		local isSeed = type(resType) == "string" and resType:find("_Seed$") ~= nil
+		if isSeed and typeof(_G.AddSeedToBag) == "function" then
+			if typeof(_G.PlayerHasSeedBag) == "function" and not _G.PlayerHasSeedBag(player) then
+				pickupEvent:FireClient(player, "needSeedBag")
+				return
+			end
+			local cap = typeof(_G.GetSeedBagSpace) == "function" and _G.GetSeedBagSpace(player, resType) or 0
+			if cap <= 0 then
+				pickupEvent:FireClient(player, "seedBagFull")
+				return
+			end
+			local toPickup = math.min(resAmount, cap)
+			local leftover = resAmount - toPickup
+			_G.AddSeedToBag(player, resType, toPickup)
+			if leftover > 0 then
+				droppedItem:SetAttribute("ResourceAmount", leftover)
+			else
+				droppedItem:Destroy()
+			end
+			return
+		end
+
+		-- Sand and Clay both route through the Sand Bag system. A bag
+		-- can hold either type at a time; the bag system checks
+		-- compatibility (empty bag accepts anything; partial bag only
+		-- accepts more of its current type). Pickup refused with a
+		-- toast if the player has no compatible bag — the drop stays
+		-- on the ground until they craft / empty one.
+		if (resType == "Sand" or resType == "Clay") and typeof(_G.AddToBag) == "function" then
+			if typeof(_G.PlayerHasBag) == "function" and not _G.PlayerHasBag(player) then
+				pickupEvent:FireClient(player, "needSandBag")
+				return
+			end
+			local perUnit = typeof(_G.GetBagPercentPerUnit) == "function"
+				and _G.GetBagPercentPerUnit() or 5
+			local space   = typeof(_G.GetBagSpaceFor) == "function" and _G.GetBagSpaceFor(player, resType) or 0
+			if space <= 0 then
+				pickupEvent:FireClient(player, "sandBagFull")
+				return
+			end
+			local maxUnits = math.floor(space / perUnit)
+			if maxUnits <= 0 then
+				pickupEvent:FireClient(player, "sandBagFull")
+				return
+			end
+			local toPickup = math.min(resAmount, maxUnits)
+			local leftover = resAmount - toPickup
+			_G.AddToBag(player, resType, toPickup * perUnit, droppedItem.Parent and droppedItem.Position or nil)
+			if leftover > 0 then
+				droppedItem:SetAttribute("ResourceAmount", leftover)
+			else
+				droppedItem:Destroy()
+			end
+			return
+		end
+
 		if not _G.AddResourceToInventory or not _G.GetInventoryCapacity then
 			print("[DropItem] PICKUP BLOCKED: InventoryManager globals missing")
 			return

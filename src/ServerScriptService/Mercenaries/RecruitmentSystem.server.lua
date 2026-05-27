@@ -34,14 +34,19 @@ local claimedPirates = {}
 -- ── DEV MODE ──────────────────────────────────────────────────────────
 -- Pre-grants the player a roster of mercenaries on join so the phone
 -- menu can be tested without doing a full kill / recruit cycle every
--- session. Recruit-flow dialogue is gated client-side by a separate
+-- session. Only the Pirate is in the dev grant — the Infected Military
+-- must be earned via kill → first-defeat dialogue → brain-maze
+-- completion, otherwise testers can't actually play through that
+-- recruitment flow.
+--
+-- Recruit-flow dialogue is gated client-side by a separate
 -- session-only flag (recruitedThisSession), so pre-granting the
 -- roster here does NOT skip the first-defeat dialogue when the
 -- player actually kills one of these NPCs in the world.
 --
 -- Set to false before shipping.
 local DEV_AUTO_GRANT = true
-local DEV_MERCENARY_NAMES = { "Pirate lvl1", "Infected Military" }
+local DEV_MERCENARY_NAMES = { "Pirate lvl1" }
 
 local function ensureMercenariesFolder(player)
 	local folder = player:FindFirstChild("Mercenaries")
@@ -98,7 +103,6 @@ end
 
 recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 	if typeof(pirate) ~= "Instance" then return end
-	if not pirate:IsDescendantOf(workspace) then return end
 	if CollectionService:HasTag(pirate, "SpawnedMercenary") then return end
 	-- Strict NPC-type gate: only models registered in NpcTypes can
 	-- progress through any recruitment action. Without this, killing
@@ -106,8 +110,21 @@ recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 	-- under whatever Model.Name happened to be set.
 	local npcInfo = NpcTypes.resolve(pirate)
 	if not npcInfo then return end
+
+	-- The rig's Respawn.script destroys the original ~5s after death
+	-- and re-parents a clone. The brain-maze can easily take longer
+	-- than that, so by the time the player completes it the original
+	-- pirate Instance is gone from workspace. For the "recruit"
+	-- action we accept this — npcInfo already tells us what type was
+	-- killed, so we can credit the player's roster without needing
+	-- the body. Other actions (keep / fail / collectBlood) still
+	-- need the rig present so the fade animation has something to
+	-- act on, and so we can validate proximity + downed state.
+	local rigInWorkspace = pirate:IsDescendantOf(workspace)
+	if action ~= "recruit" and not rigInWorkspace then return end
+
 	-- Accept if Downed attribute is set, OR if the Humanoid is ragdolled
-	if not pirate:GetAttribute("Downed") then
+	if rigInWorkspace and not pirate:GetAttribute("Downed") then
 		local hum = pirate:FindFirstChildWhichIsA("Humanoid")
 		if not hum then return end
 		local isDowned = hum.Health <= 0
@@ -120,21 +137,23 @@ recruitEvent.OnServerEvent:Connect(function(player, action, pirate)
 	end
 	if claimedPirates[pirate] then return end
 
-	-- Distance check
-	local char = player.Character
-	if not char or not char:FindFirstChild("HumanoidRootPart") then return end
-	local piratePos
-	local hrp = pirate:FindFirstChild("HumanoidRootPart")
-	if hrp then
-		piratePos = hrp.Position
-	else
-		local part = pirate:FindFirstChildWhichIsA("BasePart", true)
-		if part then piratePos = part.Position else return end
+	-- Distance check (only meaningful while the rig is still around).
+	if rigInWorkspace then
+		local char = player.Character
+		if not char or not char:FindFirstChild("HumanoidRootPart") then return end
+		local piratePos
+		local hrp = pirate:FindFirstChild("HumanoidRootPart")
+		if hrp then
+			piratePos = hrp.Position
+		else
+			local part = pirate:FindFirstChildWhichIsA("BasePart", true)
+			if part then piratePos = part.Position else return end
+		end
+		if (char.HumanoidRootPart.Position - piratePos).Magnitude > 25 then return end
 	end
-	if (char.HumanoidRootPart.Position - piratePos).Magnitude > 25 then return end
 
 	claimedPirates[pirate] = player
-	pirate:SetAttribute("Claimed", true)
+	pcall(function() pirate:SetAttribute("Claimed", true) end)
 
 	if action == "keep" then
 		task.spawn(fadePirate, pirate, 2, 1.5)

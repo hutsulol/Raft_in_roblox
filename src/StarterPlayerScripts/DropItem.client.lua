@@ -214,16 +214,6 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	-- Q key drop from hovered hotbar slot
 	if processed then return end
 	if input.KeyCode == Enum.KeyCode.Q then
-		-- While a full-screen overlay (e.g. the phone) is up the Q
-		-- key is reserved for that overlay's own binding — the BACK
-		-- hotkey on every phone sub-page uses Q. Dropping the hovered
-		-- hotbar item when the player is navigating the phone menu
-		-- is the bug this guard prevents.
-		local phone = _G.PhoneScreenGui
-		if phone and phone:IsA("ScreenGui") and phone.Enabled then
-			return
-		end
-
 		local slotIndex = getHoveredHotbarSlot()
 		if not slotIndex then return end
 
@@ -246,46 +236,5 @@ UserInputService.InputBegan:Connect(function(input, processed)
 			local dropPos = getMouseWorldPosition()
 			dropEvent:FireServer(data.toolName, 1, dropPos)
 		end
-	end
-end)
-
--- ─── "Inventory full!" popup ───
-local fullGui = Instance.new("ScreenGui")
-fullGui.Name = "InventoryFullHint"
-fullGui.DisplayOrder = 60
-fullGui.IgnoreGuiInset = true
-fullGui.Parent = playerGui
-
-local fullLabel = Instance.new("TextLabel")
-fullLabel.Name = "FullText"
-fullLabel.AnchorPoint = Vector2.new(0.5, 0.5)
-fullLabel.Position = UDim2.new(0.5, 0, 0.4, 0)
-fullLabel.Size = UDim2.new(0, 280, 0, 40)
-fullLabel.BackgroundTransparency = 1
-fullLabel.Text = "Inventory full!"
-fullLabel.TextColor3 = Color3.fromRGB(255, 80, 80)
-fullLabel.TextSize = 24
-fullLabel.Font = Enum.Font.GothamBold
-fullLabel.TextStrokeTransparency = 0.4
-fullLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
-fullLabel.Visible = false
-fullLabel.Parent = fullGui
-
-pickupEvent.OnClientEvent:Connect(function(action)
-	if action == "inventoryFull" then
-		fullLabel.Visible = true
-		fullLabel.TextTransparency = 0
-		fullLabel.TextStrokeTransparency = 0.4
-		task.spawn(function()
-			task.wait(1.2)
-			for i = 0, 10 do
-				fullLabel.TextTransparency = i / 10
-				fullLabel.TextStrokeTransparency = 0.4 + (i / 10) * 0.6
-				task.wait(0.04)
-			end
-			fullLabel.Visible = false
-			fullLabel.TextTransparency = 0
-			fullLabel.TextStrokeTransparency = 0.4
-		end)
 	end
 end)

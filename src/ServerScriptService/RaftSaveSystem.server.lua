@@ -711,12 +711,13 @@ local function restoreTools(player, saveData)
 		["Pick-Axe"] = true, ["Hammer"] = true, ["Axe"] = true,
 		["Hook"] = true, ["Machete"] = true, ["Wooden_Spear"] = true,
 		["Cup"] = true, ["Destitalor"] = true, ["Wood_Knife"] = true,
+		["Stone_Axe"] = true,
 	}
 
 	-- Placeholder tools (placement items) — create a simple Tool with transparent Handle
 	local placeholderTools = {
-		["WorkBench"] = true, ["Garden"] = true, ["Furnace"] = true,
-		["Bed"] = true, ["bush"] = true,
+		["WorkBench"] = true, ["Garden"] = true, ["Bed_T"] = true,
+		["Furnace"] = true, ["Bed"] = true, ["bush"] = true,
 	}
 
 	for _, toolName in saveData.tools do

@@ -3,6 +3,7 @@ local Players = game:GetService("Players")
 local UserInputService = game:GetService("UserInputService")
 local TweenService = game:GetService("TweenService")
 local StarterGui = game:GetService("StarterGui")
+local RunService = game:GetService("RunService")
 local GuiService = game:GetService("GuiService")
 
 local player = Players.LocalPlayer
@@ -13,18 +14,73 @@ StarterGui:SetCoreGuiEnabled(Enum.CoreGuiType.Backpack, false)
 local inventoryEvent = ReplicatedStorage:WaitForChild("InventoryUpdate")
 local inventoryCraftEvent = ReplicatedStorage:WaitForChild("InventoryCraft")
 
-local LOG_ICON = "rbxassetid://110032041583533"
+-- Seed-as-Tool flow was retired — seeds now live in the leaf bag
+-- container (see SeedBagSystem.server.lua) and never appear as a
+-- main-inventory stack. Empty whitelist + nil event keep any stale
+-- click-on-seed handlers below as harmless no-ops.
+local equipSeedEvent = nil
+local SEED_RESOURCE_SET = {}
+
+-- Food-as-Tool flow. Clicking a Banana / Coconut / Pineapple slot
+-- in the inventory tells the server to spawn the matching Tool in
+-- the player's hand (and decrement the stack by 1). A second click
+-- while the Tool is held eats it for hunger + HP; an unequip
+-- without eating refunds the resource. Server lives in
+-- ServerScriptService/FoodSystem.server.lua.
+local equipFoodEvent = ReplicatedStorage:FindFirstChild("EquipFoodAsTool")
+if not equipFoodEvent then
+	equipFoodEvent = ReplicatedStorage:WaitForChild("EquipFoodAsTool", 5)
+end
+
+-- Any "<fish>_Cooked" key (produced by the campfire) is edible like a
+-- fruit, so the metatable returns true for them without needing a
+-- per-fish entry when a new fish is adapted.
+local FOOD_RESOURCE_SET = setmetatable({
+	Banana    = true,
+	Coconut   = true,
+	Pineapple = true,
+}, {
+	__index = function(_, k)
+		if type(k) == "string" and #k > 7 and k:sub(-7) == "_Cooked" then
+			return true
+		end
+		return nil
+	end,
+})
+
+-- Bush-seed-as-Tool flow. Riding on the same BushAction RemoteEvent
+-- HungerSystem already exposes for berry-bush placement avoids
+-- depending on a new server script being added to Studio. Clicking
+-- a Pineapple_Bush_Seed inventory slot fires
+-- BushAction("equipBushSeed", resourceName) and the server spawns
+-- the matching placement Tool in the player's hand (refund-on-
+-- unequip-without-place is handled server-side).
+local bushActionEvent = ReplicatedStorage:FindFirstChild("BushAction")
+if not bushActionEvent then
+	bushActionEvent = ReplicatedStorage:WaitForChild("BushAction", 5)
+end
+
+local BUSH_SEED_RESOURCE_SET = {
+	Pineapple_Bush_Seed = true,
+}
+
+local LOG_ICON = "rbxassetid://116178347748793"
 local PLASTIC_ICON = "rbxassetid://132919988751848"
-local STONE_ICON = "rbxassetid://134781813180973"
-local IRON_ORE_ICON = "rbxassetid://73676755288746"
+local STONE_ICON = "rbxassetid://96450657403376"
+local IRON_ORE_ICON = "rbxassetid://78456892304314"
 local IRON_INGOT_ICON = "rbxassetid://72890243946368"
-local LEAVES_ICON = "rbxassetid://78493803156432"
+-- Leaves / Sand / Clay / Wet_Brick / Dry_Brick had asset ids that were
+-- updated in WorkbenchUI but never propagated here, so the inventory's
+-- crafting panel kept rendering the old artwork while every other UI
+-- (workbench, furnace, mining highlight, resource pull) showed the
+-- new one. Synced to the WorkbenchUI ids below.
+local LEAVES_ICON = "rbxassetid://96691360298069"
 
 local PLANK_ICON = "rbxassetid://118108820731466"
 local ROPE_ICON = "rbxassetid://78492721752628"
-local SAND_ICON = "rbxassetid://96142393982330"
-local CLAY_ICON = "rbxassetid://70464196671282"
-local WET_BRICK_ICON = "rbxassetid://122295013823946"
+local SAND_ICON = "rbxassetid://92407877736322"
+local CLAY_ICON = "rbxassetid://129473903672183"
+local WET_BRICK_ICON = "rbxassetid://139059474647090"
 local DRY_BRICK_ICON = "rbxassetid://97609326528615"
 local BAG_EMPTY_ICON = "rbxassetid://89398456198664"
 local BAG_WITH_CLAY_ICON = "rbxassetid://126238050436106"
@@ -32,7 +88,8 @@ local BAG_WITH_SAND_ICON = "rbxassetid://77748685223141"
 local GLASS_ICON = "rbxassetid://85347221722445"
 local GLASS_PANEL_ICON = "rbxassetid://79199838395462"
 
-local BLUE_FISH_ICON = "rbxassetid://95052485461834"
+local BLUE_FISH_ICON = "rbxassetid://79355503342560"
+local BLUE_FISH_COOKED_ICON = "rbxassetid://91351143221536"
 local CARP_FISH_ICON = "rbxassetid://122853256629696"
 local FISH_BONES_ICON = "rbxassetid://118274743954023"
 local FOIL_FISH_ICON = "rbxassetid://86978570169083"
@@ -66,36 +123,173 @@ local RESOURCE_ICONS = {
 	Legendary_Fish = LEGENDARY_FISH_ICON,
 	Seabass_Fish = SEABASS_FISH_ICON,
 	Tilapia_Fish = TILAPIA_FISH_ICON,
+	-- Cooked fish variants need EXPLICIT keys here: rebuildSlotData
+	-- iterates RESOURCE_ICONS by its real keys to build resource
+	-- slots, and a metatable __index isn't iterable. Reuse the raw
+	-- fish icon for now (swap to a cooked-fish icon later).
+	Blue_Fish_Cooked      = BLUE_FISH_COOKED_ICON,
+	Carp_Fish_Cooked      = CARP_FISH_ICON,
+	Foil_Fish_Cooked      = FOIL_FISH_ICON,
+	Jelly_Fish_Cooked     = JELLY_FISH_ICON,
+	Legendary_Fish_Cooked = LEGENDARY_FISH_ICON,
+	Seabass_Fish_Cooked   = SEABASS_FISH_ICON,
+	Tilapia_Fish_Cooked   = TILAPIA_FISH_ICON,
+	-- Fruits dropped from trees (Banana/Coconut) and the new
+	-- hand-harvested Pineapple, plus the matching seeds the player
+	-- can replant.
+	Banana          = "rbxassetid://95041000167181",
+	Banana_Seed     = "rbxassetid://73140419103065",
+	Coconut         = "rbxassetid://120321968340866",
+	Coconut_Seed    = "rbxassetid://138995623166184",
+	Pineapple       = "rbxassetid://93324727574975",
+	Pineapple_Seed  = "rbxassetid://128520746024640",
+	-- Bush seed (harvested from a Pineapple bush). Stored in the
+	-- regular inventory; equipping it spawns a placement Tool that
+	-- drives CupPurifier's ghost just like the berry bush.
+	Pineapple_Bush_Seed = "rbxassetid://128520746024640",
 }
 
+-- Cooked fish ("<fish>_Cooked") reuse their raw fish's icon so a newly
+-- adapted fish needs no extra entry here.
+setmetatable(RESOURCE_ICONS, {
+	__index = function(t, k)
+		if type(k) == "string" and #k > 7 and k:sub(-7) == "_Cooked" then
+			return rawget(t, k:sub(1, #k - 7))
+		end
+		return nil
+	end,
+})
+
 local TOOL_ICONS = {
-	["Hammer"] = "rbxassetid://96978301002259",
-	["Pick-Axe"] = "rbxassetid://89809613033816",
+	["Hammer"] = "rbxassetid://72168072336946",
+	["Pick-Axe"] = "rbxassetid://102411845666126",
 	["Cup"] = "rbxassetid://99673504095026",
 	["Destitalor"] = "rbxassetid://90221080738714",
 	["Furnace"] = "rbxassetid://117760352651529",
-	["bush"] = "rbxassetid://100755665041729",
+	["bush"] = "rbxassetid://93957489757544",
 
 	["Machete"] = "rbxassetid://92926554091794",
 	["Wood_Knife"] = "rbxassetid://110032041583533",
-	["WorkBench"] = "rbxassetid://104306543647624",
+	["WorkBench"] = "rbxassetid://116083064101694",
 	["Bed"] = "rbxassetid://85069521486600",
-	["Garden"] = "rbxassetid://77159786623285",
+	["Garden"] = "rbxassetid://137766871451752",
+	["Bed_T"] = "rbxassetid://137766871451752",
 	["Paddle"] = "rbxassetid://93358108538106",
 	["Sawmill"] = "rbxassetid://75858978626954",
-	["Shovel"] = "rbxassetid://91548954831391",
+	["Shovel"] = "rbxassetid://123765089142597",
 	["Hook"] = "rbxassetid://110032041583533",
 	["Axe"] = "rbxassetid://110032041583533",
+	-- Stone_Axe inherits the Pick-Axe icon as a placeholder until a
+	-- dedicated axe asset lands; the equipped Tool's TextureId
+	-- override on line 775 takes precedence in the hotbar anyway.
+	["Stone_Axe"] = "rbxassetid://112306255674133",
 	["[GRAPES]"] = "rbxassetid://137478230275649",
 	["Grapes"] = "rbxassetid://137478230275649",
 	["FishingRod"] = "rbxassetid://105180666555503",
 	["Injector"] = "rbxassetid://81132472504693",
 	["EmptyCapsule"] = "rbxassetid://116714708119585",
 	["FullCapsule"] = "rbxassetid://132749498016835",
-	["Phone"] = "rbxassetid://122333372049252",
+	["Phone"] = "rbxassetid://123703470055474",
 	["Anchor_part"] = "rbxassetid://120414328052740",
 	["bag_empty_2"] = BAG_EMPTY_ICON,
+	["Sand Bag"]    = "rbxassetid://107012847180882",
+	-- Seed-as-Tool variants. The Tool templates the user authored
+	-- carry these names; the icons mirror the matching seed resource
+	-- so they read the same as the inventory stack form.
+	["Palm_seed"]           = "rbxassetid://138995623166184",
+	["Banana_Seed"]         = "rbxassetid://73140419103065",
+	["Pineapple_seed"]      = "rbxassetid://128520746024640",
+	-- Bush-seed Tool variant — same art as the tree seed; the suffix
+	-- differentiates "plant a bush on a Garden" from "plant a tree
+	-- sapling on Bed_T". Without this entry the slot fell back to
+	-- LOG_ICON when the Tool was rebuilt into a slot.
+	["Pineapple_Bush_Seed"] = "rbxassetid://128520746024640",
+	-- Food Tools that the player can temporarily equip from the
+	-- main-inventory resource stack. Same icons as the resource
+	-- form so the hotbar slot stays visually consistent.
+	["Banana"]         = "rbxassetid://95041000167181",
+	["Coconut"]        = "rbxassetid://120321968340866",
+	["Pineapple"]      = "rbxassetid://93324727574975",
 }
+
+-- Sand Bag fill stages — one table per resource the bag can hold.
+-- Mirrors SandBagUI.client.lua's STAGES_BY_CONTENT exactly so the
+-- hotbar icon always matches the inspector. Empty (pct = 0) is the
+-- same image across types so picking either table is fine for an
+-- empty bag.
+local BAG_STAGES_BY_CONTENT = {
+	Sand = {
+		{ pct =   0, image = "rbxassetid://107012847180882" },
+		{ pct =  10, image = "rbxassetid://87535824644391"  },
+		{ pct =  30, image = "rbxassetid://102984915310557" },
+		{ pct =  50, image = "rbxassetid://132918131694676" },
+		{ pct =  70, image = "rbxassetid://135545427179049" },
+		{ pct = 100, image = "rbxassetid://76170913773356"  },
+	},
+	Clay = {
+		{ pct =   0, image = "rbxassetid://107012847180882" },
+		{ pct =  10, image = "rbxassetid://137121316772176" },
+		{ pct =  30, image = "rbxassetid://94079996711573"  },
+		{ pct =  50, image = "rbxassetid://71260002598684"  },
+		{ pct =  70, image = "rbxassetid://85470636629483"  },
+		{ pct = 100, image = "rbxassetid://115968010442225" },
+	},
+}
+
+local function isSandBagTool(tool)
+	if not tool or not tool:IsA("Tool") then return false end
+	local a = tool.Name:lower():gsub("[_%s]", "")
+	return a == "sandbag"
+end
+
+local function getSandBagIcon(tool)
+	if not tool then return nil end
+	local fill    = tool:GetAttribute("SandFill")    or 0
+	local content = tool:GetAttribute("BagContent")
+	local stages  = BAG_STAGES_BY_CONTENT[content] or BAG_STAGES_BY_CONTENT.Sand
+	for i = #stages, 1, -1 do
+		if fill >= stages[i].pct then
+			return stages[i].image
+		end
+	end
+	return stages[1].image
+end
+
+-- Forward-declared so the SandFill listener (created early) can reach
+-- the in-place icon swapper (defined later, because it has to read
+-- `slotData` and `hotbarGui` which haven't been declared yet at this
+-- point in the file).
+local refreshSandBagIconInPlace
+
+-- Tools we've already wired a SandFill listener on, so we don't stack
+-- N connections on the same instance across rebuilds.
+local sandBagHooked = {}
+local function ensureSandBagHook(tool)
+	if not tool or sandBagHooked[tool] then return end
+	if not isSandBagTool(tool) then return end
+	sandBagHooked[tool] = true
+	local function onChange()
+		-- Don't trigger a full slot rebuild — that destroys the icon
+		-- and creates a new one, which leaves a one-frame gap. Stack
+		-- the new texture on top of the old icon, wait a render, then
+		-- drop the underlying one. The two stages line up exactly, so
+		-- the only thing that visually changes is the sand level (or
+		-- the resource type, on a Sand ↔ Clay swap).
+		if refreshSandBagIconInPlace then
+			refreshSandBagIconInPlace(tool)
+		end
+	end
+	-- Both attributes can change the icon: SandFill drives the stage,
+	-- BagContent drives which texture family (sand vs clay) we sample
+	-- from. Re-render on either.
+	tool:GetAttributeChangedSignal("SandFill"):Connect(onChange)
+	tool:GetAttributeChangedSignal("BagContent"):Connect(onChange)
+	tool.AncestryChanged:Connect(function()
+		if not tool:IsDescendantOf(game) then
+			sandBagHooked[tool] = nil
+		end
+	end)
+end
 
 -- Forward-declared so functions above line 1585 (quickTransfer,
 -- drag-drop handlers, etc.) can reference it via the same upvalue
@@ -289,6 +483,67 @@ local slotData = {}
 _G.InventorySlotData = slotData
 local slotsInitialized = false
 
+-- Overlay-then-remove icon swap for a Sand Bag tool whose SandFill
+-- attribute changed. Sequence:
+--   1. SandFill changes → schedule the swap with task.delay so the
+--      texture has a generous moment to finish decoding into the GPU
+--      cache before we put it on screen.
+--   2. After the delay, clone the existing ItemIcon, point the clone
+--      at the new stage texture and parent it ON TOP of the old one.
+--   3. Wait ~3 render frames (well past any decode hiccup), then
+--      destroy the underlying icon and rename / re-Z the clone so it
+--      becomes the new canonical ItemIcon.
+-- The two stages line up exactly (same anchor / size / position), so
+-- the only thing the player visually sees change is the sand level.
+local SWAP_DELAY_SEC   = 0.1   -- delay between attribute change and overlay
+local POST_OVERLAY_GAP = 0.10  -- delay between overlay and old-icon removal
+
+refreshSandBagIconInPlace = function(tool)
+	if not tool or not hotbarGui then return end
+	local bar = hotbarGui:FindFirstChild("Hotbar")
+	if not bar then return end
+
+	for i = 1, HOTBAR_SLOTS do
+		local data = slotData[i]
+		if data and data.type == "tool" and data.toolInst == tool then
+			local slot = bar:FindFirstChild("HotbarSlot_" .. i)
+			if not slot then return end
+			local oldIcon = slot:FindFirstChild("ItemIcon")
+			if not oldIcon or not oldIcon:IsA("ImageLabel") then return end
+
+			local nextImage = getSandBagIcon(tool)
+			if not nextImage or nextImage == oldIcon.Image then return end
+
+			task.delay(SWAP_DELAY_SEC, function()
+				-- Re-check between the delay and the swap: the slot, the
+				-- icon or the tool itself might be gone by now.
+				if not oldIcon or not oldIcon.Parent then return end
+				if not slot or not slot.Parent then return end
+				if data ~= slotData[i] or data.toolInst ~= tool then return end
+
+				local stillNext = getSandBagIcon(tool)
+				if not stillNext or stillNext == oldIcon.Image then return end
+
+				local origZ    = oldIcon.ZIndex
+				local newIcon  = oldIcon:Clone()
+				newIcon.Name   = "ItemIcon_swap"
+				newIcon.Image  = stillNext
+				newIcon.ZIndex = origZ + 1
+				newIcon.Parent = slot
+
+				task.delay(POST_OVERLAY_GAP, function()
+					if oldIcon and oldIcon.Parent then oldIcon:Destroy() end
+					if newIcon and newIcon.Parent then
+						newIcon.Name   = "ItemIcon"
+						newIcon.ZIndex = origZ
+					end
+				end)
+			end)
+			return
+		end
+	end
+end
+
 -- ─── Drag ───
 local dragState = {
 	active = false,
@@ -315,6 +570,7 @@ local DISPLAY_NAMES = {
 	WorkBench = "Workbench",
 
 	Wood_Knife = "Wood Knife",
+	Stone_Axe = "Stone Axe",
 }
 
 local function getDisplayName(data)
@@ -566,6 +822,67 @@ local function findEmptySlot(startIdx, endIdx)
 	return nil
 end
 
+-- Count how many "food Tool" instances of `toolName` the player owns
+-- right now (Backpack + Character). Used to fold the in-hand /
+-- standing-by Tool into the resource slot's displayed total — the
+-- player sees a single banana / coconut / pineapple slot whose count
+-- reflects "things you own", regardless of whether one of them is
+-- currently in your hand as a Tool or sitting in inv as a stack.
+local function countFoodToolsForName(toolName)
+	if not FOOD_RESOURCE_SET[toolName] then return 0 end
+	local total = 0
+	local function gather(container)
+		if not container then return end
+		for _, child in container:GetChildren() do
+			if child:IsA("Tool") and child.Name == toolName and child:GetAttribute("FoodResource") == toolName then
+				total = total + 1
+			end
+		end
+	end
+	gather(player.Character)
+	gather(player:FindFirstChild("Backpack"))
+	return total
+end
+
+-- True if `tool` is one of those "borrowed from stack" food Tools we
+-- promoted via EquipFoodAsTool. They live shadowed by the resource
+-- slot, so the Tool-placement pass in rebuildSlotData skips them.
+local function isFoodTool(tool)
+	return tool
+		and tool:IsA("Tool")
+		and FOOD_RESOURCE_SET[tool.Name]
+		and tool:GetAttribute("FoodResource") == tool.Name
+end
+
+-- Same shadow-by-resource-slot trick for bush seeds. The Tool is
+-- spawned by HungerSystem.equipBushSeed and carries
+-- BushSeedResource = <resource name> so we know it's the stack-
+-- borrowed variant and not, say, a Pineapple_Seed tree seed that
+-- happens to share part of its name.
+local function countBushSeedToolsForName(resName)
+	if not BUSH_SEED_RESOURCE_SET[resName] then return 0 end
+	local total = 0
+	local function gather(container)
+		if not container then return end
+		for _, child in container:GetChildren() do
+			if child:IsA("Tool") and child.Name == resName
+				and child:GetAttribute("BushSeedResource") == resName then
+				total = total + 1
+			end
+		end
+	end
+	gather(player.Character)
+	gather(player:FindFirstChild("Backpack"))
+	return total
+end
+
+local function isBushSeedTool(tool)
+	return tool
+		and tool:IsA("Tool")
+		and BUSH_SEED_RESOURCE_SET[tool.Name]
+		and tool:GetAttribute("BushSeedResource") == tool.Name
+end
+
 local function findItemSlot(itemType, itemName)
 	for i = 1, TOTAL_SLOTS do
 		if slotData[i] and slotData[i].type == itemType and slotData[i].name == itemName then
@@ -752,6 +1069,12 @@ local function rebuildSlotData()
 
 		for resName, resIcon in RESOURCE_ICONS do
 			local count = inventory[resName] or 0
+			-- Food + bush-seed Tools that are currently in the player's
+			-- hand or Backpack count towards the resource slot's total
+			-- so the player sees a single "Pineapple_Bush_Seed x10"
+			-- entry even when one of those 10 is held as a Tool.
+			count = count + countFoodToolsForName(resName)
+			count = count + countBushSeedToolsForName(resName)
 			if count > 0 then
 				distributeResource(resName, count, resIcon)
 			end
@@ -761,22 +1084,27 @@ local function rebuildSlotData()
 		-- duplicates (e.g. two Machetes) occupy separate cells. The
 		-- Tool reference is stored so rebuildSlotData can match a
 		-- slot back to the same instance on subsequent refreshes.
+		-- Food + bush-seed Tools are skipped here because the resource
+		-- slot above already owns their visual representation.
 		local slot = 2
 		for _, tool in tools do
-			while slot <= HOTBAR_SLOTS and slotData[slot] do
+			if not isFoodTool(tool) and not isBushSeedTool(tool) then
+				while slot <= HOTBAR_SLOTS and slotData[slot] do
+					slot = slot + 1
+				end
+				if slot > HOTBAR_SLOTS then break end
+				local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+				ensureSandBagHook(tool)
+				slotData[slot] = {
+					type = "tool",
+					name = tool.Name,
+					toolName = tool.Name,
+					toolInst = tool,
+					icon = toolIcon,
+					count = 1,
+				}
 				slot = slot + 1
 			end
-			if slot > HOTBAR_SLOTS then break end
-			local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
-			slotData[slot] = {
-				type = "tool",
-				name = tool.Name,
-				toolName = tool.Name,
-				toolInst = tool,
-				icon = toolIcon,
-				count = 1,
-			}
-			slot = slot + 1
 		end
 
 		-- First pass: still run the blood-stack merge so capsules
@@ -787,9 +1115,15 @@ local function rebuildSlotData()
 		return
 	end
 
-	-- Update all resources
+	-- Update all resources. Food + bush-seed resources include any
+	-- in-hand / Backpack Tool counterpart so the slot count reflects
+	-- "things you own" regardless of whether one of them is currently
+	-- equipped — see countFoodToolsForName / countBushSeedToolsForName.
 	for resName, resIcon in RESOURCE_ICONS do
-		updateResourceSlots(resName, inventory[resName] or 0, resIcon)
+		local count = inventory[resName] or 0
+		count = count + countFoodToolsForName(resName)
+		count = count + countBushSeedToolsForName(resName)
+		updateResourceSlots(resName, count, resIcon)
 	end
 
 	-- Tools don't stack; each Tool Instance claims its own slot. Match
@@ -804,25 +1138,33 @@ local function rebuildSlotData()
 	for i = 1, TOTAL_SLOTS do
 		local entry = slotData[i]
 		if entry and entry.type == "tool" then
-			local inst = entry.toolInst
-			if inst and currentSet[inst] and not claimed[inst] then
-				claimed[inst] = true
-				entry.count = 1
+			if FOOD_RESOURCE_SET[entry.toolName] or BUSH_SEED_RESOURCE_SET[entry.toolName] then
+				-- Food / bush-seed Tools no longer claim slots — the
+				-- resource slot handles their visual via the count*Tools
+				-- helpers. Drop any leftover entry from before this
+				-- consolidation.
+				slotData[i] = nil
 			else
-				local name = entry.toolName or entry.name
-				local bound
-				for _, t in tools do
-					if not claimed[t] and t.Name == name then
-						bound = t
-						break
-					end
-				end
-				if bound then
-					entry.toolInst = bound
+				local inst = entry.toolInst
+				if inst and currentSet[inst] and not claimed[inst] then
+					claimed[inst] = true
 					entry.count = 1
-					claimed[bound] = true
 				else
-					slotData[i] = nil
+					local name = entry.toolName or entry.name
+					local bound
+					for _, t in tools do
+						if not claimed[t] and t.Name == name then
+							bound = t
+							break
+						end
+					end
+					if bound then
+						entry.toolInst = bound
+						entry.count = 1
+						claimed[bound] = true
+					else
+						slotData[i] = nil
+					end
 				end
 			end
 		end
@@ -830,9 +1172,11 @@ local function rebuildSlotData()
 
 	-- Any Tool instances not yet bound to a slot get a fresh one —
 	-- honouring _G.PendingTargetSlot so a chest → inventory drag lands
-	-- where the user released the drag.
+	-- where the user released the drag. Food + bush-seed Tools are
+	-- shadowed by their resource slot (count*ToolsForName above), so
+	-- we skip claiming a slot for them entirely.
 	for _, tool in tools do
-		if not claimed[tool] then
+		if not claimed[tool] and not isFoodTool(tool) and not isBushSeedTool(tool) then
 			local target
 			local pending = _G.PendingTargetSlot
 			if pending and pending.name == tool.Name then
@@ -846,6 +1190,7 @@ local function rebuildSlotData()
 			target = target or findEmptySlot(1, HOTBAR_SLOTS) or findEmptySlot(HOTBAR_SLOTS + 1, maxWritableSlot())
 			if target then
 				local toolIcon = TOOL_ICONS[tool.Name] or (tool.TextureId ~= "" and tool.TextureId) or LOG_ICON
+				ensureSandBagHook(tool)
 				slotData[target] = {
 					type = "tool",
 					name = tool.Name,
@@ -880,13 +1225,22 @@ local function renderSlot(slot, data)
 	clearSlotUI(slot)
 	if not data then return end
 
+	-- Sand Bag tools swap their hotbar icon based on the SandFill
+	-- attribute so the slot art mirrors the inspection panel's current
+	-- bag stage. Falls through to the static icon if the tool ref is
+	-- gone (e.g. mid-respawn before rebuildSlotData rebinds it).
+	local iconAsset = data.icon or ""
+	if data.type == "tool" and data.toolInst and isSandBagTool(data.toolInst) then
+		iconAsset = getSandBagIcon(data.toolInst) or iconAsset
+	end
+
 	local img = Instance.new("ImageLabel")
 	img.Name = "ItemIcon"
 	img.AnchorPoint = Vector2.new(0.5, 0.5)
 	img.Size = UDim2.new(0.7, 0, 0.7, 0)
 	img.Position = UDim2.new(0.5, 0, 0.5, 0)
 	img.BackgroundTransparency = 1
-	img.Image = data.icon or ""
+	img.Image = iconAsset
 	img.ScaleType = Enum.ScaleType.Fit
 	img.ZIndex = 2
 	img.Parent = slot
@@ -940,6 +1294,33 @@ function renderAllSlots()
 							end
 						end
 						slot.BackgroundColor3 = isEquipped and COLORS.equipped or COLORS.slotBg
+					elseif data and data.type == "resource" and data.name and FOOD_RESOURCE_SET[data.name] and char then
+						-- Food resource slot lights up the same way as
+						-- a tool slot when the matching food Tool is
+						-- in the player's hand. countFoodToolsForName
+						-- doesn't distinguish hand vs Backpack — we
+						-- need the strict "in hand right now" check
+						-- here, mirroring the tool-instance test
+						-- above.
+						local isFoodEquipped = false
+						for _, t in char:GetChildren() do
+							if t:IsA("Tool") and t.Name == data.name and t:GetAttribute("FoodResource") == data.name then
+								isFoodEquipped = true
+								break
+							end
+						end
+						slot.BackgroundColor3 = isFoodEquipped and COLORS.equipped or COLORS.slotBg
+					elseif data and data.type == "resource" and data.name and BUSH_SEED_RESOURCE_SET[data.name] and char then
+						-- Bush-seed resource slot — same hand-only highlight
+						-- as the food path above, keyed on BushSeedResource.
+						local isBushSeedEquipped = false
+						for _, t in char:GetChildren() do
+							if t:IsA("Tool") and t.Name == data.name and t:GetAttribute("BushSeedResource") == data.name then
+								isBushSeedEquipped = true
+								break
+							end
+						end
+						slot.BackgroundColor3 = isBushSeedEquipped and COLORS.equipped or COLORS.slotBg
 					else
 						slot.BackgroundColor3 = COLORS.slotBg
 					end
@@ -1332,6 +1713,35 @@ end
 
 -- ─── Equip ───
 
+-- Toggle / switch tool by instance. Clicking a slot routes here with
+-- the exact Tool instance held in `slotData[i].toolInst`, so two slots
+-- holding same-named Tools (e.g. two Sand Bags) each get their own
+-- specific Tool — clicking slot 4 never equips slot 3's instance.
+--
+-- Behaviour:
+--   * the same instance is already in hand → unequip
+--   * another Tool is in hand (or nothing)  → equip this one (Roblox
+--                                              auto-unequips the prior
+--                                              tool so it's a one-click
+--                                              swap, not a two-step)
+local function equipToolInstance(tool)
+	if not tool or not tool:IsA("Tool") or not tool.Parent then return end
+	local char = player.Character
+	if not char then return end
+	local humanoid = char:FindFirstChildOfClass("Humanoid")
+	if not humanoid then return end
+
+	if tool.Parent == char then
+		humanoid:UnequipTools()
+		return
+	end
+
+	humanoid:EquipTool(tool)
+end
+
+-- Name-based fallback for callers that don't have a specific instance
+-- (legacy hotbar keys, debug code). Same toggle rule, but picks the
+-- first matching Tool in the backpack.
 local function equipToolByName(toolName)
 	local char = player.Character
 	if not char then return end
@@ -2012,9 +2422,71 @@ local function buildHotbar()
 			if isHoverBlockingOverlayOpen() then return end
 			local data = slotData[slotIndex]
 			if data and data.type == "tool" then
-				equipToolByName(data.toolName)
+				if data.toolInst then
+					equipToolInstance(data.toolInst)
+				else
+					equipToolByName(data.toolName)
+				end
 				task.wait(0.1)
 				renderAllSlots()
+			elseif data and data.type == "resource" and data.name and BUSH_SEED_RESOURCE_SET[data.name] and bushActionEvent then
+				-- Bush-seed resource (Pineapple_Bush_Seed). Toggle:
+				-- holding the matching Tool already → UnequipTools (the
+				-- server's AncestryChanged hook refunds 1 to the stack);
+				-- otherwise ask the server to spawn one. Same pattern
+				-- as the food path so the count never doubles up.
+				local char2     = player.Character
+				local humanoid2 = char2 and char2:FindFirstChildOfClass("Humanoid")
+				local heldBushSeed = nil
+				if char2 then
+					for _, t in char2:GetChildren() do
+						if t:IsA("Tool") and t.Name == data.name
+							and t:GetAttribute("BushSeedResource") == data.name then
+							heldBushSeed = t
+							break
+						end
+					end
+				end
+				if heldBushSeed and humanoid2 then
+					humanoid2:UnequipTools()
+				else
+					bushActionEvent:FireServer("equipBushSeed", data.name)
+				end
+			elseif data and data.type == "resource" and data.name and SEED_RESOURCE_SET[data.name] and equipSeedEvent then
+				-- Seed resource: ask the server to spawn a matching
+				-- Tool in the character's hand and decrement the stack.
+				-- Server handles the refund if the Tool is unequipped
+				-- without being used.
+				equipSeedEvent:FireServer(data.name)
+			elseif data and data.type == "resource" and data.name and FOOD_RESOURCE_SET[data.name] and equipFoodEvent then
+				-- Food resource (Banana / Coconut / Pineapple): same
+				-- pattern as seeds — server clones a Tool into the
+				-- player's hand, decrements the stack by 1, refunds
+				-- if the Tool is unequipped without being eaten.
+				-- The Tool itself doesn't claim a slot; the resource
+				-- slot's displayed count includes the in-hand Tool so
+				-- visually the slot just stays where it was.
+				--
+				-- Toggle behaviour: if the same food Tool is already
+				-- in hand, clicking the slot again unequips it (which
+				-- routes through the server's AncestryChanged refund
+				-- hook back to the resource stack).
+				local char     = player.Character
+				local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+				local heldFoodTool = nil
+				if char then
+					for _, t in char:GetChildren() do
+						if t:IsA("Tool") and t.Name == data.name and t:GetAttribute("FoodResource") == data.name then
+							heldFoodTool = t
+							break
+						end
+					end
+				end
+				if heldFoodTool and humanoid then
+					humanoid:UnequipTools()
+				else
+					equipFoodEvent:FireServer(data.name)
+				end
 			end
 		end)
 	end
@@ -2398,7 +2870,14 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		-- the live character directly so the two UIs can't race.
 		local char = player.Character
 		local equipped = char and char:FindFirstChildOfClass("Tool")
-		if equipped and equipped.Name == "Phone" then
+		if equipped and (equipped.Name == "Phone" or equipped.Name == "leaf bag" or equipped.Name == "Sand Bag" or equipped:GetAttribute("CupState") ~= nil) then
+			-- Phone owns its own E binding (close phone UI). Leaf bag
+			-- owns its own E binding too (open seed picker via
+			-- SeedBagUI.client.lua) — letting the regular inventory
+			-- toggle on top of it would cover the picker. Cup uses E
+			-- to water a garden bed (CupPurifier.client.lua), so any
+			-- tool that carries a CupState attribute (Cup, Cup
+			-- (Saltwater), Cup (Fresh Water)) is treated the same way.
 			return
 		end
 		-- Defer the toggle decision until the end of the current
@@ -2420,7 +2899,7 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 			-- evaluation (unlikely, but cheap to verify).
 			local char2 = player.Character
 			local equipped2 = char2 and char2:FindFirstChildOfClass("Tool")
-			if equipped2 and equipped2.Name == "Phone" then
+			if equipped2 and (equipped2.Name == "Phone" or equipped2.Name == "leaf bag" or equipped2.Name == "Sand Bag" or equipped2:GetAttribute("CupState") ~= nil) then
 				return
 			end
 			toggleInventory()
@@ -2438,9 +2917,62 @@ UserInputService.InputBegan:Connect(function(input, gameProcessed)
 		end
 		local data = slotData[slotNum]
 		if data and data.type == "tool" then
-			equipToolByName(data.toolName)
+			if data.toolInst then
+				equipToolInstance(data.toolInst)
+			else
+				equipToolByName(data.toolName)
+			end
 			task.wait(0.1)
 			renderAllSlots()
+		elseif data and data.type == "resource" and data.name and BUSH_SEED_RESOURCE_SET[data.name] and bushActionEvent then
+			-- Number-key on a bush-seed slot: same toggle as the slot-
+			-- click branch above. Pressing the slot's hotkey while the
+			-- seed is in hand unequips it (refund via AncestryChanged);
+			-- otherwise asks the server for a new Tool.
+			local char3     = player.Character
+			local humanoid3 = char3 and char3:FindFirstChildOfClass("Humanoid")
+			local heldBushSeed = nil
+			if char3 then
+				for _, t in char3:GetChildren() do
+					if t:IsA("Tool") and t.Name == data.name
+						and t:GetAttribute("BushSeedResource") == data.name then
+						heldBushSeed = t
+						break
+					end
+				end
+			end
+			if heldBushSeed and humanoid3 then
+				humanoid3:UnequipTools()
+			else
+				bushActionEvent:FireServer("equipBushSeed", data.name)
+			end
+		elseif data and data.type == "resource" and data.name and SEED_RESOURCE_SET[data.name] and equipSeedEvent then
+			-- Number-key on a seed-resource slot equips it as a Tool
+			-- via the server bridge. Same path as the slot-click
+			-- handler above.
+			equipSeedEvent:FireServer(data.name)
+		elseif data and data.type == "resource" and data.name and FOOD_RESOURCE_SET[data.name] and equipFoodEvent then
+			-- Number-key on a food-resource slot toggles the food Tool
+			-- in hand: equip if nothing held of this kind, unequip
+			-- (refund via the server's AncestryChanged hook) if the
+			-- player is already holding one. Mirrors the slot-click
+			-- handler above so 1-8 and mouse-click behave the same.
+			local char     = player.Character
+			local humanoid = char and char:FindFirstChildOfClass("Humanoid")
+			local heldFoodTool = nil
+			if char then
+				for _, t in char:GetChildren() do
+					if t:IsA("Tool") and t.Name == data.name and t:GetAttribute("FoodResource") == data.name then
+						heldFoodTool = t
+						break
+					end
+				end
+			end
+			if heldFoodTool and humanoid then
+				humanoid:UnequipTools()
+			else
+				equipFoodEvent:FireServer(data.name)
+			end
 		end
 	end
 end)
@@ -2494,11 +3026,30 @@ inventoryCraftEvent.OnClientEvent:Connect(function(action, data, inv)
 			table.insert(recipes, {
 				name = "Pick-Axe",
 				displayName = "Pick-Axe",
-				icon = "rbxassetid://89809613033816",
+				icon = "rbxassetid://102411845666126",
 				costs = {Log = 2},
 				craftType = "tool",
 				category = "Tools",
 				description = "A pickaxe for mining rocks on islands to collect stone.",
+			})
+		end
+		-- Inject Stone_Axe recipe if not present (StoneAxeSystem
+		-- handles crafting via its own InventoryCraft listener; the
+		-- recipe metadata only needs to reach the menu so the player
+		-- can SEE + click the entry).
+		local hasStoneAxe = false
+		for _, r in recipes do
+			if r.name == "Stone_Axe" then hasStoneAxe = true break end
+		end
+		if not hasStoneAxe then
+			table.insert(recipes, {
+				name = "Stone_Axe",
+				displayName = "Stone Axe",
+				icon = "rbxassetid://112306255674133",
+				costs = {Log = 1, Stone = 3, Rope = 1},
+				craftType = "tool",
+				category = "Tools",
+				description = "A stone-bladed axe for chopping palm and banana trees on islands. Yields logs.",
 			})
 		end
 		if inv then inventory = inv end
@@ -2535,9 +3086,18 @@ inventoryCraftEvent.OnClientEvent:Connect(function(action, data, inv)
 end)
 
 -- ─── Init ───
-rebuildSlotData()
-buildHotbar()
-renderAllSlots()
+-- Defer the initial UI build off the critical boot path. The
+-- hotbar / grid render is not needed until the character actually
+-- spawns and Roblox lets the player interact — running these
+-- inline added ~1 s to perceived load on the destination place.
+-- task.spawn yields the current thread immediately so the rest of
+-- the script's module-level code can finish; the UI builds on the
+-- next resume.
+task.spawn(function()
+	rebuildSlotData()
+	buildHotbar()
+	renderAllSlots()
+end)
 
 -- Track the replicated `Characteristics.UnlockedInventorySlots` value
 -- (written by Strength.server.lua based on the player's Strength stat)

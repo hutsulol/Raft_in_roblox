@@ -326,24 +326,36 @@ local function buildPanel(opts)
 	header.BorderSizePixel = 0
 	header.Parent = panel
 
-	-- Icon box: paper-fill, wood-dark border, RADIUS_MD corner.
+	-- Icon box: paper-fill, wood-dark border, RADIUS_MD corner. The
+	-- background + stroke only show for kind-built icons (axe / log /
+	-- drop / fish). A custom iconImage usually ships its own framed
+	-- art, so we drop the chrome and let the asset fill the slot
+	-- edge-to-edge.
 	local iconBox = Instance.new("Frame")
 	iconBox.Name = "IconBox"
 	iconBox.AnchorPoint = Vector2.new(0, 0.5)
 	iconBox.Position = UDim2.new(0, 0, 0.5, 0)
 	iconBox.Size = UDim2.fromOffset(56, 56)
-	iconBox.BackgroundColor3 = COLOR_PAPER
 	iconBox.BorderSizePixel = 0
 	iconBox.Parent = header
-	corner(iconBox, 12)
-	stroke(iconBox, 2, COLOR_WOOD_DARK)
+
+	local hasCustomImage = typeof(opts.iconImage) == "string" and opts.iconImage ~= ""
+	if hasCustomImage then
+		iconBox.BackgroundTransparency = 1
+	else
+		iconBox.BackgroundColor3 = COLOR_PAPER
+		corner(iconBox, 12)
+		stroke(iconBox, 2, COLOR_WOOD_DARK)
+	end
 
 	-- Render the icon: rbxassetid wins over iconKind.
-	if typeof(opts.iconImage) == "string" and opts.iconImage ~= "" then
+	if hasCustomImage then
 		local img = Instance.new("ImageLabel")
 		img.AnchorPoint = Vector2.new(0.5, 0.5)
 		img.Position = UDim2.fromScale(0.5, 0.5)
-		img.Size = UDim2.fromOffset(40, 40)
+		-- Fill the slot — the asset's own art has the rounded
+		-- border baked in.
+		img.Size = UDim2.fromScale(1, 1)
 		img.BackgroundTransparency = 1
 		img.BorderSizePixel = 0
 		img.Image = opts.iconImage

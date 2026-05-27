@@ -1312,22 +1312,26 @@ local function openHandlingPage(ctx)
 	local TILE_TOP_Y    = 130
 	local TILE_BOTTOM_Y = TILE_TOP_Y + SLOT_H + 20
 
-	-- Resolve the equipped weapon's rarity from ctx.equipItems when
-	-- provided; fall back to the merc's defaultWeapon (e.g. Soldier
-	-- defaults to "Unarmed" so the rig's built-in pistol model shows
-	-- instead of a sword being welded over it). MAIN HAND defaults
-	-- to selected on open.
-	local equippedWeaponId = (theme and theme.defaultWeapon) or "Sword"
-	local equippedBackpackId = ""
+	-- Resolve the equipped weapon via the shared resolver: it scrubs
+	-- stale attribute values that point at a weapon this merc isn't
+	-- allowed to hold (e.g. a Soldier carrying "Sword" from an old
+	-- session) and falls back to the merc's defaultWeapon.
 	local mercFolder = player:FindFirstChild("Mercenaries")
-	if mercFolder and ctx.mercName then
-		local entry = mercFolder:FindFirstChild(ctx.mercName)
-		if entry then
-			local eq = entry:GetAttribute("EquippedWeapon")
+	local mercEntry  = mercFolder and ctx.mercName and mercFolder:FindFirstChild(ctx.mercName)
+	local equippedWeaponId
+	if typeof(ctx.resolveMercWeapon) == "function" then
+		equippedWeaponId = ctx.resolveMercWeapon(ctx.mercName, mercEntry, theme)
+	else
+		equippedWeaponId = (theme and theme.defaultWeapon) or "Sword"
+		if mercEntry then
+			local eq = mercEntry:GetAttribute("EquippedWeapon")
 			if eq and eq ~= "" then equippedWeaponId = eq end
-			local bp = entry:GetAttribute("EquippedBackpack")
-			if bp and bp ~= "" then equippedBackpackId = bp end
 		end
+	end
+	local equippedBackpackId = ""
+	if mercEntry then
+		local bp = mercEntry:GetAttribute("EquippedBackpack")
+		if bp and bp ~= "" then equippedBackpackId = bp end
 	end
 
 	local function findEquipDef(category, id)
@@ -1417,6 +1421,7 @@ local function openHandlingPage(ctx)
 		end
 		closeHandlingPage()
 		_G.OpenWeaponSelectPage({
+			resolveMercWeapon     = handlingCtx.resolveMercWeapon,
 			screenGui             = handlingCtx.screenGui,
 			mercName              = handlingCtx.mercName,
 			theme                 = handlingCtx.theme,
@@ -1481,6 +1486,7 @@ local function openHandlingPage(ctx)
 			mercName              = handlingCtx.mercName,
 			theme                 = handlingCtx.theme,
 			equipItems            = handlingCtx.equipItems,
+			resolveMercWeapon     = handlingCtx.resolveMercWeapon,
 			hidePhonePanels       = handlingCtx.hidePhonePanels,
 			detachCachedViewports = handlingCtx.detachCachedViewports,
 			buildMercViewport     = handlingCtx.buildMercViewport,
@@ -1524,6 +1530,36 @@ local function openHandlingPage(ctx)
 		end)
 	end
 
+	-- SKINS tile routes into the new SkinSelectPage the same way MAIN
+	-- HAND routes into WeaponSelectPage. Closes Handling on click +
+	-- threads the same ctx fields so the BACK trip reopens us with
+	-- fresh state.
+	local function openSkinSelectFromSkins()
+		if typeof(_G.OpenSkinSelectPage) ~= "function" then
+			warn("[HandlingPage] SkinSelectPage not loaded")
+			return
+		end
+		closeHandlingPage()
+		_G.OpenSkinSelectPage({
+			screenGui             = handlingCtx.screenGui,
+			mercName              = handlingCtx.mercName,
+			theme                 = handlingCtx.theme,
+			equipItems            = handlingCtx.equipItems,
+			resolveMercWeapon     = handlingCtx.resolveMercWeapon,
+			hidePhonePanels       = handlingCtx.hidePhonePanels,
+			detachCachedViewports = handlingCtx.detachCachedViewports,
+			buildMercViewport     = handlingCtx.buildMercViewport,
+			onBack = function()
+				if typeof(_G.CloseSkinSelectPage) == "function" then
+					_G.CloseSkinSelectPage()
+				end
+				if typeof(_G.OpenHandlingPage) == "function" then
+					_G.OpenHandlingPage(handlingCtx)
+				end
+			end,
+		})
+	end
+
 	slotHandles.Skins = buildSlotTile(scaleWrap, {
 		name         = "SKINS",
 		iconBuilder  = makeGemIcon,
@@ -1531,9 +1567,23 @@ local function openHandlingPage(ctx)
 		selected     = false,
 		position     = UDim2.fromOffset(RIGHT_COL_X, TILE_TOP_Y),
 		zIndex       = 55,
-		onClick      = function() selectSlot("Skins") end,
+		onClick      = openSkinSelectFromSkins,
 	})
 	applySlotTilePreview(slotHandles.Skins, SKINS_TILE_IMAGE)
+
+	-- Hover affordance mirroring MAIN HAND / BODY: 'SKINS' → 'CHANGE'
+	-- so the tile reads as a button.
+	do
+		local skinsTile  = slotHandles.Skins.tile
+		local skinsLabel = slotHandles.Skins.label
+		local defaultLabel = slotHandles.Skins.defaultLabel or "SKINS"
+		skinsTile.MouseEnter:Connect(function()
+			skinsLabel.Text = "CHANGE"
+		end)
+		skinsTile.MouseLeave:Connect(function()
+			skinsLabel.Text = defaultLabel
+		end)
+	end
 
 	slotHandles.Artifacts = buildSlotTile(scaleWrap, {
 		name         = "ARTIFACTS",

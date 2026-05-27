@@ -121,6 +121,36 @@ local AUTO_UNLOCK_BY_MERC = {
 	["Infected Military"] = { "Firearm", "Shotgun" },
 }
 
+-- Mirror of the client's EQUIP_ITEMS restrictedTo metadata. The
+-- server uses this to (a) reject equip requests that target a
+-- weapon the merc isn't allowed to hold, and (b) scrub stale
+-- EquippedWeapon attributes left over from earlier builds where
+-- the restriction wasn't enforced (e.g. a Soldier carrying "Sword"
+-- from a pre-T45 session).
+local ALLOWED_WEAPONS_BY_MERC = {
+	["Pirate lvl1"]       = { Sword = true, FishingRod = true, Unarmed = true },
+	["Corsair"]           = { Sword = true, FishingRod = true, Unarmed = true },
+	["Infected Military"] = { Firearm = true, Shotgun = true, FishingRod = true, Unarmed = true },
+}
+
+local function isWeaponAllowedForMerc(mercName, weaponId)
+	local allowed = ALLOWED_WEAPONS_BY_MERC[mercName]
+	if not allowed then return true end -- unknown merc → unrestricted
+	return allowed[weaponId] == true
+end
+
+local function validateMercWeapon(mercEntry)
+	local allowed = ALLOWED_WEAPONS_BY_MERC[mercEntry.Name]
+	if not allowed then return end
+	local cur = mercEntry:GetAttribute("EquippedWeapon")
+	if cur and not allowed[cur] then
+		-- Clear so the client falls back to MERC_THEMES.defaultWeapon
+		-- (Pirate → Sword, Soldier → Firearm) — keeps stale state
+		-- from polluting any of the management pages.
+		mercEntry:SetAttribute("EquippedWeapon", nil)
+	end
+end
+
 local function grantUnlock(player, itemId)
 	local folder = ensureFolder(player)
 	if folder:FindFirstChild(itemId) then return end
@@ -136,6 +166,11 @@ local function watchMercenaries(player)
 	if not mercFolder then return end
 
 	local function onMercAdded(child)
+		-- Scrub any stale EquippedWeapon attribute that's no longer
+		-- valid for this merc (carried over from earlier sessions
+		-- before per-merc restrictedTo was enforced).
+		validateMercWeapon(child)
+
 		local list = AUTO_UNLOCK_BY_MERC[child.Name]
 		if not list then return end
 		for _, itemId in list do
@@ -250,6 +285,14 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
 				end
 			end
 		else
+			-- Reject equipping a weapon that's restricted away from
+			-- this merc (e.g. a Soldier trying to equip Pirate Sword,
+			-- or a Pirate trying to equip Firearm). Without this check
+			-- a malicious client could bypass the per-merc UI filter
+			-- by firing the RemoteEvent directly.
+			if not isWeaponAllowedForMerc(mercName, itemId) then
+				return
+			end
 			mercEntry:SetAttribute("EquippedWeapon", itemId)
 
 			-- Update visibility of any rig-baked weapon Models on the
@@ -313,7 +356,9 @@ equipEvent.OnServerEvent:Connect(function(player, action, mercName, arg)
 		if typeof(count) ~= "number" or count <= 0 then return end
 
 		if _G.AddResourceToInventory then
-			_G.AddResourceToInventory(player, itemName, count, nil)
+			-- silent=true: pulling out of a merc's backpack is a
+			-- container transfer like a chest, no "+N item" card.
+			_G.AddResourceToInventory(player, itemName, count, nil, true)
 		end
 
 		-- Clear the slot

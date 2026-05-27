@@ -83,7 +83,9 @@ local function isPlacementBlocked(placeCF, ghostSize)
 
 	local placedObjectNames = {
 		WorkBench = true, Purifier = true, Garden = true,
+		Bed_T = true,
 		Bed = true, Destitalor = true, bush = true, Furnace = true, Sawmill = true,
+		FireCamp = true,
 	}
 
 	for _, part in parts do
@@ -202,7 +204,7 @@ end)
 
 -- ─── R key to rotate ───
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
+	if UserInputService:GetFocusedTextBox() then return end
 	if input.KeyCode == Enum.KeyCode.R and placingFurnace then
 		rotationAngle = rotationAngle + math.rad(90)
 	end

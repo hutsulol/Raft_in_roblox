@@ -19,6 +19,7 @@ spawnEvent.Parent = ReplicatedStorage
 -- are separate models and live in their own spawners.
 local SPAWN_MAP = {
 	["Pirate lvl1"]       = "Pirate_2",
+	["Corsair"]           = "Corsair",
 	["Infected Military"] = "Infected_Military_Menu",
 }
 
@@ -27,6 +28,12 @@ local SPAWN_MAP = {
 -- without hand-editing every rig template. nil entries leave the
 -- rig's authored values untouched.
 local SPAWN_STAT_OVERRIDES = {
+	["Corsair"] = {
+		-- Tougher than the Pirate but lighter than the Soldier; matches
+		-- the MERC_THEMES card stats so the spawned rig doesn't lie.
+		MaxHealth = 320,
+		WalkSpeed = 13,
+	},
 	["Infected Military"] = {
 		MaxHealth = 420,
 		WalkSpeed = 14,
@@ -40,6 +47,7 @@ local SPAWN_STAT_OVERRIDES = {
 -- of a sword.
 local DEFAULT_WEAPON_BY_MERC = {
 	["Pirate lvl1"]       = "Sword",
+	["Corsair"]           = "Sword",
 	["Infected Military"] = "Firearm",
 }
 
@@ -136,35 +144,53 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 		or DEFAULT_WEAPON_BY_MERC[mercName]
 		or "Sword"
 
-	-- Remove all existing tools from the clone (template may have a FishingRod, etc.)
-	for _, child in clone:GetChildren() do
-		if child:IsA("Tool") then
-			child:Destroy()
-		end
+	-- Per-merc, per-equipment-slot toggle: when does the rig spawn with
+	-- its FULL authored Tool set (Cutlass + Revolver welded on) vs the
+	-- standard "strip everything, equip the chosen weapon" path?
+	-- Today only the Corsair has an authored multi-weapon loadout, and
+	-- only for the Sword slot — that's his combat role with the hybrid
+	-- melee/ranged AI. For FishingRod / Unarmed he needs to behave like
+	-- a normal Pirate (fish or harvest), so we strip his combat tools
+	-- and let the standard path attach the FishingRod (or no tool).
+	local function preservesAuthoredLoadout(merc, weapon)
+		if merc == "Corsair" and weapon == "Sword" then return true end
+		return false
 	end
 
-	-- Equip the chosen weapon from ReplicatedStorage.
-	-- FishingRod mercs spawn with a fake (visual-only) rod so they can walk
-	-- around holding it. The real rod is swapped in by MercenaryMovement
-	-- when the pirate reaches the fishing spot.
-	if equippedWeapon ~= "Unarmed" then
-		local weaponName = equippedWeapon
-		if weaponName == "Sword" then
-			weaponName = "ClassicSword"
-		elseif weaponName == "FishingRod" then
-			weaponName = "FishingRod_Fake"
+	if not preservesAuthoredLoadout(mercName, equippedWeapon) then
+		-- Remove all existing tools from the clone (template may have a
+		-- FishingRod, Cutlass, Revolver, etc.) so the rig holds exactly
+		-- the equipped weapon — same path Pirate uses for swapping
+		-- between Sword / FishingRod / Unarmed roles.
+		for _, child in clone:GetChildren() do
+			if child:IsA("Tool") then
+				child:Destroy()
+			end
 		end
 
-		local weaponTemplate = ReplicatedStorage:FindFirstChild(weaponName)
-			or ReplicatedStorage:FindFirstChild(weaponName, true)
-			or ReplicatedStorage:FindFirstChild(equippedWeapon)
-			or ReplicatedStorage:FindFirstChild(equippedWeapon, true)
-		if weaponTemplate and weaponTemplate:IsA("Tool") then
-			local wArchivable = weaponTemplate.Archivable
-			weaponTemplate.Archivable = true
-			local weaponClone = weaponTemplate:Clone()
-			weaponTemplate.Archivable = wArchivable
-			weaponClone.Parent = clone
+		-- Equip the chosen weapon from ReplicatedStorage.
+		-- FishingRod mercs spawn with a fake (visual-only) rod so they
+		-- can walk around holding it. The real rod is swapped in by
+		-- MercenaryMovement when the pirate reaches the fishing spot.
+		if equippedWeapon ~= "Unarmed" then
+			local weaponName = equippedWeapon
+			if weaponName == "Sword" then
+				weaponName = "ClassicSword"
+			elseif weaponName == "FishingRod" then
+				weaponName = "FishingRod_Fake"
+			end
+
+			local weaponTemplate = ReplicatedStorage:FindFirstChild(weaponName)
+				or ReplicatedStorage:FindFirstChild(weaponName, true)
+				or ReplicatedStorage:FindFirstChild(equippedWeapon)
+				or ReplicatedStorage:FindFirstChild(equippedWeapon, true)
+			if weaponTemplate and weaponTemplate:IsA("Tool") then
+				local wArchivable = weaponTemplate.Archivable
+				weaponTemplate.Archivable = true
+				local weaponClone = weaponTemplate:Clone()
+				weaponTemplate.Archivable = wArchivable
+				weaponClone.Parent = clone
+			end
 		end
 	end
 
@@ -209,6 +235,19 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 		end
 	end
 
+	-- Apply the chosen skin (Shirt + Pants pair from ReplicatedStorage.Skins)
+	-- before the rig hits workspace so the player never sees a one-frame
+	-- flash of the rig's authored default clothing. _G.ApplyMercSkin is
+	-- published by MercenarySkin.server.lua; if that script hasn't loaded
+	-- yet (boot-order race) we silently fall back to the rig's authored
+	-- clothing — the live retro-fit path will catch up the next time the
+	-- player equips.
+	local equippedSkin = mercEntry and mercEntry:GetAttribute("EquippedSkin")
+	if typeof(equippedSkin) == "string" and equippedSkin ~= ""
+		and typeof(_G.ApplyMercSkin) == "function" then
+		_G.ApplyMercSkin(clone, equippedSkin)
+	end
+
 	-- Keep the ZombieScript alive on the mercenary so it can fight back
 	-- against hostile pirates — the script's SearchForTarget is now
 	-- role-aware (it checks the "SpawnedMercenary" tag and will only
@@ -222,17 +261,33 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 		ragdoller:Destroy()
 	end
 
-	-- Strip the hostile AK-47 / "NPC AI" scripts from Infected_Military
-	-- mercenary rigs so the friendly version doesn't fire on the player.
-	-- The pirate Combat.script is role-aware and stays in place; the
-	-- Infected Military hostile AI predates the role split, so the
-	-- safest move is to remove it on the merc clone entirely. Once a
-	-- proper role-aware Combat script ships for the Soldier, this loop
-	-- can be replaced with the same "keep it alive" pattern.
-	for _, child in clone:GetChildren() do
-		if (child:IsA("Script") or child:IsA("LocalScript"))
-			and (child.Name == "NPC AI" or child.Name == "NpcAi") then
-			child:Destroy()
+	-- Per-merc-rig scripts (NPC AI, Health, HurtScript, Respawn, etc.)
+	-- are left alone — the user authors them on the rig in Studio and
+	-- expects them to drive the merc behaviour. The legacy Ragdoller
+	-- strip above is the only blanket removal we still do, because
+	-- the old R6 ragdoll-cloning path doesn't survive the spawn flow.
+
+	-- Inject the Pirate_2 mercenary behaviours that aren't expected to
+	-- be authored on every rig. The Soldier rig ships its own "NPC AI"
+	-- that plays the combat role, so we don't inject Combat — only
+	-- Fishing + HarvestResources, which are rig-agnostic and the
+	-- Soldier rig doesn't author itself. The injector skips when the
+	-- clone already carries an authored copy with the same name.
+	local pirateMercTemplate = ReplicatedStorage:FindFirstChild("Pirate_2")
+		or ReplicatedStorage:FindFirstChild("Pirate_2", true)
+	if pirateMercTemplate then
+		local MERC_SCRIPTS = { "Fishing", "HarvestResources" }
+		for _, scriptName in MERC_SCRIPTS do
+			if not clone:FindFirstChild(scriptName) then
+				local source = pirateMercTemplate:FindFirstChild(scriptName)
+				if source and (source:IsA("Script") or source:IsA("LocalScript")) then
+					local wasArchivable = source.Archivable
+					source.Archivable = true
+					local copy = source:Clone()
+					source.Archivable = wasArchivable
+					copy.Parent = clone
+				end
+			end
 		end
 	end
 

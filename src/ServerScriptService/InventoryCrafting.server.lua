@@ -11,16 +11,25 @@ local recipes = {
 	{
 		name = "WorkBench",
 		displayName = "Work Bench",
-		icon = "rbxassetid://104306543647624",
+		icon = "rbxassetid://116083064101694",
 		costs = {Log = 3},
 		craftType = "placeable",
 		category = "Technology",
 		description = "A workbench that allows crafting of advanced items when placed on the raft.",
 	},
 	{
+		name = "FireCamp",
+		displayName = "Campfire",
+		icon = "rbxassetid://116083064101694",
+		costs = {Log = 1},
+		craftType = "placeable",
+		category = "Technology",
+		description = "A campfire. Place it on your raft, then press E to feed it logs — more logs burn brighter and longer.",
+	},
+	{
 		name = "Hammer",
 		displayName = "Hammer",
-		icon = "rbxassetid://96978301002259",
+		icon = "rbxassetid://72168072336946",
 		costs = {Log = 1},
 		craftType = "tool",
 		category = "Tools",
@@ -55,6 +64,24 @@ local recipes = {
 		description = "An empty woven bag. Fill it with sand or clay on an island.",
 	},
 	{
+		name = "leaf bag",
+		displayName = "Leaf Bag",
+		icon = "rbxassetid://89398456198664",
+		costs = {Leaves = 5},
+		craftType = "tool",
+		category = "Misc",
+		description = "A small leaf bag for storing seeds. Hold it and press E next to a watered tree garden bed to plant.",
+	},
+	{
+		name = "Sand Bag",
+		displayName = "Sand Bag",
+		icon = "rbxassetid://107012847180882",
+		costs = {Leaves = 5},
+		craftType = "tool",
+		category = "Misc",
+		description = "A leaf bag for storing sand. Hold it and press E to inspect, or dig sand with the shovel to fill it up.",
+	},
+	{
 		name = "Destitalor",
 		displayName = "Water Purifier",
 		icon = "rbxassetid://90221080738714",
@@ -66,16 +93,30 @@ local recipes = {
 	{
 		name = "Garden",
 		displayName = "Garden Bed",
-		icon = "rbxassetid://77159786623285",
+		icon = "rbxassetid://137766871451752",
 		costs = {Log = 4},
 		craftType = "placeable",
 		category = "Technology",
 		description = "A garden bed for planting bushes. Water it with fresh water to let your plants bear fruit.",
 	},
 	{
+		-- Larger variant of the regular Garden Bed, sized to host a
+		-- tree. Same placement / R-rotate / raft-weld flow as Garden;
+		-- the server handler lives alongside the regular garden in
+		-- GardenSystem.server.lua and clones the Bed_T
+		-- template from ReplicatedStorage.
+		name = "Bed_T",
+		displayName = "Tree Garden Bed",
+		icon = "rbxassetid://137766871451752",
+		costs = {Log = 1},
+		craftType = "placeable",
+		category = "Technology",
+		description = "A larger garden bed sized for growing a tree. Takes up more space on the raft than a regular garden.",
+	},
+	{
 		name = "bush",
 		displayName = "Grape Bush",
-		icon = "rbxassetid://100755665041729",
+		icon = "rbxassetid://93957489757544",
 		costs = {Log = 1},
 		craftType = "placeable",
 		category = "Technology",
@@ -102,7 +143,7 @@ local recipes = {
 	{
 		name = "Wet_Brick",
 		displayName = "Wet Brick",
-		icon = "rbxassetid://122295013823946",
+		icon = "rbxassetid://139059474647090",
 		costs = {Sand = 2, Clay = 2},
 		craftType = "placeable",
 		category = "Resources",
@@ -111,7 +152,7 @@ local recipes = {
 	{
 		name = "Shovel",
 		displayName = "Shovel",
-		icon = "rbxassetid://91548954831391",
+		icon = "rbxassetid://123765089142597",
 		costs = {Rope = 1, Stone = 3, Log = 1},
 		craftType = "tool",
 		category = "Tools",
@@ -129,7 +170,7 @@ local recipes = {
 	{
 		name = "Phone",
 		displayName = "Phone",
-		icon = "rbxassetid://122333372049252",
+		icon = "rbxassetid://123703470055474",
 		costs = {Log = 1},
 		craftType = "tool",
 		category = "Tools",
@@ -178,17 +219,36 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	if not recipe then return end
 
 	local inv = _G.GetInventory and _G.GetInventory(player) or {}
+
+	-- Sand / Clay don't live in the inventory — they're stashed in the
+	-- Sand Bag tool. Treat bag units as if they were inventory units
+	-- for both the affordability check and the actual deduction below.
+	local function availableFor(item)
+		local count = inv[item] or 0
+		if (item == "Sand" or item == "Clay") and _G.GetBagUnitsFor then
+			count = count + _G.GetBagUnitsFor(player, item)
+		end
+		return count
+	end
+
 	for item, amount in recipe.costs do
-		if (inv[item] or 0) < amount then
+		if availableFor(item) < amount then
 			return
 		end
 	end
 
 	for item, amount in recipe.costs do
-		if _G.RemoveResourceFromInventory then
-			_G.RemoveResourceFromInventory(player, item, amount)
-		else
-			inv[item] = inv[item] - amount
+		local remaining = amount
+		if (item == "Sand" or item == "Clay") and _G.RemoveBagUnits then
+			local fromBag = _G.RemoveBagUnits(player, item, remaining)
+			remaining = remaining - fromBag
+		end
+		if remaining > 0 then
+			if _G.RemoveResourceFromInventory then
+				_G.RemoveResourceFromInventory(player, item, remaining)
+			else
+				inv[item] = (inv[item] or 0) - remaining
+			end
 		end
 	end
 
