@@ -24,7 +24,7 @@ local FILL_TRANSP   = 0.85   -- faint inner glow; 1 = outline-only
 local OUTLINE_MIN   = 0.0    -- brightest point of the pulse
 local OUTLINE_MAX   = 0.5    -- dimmest point of the pulse
 local PULSE_SPEED   = 4      -- higher = faster pulse
-local DEPTH_MODE    = Enum.HighlightDepthMode.Occluded  -- AlwaysOnTop = glow through walls
+local DEPTH_MODE    = Enum.HighlightDepthMode.AlwaysOnTop  -- single clean silhouette of the whole model; Occluded fragments per-part
 
 local highlights   = {}  -- [target Instance] = Highlight
 local shownPrompts = {}  -- [ProximityPrompt] = true while its prompt is visible
