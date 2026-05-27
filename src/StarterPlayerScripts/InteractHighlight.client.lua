@@ -23,19 +23,22 @@ local FILL_COLOR    = Color3.fromRGB(255, 255, 255)
 -- The whole surface glows white and breathes. Fill + outline pulse
 -- together between their bright (MIN) and faint (MAX) transparency.
 local SHOW_OUTLINE  = false  -- toggle the edge outline (the glow fill stays either way)
-local FILL_MIN      = 0.2    -- strongest glow (lower = more white)
-local FILL_MAX      = 0.6    -- faintest glow
+local FILL_MIN      = 0.45   -- strongest glow (lower = more white). Kept soft so
+local FILL_MAX      = 0.75   -- the object's own texture still shows through.
 local OUTLINE_MIN   = 0.0
 local OUTLINE_MAX   = 0.4
 local PULSE_SPEED   = 4      -- higher = faster pulse
 local DEPTH_MODE    = Enum.HighlightDepthMode.AlwaysOnTop  -- single clean silhouette of the whole model; Occluded fragments per-part
 
--- Highlight doesn't render on transparent parts, so a glass bottle's
--- body never gets outlined. While an object is lit we temporarily make
--- its see-through parts opaque (client-side only, restored on un-light)
--- so the WHOLE silhouette outlines. 0 = fully solid + cleanest outline;
--- raise toward 1 to keep more of the glass look (weaker outline).
-local GLASS_OPACITY_WHEN_LIT = 0
+-- Highlight only fully fails to render on parts that are VERY
+-- transparent. For a slightly-transparent object (e.g. this bottle)
+-- the glow shows fine and we want to KEEP the see-through look, so
+-- leave transparency alone by default. Only parts more transparent
+-- than FORCE_OPAQUE_ABOVE get nudged to FORCE_OPAQUE_TO so they don't
+-- vanish from the glow entirely. Set FORCE_OPAQUE_ABOVE = 1 to never
+-- touch transparency at all.
+local FORCE_OPAQUE_ABOVE = 0.7   -- only parts more transparent than this get nudged
+local FORCE_OPAQUE_TO    = 0.5   -- the (still see-through) value they're nudged to
 
 local highlights   = {}  -- [target Instance] = Highlight
 local shownPrompts = {}  -- [ProximityPrompt] = true while its prompt is visible
@@ -71,12 +74,13 @@ end
 local function ensureHighlight(target)
 	if highlights[target] then return end
 
-	-- Force see-through parts opaque so they contribute to the outline.
+	-- Only nudge VERY transparent parts so the glow doesn't skip them;
+	-- slightly-transparent parts keep their look (see the bottle/liquid).
 	local saved = {}
 	local function consider(p)
-		if p:IsA("BasePart") and p.Transparency > GLASS_OPACITY_WHEN_LIT and p.Transparency < 1 then
+		if p:IsA("BasePart") and p.Transparency > FORCE_OPAQUE_ABOVE and p.Transparency < 1 then
 			table.insert(saved, { part = p, t = p.Transparency })
-			p.Transparency = GLASS_OPACITY_WHEN_LIT
+			p.Transparency = FORCE_OPAQUE_TO
 		end
 	end
 	for _, p in target:GetDescendants() do consider(p) end
