@@ -28,7 +28,7 @@ local FILL_MAX      = 0.7    -- faintest glow — the gap MIN..MAX is the visibl
 local OUTLINE_MIN   = 0.0
 local OUTLINE_MAX   = 0.4
 local PULSE_SPEED   = 4      -- higher = faster pulse
-local DEPTH_MODE    = Enum.HighlightDepthMode.AlwaysOnTop  -- single clean silhouette of the whole model; Occluded fragments per-part
+local DEPTH_MODE    = Enum.HighlightDepthMode.Occluded  -- hide highlight behind walls/occluders
 
 
 local highlights   = {}  -- [target Instance] = Highlight
