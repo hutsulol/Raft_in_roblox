@@ -73,8 +73,8 @@ RunService.RenderStepped:Connect(function()
 		return
 	end
 
-	local vp = camera.ViewportSize
-	local ray = camera:ViewportPointToRay(vp.X / 2, vp.Y / 2)
+	local mousePos = UserInputService:GetMouseLocation()
+	local ray = camera:ViewportPointToRay(mousePos.X, mousePos.Y)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = {char}
@@ -96,7 +96,7 @@ RunService.RenderStepped:Connect(function()
 			currentTarget = target
 			local name = target:GetAttribute("PickupDisplayName") or target.Name
 			txt.Text = "Pick up: " .. tostring(name)
-			holder.Position = UDim2.fromOffset(vp.X / 2, vp.Y / 2 - 12)
+			holder.Position = UDim2.fromOffset(mousePos.X, mousePos.Y - 14)
 			holder.Visible = true
 			return
 		end
