@@ -30,19 +30,10 @@ local OUTLINE_MAX   = 0.4
 local PULSE_SPEED   = 4      -- higher = faster pulse
 local DEPTH_MODE    = Enum.HighlightDepthMode.AlwaysOnTop  -- single clean silhouette of the whole model; Occluded fragments per-part
 
--- The glow fill renders PROPORTIONALLY to a part's opacity, so on very
--- see-through glass it's nearly invisible (no visible flicker). While
--- lit we pull transparent parts toward FORCE_OPAQUE_TO so the glow is
--- actually visible — but only part-way, so you can still tell it's a
--- bottle with liquid. Tune FORCE_OPAQUE_TO: lower = stronger glow but
--- more solid; higher = more see-through but fainter glow. Set
--- FORCE_OPAQUE_ABOVE = 1 to never touch transparency.
-local FORCE_OPAQUE_ABOVE = 0.3   -- parts more transparent than this get pulled in
-local FORCE_OPAQUE_TO    = 0.5   -- ~half see-through while lit (glow stays visible)
 
 local highlights   = {}  -- [target Instance] = Highlight
 local shownPrompts = {}  -- [ProximityPrompt] = true while its prompt is visible
-local litParts     = {}  -- [target] = { {part=, t=}, ... } transparency to restore
+local helperHumanoids = {} -- [target Model] = Humanoid created locally for transparent highlight support
 
 -- ─── Helpers ──────────────────────────────────────────────────────
 local function targetForPrompt(prompt)
@@ -74,25 +65,19 @@ end
 local function ensureHighlight(target)
 	if highlights[target] then return end
 
-	-- Highlight renders nothing on Glass/ForceField material (and nothing
-	-- on very transparent parts). While lit we temporarily swap such
-	-- parts to a plain material + a half-transparent value so the glow
-	-- shows, then restore both on un-light.
-	local saved = {}
-	local function consider(p)
-		if not p:IsA("BasePart") then return end
-		local isGlass = p.Material == Enum.Material.Glass
-			or p.Material == Enum.Material.ForceField
-		local isTransp = p.Transparency > FORCE_OPAQUE_ABOVE and p.Transparency < 1
-		if isGlass or isTransp then
-			table.insert(saved, { part = p, t = p.Transparency, m = p.Material })
-			if isGlass then p.Material = Enum.Material.SmoothPlastic end
-			p.Transparency = FORCE_OPAQUE_TO
-		end
+	-- Roblox Highlight can fail on transparent/glass meshes. A practical
+	-- workaround: for Models, add a local Humanoid. This makes Highlight
+	-- render reliably without changing part transparency/materials.
+	if target:IsA("Model") and not target:FindFirstChildOfClass("Humanoid") then
+		local hum = Instance.new("Humanoid")
+		hum.Name = "_InteractHighlightHumanoid"
+		hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+		hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+		hum.BreakJointsOnDeath = false
+		hum.RequiresNeck = false
+		hum.Parent = target
+		helperHumanoids[target] = hum
 	end
-	for _, p in target:GetDescendants() do consider(p) end
-	consider(target)
-	litParts[target] = saved
 
 	local hl = Instance.new("Highlight")
 	hl.Name                = "InteractHighlight"
@@ -112,16 +97,9 @@ local function clearHighlight(target)
 		hl:Destroy()
 		highlights[target] = nil
 	end
-	local saved = litParts[target]
-	if saved then
-		for _, e in saved do
-			if e.part and e.part.Parent then
-				e.part.Transparency = e.t
-				e.part.Material = e.m
-			end
-		end
-		litParts[target] = nil
-	end
+	local hum = helperHumanoids[target]
+	if hum and hum.Parent then hum:Destroy() end
+	helperHumanoids[target] = nil
 end
 
 -- ─── ProximityPrompt source ───────────────────────────────────────
