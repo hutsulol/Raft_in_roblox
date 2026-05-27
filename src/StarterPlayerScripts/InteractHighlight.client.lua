@@ -74,12 +74,19 @@ end
 local function ensureHighlight(target)
 	if highlights[target] then return end
 
-	-- Only nudge VERY transparent parts so the glow doesn't skip them;
-	-- slightly-transparent parts keep their look (see the bottle/liquid).
+	-- Highlight renders nothing on Glass/ForceField material (and nothing
+	-- on very transparent parts). While lit we temporarily swap such
+	-- parts to a plain material + a half-transparent value so the glow
+	-- shows, then restore both on un-light.
 	local saved = {}
 	local function consider(p)
-		if p:IsA("BasePart") and p.Transparency > FORCE_OPAQUE_ABOVE and p.Transparency < 1 then
-			table.insert(saved, { part = p, t = p.Transparency })
+		if not p:IsA("BasePart") then return end
+		local isGlass = p.Material == Enum.Material.Glass
+			or p.Material == Enum.Material.ForceField
+		local isTransp = p.Transparency > FORCE_OPAQUE_ABOVE and p.Transparency < 1
+		if isGlass or isTransp then
+			table.insert(saved, { part = p, t = p.Transparency, m = p.Material })
+			if isGlass then p.Material = Enum.Material.SmoothPlastic end
 			p.Transparency = FORCE_OPAQUE_TO
 		end
 	end
@@ -108,7 +115,10 @@ local function clearHighlight(target)
 	local saved = litParts[target]
 	if saved then
 		for _, e in saved do
-			if e.part and e.part.Parent then e.part.Transparency = e.t end
+			if e.part and e.part.Parent then
+				e.part.Transparency = e.t
+				e.part.Material = e.m
+			end
 		end
 		litParts[target] = nil
 	end
