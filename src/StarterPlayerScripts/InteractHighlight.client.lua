@@ -27,8 +27,16 @@ local OUTLINE_MAX   = 0.5    -- dimmest point of the pulse
 local PULSE_SPEED   = 4      -- higher = faster pulse
 local DEPTH_MODE    = Enum.HighlightDepthMode.AlwaysOnTop  -- single clean silhouette of the whole model; Occluded fragments per-part
 
+-- Highlight doesn't render on transparent parts, so a glass bottle's
+-- body never gets outlined. While an object is lit we temporarily make
+-- its see-through parts opaque (client-side only, restored on un-light)
+-- so the WHOLE silhouette outlines. 0 = fully solid + cleanest outline;
+-- raise toward 1 to keep more of the glass look (weaker outline).
+local GLASS_OPACITY_WHEN_LIT = 0
+
 local highlights   = {}  -- [target Instance] = Highlight
 local shownPrompts = {}  -- [ProximityPrompt] = true while its prompt is visible
+local litParts     = {}  -- [target] = { {part=, t=}, ... } transparency to restore
 
 -- ─── Helpers ──────────────────────────────────────────────────────
 local function targetForPrompt(prompt)
@@ -59,6 +67,19 @@ end
 
 local function ensureHighlight(target)
 	if highlights[target] then return end
+
+	-- Force see-through parts opaque so they contribute to the outline.
+	local saved = {}
+	local function consider(p)
+		if p:IsA("BasePart") and p.Transparency > GLASS_OPACITY_WHEN_LIT and p.Transparency < 1 then
+			table.insert(saved, { part = p, t = p.Transparency })
+			p.Transparency = GLASS_OPACITY_WHEN_LIT
+		end
+	end
+	for _, p in target:GetDescendants() do consider(p) end
+	consider(target)
+	litParts[target] = saved
+
 	local hl = Instance.new("Highlight")
 	hl.Name                = "InteractHighlight"
 	hl.DepthMode           = DEPTH_MODE
@@ -76,6 +97,13 @@ local function clearHighlight(target)
 	if hl then
 		hl:Destroy()
 		highlights[target] = nil
+	end
+	local saved = litParts[target]
+	if saved then
+		for _, e in saved do
+			if e.part and e.part.Parent then e.part.Transparency = e.t end
+		end
+		litParts[target] = nil
 	end
 end
 
