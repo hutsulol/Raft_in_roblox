@@ -20,7 +20,8 @@ local TAG           = "Interactable"
 local HIGHLIGHT_RANGE = 16   -- studs, for tag-based proximity glow
 local OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
 local FILL_COLOR    = Color3.fromRGB(255, 255, 255)
-local FILL_TRANSP   = 0.85   -- faint inner glow; 1 = outline-only
+local FILL_TRANSP   = 1      -- outline-only. A fill < 1 paints each opaque
+                              -- sub-part and looks fragmented on glass models.
 local OUTLINE_MIN   = 0.0    -- brightest point of the pulse
 local OUTLINE_MAX   = 0.5    -- dimmest point of the pulse
 local PULSE_SPEED   = 4      -- higher = faster pulse
@@ -46,6 +47,14 @@ local function instPos(inst)
 		if ok then return cf.Position end
 	end
 	return nil
+end
+
+-- Always highlight a whole Model rather than a lone part, so a tag on
+-- any sub-part still outlines the entire object as one silhouette.
+local function resolveTarget(inst)
+	if inst:IsA("Model") then return inst end
+	local model = inst:FindFirstAncestorWhichIsA("Model")
+	return model or inst
 end
 
 local function ensureHighlight(target)
@@ -104,7 +113,7 @@ RunService.RenderStepped:Connect(function()
 		for _, inst in CollectionService:GetTagged(TAG) do
 			local pos = instPos(inst)
 			if pos and (pos - hrp.Position).Magnitude <= HIGHLIGHT_RANGE then
-				wanted[inst] = true
+				wanted[resolveTarget(inst)] = true
 			end
 		end
 	end
