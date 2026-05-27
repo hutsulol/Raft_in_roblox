@@ -20,10 +20,12 @@ local TAG           = "Interactable"
 local HIGHLIGHT_RANGE = 16   -- studs, for tag-based proximity glow
 local OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
 local FILL_COLOR    = Color3.fromRGB(255, 255, 255)
-local FILL_TRANSP   = 1      -- outline-only. A fill < 1 paints each opaque
-                              -- sub-part and looks fragmented on glass models.
-local OUTLINE_MIN   = 0.0    -- brightest point of the pulse
-local OUTLINE_MAX   = 0.5    -- dimmest point of the pulse
+-- The whole surface glows white and breathes. Fill + outline pulse
+-- together between their bright (MIN) and faint (MAX) transparency.
+local FILL_MIN      = 0.2    -- strongest glow (lower = more white)
+local FILL_MAX      = 0.6    -- faintest glow
+local OUTLINE_MIN   = 0.0
+local OUTLINE_MAX   = 0.4
 local PULSE_SPEED   = 4      -- higher = faster pulse
 local DEPTH_MODE    = Enum.HighlightDepthMode.AlwaysOnTop  -- single clean silhouette of the whole model; Occluded fragments per-part
 
@@ -85,7 +87,7 @@ local function ensureHighlight(target)
 	hl.DepthMode           = DEPTH_MODE
 	hl.OutlineColor        = OUTLINE_COLOR
 	hl.FillColor           = FILL_COLOR
-	hl.FillTransparency    = FILL_TRANSP
+	hl.FillTransparency    = FILL_MIN
 	hl.OutlineTransparency = OUTLINE_MIN
 	hl.Adornee             = target
 	hl.Parent              = target
@@ -152,11 +154,13 @@ RunService.RenderStepped:Connect(function()
 		if not wanted[tgt] or not tgt.Parent then clearHighlight(tgt) end
 	end
 
-	-- Pulse them all together.
+	-- Pulse fill + outline together — the whole surface breathes white.
 	if next(highlights) then
 		local t = (math.sin(os.clock() * PULSE_SPEED) + 1) / 2
+		local fill    = FILL_MIN    + (FILL_MAX    - FILL_MIN)    * t
 		local outline = OUTLINE_MIN + (OUTLINE_MAX - OUTLINE_MIN) * t
 		for _, hl in pairs(highlights) do
+			hl.FillTransparency    = fill
 			hl.OutlineTransparency = outline
 		end
 	end
