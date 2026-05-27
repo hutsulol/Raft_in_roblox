@@ -96,7 +96,7 @@ RunService.RenderStepped:Connect(function()
 			currentTarget = target
 			local name = target:GetAttribute("PickupDisplayName") or target.Name
 			txt.Text = "Pick up: " .. tostring(name)
-			holder.Position = UDim2.fromOffset(mousePos.X, mousePos.Y - 26)
+			holder.Position = UDim2.fromOffset(mousePos.X, mousePos.Y - 36)
 			holder.Visible = true
 			return
 		end
