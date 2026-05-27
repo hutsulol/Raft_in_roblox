@@ -1,31 +1,36 @@
 -- InteractHighlight.client.lua
--- Animated white outline on whatever the player can currently
--- interact with. Hooks every ProximityPrompt's PromptShown /
--- PromptHidden so the glow appears exactly while the prompt is on
--- screen, and pulses the outline each frame for a "living" look.
+-- ONE global client script (place in StarterPlayerScripts, NOT inside
+-- a model — LocalScripts don't run inside Workspace models). It draws
+-- an animated white outline on whatever the player can interact with.
 --
--- Drop this in StarterPlayerScripts. Any object that has a
--- ProximityPrompt (campfire, furnace, the rum bottle, etc.) glows
--- automatically — no per-object wiring needed.
+-- An object lights up if EITHER:
+--   * it has a ProximityPrompt that's currently on screen, OR
+--   * it (a Model or BasePart) is tagged "Interactable" via the Studio
+--     Tag Editor and the player is within HIGHLIGHT_RANGE.
+-- So to make the rum bottle glow: just tag its model "Interactable".
 
-local RunService = game:GetService("RunService")
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
+
+local player = Players.LocalPlayer
 
 -- ─── Look / feel ──────────────────────────────────────────────────
+local TAG           = "Interactable"
+local HIGHLIGHT_RANGE = 16   -- studs, for tag-based proximity glow
 local OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
 local FILL_COLOR    = Color3.fromRGB(255, 255, 255)
-local FILL_TRANSP   = 0.85   -- faint inner glow; set to 1 for outline-only
+local FILL_TRANSP   = 0.85   -- faint inner glow; 1 = outline-only
 local OUTLINE_MIN   = 0.0    -- brightest point of the pulse
 local OUTLINE_MAX   = 0.5    -- dimmest point of the pulse
 local PULSE_SPEED   = 4      -- higher = faster pulse
--- Occluded: outline only where the object is actually visible (natural).
--- Swap to AlwaysOnTop to let it glow through walls.
-local DEPTH_MODE    = Enum.HighlightDepthMode.Occluded
+local DEPTH_MODE    = Enum.HighlightDepthMode.Occluded  -- AlwaysOnTop = glow through walls
 
-local active = {}  -- [prompt] = Highlight
+local highlights   = {}  -- [target Instance] = Highlight
+local shownPrompts = {}  -- [ProximityPrompt] = true while its prompt is visible
 
-local function targetFor(prompt)
-	-- Prefer the whole interactable Model; fall back to the part the
-	-- prompt is parented to.
+-- ─── Helpers ──────────────────────────────────────────────────────
+local function targetForPrompt(prompt)
 	local part = prompt.Parent
 	if part then
 		local model = part:FindFirstAncestorWhichIsA("Model")
@@ -34,11 +39,17 @@ local function targetFor(prompt)
 	return part
 end
 
-local function addHighlight(prompt)
-	if active[prompt] then return end
-	local target = targetFor(prompt)
-	if not target then return end
+local function instPos(inst)
+	if inst:IsA("BasePart") then return inst.Position end
+	if inst:IsA("Model") then
+		local ok, cf = pcall(function() return inst:GetPivot() end)
+		if ok then return cf.Position end
+	end
+	return nil
+end
 
+local function ensureHighlight(target)
+	if highlights[target] then return end
 	local hl = Instance.new("Highlight")
 	hl.Name                = "InteractHighlight"
 	hl.DepthMode           = DEPTH_MODE
@@ -48,39 +59,68 @@ local function addHighlight(prompt)
 	hl.OutlineTransparency = OUTLINE_MIN
 	hl.Adornee             = target
 	hl.Parent              = target
-	active[prompt] = hl
+	highlights[target] = hl
 end
 
-local function removeHighlight(prompt)
-	local hl = active[prompt]
+local function clearHighlight(target)
+	local hl = highlights[target]
 	if hl then
 		hl:Destroy()
-		active[prompt] = nil
+		highlights[target] = nil
 	end
 end
 
-local function hook(inst)
+-- ─── ProximityPrompt source ───────────────────────────────────────
+local function hookPrompt(inst)
 	if not inst:IsA("ProximityPrompt") then return end
-	inst.PromptShown:Connect(function() addHighlight(inst) end)
-	inst.PromptHidden:Connect(function() removeHighlight(inst) end)
+	inst.PromptShown:Connect(function() shownPrompts[inst] = true end)
+	inst.PromptHidden:Connect(function() shownPrompts[inst] = nil end)
 	inst.AncestryChanged:Connect(function()
-		if not inst.Parent then removeHighlight(inst) end
+		if not inst.Parent then shownPrompts[inst] = nil end
 	end)
 end
 
-for _, d in workspace:GetDescendants() do hook(d) end
-workspace.DescendantAdded:Connect(hook)
+for _, d in workspace:GetDescendants() do hookPrompt(d) end
+workspace.DescendantAdded:Connect(hookPrompt)
 
--- Pulse every active outline together.
+-- ─── Per-frame: decide who glows, then pulse ──────────────────────
 RunService.RenderStepped:Connect(function()
-	if next(active) == nil then return end
-	local t = (math.sin(os.clock() * PULSE_SPEED) + 1) / 2  -- 0..1
-	local outline = OUTLINE_MIN + (OUTLINE_MAX - OUTLINE_MIN) * t
-	for prompt, hl in active do
-		if hl.Parent then
-			hl.OutlineTransparency = outline
+	local wanted = {}
+
+	-- 1. Objects whose ProximityPrompt is on screen.
+	for prompt in pairs(shownPrompts) do
+		if prompt.Parent then
+			local tgt = targetForPrompt(prompt)
+			if tgt then wanted[tgt] = true end
 		else
-			active[prompt] = nil
+			shownPrompts[prompt] = nil
+		end
+	end
+
+	-- 2. Tagged "Interactable" objects within range of the player.
+	local char = player.Character
+	local hrp  = char and char:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		for _, inst in CollectionService:GetTagged(TAG) do
+			local pos = instPos(inst)
+			if pos and (pos - hrp.Position).Magnitude <= HIGHLIGHT_RANGE then
+				wanted[inst] = true
+			end
+		end
+	end
+
+	-- Sync highlights to the wanted set.
+	for tgt in pairs(wanted) do ensureHighlight(tgt) end
+	for tgt in pairs(highlights) do
+		if not wanted[tgt] or not tgt.Parent then clearHighlight(tgt) end
+	end
+
+	-- Pulse them all together.
+	if next(highlights) then
+		local t = (math.sin(os.clock() * PULSE_SPEED) + 1) / 2
+		local outline = OUTLINE_MIN + (OUTLINE_MAX - OUTLINE_MIN) * t
+		for _, hl in pairs(highlights) do
+			hl.OutlineTransparency = outline
 		end
 	end
 end)
