@@ -22,6 +22,7 @@ local OUTLINE_COLOR = Color3.fromRGB(255, 255, 255)
 local FILL_COLOR    = Color3.fromRGB(255, 255, 255)
 -- The whole surface glows white and breathes. Fill + outline pulse
 -- together between their bright (MIN) and faint (MAX) transparency.
+local SHOW_OUTLINE  = false  -- toggle the edge outline (the glow fill stays either way)
 local FILL_MIN      = 0.2    -- strongest glow (lower = more white)
 local FILL_MAX      = 0.6    -- faintest glow
 local OUTLINE_MIN   = 0.0
@@ -88,7 +89,7 @@ local function ensureHighlight(target)
 	hl.OutlineColor        = OUTLINE_COLOR
 	hl.FillColor           = FILL_COLOR
 	hl.FillTransparency    = FILL_MIN
-	hl.OutlineTransparency = OUTLINE_MIN
+	hl.OutlineTransparency = SHOW_OUTLINE and OUTLINE_MIN or 1
 	hl.Adornee             = target
 	hl.Parent              = target
 	highlights[target] = hl
@@ -157,8 +158,8 @@ RunService.RenderStepped:Connect(function()
 	-- Pulse fill + outline together — the whole surface breathes white.
 	if next(highlights) then
 		local t = (math.sin(os.clock() * PULSE_SPEED) + 1) / 2
-		local fill    = FILL_MIN    + (FILL_MAX    - FILL_MIN)    * t
-		local outline = OUTLINE_MIN + (OUTLINE_MAX - OUTLINE_MIN) * t
+		local fill    = FILL_MIN + (FILL_MAX - FILL_MIN) * t
+		local outline = SHOW_OUTLINE and (OUTLINE_MIN + (OUTLINE_MAX - OUTLINE_MIN) * t) or 1
 		for _, hl in pairs(highlights) do
 			hl.FillTransparency    = fill
 			hl.OutlineTransparency = outline
