@@ -41,6 +41,7 @@ local RESOURCE_TEMPLATES = {
 	Legendary_Fish  = "Legendary Fish",
 	Seabass_Fish    = "Seabass Fish",
 	Tilapia_Fish    = "Tilapia Fish",
+	Meat            = "Meat",
 }
 -- Cooked fish ("<fish>_Cooked") re-drop using the same fish model as
 -- their raw counterpart, so dropping a cooked fish from the inventory
@@ -80,6 +81,7 @@ local RESOURCE_ITEMS = {
 	Legendary_Fish  = true,
 	Seabass_Fish    = true,
 	Tilapia_Fish    = true,
+	Meat            = true,
 }
 -- Cooked fish behave as stackable resources just like their raw form.
 setmetatable(RESOURCE_ITEMS, {
@@ -112,6 +114,12 @@ local DROPPED_LIFETIME = 120
 local MAX_DROP_DISTANCE = 80
 local PICKUP_DISTANCE = 15
 local lastDropTime = {}
+local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
+local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
+local LEGENDARY_RAW_TEXTURE_ID = "http://www.roblox.com/asset/?id=155812542"
+local LEGENDARY_COOKED_TEXTURE_ID = "rbxassetid://138934138408588"
+local LEGENDARY_RAW_TEXTURE_NUM = "155812542"
+local LEGENDARY_COOKED_TEXTURE_NUM = "138934138408588"
 
 -- Spawn a physical dropped-item in the world near the player. Shared
 -- between the explicit "drop from inventory" event and the
@@ -168,16 +176,54 @@ local function spawnPhysicalDrop(player, itemName, amount, isToolDrop, dropPosit
 	local isCookedFish = itemName:sub(-7) == "_Cooked"
 	for _, d in clone:GetDescendants() do
 		if d:IsA("Decal") or d:IsA("Texture") then
-			local n = (d.Name:gsub("%s+", "")):lower()
-			if n == "raw" then
+			local n = (d.Name:gsub("[%s_]+", "")):lower()
+			if n:find("raw", 1, true) then
 				d.Transparency = isCookedFish and 1 or 0
-			elseif n == "cooked" then
+			elseif n:find("cooked", 1, true) then
 				d.Transparency = isCookedFish and 0 or 1
+			end
+		end
+	end
+	-- Mesh-authored fish need explicit raw/cooked texture enforcement,
+	-- otherwise a stale authored texture can make a raw drop look cooked
+	-- (or vice versa).
+	for _, d in clone:GetDescendants() do
+		if d:IsA("MeshPart") then
+			if isCookedFish then
+				if d.TextureID == TILAPIA_RAW_TEXTURE_ID then
+					d.TextureID = TILAPIA_COOKED_TEXTURE_ID
+				elseif type(d.TextureID) == "string" and d.TextureID:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) then
+					d.TextureID = LEGENDARY_COOKED_TEXTURE_ID
+				end
+			else
+				if d.TextureID == TILAPIA_COOKED_TEXTURE_ID then
+					d.TextureID = TILAPIA_RAW_TEXTURE_ID
+				elseif type(d.TextureID) == "string" and d.TextureID:find(LEGENDARY_COOKED_TEXTURE_NUM, 1, true) then
+					d.TextureID = LEGENDARY_RAW_TEXTURE_ID
+				end
+			end
+		elseif d:IsA("SpecialMesh") then
+			if isCookedFish then
+				if type(d.TextureId) == "string" and d.TextureId:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) then
+					d.TextureId = LEGENDARY_COOKED_TEXTURE_ID
+				end
+			else
+				if type(d.TextureId) == "string" and d.TextureId:find(LEGENDARY_COOKED_TEXTURE_NUM, 1, true) then
+					d.TextureId = LEGENDARY_RAW_TEXTURE_ID
+				end
 			end
 		end
 	end
 	if isCookedFish then
 		clone:SetAttribute("Cooked", true)
+
+		-- Cooked fish are "dead"/static; disable any authored movement
+		-- scripts (flop/alive logic) so they don't animate on the ground.
+		for _, d in clone:GetDescendants() do
+			if d:IsA("Script") or d:IsA("LocalScript") then
+				d.Disabled = true
+			end
+		end
 	end
 
 	-- Strip "Resource" tags and add "DroppedItem" BEFORE parenting to
