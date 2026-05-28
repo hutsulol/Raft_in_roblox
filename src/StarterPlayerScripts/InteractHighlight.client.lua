@@ -23,26 +23,20 @@ local FILL_COLOR    = Color3.fromRGB(255, 255, 255)
 -- The whole surface glows white and breathes. Fill + outline pulse
 -- together between their bright (MIN) and faint (MAX) transparency.
 local SHOW_OUTLINE  = false  -- toggle the edge outline (the glow fill stays either way)
-local FILL_MIN      = 0.25   -- strongest glow (lower = more white)
-local FILL_MAX      = 0.7    -- faintest glow — the gap MIN..MAX is the visible "breath"
+local FILL_MIN      = 0.85   -- strongest glow (lower = more white)
+local FILL_MAX      = 0.95   -- faintest glow — the gap MIN..MAX is the visible "breath"
 local OUTLINE_MIN   = 0.0
 local OUTLINE_MAX   = 0.4
 local PULSE_SPEED   = 4      -- higher = faster pulse
-local DEPTH_MODE    = Enum.HighlightDepthMode.AlwaysOnTop  -- single clean silhouette of the whole model; Occluded fragments per-part
-
--- The glow fill renders PROPORTIONALLY to a part's opacity, so on very
--- see-through glass it's nearly invisible (no visible flicker). While
--- lit we pull transparent parts toward FORCE_OPAQUE_TO so the glow is
--- actually visible — but only part-way, so you can still tell it's a
--- bottle with liquid. Tune FORCE_OPAQUE_TO: lower = stronger glow but
--- more solid; higher = more see-through but fainter glow. Set
--- FORCE_OPAQUE_ABOVE = 1 to never touch transparency.
-local FORCE_OPAQUE_ABOVE = 0.3   -- parts more transparent than this get pulled in
-local FORCE_OPAQUE_TO    = 0.5   -- ~half see-through while lit (glow stays visible)
+local DEPTH_MODE    = Enum.HighlightDepthMode.Occluded  -- hide highlight behind walls/occluders
+local HIGHLIGHT_BUILD_DELAY = 0.06 -- short delay prevents visible flicker right after helper Humanoid insertion
+local RAMP_SPEED_MULTIPLIER = 0.5 -- first and last pulse are slower (half speed)
 
 local highlights   = {}  -- [target Instance] = Highlight
 local shownPrompts = {}  -- [ProximityPrompt] = true while its prompt is visible
-local litParts     = {}  -- [target] = { {part=, t=}, ... } transparency to restore
+local helperHumanoids = {} -- [target Model] = persistent Humanoid for transparent highlight support
+local pendingHighlight = {} -- [target] = timestamp; delay highlight until model settles
+local pulseState = {} -- [target] = {phase="ramp_in"|"steady"|"ramp_out", startedAt=number, holdFill=number}
 
 -- ─── Helpers ──────────────────────────────────────────────────────
 local function targetForPrompt(prompt)
@@ -71,28 +65,39 @@ local function resolveTarget(inst)
 	return model or inst
 end
 
+local function ensureHelperHumanoid(model)
+	local existing = model:FindFirstChildOfClass("Humanoid")
+	if existing then return existing end
+	local cached = helperHumanoids[model]
+	if cached and cached.Parent == model then return cached end
+
+	local hum = Instance.new("Humanoid")
+	hum.Name = "_InteractHighlightHumanoid"
+	hum.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None
+	hum.HealthDisplayType = Enum.HumanoidHealthDisplayType.AlwaysOff
+	hum.BreakJointsOnDeath = false
+	hum.RequiresNeck = false
+	hum.Parent = model
+	helperHumanoids[model] = hum
+	return hum
+end
+
 local function ensureHighlight(target)
 	if highlights[target] then return end
 
-	-- Highlight renders nothing on Glass/ForceField material (and nothing
-	-- on very transparent parts). While lit we temporarily swap such
-	-- parts to a plain material + a half-transparent value so the glow
-	-- shows, then restore both on un-light.
-	local saved = {}
-	local function consider(p)
-		if not p:IsA("BasePart") then return end
-		local isGlass = p.Material == Enum.Material.Glass
-			or p.Material == Enum.Material.ForceField
-		local isTransp = p.Transparency > FORCE_OPAQUE_ABOVE and p.Transparency < 1
-		if isGlass or isTransp then
-			table.insert(saved, { part = p, t = p.Transparency, m = p.Material })
-			if isGlass then p.Material = Enum.Material.SmoothPlastic end
-			p.Transparency = FORCE_OPAQUE_TO
+	-- Roblox Highlight can fail on transparent/glass meshes. We add a
+	-- local helper Humanoid once, then wait a tiny moment so rendering
+	-- settles before showing the Highlight (prevents pop/flicker).
+	if target:IsA("Model") then
+		ensureHelperHumanoid(target)
+		local t0 = pendingHighlight[target]
+		if not t0 then
+			pendingHighlight[target] = os.clock()
+			return
 		end
+		if os.clock() - t0 < HIGHLIGHT_BUILD_DELAY then return end
+		pendingHighlight[target] = nil
 	end
-	for _, p in target:GetDescendants() do consider(p) end
-	consider(target)
-	litParts[target] = saved
 
 	local hl = Instance.new("Highlight")
 	hl.Name                = "InteractHighlight"
@@ -104,6 +109,17 @@ local function ensureHighlight(target)
 	hl.Adornee             = target
 	hl.Parent              = target
 	highlights[target] = hl
+	pulseState[target] = { phase = "ramp_in", startedAt = os.clock() }
+end
+
+local function beginRampOut(target, holdFill)
+	local st = pulseState[target]
+	if st and st.phase == "ramp_out" then return end
+	pulseState[target] = {
+		phase = "ramp_out",
+		startedAt = os.clock(),
+		holdFill = holdFill or FILL_MIN,
+	}
 end
 
 local function clearHighlight(target)
@@ -112,16 +128,8 @@ local function clearHighlight(target)
 		hl:Destroy()
 		highlights[target] = nil
 	end
-	local saved = litParts[target]
-	if saved then
-		for _, e in saved do
-			if e.part and e.part.Parent then
-				e.part.Transparency = e.t
-				e.part.Material = e.m
-			end
-		end
-		litParts[target] = nil
-	end
+	pendingHighlight[target] = nil
+	pulseState[target] = nil
 end
 
 -- ─── ProximityPrompt source ───────────────────────────────────────
@@ -136,6 +144,21 @@ end
 
 for _, d in workspace:GetDescendants() do hookPrompt(d) end
 workspace.DescendantAdded:Connect(hookPrompt)
+
+-- Pre-warm helper Humanoids for tagged models so the first nearby
+-- highlight does not cause a visible model pop.
+for _, inst in CollectionService:GetTagged(TAG) do
+	local tgt = resolveTarget(inst)
+	if tgt and tgt:IsA("Model") then
+		ensureHelperHumanoid(tgt)
+	end
+end
+CollectionService:GetInstanceAddedSignal(TAG):Connect(function(inst)
+	local tgt = resolveTarget(inst)
+	if tgt and tgt:IsA("Model") then
+		ensureHelperHumanoid(tgt)
+	end
+end)
 
 -- ─── Per-frame: decide who glows, then pulse ──────────────────────
 RunService.RenderStepped:Connect(function()
@@ -164,19 +187,58 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	-- Sync highlights to the wanted set.
-	for tgt in pairs(wanted) do ensureHighlight(tgt) end
-	for tgt in pairs(highlights) do
-		if not wanted[tgt] or not tgt.Parent then clearHighlight(tgt) end
+	for tgt in pairs(wanted) do
+		ensureHighlight(tgt)
+		local st = pulseState[tgt]
+		if st and st.phase == "ramp_out" then
+			pulseState[tgt] = { phase = "steady", startedAt = os.clock() }
+		end
+	end
+	for tgt, hl in pairs(highlights) do
+		if (not wanted[tgt] or not tgt.Parent) then
+			if tgt.Parent then
+				beginRampOut(tgt, hl.FillTransparency)
+			else
+				clearHighlight(tgt)
+				helperHumanoids[tgt] = nil
+			end
+		end
 	end
 
-	-- Pulse fill + outline together — the whole surface breathes white.
-	if next(highlights) then
-		local t = (math.sin(os.clock() * PULSE_SPEED) + 1) / 2
-		local fill    = FILL_MIN + (FILL_MAX - FILL_MIN) * t
-		local outline = SHOW_OUTLINE and (OUTLINE_MIN + (OUTLINE_MAX - OUTLINE_MIN) * t) or 1
-		for _, hl in pairs(highlights) do
-			hl.FillTransparency    = fill
-			hl.OutlineTransparency = outline
+	-- Per-target pulse with smooth ramp-in/ramp-out phases.
+	local now = os.clock()
+	for tgt, hl in pairs(highlights) do
+		local st = pulseState[tgt] or { phase = "steady", startedAt = now }
+		pulseState[tgt] = st
+		local fill = FILL_MIN
+		local outline = SHOW_OUTLINE and OUTLINE_MIN or 1
+
+		if st.phase == "ramp_in" then
+			local dur = (1 / PULSE_SPEED) / RAMP_SPEED_MULTIPLIER
+			local a = math.clamp((now - st.startedAt) / dur, 0, 1)
+			fill = 1 + (FILL_MIN - 1) * a
+			outline = SHOW_OUTLINE and (1 + (OUTLINE_MIN - 1) * a) or 1
+			if a >= 1 then
+				st.phase = "steady"
+				st.startedAt = now
+			end
+		elseif st.phase == "ramp_out" then
+			local dur = (1 / PULSE_SPEED) / RAMP_SPEED_MULTIPLIER
+			local a = math.clamp((now - st.startedAt) / dur, 0, 1)
+			local fromFill = st.holdFill or FILL_MIN
+			fill = fromFill + (1 - fromFill) * a
+			local fromOutline = SHOW_OUTLINE and OUTLINE_MIN or 1
+			outline = SHOW_OUTLINE and (fromOutline + (1 - fromOutline) * a) or 1
+			if a >= 1 then
+				clearHighlight(tgt)
+			end
+		else
+			local t = (math.sin(now * PULSE_SPEED) + 1) / 2
+			fill = FILL_MIN + (FILL_MAX - FILL_MIN) * t
+			outline = SHOW_OUTLINE and (OUTLINE_MIN + (OUTLINE_MAX - OUTLINE_MIN) * t) or 1
 		end
+
+		hl.FillTransparency = fill
+		hl.OutlineTransparency = outline
 	end
 end)
