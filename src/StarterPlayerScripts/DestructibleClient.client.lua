@@ -119,7 +119,7 @@ RunService.RenderStepped:Connect(function()
 			if hrp and (hrp.Position - result.Instance.Position).Magnitude <= HIT_RANGE then
 				highlightedPart = result.Instance
 				highlightedModel = model
-				if highlight then highlight.Adornee = result.Instance end
+				if highlight then highlight.Adornee = model end
 				return
 			end
 		end
