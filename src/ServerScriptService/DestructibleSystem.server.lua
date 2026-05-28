@@ -52,6 +52,44 @@ local function initPart(part, modelHealth)
 	end
 end
 
+local function pickPrimary(model)
+	if model.PrimaryPart then return model.PrimaryPart end
+	local largest, largestVol = nil, 0
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") then
+			local v = d.Size.X * d.Size.Y * d.Size.Z
+			if v > largestVol then
+				largest = d
+				largestVol = v
+			end
+		end
+	end
+	return largest
+end
+
+-- Build a star of WeldConstraints from `primary` to every other
+-- BasePart so the model stays together as one rigid assembly when we
+-- later release the anchor. We skip parts that already share a weld
+-- with the primary so author-supplied welds aren't duplicated.
+local function weldStar(model, primary)
+	if not primary then return end
+	local connected = { [primary] = true }
+	for _, w in model:GetDescendants() do
+		if w:IsA("WeldConstraint") or w:IsA("Weld") then
+			if w.Part0 == primary and w.Part1 then connected[w.Part1] = true
+			elseif w.Part1 == primary and w.Part0 then connected[w.Part0] = true end
+		end
+	end
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") and not connected[d] then
+			local weld = Instance.new("WeldConstraint")
+			weld.Part0 = primary
+			weld.Part1 = d
+			weld.Parent = primary
+		end
+	end
+end
+
 local function initModel(model)
 	if not model:IsA("Model") then return end
 	local modelHealth = model:GetAttribute("PartHealth") or DEFAULT_PART_HEALTH
@@ -61,6 +99,19 @@ local function initModel(model)
 	model.DescendantAdded:Connect(function(descendant)
 		initPart(descendant, modelHealth)
 	end)
+
+	-- Hold the assembly together with a star of welds rooted at the
+	-- primary. The author can leave every part Anchored — once the
+	-- first chunk is broken off we release the primary's anchor and
+	-- the rest of the model hangs together via these welds, falling
+	-- naturally onto whatever supports it.
+	local primary = pickPrimary(model)
+	if primary then
+		if not model.PrimaryPart then
+			model.PrimaryPart = primary
+		end
+		weldStar(model, primary)
+	end
 end
 
 for _, model in CollectionService:GetTagged(TAG) do
@@ -158,6 +209,19 @@ hitEvent.OnServerEvent:Connect(function(player, model, part)
 	if hp > 0 then
 		part:SetAttribute("PartHealth", hp)
 		return
+	end
+
+	-- First broken chunk also releases the rest of the assembly so
+	-- the remaining parts don't hang frozen in mid-air. They're still
+	-- bound together by the init-time WeldConstraint star, so gravity
+	-- treats them as one rigid body that rests on whatever's below.
+	if not model:GetAttribute("Released") then
+		model:SetAttribute("Released", true)
+		for _, d in model:GetDescendants() do
+			if d:IsA("BasePart") and d ~= part and not d:GetAttribute("PartBroken") then
+				d.Anchored = false
+			end
+		end
 	end
 
 	part:SetAttribute("PartBroken", true)
