@@ -286,7 +286,33 @@ end
 local function computeLayoutCapacity(player, itemName)
 	local layout = getLayout(player)
 	if not layout then
-		return { emptySlots = 0, partialSpace = 0, capacity = 0 }
+		-- Client hasn't synced its slot layout yet (typical for the
+		-- first ~1-3s of a session, before Backpack spawns and the
+		-- periodic sync task in InventoryUI starts firing). Returning
+		-- 0 here would make StartingResources / E-pickups overflow to
+		-- the ground until the client catches up. Fall back to the
+		-- inventory-quantity math used by _G.HasFreeToolSlot so the
+		-- server can still answer capacity questions before the layout
+		-- arrives. Split stacks aren't a concern in this window
+		-- because the player hasn't touched the UI yet.
+		local unlocked = getUnlockedSlots(player)
+		local tools = countToolSlots(player)
+		local inv = _G.GetInventory(player)
+		local stacks = getTotalResourceStacks(inv)
+		local emptySlots = math.max(0, unlocked - tools - stacks)
+		local partialSpace = 0
+		if itemName then
+			local current = inv[itemName] or 0
+			if current > 0 then
+				local lastStack = current - (math.ceil(current / MAX_STACK) - 1) * MAX_STACK
+				partialSpace = MAX_STACK - lastStack
+			end
+		end
+		return {
+			emptySlots = emptySlots,
+			partialSpace = partialSpace,
+			capacity = emptySlots * MAX_STACK + partialSpace,
+		}
 	end
 
 	local unlocked = getUnlockedSlots(player)
