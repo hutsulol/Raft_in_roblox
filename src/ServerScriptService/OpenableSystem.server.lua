@@ -111,6 +111,12 @@ openEvent.OnServerEvent:Connect(function(player, target)
 
 	opening[target] = true
 
+	-- Signal in-model Scripts that the chest is opening. They watch
+	-- via :GetAttributeChangedSignal("_Opening") to drive their own
+	-- per-chest animations (e.g. lid rotation) without needing to
+	-- ship a Roblox Animation track.
+	target:SetAttribute("_Opening", true)
+
 	playOpenAnimation(target)
 
 	local dropName = target:GetAttribute("DropName") or DEFAULT_DROP
