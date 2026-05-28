@@ -115,6 +115,10 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
 	if input.KeyCode ~= OPEN_KEY then return end
 	if not currentTarget then return end
+	-- Suppress the inventory's E-toggle for this press. InventoryUI
+	-- defers its toggle decision and skips it when LastPickupTime is
+	-- within the last 0.2 s — the same hook DropItem already uses.
+	_G.LastPickupTime = os.clock()
 	openEvent:FireServer(currentTarget)
 	holder.Visible = false
 	currentTarget = nil
