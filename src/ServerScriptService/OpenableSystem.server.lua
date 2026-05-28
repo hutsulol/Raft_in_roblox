@@ -20,8 +20,10 @@ local Debris = game:GetService("Debris")
 
 local OPEN_TAG = "Openable"
 local OPEN_RANGE = 14
-local FADE_DELAY = 0.5
-local FADE_DURATION = 0.8        -- 0.5 + 0.8 = 1.3s total
+local FADE_DELAY = 8.0
+local FADE_DURATION = 0.8
+local HIGHLIGHT_RAMP_DELAY = 0.4    -- give the in-model open animation time to finish first
+local HIGHLIGHT_RAMP_DURATION = 0.6 -- duration of the final highlight fade-out
 local DEFAULT_DROP = "Log"
 local DEFAULT_MIN = 1
 local DEFAULT_MAX = 3
@@ -130,14 +132,20 @@ openEvent.OnServerEvent:Connect(function(player, target)
 		_G.AddResourceToInventory(player, dropName, amount, pos)
 	end
 
+	-- Decoupled from the model fade: as soon as the open animation
+	-- has had time to play we hand control of the highlight back to
+	-- the ramp-out path in InteractHighlight so it plays its final
+	-- breath and goes away. The chest itself stays visible (no longer
+	-- highlighted) until FADE_DELAY elapses.
+	task.delay(HIGHLIGHT_RAMP_DELAY, function()
+		if target.Parent then
+			target:SetAttribute("_FadingDuration", HIGHLIGHT_RAMP_DURATION)
+			target:SetAttribute("_Fading", true)
+		end
+	end)
+
 	task.delay(FADE_DELAY, function()
 		if target.Parent then
-			-- Sync any InteractHighlight on this model with the part
-			-- fade. The highlight script watches for _Fading and uses
-			-- _FadingDuration to size its ramp-out, so the glow dies
-			-- at the same moment the model finishes fading out.
-			target:SetAttribute("_FadingDuration", FADE_DURATION)
-			target:SetAttribute("_Fading", true)
 			fadeAndDestroy(target)
 		end
 		opening[target] = nil
