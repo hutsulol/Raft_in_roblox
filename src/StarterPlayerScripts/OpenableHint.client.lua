@@ -91,7 +91,10 @@ RunService.RenderStepped:Connect(function()
 	local hit = result and result.Instance
 	local target = resolveTarget(hit)
 
-	if target and target:IsDescendantOf(workspace) then
+	-- Once OpenableSystem stamps _Opening on a chest it's done — no
+	-- need to keep offering the E prompt on an opened box.
+	if target and target:IsDescendantOf(workspace)
+		and not target:GetAttribute("_Opening") then
 		local pos
 		if target:IsA("Model") then
 			local ok, cf = pcall(function() return target:GetPivot() end)

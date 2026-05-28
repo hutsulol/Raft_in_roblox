@@ -169,7 +169,7 @@ RunService.RenderStepped:Connect(function()
 	for prompt in pairs(shownPrompts) do
 		if prompt.Parent then
 			local tgt = targetForPrompt(prompt)
-			if tgt and not tgt:GetAttribute("_Fading") then
+			if tgt and not tgt:GetAttribute("_Fading") and not tgt:GetAttribute("_Opening") then
 				wanted[tgt] = true
 			end
 		else
@@ -178,10 +178,12 @@ RunService.RenderStepped:Connect(function()
 	end
 
 	-- 2. Tagged "Interactable" objects within range of the player.
-	-- Targets carrying the `_Fading` attribute are deliberately
-	-- excluded so OpenableSystem (and any other "this object is on
-	-- its way out" path) can hand control of the highlight back to
-	-- the ramp-out logic and sync it with the model's own fade.
+	-- Targets carrying the `_Fading` or `_Opening` attribute are
+	-- deliberately excluded so OpenableSystem (and any other "this
+	-- object is on its way out" path) can hand control of the
+	-- highlight back to the ramp-out logic. _Opening fires the
+	-- instant the chest is activated; _Fading covers the later
+	-- transparency-fade window if it's still in range by then.
 	local char = player.Character
 	local hrp  = char and char:FindFirstChild("HumanoidRootPart")
 	if hrp then
@@ -189,7 +191,7 @@ RunService.RenderStepped:Connect(function()
 			local pos = instPos(inst)
 			if pos and (pos - hrp.Position).Magnitude <= HIGHLIGHT_RANGE then
 				local tgt = resolveTarget(inst)
-				if not tgt:GetAttribute("_Fading") then
+				if not tgt:GetAttribute("_Fading") and not tgt:GetAttribute("_Opening") then
 					wanted[tgt] = true
 				end
 			end

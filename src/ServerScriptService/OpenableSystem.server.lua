@@ -22,8 +22,7 @@ local OPEN_TAG = "Openable"
 local OPEN_RANGE = 14
 local FADE_DELAY = 8.0
 local FADE_DURATION = 0.8
-local HIGHLIGHT_RAMP_DELAY = 0.4    -- give the in-model open animation time to finish first
-local HIGHLIGHT_RAMP_DURATION = 0.6 -- duration of the final highlight fade-out
+local HIGHLIGHT_RAMP_DURATION = 0.6 -- final highlight fade-out, runs right at E press
 local DEFAULT_DROP = "Log"
 local DEFAULT_MIN = 1
 local DEFAULT_MAX = 3
@@ -117,7 +116,15 @@ openEvent.OnServerEvent:Connect(function(player, target)
 	-- via :GetAttributeChangedSignal("_Opening") to drive their own
 	-- per-chest animations (e.g. lid rotation) without needing to
 	-- ship a Roblox Animation track.
+	--
+	-- Stamping _FadingDuration + _Fading at the same time tells
+	-- InteractHighlight to ramp out its glow immediately, and
+	-- OpenableHint hides the E-prompt as soon as it sees _Opening —
+	-- the chest is no longer interactive even though it stays sitting
+	-- in place for FADE_DELAY seconds.
+	target:SetAttribute("_FadingDuration", HIGHLIGHT_RAMP_DURATION)
 	target:SetAttribute("_Opening", true)
+	target:SetAttribute("_Fading", true)
 
 	playOpenAnimation(target)
 
@@ -131,18 +138,6 @@ openEvent.OnServerEvent:Connect(function(player, target)
 	if _G.AddResourceToInventory then
 		_G.AddResourceToInventory(player, dropName, amount, pos)
 	end
-
-	-- Decoupled from the model fade: as soon as the open animation
-	-- has had time to play we hand control of the highlight back to
-	-- the ramp-out path in InteractHighlight so it plays its final
-	-- breath and goes away. The chest itself stays visible (no longer
-	-- highlighted) until FADE_DELAY elapses.
-	task.delay(HIGHLIGHT_RAMP_DELAY, function()
-		if target.Parent then
-			target:SetAttribute("_FadingDuration", HIGHLIGHT_RAMP_DURATION)
-			target:SetAttribute("_Fading", true)
-		end
-	end)
 
 	task.delay(FADE_DELAY, function()
 		if target.Parent then
