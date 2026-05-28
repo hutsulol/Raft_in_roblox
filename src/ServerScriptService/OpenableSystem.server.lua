@@ -59,6 +59,29 @@ local function findAnimation(model)
 	return nil
 end
 
+-- AnimationController:LoadAnimation is deprecated and silently fails
+-- without an Animator child. Resolve (or create) the Animator and
+-- load the track from there.
+local function getAnimator(controller)
+	local animator = controller:FindFirstChildOfClass("Animator")
+	if animator then return animator end
+	animator = Instance.new("Animator")
+	animator.Parent = controller
+	return animator
+end
+
+local function playOpenAnimation(model)
+	local controller = findAnimationController(model)
+	if not controller then return end
+	local anim = findAnimation(model)
+	if not anim then return end
+	local animator = getAnimator(controller)
+	local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
+	if ok and track then
+		track:Play()
+	end
+end
+
 local function fadeAndDestroy(model)
 	local info = TweenInfo.new(FADE_DURATION, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	for _, d in model:GetDescendants() do
@@ -88,14 +111,7 @@ openEvent.OnServerEvent:Connect(function(player, target)
 
 	opening[target] = true
 
-	local controller = findAnimationController(target)
-	local anim = findAnimation(target)
-	if controller and anim then
-		local ok, track = pcall(controller.LoadAnimation, controller, anim)
-		if ok and track then
-			track:Play()
-		end
-	end
+	playOpenAnimation(target)
 
 	local dropName = target:GetAttribute("DropName") or DEFAULT_DROP
 	local minAmount = tonumber(target:GetAttribute("DropMin")) or DEFAULT_MIN
@@ -110,6 +126,12 @@ openEvent.OnServerEvent:Connect(function(player, target)
 
 	task.delay(FADE_DELAY, function()
 		if target.Parent then
+			-- Sync any InteractHighlight on this model with the part
+			-- fade. The highlight script watches for _Fading and uses
+			-- _FadingDuration to size its ramp-out, so the glow dies
+			-- at the same moment the model finishes fading out.
+			target:SetAttribute("_FadingDuration", FADE_DURATION)
+			target:SetAttribute("_Fading", true)
 			fadeAndDestroy(target)
 		end
 		opening[target] = nil

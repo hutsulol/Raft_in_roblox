@@ -112,13 +112,14 @@ local function ensureHighlight(target)
 	pulseState[target] = { phase = "ramp_in", startedAt = os.clock() }
 end
 
-local function beginRampOut(target, holdFill)
+local function beginRampOut(target, holdFill, durationOverride)
 	local st = pulseState[target]
 	if st and st.phase == "ramp_out" then return end
 	pulseState[target] = {
 		phase = "ramp_out",
 		startedAt = os.clock(),
 		holdFill = holdFill or FILL_MIN,
+		duration = durationOverride,
 	}
 end
 
@@ -168,20 +169,29 @@ RunService.RenderStepped:Connect(function()
 	for prompt in pairs(shownPrompts) do
 		if prompt.Parent then
 			local tgt = targetForPrompt(prompt)
-			if tgt then wanted[tgt] = true end
+			if tgt and not tgt:GetAttribute("_Fading") then
+				wanted[tgt] = true
+			end
 		else
 			shownPrompts[prompt] = nil
 		end
 	end
 
 	-- 2. Tagged "Interactable" objects within range of the player.
+	-- Targets carrying the `_Fading` attribute are deliberately
+	-- excluded so OpenableSystem (and any other "this object is on
+	-- its way out" path) can hand control of the highlight back to
+	-- the ramp-out logic and sync it with the model's own fade.
 	local char = player.Character
 	local hrp  = char and char:FindFirstChild("HumanoidRootPart")
 	if hrp then
 		for _, inst in CollectionService:GetTagged(TAG) do
 			local pos = instPos(inst)
 			if pos and (pos - hrp.Position).Magnitude <= HIGHLIGHT_RANGE then
-				wanted[resolveTarget(inst)] = true
+				local tgt = resolveTarget(inst)
+				if not tgt:GetAttribute("_Fading") then
+					wanted[tgt] = true
+				end
 			end
 		end
 	end
@@ -197,7 +207,7 @@ RunService.RenderStepped:Connect(function()
 	for tgt, hl in pairs(highlights) do
 		if (not wanted[tgt] or not tgt.Parent) then
 			if tgt.Parent then
-				beginRampOut(tgt, hl.FillTransparency)
+				beginRampOut(tgt, hl.FillTransparency, tgt:GetAttribute("_FadingDuration"))
 			else
 				clearHighlight(tgt)
 				helperHumanoids[tgt] = nil
@@ -223,7 +233,7 @@ RunService.RenderStepped:Connect(function()
 				st.startedAt = now
 			end
 		elseif st.phase == "ramp_out" then
-			local dur = (1 / PULSE_SPEED) / RAMP_SPEED_MULTIPLIER
+			local dur = st.duration or ((1 / PULSE_SPEED) / RAMP_SPEED_MULTIPLIER)
 			local a = math.clamp((now - st.startedAt) / dur, 0, 1)
 			local fromFill = st.holdFill or FILL_MIN
 			fill = fromFill + (1 - fromFill) * a
