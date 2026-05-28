@@ -170,6 +170,44 @@ local function modelHasIntactParts(model)
 	return false
 end
 
+-- After a break, any intact part that no longer shares a
+-- WeldConstraint with another intact part is effectively floating
+-- debris — chunks dangling off a primary that was just chopped, or
+-- bits the player snapped loose in a cluster. Cascade the same fade-
+-- and-destroy cycle on them (with a small random stagger) so the
+-- ground doesn't end up littered with leftover pieces.
+local function cascadeLooseParts(model)
+	local intact = {}
+	for _, d in model:GetDescendants() do
+		if d:IsA("BasePart") and not d:GetAttribute("PartBroken") then
+			intact[d] = true
+		end
+	end
+
+	local connected = {}
+	for _, w in model:GetDescendants() do
+		if (w:IsA("WeldConstraint") or w:IsA("Weld")) and w.Part0 and w.Part1 then
+			if intact[w.Part0] and intact[w.Part1] then
+				connected[w.Part0] = true
+				connected[w.Part1] = true
+			end
+		end
+	end
+
+	for partInstance in pairs(intact) do
+		if not connected[partInstance] then
+			partInstance:SetAttribute("PartBroken", true)
+			local p = partInstance
+			task.spawn(function()
+				task.wait(math.random() * 0.25 + 0.05)
+				if p.Parent then
+					breakPart(p)
+				end
+			end)
+		end
+	end
+end
+
 -- ─── Hit handler ───────────────────────────────────────────────────
 hitEvent.OnServerEvent:Connect(function(player, model, part)
 	if typeof(model) ~= "Instance" or not model:IsA("Model") then return end
@@ -226,8 +264,9 @@ hitEvent.OnServerEvent:Connect(function(player, model, part)
 
 	part:SetAttribute("PartBroken", true)
 	breakPart(part)
+	cascadeLooseParts(model)
 
-	task.delay(BREAK_DEBRIS_TIME + 0.1, function()
+	task.delay(BREAK_DEBRIS_TIME + 0.5, function()
 		if model.Parent and not modelHasIntactParts(model) then
 			model:Destroy()
 		end
