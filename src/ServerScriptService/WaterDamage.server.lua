@@ -1,4 +1,5 @@
 local Players = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
 local rs = game:GetService("ReplicatedStorage")
 
 local DAMAGE_PERCENT = 0.10  -- 10% of max health per second
@@ -8,6 +9,77 @@ local WATER_GRACE = 2        -- seconds in water before damage starts
 local MAX_VIGNETTE_TIME = 10 -- seconds in water for max vignette intensity
 local RADIATION_HIT_THRESHOLD = 3
 local RADIATION_DURATION = 60
+
+-- ─── Radiation hot-zones ─────────────────────────────────────────
+-- Models tagged "RadiationZone" (or legacy-named "Radiation_light")
+-- act as glow centres. Standing in water inside their radius:
+--   • doubles the water damage
+--   • skips the WATER_GRACE delay (hit on the first tick)
+--   • triggers radiation sickness on the very first hit, not the 3rd
+-- Radius is read from a "Radius" model attribute, falling back to the
+-- range of any PointLight inside the model so the hazard matches the
+-- visible glow without extra setup.
+local RADIATION_ZONE_TAG = "RadiationZone"
+local LEGACY_ZONE_NAME = "Radiation_light"
+local DEFAULT_ZONE_RADIUS = 30
+local RADIATION_ZONE_DAMAGE_MULT = 2
+local RADIATION_ZONE_GRACE = 0
+local RADIATION_ZONE_SICKNESS_THRESHOLD = 1
+
+local radiationZones = {}
+
+local function computeZoneRadius(zone)
+	local attr = zone:GetAttribute("Radius")
+	if typeof(attr) == "number" and attr > 0 then return attr end
+	for _, d in zone:GetDescendants() do
+		if d:IsA("PointLight") or d:IsA("SpotLight") then
+			return d.Range
+		end
+	end
+	return DEFAULT_ZONE_RADIUS
+end
+
+local function refreshZones()
+	table.clear(radiationZones)
+	local seen = {}
+	for _, m in CollectionService:GetTagged(RADIATION_ZONE_TAG) do
+		if m:IsA("Model") and not seen[m] then
+			seen[m] = true
+			table.insert(radiationZones, m)
+		end
+	end
+	for _, d in workspace:GetDescendants() do
+		if d:IsA("Model") and d.Name == LEGACY_ZONE_NAME and not seen[d] then
+			seen[d] = true
+			table.insert(radiationZones, d)
+		end
+	end
+end
+
+refreshZones()
+CollectionService:GetInstanceAddedSignal(RADIATION_ZONE_TAG):Connect(refreshZones)
+CollectionService:GetInstanceRemovedSignal(RADIATION_ZONE_TAG):Connect(refreshZones)
+workspace.DescendantAdded:Connect(function(d)
+	if d:IsA("Model") and d.Name == LEGACY_ZONE_NAME then refreshZones() end
+end)
+workspace.DescendantRemoving:Connect(function(d)
+	if d:IsA("Model") and d.Name == LEGACY_ZONE_NAME then refreshZones() end
+end)
+
+local function isInRadiationZone(position)
+	for _, zone in radiationZones do
+		if zone.Parent then
+			local ok, cf = pcall(function() return zone:GetPivot() end)
+			if ok then
+				local radius = computeZoneRadius(zone)
+				if (position - cf.Position).Magnitude <= radius then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
 
 local vignetteEvent = rs:FindFirstChild("WaterVignette")
 if not vignetteEvent then
@@ -121,16 +193,21 @@ local function damageHumanoid(humanoid, rootPart, player)
 	end
 
 	if isOverWater(rootPart) then
+		local inRadZone = isInRadiationZone(rootPart.Position)
+		local graceTime = inRadZone and RADIATION_ZONE_GRACE or WATER_GRACE
+		local damageMult = inRadZone and RADIATION_ZONE_DAMAGE_MULT or 1
+		local sicknessThreshold = inRadZone and RADIATION_ZONE_SICKNESS_THRESHOLD or RADIATION_HIT_THRESHOLD
+
 		if not waterTimes[humanoid] then
 			waterTimes[humanoid] = tick()
 		end
-		if tick() - waterTimes[humanoid] >= WATER_GRACE then
-			local damage = humanoid.MaxHealth * DAMAGE_PERCENT
+		if tick() - waterTimes[humanoid] >= graceTime then
+			local damage = humanoid.MaxHealth * DAMAGE_PERCENT * damageMult
 			humanoid:TakeDamage(damage)
 
 			if player then
 				waterHitCounts[player] = (waterHitCounts[player] or 0) + 1
-				if waterHitCounts[player] >= RADIATION_HIT_THRESHOLD then
+				if waterHitCounts[player] >= sicknessThreshold then
 					waterHitCounts[player] = 0
 					applyRadiation(player)
 				end
