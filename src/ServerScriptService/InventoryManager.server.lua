@@ -49,6 +49,7 @@ local RESOURCE_NAMES = {
 	"Tilapia_Fish_Cooked", "Meat_Cooked",
 	"Banana", "Coconut", "Pineapple",
 	"Pineapple_Bush_Seed",
+	"Rubbish",
 }
 
 local RESOURCE_SET = {}

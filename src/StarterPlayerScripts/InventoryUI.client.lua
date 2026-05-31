@@ -110,6 +110,7 @@ local TILAPIA_FISH_ICON = "rbxassetid://102206483084738"
 local TILAPIA_FISH_COOKED_ICON = "rbxassetid://127252371837787"
 local MEAT_ICON = "rbxassetid://140237721809215"
 local MEAT_COOKED_ICON = "rbxassetid://110578314998395"
+local RUBBISH_ICON = "rbxassetid://78630336655207"
 
 local RESOURCE_ICONS = {
 	Log = LOG_ICON,
@@ -137,6 +138,7 @@ local RESOURCE_ICONS = {
 	Seabass_Fish = SEABASS_FISH_ICON,
 	Tilapia_Fish = TILAPIA_FISH_ICON,
 	Meat = MEAT_ICON,
+	Rubbish = RUBBISH_ICON,
 	-- Cooked fish variants need EXPLICIT keys here: rebuildSlotData
 	-- iterates RESOURCE_ICONS by its real keys to build resource
 	-- slots, and a metatable __index isn't iterable. Reuse the raw

@@ -1,4 +1,5 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 local CollectionService = game:GetService("CollectionService")
 
 local dropEvent = Instance.new("RemoteEvent")
@@ -42,6 +43,7 @@ local RESOURCE_TEMPLATES = {
 	Seabass_Fish    = "Seabass Fish",
 	Tilapia_Fish    = "Tilapia Fish",
 	Meat            = "Meat",
+	Rubbish         = "Rubbish",
 }
 -- Cooked fish ("<fish>_Cooked") re-drop using the same fish model as
 -- their raw counterpart, so dropping a cooked fish from the inventory
@@ -82,6 +84,7 @@ local RESOURCE_ITEMS = {
 	Seabass_Fish    = true,
 	Tilapia_Fish    = true,
 	Meat            = true,
+	Rubbish         = true,
 }
 -- Cooked fish behave as stackable resources just like their raw form.
 setmetatable(RESOURCE_ITEMS, {
@@ -105,6 +108,18 @@ local function findTemplate(name)
 	local t = ReplicatedStorage:FindFirstChild(name)
 	if not t then
 		t = ReplicatedStorage:FindFirstChild(name, true)
+	end
+	-- Some resource templates live in ServerStorage.Resourses (e.g. the
+	-- Rubbish model). Server-side drops can clone from anywhere, so
+	-- fall through to that folder before giving up.
+	if not t then
+		local resourcesFolder = ServerStorage:FindFirstChild("Resourses")
+		if resourcesFolder then
+			t = resourcesFolder:FindFirstChild(name, true)
+		end
+	end
+	if not t then
+		t = ServerStorage:FindFirstChild(name, true)
 	end
 	return t
 end
