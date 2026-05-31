@@ -110,5 +110,9 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
 	if input.KeyCode ~= PICKUP_KEY then return end
 	if not currentTarget then return end
+	-- Suppress the inventory's E-toggle for this press. InventoryUI
+	-- defers its toggle decision and skips it when LastPickupTime is
+	-- within the last 0.2 s.
+	_G.LastPickupTime = os.clock()
 	pickupEvent:FireServer(currentTarget)
 end)
