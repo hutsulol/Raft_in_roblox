@@ -43,7 +43,10 @@ local RESOURCE_TEMPLATES = {
 	Seabass_Fish    = "Seabass Fish",
 	Tilapia_Fish    = "Tilapia Fish",
 	Meat            = "Meat",
-	Rubbish         = "Rubbish",
+	-- Inventory resource is spelled correctly ("Rubbish") but the
+	-- 3D template in ServerStorage.Resourses is named "Rubbsih"
+	-- (author typo). Map through here instead of renaming the asset.
+	Rubbish         = "Rubbsih",
 }
 -- Cooked fish ("<fish>_Cooked") re-drop using the same fish model as
 -- their raw counterpart, so dropping a cooked fish from the inventory
