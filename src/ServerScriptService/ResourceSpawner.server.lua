@@ -265,14 +265,23 @@ local function spawnResource(templateName, resourceType, resourceAmount, boat)
 
 	-- Unanchor the clone itself if it's a BasePart (GetDescendants doesn't
 	-- include the instance itself, so single-part resources stayed anchored).
+	-- Tag every BasePart with the FloatingResource collision group (T29)
+	-- so resources don't physically push the raft on contact. The
+	-- collision group is registered in BoatForwardMovement at init and
+	-- configured non-collidable against the Raft group. Resources keep
+	-- CanCollide = true so Roblox terrain water buoyancy keeps them
+	-- floating, and Touched still fires for the pickup + raft-collision
+	-- damage paths.
 	if clone:IsA("BasePart") then
 		clone.Anchored = false
+		clone.CollisionGroup = "FloatingResource"
 		clone:SetNetworkOwner(nil)
 	end
 
 	for _, part in clone:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Anchored = false
+			part.CollisionGroup = "FloatingResource"
 			part:SetNetworkOwner(nil)
 		end
 	end

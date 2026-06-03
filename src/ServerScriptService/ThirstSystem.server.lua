@@ -115,9 +115,27 @@ local function swapPurifierModel(purifier)
 		return
 	end
 
-	-- Save the current world CFrame from an actual part (more reliable than GetPivot)
-	local savedCF = nil
+	-- Snapshot raft velocity + capture the purifier's raft-relative pose
+	-- BEFORE we touch anything. T13's snapshot/restore was running too
+	-- late — the destroy + clone steps span a couple of physics frames
+	-- during which the raft drifts, so saving the world CFrame and then
+	-- PivotTo()'ing back to it leaves the new parts at a stale position
+	-- relative to the (now-moved) raft. Welds then lock that offset in
+	-- and Roblox's solver corrects with a jolt → the bouncing.
+	local raft = workspace:FindFirstChild("Raft")
+	local raftPrimary = raft and raft.PrimaryPart or nil
+	local linVel, angVel
+	if raftPrimary then
+		linVel = raftPrimary.AssemblyLinearVelocity
+		angVel = raftPrimary.AssemblyAngularVelocity
+	end
+
+	-- Save the current pose AS A RAFT-LOCAL CFrame so we can restore it
+	-- against whatever the raft's pose is at the end of the swap, not
+	-- where the raft was at the start.
+	local savedRelCF = nil
 	local primaryPart = purifier.PrimaryPart
+	local savedCF = nil
 	if primaryPart then
 		savedCF = primaryPart.CFrame
 	else
@@ -127,6 +145,9 @@ local function swapPurifierModel(purifier)
 		else
 			savedCF = purifier:GetPivot()
 		end
+	end
+	if raftPrimary and savedCF then
+		savedRelCF = raftPrimary.CFrame:ToObjectSpace(savedCF)
 	end
 
 	-- Save attributes
@@ -171,30 +192,40 @@ local function swapPurifierModel(purifier)
 		end
 	end
 
-	-- Get the template's PrimaryPart CFrame to compute the offset
-	-- Then position so purifier.PrimaryPart ends up at savedCF
-	if purifier.PrimaryPart and savedCF then
-		-- Use PivotTo which accounts for the model's pivot/PrimaryPart
-		local templatePivot = template:GetPivot()
-		local templatePrimaryCF = template.PrimaryPart and template.PrimaryPart.CFrame or templatePivot
-		-- Simply PivotTo the saved CFrame
-		purifier:PivotTo(savedCF)
+	-- Position relative to the raft's CURRENT pose, not the stale one.
+	-- This way the new parts always land at the right spot on the raft
+	-- regardless of how far the raft drifted between destroy + clone.
+	if purifier.PrimaryPart and savedRelCF and raftPrimary then
+		purifier:PivotTo(raftPrimary.CFrame * savedRelCF)
 	elseif savedCF then
 		purifier:PivotTo(savedCF)
 	end
 
-	-- Weld to raft, then unanchor
-	local raft = workspace:FindFirstChild("Raft")
-	if raft and raft.PrimaryPart then
+	-- Weld FIRST while every part is still anchored, THEN unanchor in
+	-- a second pass (T15). Unanchoring first leaves each part as a
+	-- zero-velocity free body that the weld's solver has to equalise
+	-- against the moving raft, and that drain is what kicks the
+	-- buoyancy spring into a bob with multi-part models like the
+	-- Destitalor.
+	if raftPrimary then
 		for _, part in purifier:GetDescendants() do
 			if part:IsA("BasePart") then
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
-				weld.Part1 = raft.PrimaryPart
+				weld.Part1 = raftPrimary
 				weld.Parent = part
+			end
+		end
+		for _, part in purifier:GetDescendants() do
+			if part:IsA("BasePart") then
 				part.Anchored = false
 			end
 		end
+		-- Restore the raft's velocity from the pre-destroy snapshot so
+		-- nothing the swap did (destroy / clone / weld) bleeds momentum
+		-- out of the assembly.
+		raftPrimary.AssemblyLinearVelocity  = linVel
+		raftPrimary.AssemblyAngularVelocity = angVel
 	end
 
 	-- Restore attributes
@@ -369,16 +400,44 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		purifier:PivotTo(worldCF)
 		purifier.Parent = raft
 
-		-- Weld to raft
+		-- Same velocity-preservation pattern as the workbench branch
+		-- above so placing the purifier doesn't kick the raft's vertical
+		-- buoyancy out of equilibrium. Force-anchor every part FIRST
+		-- (T16) — the Destitalor template stores its parts unanchored,
+		-- so the cloned model otherwise starts free-falling under
+		-- gravity before our welds attach, and Roblox's solver then
+		-- has to equalise the falling part with the moving raft. Then
+		-- weld while anchored (T15) and only unanchor in a third pass
+		-- so the parts inherit the raft's velocity through the rigid
+		-- weld instead of starting at zero.
+		local primary = raft.PrimaryPart
+		local linVel = primary.AssemblyLinearVelocity
+		local angVel = primary.AssemblyAngularVelocity
+
+		-- Pass 0: anchor every part regardless of how the template was authored.
 		for _, part in purifier:GetDescendants() do
 			if part:IsA("BasePart") then
-				part.Anchored = false
+				part.Anchored = true
+			end
+		end
+		-- Pass 1: weld every part to the raft while still anchored.
+		for _, part in purifier:GetDescendants() do
+			if part:IsA("BasePart") then
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = part
 			end
 		end
+		-- Pass 2: unanchor (parts inherit raft velocity via the weld).
+		for _, part in purifier:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.Anchored = false
+			end
+		end
+
+		primary.AssemblyLinearVelocity  = linVel
+		primary.AssemblyAngularVelocity = angVel
 
 		-- Remove tool from player
 		tool:Destroy()
@@ -409,16 +468,35 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		workbench:PivotTo(worldCF)
 		workbench.Parent = raft
 
-		-- Weld to raft
+		-- T13/T15/T16: snapshot raft velocity, force-anchor every part
+		-- (templates may be stored unanchored), weld while anchored,
+		-- then unanchor so the new parts inherit the raft's velocity
+		-- through the rigid weld.
+		local primary = raft.PrimaryPart
+		local linVel = primary.AssemblyLinearVelocity
+		local angVel = primary.AssemblyAngularVelocity
+
 		for _, part in workbench:GetDescendants() do
 			if part:IsA("BasePart") then
-				part.Anchored = false
+				part.Anchored = true
+			end
+		end
+		for _, part in workbench:GetDescendants() do
+			if part:IsA("BasePart") then
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
 				weld.Part1 = raft.PrimaryPart
 				weld.Parent = part
 			end
 		end
+		for _, part in workbench:GetDescendants() do
+			if part:IsA("BasePart") then
+				part.Anchored = false
+			end
+		end
+
+		primary.AssemblyLinearVelocity  = linVel
+		primary.AssemblyAngularVelocity = angVel
 
 		-- Add ProximityPrompt if not already present
 		local hasPrompt = workbench:FindFirstChildWhichIsA("ProximityPrompt", true)

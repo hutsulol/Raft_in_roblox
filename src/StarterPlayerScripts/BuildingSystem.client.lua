@@ -639,6 +639,7 @@ local function closeBuildMode()
 		buildingUI:Destroy()
 		buildingUI = nil
 	end
+	_G.BuildingScreenGui = nil
 	if renderConnection then
 		renderConnection:Disconnect()
 		renderConnection = nil
@@ -665,6 +666,11 @@ local function buildUI()
 	buildingUI.ResetOnSpawn = false
 	buildingUI.DisplayOrder = 20
 	buildingUI.Parent = playerGui
+
+	-- Publish so QuestEntryButton (and any other side HUD that needs
+	-- to step out of the way) can hide itself while the build UI is
+	-- visible. Cleared in closeBuildMode below.
+	_G.BuildingScreenGui = buildingUI
 
 	local cat = categories[selectedCategory]
 

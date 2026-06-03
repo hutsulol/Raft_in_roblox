@@ -22,13 +22,33 @@ end
 -- Names of parts that need to spin (use Motor6D so client can rotate via Transform)
 local SPIN_PART_NAMES = { Hexagon = true, Hexagon_placer = true, Hexagon_claimer = true, SawBlade = true }
 
+-- Canonical 3-pass weld pattern (matches GardenSystem / SmallContainerSystem
+-- after T20). Pass 0 force-anchors every BasePart (templates may be
+-- authored unanchored). Pass 1 creates the constraint while still
+-- anchored — for spinning parts (saw blade, hexagons) we use Motor6D
+-- so the client can rotate them via Transform; everything else gets a
+-- rigid WeldConstraint. Pass 2 unanchors so the parts inherit the raft's
+-- velocity through the constraint instead of starting at zero. Velocity
+-- snapshot/restore is wrapped around the loop in the caller.
+--
+-- Spinning parts also get Massless = true (T25). The Motor6D applies
+-- reaction torque on the raft side every frame the client spins them
+-- via Transform; if they have non-zero mass that torque rocks the raft
+-- visibly. Massless = true zeros the inertia for those parts only,
+-- so the saw blade can spin without bobbing the assembly. The static
+-- frame parts keep their mass (so the buoyancy spring's compensation
+-- stays balanced).
 local function weldToRaft(obj, raft)
 	local raftPart = raft.PrimaryPart
 	for _, part in obj:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.Anchored = false
-			part.Massless = true
+			part.Anchored = true
+		end
+	end
+	for _, part in obj:GetDescendants() do
+		if part:IsA("BasePart") then
 			if SPIN_PART_NAMES[part.Name] then
+				part.Massless = true
 				local motor = Instance.new("Motor6D")
 				motor.Name = "SpinMotor"
 				motor.Part0 = raftPart
@@ -42,6 +62,11 @@ local function weldToRaft(obj, raft)
 				weld.Part1 = raftPart
 				weld.Parent = part
 			end
+		end
+	end
+	for _, part in obj:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
 		end
 	end
 end
@@ -110,16 +135,19 @@ local function processLog(sawmill, droppedLog)
 				if first then plankClone.PrimaryPart = first end
 			end
 
-			-- No collision, no touch, massless — pickup target welded to raft
+			-- No collision, no touch, massless — pickup target welded to raft.
+			-- Force-anchor every part BEFORE the PivotTo + Parent so the
+			-- plank can never exist as a free body in the moving world
+			-- (T26). The unanchor pass runs after the welds are in place.
 			if plankClone:IsA("BasePart") then
-				plankClone.Anchored = false
+				plankClone.Anchored = true
 				plankClone.CanCollide = false
 				plankClone.CanTouch = false
 				plankClone.Massless = true
 			end
 			for _, p in plankClone:GetDescendants() do
 				if p:IsA("BasePart") then
-					p.Anchored = false
+					p.Anchored = true
 					p.CanCollide = false
 					p.CanTouch = false
 					p.Massless = true
@@ -131,23 +159,43 @@ local function processLog(sawmill, droppedLog)
 			plankClone:PivotTo(CFrame.new(claimerPos))
 			plankClone.Parent = workspace
 
-			-- Weld to raft so it stays in place as raft moves
+			-- Weld to raft so it stays in place as raft moves. Snapshot
+			-- raft velocity around the welds + unanchor pass so cumulative
+			-- plank drops don't bleed momentum out of the assembly. (Two
+			-- planks landing in the same spot was visibly bobbing the raft.)
 			local raft = getRaft()
 			if raft and raft.PrimaryPart then
+				local rPrim = raft.PrimaryPart
+				local linVel = rPrim.AssemblyLinearVelocity
+				local angVel = rPrim.AssemblyAngularVelocity
+
+				-- Pass 1: weld every part while anchored.
 				for _, p in plankClone:GetDescendants() do
 					if p:IsA("BasePart") then
 						local w = Instance.new("WeldConstraint")
 						w.Part0 = p
-						w.Part1 = raft.PrimaryPart
+						w.Part1 = rPrim
 						w.Parent = p
 					end
 				end
 				if plankClone:IsA("BasePart") then
 					local w = Instance.new("WeldConstraint")
 					w.Part0 = plankClone
-					w.Part1 = raft.PrimaryPart
+					w.Part1 = rPrim
 					w.Parent = plankClone
 				end
+				-- Pass 2: unanchor (parts inherit raft velocity via the welds).
+				for _, p in plankClone:GetDescendants() do
+					if p:IsA("BasePart") then
+						p.Anchored = false
+					end
+				end
+				if plankClone:IsA("BasePart") then
+					plankClone.Anchored = false
+				end
+
+				rPrim.AssemblyLinearVelocity  = linVel
+				rPrim.AssemblyAngularVelocity = angVel
 			end
 
 			plankClone:SetAttribute("ResourceType", "Plank")
@@ -235,7 +283,15 @@ sawmillActionEvent.OnServerEvent:Connect(function(player, action, data)
 		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(data)
 		sawmill:PivotTo(worldCF)
 		sawmill.Parent = raft
+
+		-- Snapshot raft velocity around the welds so adding the sawmill
+		-- doesn't bleed momentum out of the assembly and bob the raft.
+		local primary = raft.PrimaryPart
+		local linVel = primary.AssemblyLinearVelocity
+		local angVel = primary.AssemblyAngularVelocity
 		weldToRaft(sawmill, raft)
+		primary.AssemblyLinearVelocity  = linVel
+		primary.AssemblyAngularVelocity = angVel
 
 		sawmill:SetAttribute("IsSawmill", true)
 		sawmill:SetAttribute("SawmillState", "idle")

@@ -42,18 +42,80 @@ local primaryPart = boat.PrimaryPart
 -- position. This is the target height for the buoyancy spring.
 local waterY = primaryPart.Position.Y
 
+-- Collision groups (T29/T34). Floating resources (logs / leaves /
+-- plastic canisters) are kept in "FloatingResource" so they drift
+-- past the raft AND past players without applying contact impulses.
+-- The raft + everything ever welded onto it lives in "Raft", and
+-- "FloatingResource" is configured non-collidable against both Raft
+-- AND Default — so anything not tagged Raft (most things in the
+-- world, including players and any not-yet-tagged raft part) also
+-- ignores resources. Resources keep CanCollide = true so terrain
+-- water buoyancy keeps them floating.
+local PhysicsService = game:GetService("PhysicsService")
+local function ensureGroup(name)
+	pcall(function()
+		PhysicsService:RegisterCollisionGroup(name)
+	end)
+end
+ensureGroup("Raft")
+ensureGroup("FloatingResource")
+pcall(function()
+	PhysicsService:CollisionGroupSetCollidable("Raft", "FloatingResource", false)
+end)
+-- Previously we also disabled Default ↔ FloatingResource collisions so
+-- characters / mercenaries wouldn't get bumped by passing logs. That
+-- side-effect, though, was that resources also stopped interacting with
+-- TERRAIN (terrain lives in the Default group) — including the water
+-- voxels — so Roblox's native water buoyancy never applied and every
+-- spawned resource dropped through the surface to the seabed. Keep
+-- only the Raft-vs-Resource and Resource-vs-Resource rules so the
+-- water still pushes them up.
+pcall(function()
+	PhysicsService:CollisionGroupSetCollidable("FloatingResource", "FloatingResource", false)
+end)
+
+local function tagRaftPart(part)
+	if part and part:IsA("BasePart") then
+		part.CollisionGroup = "Raft"
+		-- Pin NetworkOwner to the server (T33). Without this, Roblox
+		-- can reassign physics ownership of newly-welded parts to a
+		-- nearby player; replication jitter from the player's client
+		-- then pumps the buoyancy spring through the rigid welds and
+		-- the raft slowly bobs. BuildingSystem's wall placement has
+		-- always done this in unanchorAndPin — that's exactly why
+		-- walls don't bounce the raft and items did. Deferred because
+		-- a part that's anchored at the moment we tag it (placement
+		-- systems use Pass 0 force-anchor) errors on SetNetworkOwner.
+		task.defer(function()
+			if part.Parent and not part.Anchored then
+				pcall(function() part:SetNetworkOwner(nil) end)
+			end
+		end)
+	end
+end
+
 -- Ensure all raft parts are unanchored so physics (buoyancy, movement) work.
 -- SpawnLocations are anchored by default in Studio; if any part in a welded
 -- assembly is anchored the entire raft is frozen in place.
 for _, desc in boat:GetDescendants() do
 	if desc:IsA("BasePart") then
 		desc.Anchored = false
+		tagRaftPart(desc)
 		pcall(function()
 			desc:SetNetworkOwner(nil)
 		end)
 	end
 end
 primaryPart.Anchored = false
+tagRaftPart(primaryPart)
+
+-- Auto-tag every BasePart welded onto the raft as it gets added,
+-- so placements (workbench / sawmill / planks / etc.) inherit the
+-- raft's CollisionGroup without each placement system having to
+-- know about it.
+boat.DescendantAdded:Connect(function(d)
+	if d:IsA("BasePart") then tagRaftPart(d) end
+end)
 
 -- Lock the raft as server-controlled. Without this, Roblox auto-assigns
 -- network ownership to the nearest player, and any time a new part is

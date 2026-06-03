@@ -1,0 +1,585 @@
+-- NpcAi.scrpit (Infected_Military_Menu — Soldier mercenary)
+--
+-- Clean rewrite that replaces the original Sammy123700 NpcAi. The
+-- old script ran three coroutines in parallel (random-walk, flee-
+-- on-damage, check-and-shoot) plus a live Motor6D :lerp animation
+-- loop, none of which respected mid-life EquippedWeapon swaps. As
+-- a result the recruited Soldier kept shooting even after the
+-- player picked the FishingRod / Unarmed loadout, fired into empty
+-- space because the target filter accepted any humanoid in 120
+-- studs, and fought with HarvestResources.script over rig motion.
+--
+-- This rewrite mirrors the Pirate_2/Combat.script + Corsair/Combat
+-- patterns so the three rigs share one mental model:
+--   * single main loop: searchForTarget → recomputePath → travel
+--                       → tryJumpCheck → tryShoot
+--   * reactive EquippedWeapon gate via GetAttributeChangedSignal,
+--     so flipping the menu to FishingRod / Unarmed pauses combat
+--     instantly — no respawn required
+--   * strict target filter: friendly merc only fires at
+--     HostilePirate-tagged enemies; hostile rig only fires at
+--     non-HostilePirate (players, fellow mercs) so two patrolling
+--     soldiers don't shoot each other
+--   * Motor6D :lerp shooting pose preserved (the "raise AK + face
+--     target" pose from the original) so the rig still reads as
+--     aiming when it fires
+--   * bullet damage = MercStats.fistDamage(strength). Soldier base
+--     str 110 → 55 dmg per hit
+--
+-- Same script ships on the hostile rig (Infected_Military/NpcAi.
+-- script). The role-aware filter + the EquippedWeapon gate (which
+-- never trips for hostiles since they have no attribute) keep
+-- the two behaviours unified in one file.
+
+local CollectionService  = game:GetService("CollectionService")
+local Players            = game:GetService("Players")
+local PathfindingService = game:GetService("PathfindingService")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local RunService         = game:GetService("RunService")
+local Debris             = game:GetService("Debris")
+
+local npc = script.Parent
+
+-- ── Wait for the rig to be in workspace ─────────────────────────────
+while not npc:IsDescendantOf(workspace) do
+	npc.AncestryChanged:Wait()
+end
+
+-- ── Strength → damage from MercStats (async to avoid init blocks) ───
+local MercStats
+task.spawn(function()
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 30)
+	if mod then
+		local ok, result = pcall(require, mod)
+		if ok then MercStats = result end
+	end
+end)
+
+-- ── Tunables ────────────────────────────────────────────────────────
+local ATTR = {
+	DetectionDistance = 120,
+	ShootRange        = 100,
+	ShootCooldown     = 0.4,
+	BulletSpeed       = 500,
+	BulletLife        = 1.6,
+	WalkSpeed         = 14,
+	RecomputeFreq     = 1,
+	JumpCheckFreq     = 1,
+	TickInterval      = 0.08,
+	SightCheckBeats   = 5,    -- only fire if LOS confirmed
+}
+
+-- ── Reactive EquippedWeapon gate ────────────────────────────────────
+-- combatActive flips with the rig's EquippedWeapon attribute. The
+-- whole main loop / animation loop check this every iteration so a
+-- mid-life menu switch (Sword → Unarmed → Sword again) actually
+-- pauses + resumes the AI without forcing a respawn.
+--
+--   nil (hostile) / Firearm / Shotgun  → active
+--   FishingRod / Unarmed                → paused
+local combatActive = true
+local function refreshCombatActive()
+	local cur = npc:GetAttribute("EquippedWeapon")
+	combatActive = not (cur == "FishingRod" or cur == "Unarmed")
+end
+refreshCombatActive()
+npc:GetAttributeChangedSignal("EquippedWeapon"):Connect(refreshCombatActive)
+
+-- ── Rig setup ───────────────────────────────────────────────────────
+local humanoid = npc:WaitForChild("Humanoid", 5)
+if not humanoid then
+	warn("[Soldier/NpcAi] no Humanoid — AI cannot run")
+	return
+end
+
+local torso = npc:FindFirstChild("Torso")
+local head  = npc:FindFirstChild("Head")
+local hrp   = npc:FindFirstChild("HumanoidRootPart")
+if not (torso and head and hrp) then
+	warn("[Soldier/NpcAi] missing R6 parts — AI cannot run")
+	return
+end
+
+local ak47 = npc:FindFirstChild("AK-47")  -- baked rig piece (BasePart or Model)
+
+-- Wake the rig up + apply combat stats. Mirrors Pirate_2/Combat.
+for _, d in npc:GetDescendants() do
+	if d:IsA("BasePart") then d.Anchored = false end
+end
+humanoid.WalkSpeed     = ATTR.WalkSpeed
+humanoid.PlatformStand = false
+humanoid.Sit           = false
+pcall(function()
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+end)
+if humanoid.JumpPower == 0 and humanoid.JumpHeight == 0 then
+	humanoid.JumpPower = 50
+end
+
+-- Self-tag as a HostilePirate when this is the hostile world rig (no
+-- SpawnedMercenary tag) so the recruitment system + other mercs treat
+-- it as an enemy. The friendly clone gets SpawnedMercenary set by
+-- MercenarySpawner; we don't override it here.
+if not CollectionService:HasTag(npc, "SpawnedMercenary")
+	and not CollectionService:HasTag(npc, "HostilePirate") then
+	CollectionService:AddTag(npc, "HostilePirate")
+end
+if npc:GetAttribute("NpcType") == nil then
+	npc:SetAttribute("NpcType", "Infected Military")
+end
+
+-- ── Motor6D refs (for the shooting pose lerp) ───────────────────────
+local neck          = torso:FindFirstChild("Neck")
+local leftShoulder  = torso:FindFirstChild("Left Shoulder")
+local rightShoulder = torso:FindFirstChild("Right Shoulder")
+local leftHip       = torso:FindFirstChild("Left Hip")
+local rightHip      = torso:FindFirstChild("Right Hip")
+local rootJoint     = hrp:FindFirstChild("RootJoint")
+
+local hasShootPose = neck and leftShoulder and rightShoulder
+	and leftHip and rightHip and rootJoint
+if hasShootPose then
+	pcall(function()
+		neck.C1          = CFrame.new(0, 0, 0)
+		leftShoulder.C1  = CFrame.new(0, 0, 0)
+		rightShoulder.C1 = CFrame.new(0, 0, 0)
+		leftHip.C1       = CFrame.new(0, 0, 0)
+		rightHip.C1      = CFrame.new(0, 0, 0)
+		rootJoint.C1     = CFrame.new(0, 0, 0)
+	end)
+end
+
+-- AK weld for the shoot animation. Re-binds the AK-47 part to the
+-- right arm so the shoot pose's Motor6D writes work. If AK-47 is a
+-- Model instead of a BasePart, fall back to its PrimaryPart or
+-- first BasePart child.
+local akAnchor
+if ak47 then
+	if ak47:IsA("BasePart") then
+		akAnchor = ak47
+	elseif ak47:IsA("Model") then
+		akAnchor = ak47.PrimaryPart or ak47:FindFirstChildWhichIsA("BasePart", true)
+	end
+end
+
+local akWeld
+if akAnchor and not akAnchor:FindFirstChild("AKWeld") then
+	akWeld = Instance.new("Weld")
+	akWeld.Name  = "AKWeld"
+	akWeld.Part0 = npc:FindFirstChild("Right Arm")
+	akWeld.Part1 = akAnchor
+	akWeld.Parent = akAnchor
+elseif akAnchor then
+	akWeld = akAnchor:FindFirstChild("AKWeld")
+end
+
+-- Cache the rig's neutral C0s so we can drop OUT of the shoot pose
+-- when not aiming (otherwise the pose lerp leaves the rig frozen
+-- mid-aim — same bug Corsair had earlier).
+local NEUTRAL_C0
+if hasShootPose then
+	NEUTRAL_C0 = {
+		neck          = neck.C0,
+		leftShoulder  = leftShoulder.C0,
+		rightShoulder = rightShoulder.C0,
+		leftHip       = leftHip.C0,
+		rightHip      = rightHip.C0,
+		root          = rootJoint.C0,
+		akWeld        = akWeld and akWeld.C0,
+	}
+end
+
+-- ── Shooting pose CFrames (right + left aim, from Sammy123700) ──────
+local SHOOT_POSE_RIGHT = {
+	rootJoint     = CFrame.new(0, 0, 0, 0.173648223, 0, -0.98480773, 0, 1, 0, 0.98480773, 0, 0.173648223),
+	rightShoulder = CFrame.new(1.21384871, 0.500000477, -0.879925251, 0.342019856, 0.939692438, -1.49501886e-08, 1.94707184e-07, -2.68220873e-07, -0.999999821, -0.939692438, 0.342020035, -3.76157232e-07),
+	leftShoulder  = CFrame.new(-1.59201181, 0.470158577, -0.794548988, 0.271118939, 0.181368172, 0.945304275, 0.902039766, -0.390578717, -0.18377316, 0.335885108, 0.902526498, -0.269494623),
+	leftHip       = CFrame.new(-0.681244373, -2.07163191, 0, 0.98480773, 0.173648283, 0, -0.173648283, 0.98480767, 0, 0, -1.86264515e-09, 0.99999994),
+	rightHip      = CFrame.new(0.681244612, -2.07163191, -4.76837158e-07, 0.98480773, -0.173648283, 0, 0.173648283, 0.98480767, 0, 0, 1.86264515e-09, 0.99999994),
+	neck          = CFrame.new(0.0296957493, 1.49240398, -0.0815882683, 0.336824059, 0.059391167, 0.939692557, -0.173648164, 0.98480773, -7.4505806e-09, -0.925416589, -0.163175896, 0.342020094),
+	akWeld        = CFrame.new(-0.109231472, -2.24730468, -0.300003052, 0.984807491, 1.94707184e-07, 0.173647866, -0.173648044, -2.68220873e-07, 0.984807491, 3.67846468e-07, -0.999999821, -8.00420992e-08),
+}
+
+-- ── State ───────────────────────────────────────────────────────────
+local currentTarget    = nil
+local pathCoords       = {}
+local currentNode      = nil
+local currentNodeIndex = 1
+local autoRecompute    = true
+local recomputing      = false
+local lastPathTime     = 0
+local lastJumpCheck    = 0
+local lastShot         = 0
+local alive            = true
+local shooting         = false   -- drives the pose lerp
+
+humanoid.Died:Connect(function() alive = false end)
+
+-- ── Helpers ─────────────────────────────────────────────────────────
+local function getTorso(model)
+	return model:FindFirstChild("Torso")
+		or model:FindFirstChild("UpperTorso")
+		or model:FindFirstChild("HumanoidRootPart")
+end
+
+local function isPlayerCharacter(model)
+	return Players:GetPlayerFromCharacter(model) ~= nil
+end
+
+local function isFellowMercenary(model)
+	return CollectionService:HasTag(model, "SpawnedMercenary")
+end
+
+local function isHostile(model)
+	return CollectionService:HasTag(model, "HostilePirate")
+end
+
+-- ── Target search (role-aware) ──────────────────────────────────────
+-- Friendly merc: only fire at HostilePirate-tagged enemies. The same
+--   tag both hostile rigs (Pirate / Soldier) add to themselves on
+--   init, so this also works against any future hostile NPC type
+--   that opts in via the tag.
+-- Hostile rig: fire at players + fellow mercs (everything that's
+--   neither yourself nor another HostilePirate).
+local function searchForTarget()
+	local mercRole  = isFellowMercenary(npc)
+	local myPos     = hrp.Position
+	local closestHum, closestDist = nil, math.huge
+
+	for _, model in workspace:GetDescendants() do
+		if model:IsA("Humanoid") and model ~= humanoid and model.Health > 0 then
+			local parent = model.Parent
+			if parent and parent ~= npc then
+				local valid
+				if mercRole then
+					valid = isHostile(parent)
+				else
+					valid = (not isHostile(parent)) and parent ~= npc
+				end
+				if valid then
+					local t = getTorso(parent)
+					if t and t:IsA("BasePart") then
+						local d = (t.Position - myPos).Magnitude
+						if d < ATTR.DetectionDistance and d < closestDist then
+							closestHum, closestDist = model, d
+						end
+					end
+				end
+			end
+		end
+	end
+
+	currentTarget = closestHum
+end
+
+local function targetIsValid()
+	if currentTarget == nil then return false end
+	if currentTarget.Health <= 0 then return false end
+	local t = currentTarget.Parent and getTorso(currentTarget.Parent)
+	return t ~= nil and t:IsA("BasePart")
+end
+
+local function getTargetPosition()
+	if not targetIsValid() then return nil end
+	return getTorso(currentTarget.Parent).Position
+end
+
+-- ── Pathfinding (mirrors Pirate_2/Combat) ───────────────────────────
+local function hasLineOfSight()
+	local tp = getTargetPosition()
+	if not tp then return false end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { npc, currentTarget.Parent }
+	local result = workspace:Raycast(hrp.Position, tp - hrp.Position, params)
+	return result == nil
+end
+
+local function recomputePath()
+	if recomputing then return end
+	if not targetIsValid() then return end
+	local tp = getTargetPosition()
+	if not tp then return end
+
+	if hasLineOfSight() then
+		autoRecompute    = true
+		pathCoords       = { hrp.Position, tp }
+		currentNode      = nil
+		currentNodeIndex = 2
+		lastPathTime     = tick()
+		return
+	end
+
+	recomputing  = true
+	autoRecompute = false
+
+	local ok, path = pcall(function()
+		return PathfindingService:CreatePath({
+			AgentRadius = 2,
+			AgentHeight = 5,
+			AgentCanJump = true,
+		})
+	end)
+	if not ok or not path then
+		recomputing = false
+		return
+	end
+	local computeOk = pcall(function() path:ComputeAsync(hrp.Position, tp) end)
+	if computeOk and path.Status == Enum.PathStatus.Success then
+		pathCoords = {}
+		for _, wp in path:GetWaypoints() do
+			table.insert(pathCoords, wp.Position)
+		end
+		currentNode      = nil
+		currentNodeIndex = 1
+	else
+		pathCoords = { hrp.Position, tp }
+		currentNode      = nil
+		currentNodeIndex = 2
+	end
+	recomputing  = false
+	lastPathTime = tick()
+end
+
+local function tryRecomputePath()
+	if autoRecompute or tick() - lastPathTime > 1 / ATTR.RecomputeFreq then
+		recomputePath()
+	end
+end
+
+local function jumpCheck()
+	local tp = getTargetPosition()
+	if not tp then return end
+	local checkVector = (tp - hrp.Position)
+	if checkVector.Magnitude < 0.1 then return end
+	checkVector = checkVector.Unit * 2
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { npc }
+	local result = workspace:Raycast(
+		hrp.Position + Vector3.new(0, -2.4, 0),
+		checkVector,
+		params
+	)
+	if result and currentTarget.Parent and not result.Instance:IsDescendantOf(currentTarget.Parent) then
+		humanoid.Jump = true
+	end
+	lastJumpCheck = tick()
+end
+
+local function tryJumpCheck()
+	if tick() - lastJumpCheck > 1 / ATTR.JumpCheckFreq then
+		jumpCheck()
+	end
+end
+
+-- ── Bullet (AK-47) ──────────────────────────────────────────────────
+local function getMuzzlePart()
+	if not ak47 then return nil end
+	if ak47:IsA("BasePart") then return ak47 end
+	if ak47:IsA("Model") then
+		return ak47.PrimaryPart or ak47:FindFirstChildWhichIsA("BasePart", true)
+	end
+	return nil
+end
+
+local function fireBullet()
+	if not targetIsValid() then return end
+	if not hasLineOfSight() then return end
+	if tick() - lastShot < ATTR.ShootCooldown then return end
+
+	local muzzle = getMuzzlePart()
+	if not muzzle then return end
+	local tp = getTargetPosition()
+	if not tp then return end
+
+	-- Aim the bullet at the target's head if we can see it, else the torso.
+	local targetHead = currentTarget.Parent and currentTarget.Parent:FindFirstChild("Head")
+	local aimAt = (targetHead and targetHead.Position) or tp
+
+	-- Snapshot strength → damage at fire time so a closure capture
+	-- below applies the rig's strength at the moment of the shot.
+	local strength = (MercStats and MercStats.statsFromRig(npc).strength) or 110
+	local bulletDmg = MercStats and MercStats.fistDamage(strength) or 55
+
+	local shoot = muzzle:FindFirstChild("shoot") or muzzle:FindFirstChild("ShootSound")
+	if shoot and shoot:IsA("Sound") then pcall(function() shoot:Play() end) end
+
+	local pointlight = Instance.new("PointLight")
+	pointlight.Color = Color3.fromRGB(255, 220, 140)
+	pointlight.Brightness = 4
+	pointlight.Range = 6
+	pointlight.Parent = muzzle
+	Debris:AddItem(pointlight, 0.1)
+
+	local bullet = Instance.new("Part")
+	bullet.Name = "SoldierBullet"
+	bullet.Size = Vector3.new(0.3, 0.3, 3.5)
+	bullet.Material = Enum.Material.Neon
+	bullet.Color    = Color3.fromRGB(255, 220, 130)
+	bullet.CanCollide = false
+	bullet.CanQuery   = false
+	bullet.CFrame = muzzle.CFrame * CFrame.new(0, 0, -2)
+	bullet.CFrame = CFrame.new(bullet.Position, aimAt)
+	bullet.Parent = workspace
+
+	local bv = Instance.new("BodyVelocity")
+	bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+	bv.Velocity = bullet.CFrame.LookVector * ATTR.BulletSpeed
+		+ Vector3.new(math.random(-15, 15), math.random(-15, 15), 0)
+	bv.Parent = bullet
+
+	Debris:AddItem(bullet, ATTR.BulletLife)
+
+	local mercRole = isFellowMercenary(npc)
+	local consumed = false
+	bullet.Touched:Connect(function(part)
+		if consumed or not part or not part.Parent then return end
+		if part:IsDescendantOf(npc) then return end
+		if part.Parent:IsA("Accessory") then return end
+		if part.Parent.Parent and part.Parent.Parent:IsA("Accessory") then return end
+		local model = part:FindFirstAncestorOfClass("Model")
+		if model then
+			-- Friendly fire filter mirrors searchForTarget: friendly
+			-- merc never damages players / fellow mercs; hostile rig
+			-- never damages fellow hostiles.
+			if mercRole then
+				if isPlayerCharacter(model) then return end
+				if isFellowMercenary(model) and model ~= npc then return end
+			else
+				if isHostile(model) and model ~= npc then return end
+			end
+			local victim = model:FindFirstChildOfClass("Humanoid")
+			if victim and victim ~= humanoid and victim.Health > 0 then
+				victim:TakeDamage(bulletDmg)
+			end
+		end
+		consumed = true
+		bullet:Destroy()
+	end)
+
+	lastShot = tick()
+end
+
+-- ── Aim helpers ─────────────────────────────────────────────────────
+local function faceTarget()
+	if humanoid.PlatformStand then return end
+	local tp = getTargetPosition()
+	if not tp then return end
+	local flat = Vector3.new(tp.X, hrp.Position.Y, tp.Z)
+	hrp.CFrame = CFrame.new(hrp.Position, flat)
+end
+
+-- ── Shooting-pose lerp loop ─────────────────────────────────────────
+-- Preserves the original Sammy123700 aim animation. Only writes the
+-- Motor6D C0s when shooting==true (driven by the main loop below);
+-- restores neutral C0s as soon as we exit aim so the rig drops back
+-- into the standard Animate-script idle / walk poses without freezing.
+if hasShootPose then
+	task.spawn(function()
+		while alive and npc.Parent do
+			if combatActive and shooting then
+				for i = 0.2, 0.8, 0.45 do
+					if not (alive and combatActive and shooting) then break end
+					rootJoint.C0     = rootJoint.C0:Lerp(SHOOT_POSE_RIGHT.rootJoint, i)
+					rightShoulder.C0 = rightShoulder.C0:Lerp(SHOOT_POSE_RIGHT.rightShoulder, i)
+					leftShoulder.C0  = leftShoulder.C0:Lerp(SHOOT_POSE_RIGHT.leftShoulder, i)
+					leftHip.C0       = leftHip.C0:Lerp(SHOOT_POSE_RIGHT.leftHip, i)
+					rightHip.C0      = rightHip.C0:Lerp(SHOOT_POSE_RIGHT.rightHip, i)
+					neck.C0          = neck.C0:Lerp(SHOOT_POSE_RIGHT.neck, i)
+					if akWeld then akWeld.C0 = akWeld.C0:Lerp(SHOOT_POSE_RIGHT.akWeld, i) end
+					RunService.Heartbeat:Wait()
+				end
+			else
+				-- Restore neutral pose so the standard Animate script
+				-- regains control of the joints during walk / idle.
+				if NEUTRAL_C0 then
+					rootJoint.C0     = NEUTRAL_C0.root
+					rightShoulder.C0 = NEUTRAL_C0.rightShoulder
+					leftShoulder.C0  = NEUTRAL_C0.leftShoulder
+					leftHip.C0       = NEUTRAL_C0.leftHip
+					rightHip.C0      = NEUTRAL_C0.rightHip
+					neck.C0          = NEUTRAL_C0.neck
+					if akWeld and NEUTRAL_C0.akWeld then akWeld.C0 = NEUTRAL_C0.akWeld end
+				end
+				RunService.Heartbeat:Wait()
+			end
+		end
+	end)
+end
+
+-- ── Path travel ─────────────────────────────────────────────────────
+-- The rig walks the waypoint list while firing on every tick that
+-- the target is in range + line of sight. Mirrors Pirate_2/Combat's
+-- travelPath, but the attack step is ranged.
+local function travelPath()
+	if #pathCoords == 0 then return end
+	local myPos = hrp.Position
+	local skipCurrent = currentNode ~= nil and (currentNode - myPos).Magnitude < 3
+
+	local closest, closestDist, closestIdx = nil, math.huge, nil
+	for i = currentNodeIndex, #pathCoords do
+		local c = pathCoords[i]
+		if not (skipCurrent and c == currentNode) then
+			local d = (c - myPos).Magnitude
+			if d < closestDist then
+				closest, closestDist, closestIdx = c, d, i
+			else
+				break
+			end
+		end
+	end
+
+	if closest then
+		currentNode      = closest
+		currentNodeIndex = closestIdx
+		humanoid:MoveTo(closest)
+
+		if humanoid.Health > 0 and targetIsValid() then
+			tryJumpCheck()
+			-- Fire if the target is within shoot range. We don't
+			-- stop the rig — Soldier fires while walking, like
+			-- Corsair's revolver. faceTarget makes the bullet path
+			-- start on the right vector regardless of MoveTo
+			-- heading.
+			local tp = getTargetPosition()
+			if tp and (myPos - tp).Magnitude <= ATTR.ShootRange then
+				faceTarget()
+				shooting = true
+				fireBullet()
+			else
+				shooting = false
+			end
+		else
+			shooting = false
+		end
+
+		if closestIdx == #pathCoords then
+			autoRecompute = true
+		end
+	end
+end
+
+print("[Soldier/NpcAi] AI online for " .. npc:GetFullName())
+
+-- ── Main loop ───────────────────────────────────────────────────────
+while alive and npc.Parent and humanoid.Health > 0 do
+	if combatActive then
+		searchForTarget()
+		if targetIsValid() then
+			tryRecomputePath()
+			travelPath()
+		else
+			shooting = false
+		end
+	else
+		shooting = false
+	end
+	task.wait(ATTR.TickInterval)
+end
+
+shooting = false

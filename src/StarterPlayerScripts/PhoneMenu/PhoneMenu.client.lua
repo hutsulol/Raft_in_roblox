@@ -560,9 +560,15 @@ local function buildHoloBackground(parent)
 	makeVignette(0,    false)
 	makeVignette(0.62, true)
 
-	-- Drifting light motes: ~24 small glowing dots floating upward with
-	-- per-mote random size, opacity, duration and slight horizontal drift
-	-- — reshuffles after each pass so the loop never visibly resets.
+	-- Drifting light motes: mixed shapes + sizes so the background reads
+	-- as a varied speckle field rather than one-size specks. Three
+	-- classes: tiny round dots (common, 1-2 px), medium round glows
+	-- (less common, 3-5 px, slight stroke halo), and twinkle crosses
+	-- (rare, 5-8 px, two thin rotated bars forming a "+" spark).
+	-- Each mote wraps its shape in a CanvasGroup so the Heartbeat
+	-- occlusion below can modulate GroupTransparency and fade
+	-- composite motes as a single unit — a Frame's BackgroundTransparency
+	-- wouldn't reach the children of a twinkle cross.
 	local motes = Instance.new("Frame")
 	motes.Name = "Motes"
 	motes.Size = UDim2.fromScale(1, 1)
@@ -572,34 +578,197 @@ local function buildHoloBackground(parent)
 	motes.ZIndex = 3
 	motes.Parent = root
 
-	-- +20% motes vs the previous 24 baseline.
-	for _ = 1, 29 do
-		local sizePx     = math.random(12, 32) / 10   -- 1.2 .. 3.2 px
-		local duration   = 14 + math.random() * 14    -- 14 .. 28 s
-		local startDelay = math.random() * 18
-		local opacity    = 0.32 + math.random() * 0.58
+	local MOTE_COL_WARM = Color3.fromRGB(255, 238, 205)
+	local MOTE_COL_COOL = Color3.fromRGB(195, 230, 255)
 
+	local function pickTintedColor()
+		-- Ternary blend between the cool cyan base and the two tint
+		-- offsets so most motes read as near-white but a handful land
+		-- cooler or warmer — creates subtle color texture in the field.
+		local t = math.random()
+		if t < 0.12 then
+			return MOTE_COL_WARM
+		elseif t < 0.32 then
+			return MOTE_COL_COOL
+		else
+			return MOTE_COL
+		end
+	end
+
+	-- Builders return the positionable outer node (the thing the
+	-- tween moves). Dots + glows use a plain Frame outer so Roblox
+	-- doesn't allocate a render target per mote; twinkles need a
+	-- CanvasGroup so the occlusion path can fade all three cross
+	-- pieces as one unit.
+	local function makeDot(parent, sizePx, color, opacity)
 		local mote = Instance.new("Frame")
 		mote.Name = "Mote"
 		mote.AnchorPoint = Vector2.new(0.5, 0.5)
 		mote.Size = UDim2.fromOffset(sizePx, sizePx)
-		mote.BackgroundColor3 = MOTE_COL
+		mote.BackgroundColor3 = color
 		mote.BackgroundTransparency = 1 - opacity
 		mote.BorderSizePixel = 0
 		mote.ZIndex = 4
-		mote.Parent = motes
-		-- Base transparency so the Heartbeat occlusion check below can
-		-- restore it when a mote leaves a panel rect.
+		mote.Parent = parent
 		mote:SetAttribute("BaseTransparency", 1 - opacity)
 		local c = Instance.new("UICorner")
 		c.CornerRadius = UDim.new(1, 0)
 		c.Parent = mote
+		return mote
+	end
+
+	local function makeGlow(parent, sizePx, color, opacity)
+		-- Round mote with a faint UIStroke halo — gives the "glow"
+		-- read without needing a second Frame child (no CanvasGroup
+		-- needed since the stroke transparency doesn't have to track
+		-- with the fill).
+		local mote = Instance.new("Frame")
+		mote.Name = "Mote"
+		mote.AnchorPoint = Vector2.new(0.5, 0.5)
+		mote.Size = UDim2.fromOffset(sizePx, sizePx)
+		mote.BackgroundColor3 = color
+		mote.BackgroundTransparency = 1 - opacity
+		mote.BorderSizePixel = 0
+		mote.ZIndex = 4
+		mote.Parent = parent
+		mote:SetAttribute("BaseTransparency", 1 - opacity)
+		local c = Instance.new("UICorner")
+		c.CornerRadius = UDim.new(1, 0)
+		c.Parent = mote
+		local halo = Instance.new("UIStroke")
+		halo.Color = color
+		halo.Thickness = math.max(1, math.floor(sizePx * 0.35))
+		halo.Transparency = 0.55
+		halo.Parent = mote
+		return mote
+	end
+
+	local function makeTwinkle(parent, sizePx, color, opacity)
+		-- Cross "spark": horizontal + vertical bars crossed at centre,
+		-- plus a tiny bright pinpoint. Wrapped in a CanvasGroup so the
+		-- occlusion Heartbeat can fade all three pieces uniformly via
+		-- GroupTransparency. Half the twinkles are rotated 45° so the
+		-- field has "+" and "×" variants without adding a fourth class.
+		local mote = Instance.new("CanvasGroup")
+		mote.Name = "Mote"
+		mote.AnchorPoint = Vector2.new(0.5, 0.5)
+		mote.Size = UDim2.fromOffset(sizePx, sizePx)
+		mote.BackgroundTransparency = 1
+		mote.GroupTransparency = 1 - opacity
+		mote.BorderSizePixel = 0
+		mote.ZIndex = 4
+		mote.Parent = parent
+		mote:SetAttribute("BaseTransparency", 1 - opacity)
+
+		local rotation = (math.random() < 0.5) and 0 or 45
+		local barThickness = math.max(1, math.floor(sizePx * 0.18))
+
+		local horiz = Instance.new("Frame")
+		horiz.AnchorPoint = Vector2.new(0.5, 0.5)
+		horiz.Position = UDim2.fromScale(0.5, 0.5)
+		horiz.Size = UDim2.new(1, 0, 0, barThickness)
+		horiz.BackgroundColor3 = color
+		horiz.BorderSizePixel = 0
+		horiz.Rotation = rotation
+		horiz.Parent = mote
+
+		local vert = Instance.new("Frame")
+		vert.AnchorPoint = Vector2.new(0.5, 0.5)
+		vert.Position = UDim2.fromScale(0.5, 0.5)
+		vert.Size = UDim2.new(0, barThickness, 1, 0)
+		vert.BackgroundColor3 = color
+		vert.BorderSizePixel = 0
+		vert.Rotation = rotation
+		vert.Parent = mote
+
+		-- Brighter pinpoint at the intersection so the spark reads
+		-- even at the smallest twinkle sizes.
+		local pinSize = math.max(1, math.floor(sizePx * 0.32))
+		local pin = Instance.new("Frame")
+		pin.AnchorPoint = Vector2.new(0.5, 0.5)
+		pin.Position = UDim2.fromScale(0.5, 0.5)
+		pin.Size = UDim2.fromOffset(pinSize, pinSize)
+		pin.BackgroundColor3 = color
+		pin.BorderSizePixel = 0
+		pin.Parent = mote
+		local pc = Instance.new("UICorner")
+		pc.CornerRadius = UDim.new(1, 0)
+		pc.Parent = pin
+
+		return mote
+	end
+
+	-- Three depth bands give the field a parallax feel. Far motes read
+	-- as distant atmosphere (tiny, dim, slow, straight-line drift),
+	-- near motes as foreground sparkle (larger, brighter, faster,
+	-- wider horizontal arc). Mid motes sit between. ZIndex also climbs
+	-- with depth so any overlap resolves in the expected order (near
+	-- draws over far) even within the same Motes container.
+	--
+	-- Shape-class probabilities lean on depth too: dots dominate the
+	-- far layer (they're the visually-cheapest atmosphere), glows and
+	-- twinkles cluster on the near layer where their detail registers.
+	for _ = 1, 38 do
+		local depthRoll = math.random()
+		local sizePx, duration, opacity, driftRange, zIndex, shapeRoll, builder
+
+		if depthRoll < 0.47 then
+			-- FAR — distant atmosphere. Tiny + dim + slow. Almost
+			-- straight-line vertical drift so the eye reads them as
+			-- being at infinity.
+			sizePx     = 0.8 + math.random() * 1.4  -- 0.8 .. 2.2 px
+			duration   = 22 + math.random() * 10    -- 22 .. 32 s
+			opacity    = 0.15 + math.random() * 0.22
+			driftRange = 0.04                       -- ±2 % screen
+			zIndex     = 3
+			shapeRoll  = math.random()
+			builder    = (shapeRoll < 0.92) and makeDot or makeGlow
+		elseif depthRoll < 0.82 then
+			-- MID — the middle plane. Medium everything; fills the
+			-- gap between the ambient speckle and the near sparkle.
+			sizePx     = 2.0 + math.random() * 2.5  -- 2.0 .. 4.5 px
+			duration   = 14 + math.random() * 8     -- 14 .. 22 s
+			opacity    = 0.40 + math.random() * 0.25
+			driftRange = 0.08                       -- ±4 % screen
+			zIndex     = 4
+			shapeRoll  = math.random()
+			if shapeRoll < 0.60 then
+				builder = makeDot
+			elseif shapeRoll < 0.95 then
+				builder = makeGlow
+			else
+				builder = makeTwinkle
+			end
+		else
+			-- NEAR — foreground sparkle. Larger + brighter + fastest;
+			-- widest horizontal arc sells the parallax since near
+			-- objects sweep further across the screen per unit time.
+			sizePx     = 4.5 + math.random() * 3.5  -- 4.5 .. 8.0 px
+			duration   = 8 + math.random() * 6      -- 8 .. 14 s
+			opacity    = 0.60 + math.random() * 0.25
+			driftRange = 0.16                       -- ±8 % screen
+			zIndex     = 5
+			shapeRoll  = math.random()
+			if shapeRoll < 0.18 then
+				builder = makeDot
+			elseif shapeRoll < 0.70 then
+				builder = makeGlow
+			else
+				builder = makeTwinkle
+			end
+		end
+
+		local startDelay = math.random() * 18
+		local color      = pickTintedColor()
+		local mote       = builder(motes, sizePx, color, opacity)
+		-- Near layer draws over mid, mid draws over far.
+		mote.ZIndex = zIndex
 
 		task.spawn(function()
 			task.wait(startDelay)
 			while mote.Parent do
 				local startX = math.random()
-				local driftX = (math.random() - 0.5) * 0.06
+				local driftX = (math.random() - 0.5) * driftRange
 				mote.Position = UDim2.new(startX, 0, 1.05, 0)
 				local goal = UDim2.new(startX + driftX, 0, -0.05, 0)
 				local tw = TweenService:Create(mote,
@@ -618,7 +787,13 @@ local function buildHoloBackground(parent)
 	RunService.Heartbeat:Connect(function()
 		if #motesOccludeList == 0 then return end
 		for _, mote in motes:GetChildren() do
-			if mote:IsA("Frame") then
+			-- Accept both legacy Frame motes and the new CanvasGroup
+			-- motes that wrap composite shapes. For CanvasGroups we
+			-- modulate GroupTransparency (which cascades to every
+			-- child), for plain Frames the old BackgroundTransparency
+			-- path still works.
+			local isGroup = mote:IsA("CanvasGroup")
+			if isGroup or mote:IsA("Frame") then
 				local base = mote:GetAttribute("BaseTransparency") or 0.5
 				local p = mote.AbsolutePosition
 				local s = mote.AbsoluteSize
@@ -636,7 +811,12 @@ local function buildHoloBackground(parent)
 						end
 					end
 				end
-				mote.BackgroundTransparency = hidden and 0.97 or base
+				local target = hidden and 0.97 or base
+				if isGroup then
+					mote.GroupTransparency = target
+				else
+					mote.BackgroundTransparency = target
+				end
 			end
 		end
 	end)
@@ -871,6 +1051,11 @@ local function buildMenu()
 	-- below is manually pushed down past the topbar so the interactive
 	-- panels still stay clear of the Roblox chrome.
 	screenGui.IgnoreGuiInset = true
+	-- Pin to Sibling so the holoCover Frame (which hides the menu
+	-- during the boot animation) can rely on its own ZIndex to sit on
+	-- top of root's entire subtree — under Global the panel corner
+	-- L's and other high-ZIndex descendants bleed through the cover.
+	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	screenGui.Enabled = false
 	screenGui.DisplayOrder = 50
 	screenGui.Parent = playerGui
@@ -1581,6 +1766,11 @@ local function buildMenu()
 	cover.BorderSizePixel = 0
 	cover.Size = UDim2.fromScale(1, 1)
 	cover.Visible = false
+	-- ZIndex 1000 so the cover sits above every menu panel no matter
+	-- how high their internal ZIndex climbs. Overlay goes one higher
+	-- below so the 'LOAD…' / 'SYSTEM READY' text renders on top of
+	-- the cover.
+	cover.ZIndex = 1000
 	cover.Parent = screenGui
 	holoCover = cover
 
@@ -1595,6 +1785,7 @@ local function buildMenu()
 	overlay.Position = UDim2.fromScale(0.5, 0.5)
 	overlay.Size = UDim2.fromOffset(300, 60)
 	overlay.Visible = false
+	overlay.ZIndex = 1001 -- one above holoCover so text + bar read
 	overlay.Parent = screenGui
 
 	local loadText = makeLabel(overlay, "LOAD...", FONT_TITLE, 22, COLOR_TEXT, Enum.TextXAlignment.Center)

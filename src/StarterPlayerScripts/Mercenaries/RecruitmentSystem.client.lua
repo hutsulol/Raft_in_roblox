@@ -19,6 +19,13 @@ local camera = workspace.CurrentCamera
 
 local recruitEvent = ReplicatedStorage:WaitForChild("RecruitPirate")
 
+-- Central NPC-type registry. The recruitment client uses it to
+-- (a) reject downed humanoids that aren't a recognised recruitable
+-- type, (b) label the UI / dialogue with the right names, and
+-- (c) track which types the player has already recruited so future
+-- kills of a recruited type drop blood instead of re-opening recruit.
+local NpcTypes = require(ReplicatedStorage:WaitForChild("NpcTypes"))
+
 -- ═══════════════════════════════════════════════════════════════════════
 -- State
 -- ═══════════════════════════════════════════════════════════════════════
@@ -26,7 +33,18 @@ local currentPirate = nil
 local uiOpen = false
 local minigameRunning = false
 local claimedLocally = {} -- client-side set; immune to server replication overwriting
-local firstDefeatShown = false
+-- Per-NPC-type session flags. Keyed by NpcType id (e.g. "Pirate lvl1",
+-- "Infected Military") so each type gets its own first-defeat
+-- dialogue and its own "already recruited → drop blood" behaviour.
+local firstDefeatShownByType = {}
+-- Session-only set: a type lands in here when the player actually
+-- finishes the brain-maze recruit minigame. After that point, future
+-- kills of the same type route to the Injector + EmptyCapsule blood
+-- path. NOT a mirror of player.Mercenaries — DEV_AUTO_GRANT pre-fills
+-- the roster for menu testing, and we don't want that to skip the
+-- first-defeat dialogue for a type the player hasn't actually
+-- studied in this session yet.
+local recruitedThisSession = {}
 local defeatDialogueOpen = false
 local mercenariesUnlockShown = false
 
@@ -266,7 +284,9 @@ local DLG_COLOR_TEXT     = Color3.fromRGB(60, 40, 20)
 local DLG_COLOR_TEXT_DIM = Color3.fromRGB(160, 120, 60)
 local DLG_COLOR_INNER    = Color3.fromRGB(250, 235, 205)
 
-local function showFirstDefeatDialogue(onDone)
+local function showFirstDefeatDialogue(onDone, npcInfo)
+	local speakerName = (npcInfo and ("Defeated " .. (npcInfo.displayName or "Enemy")))
+		or "Defeated Pirate"
 	local PANEL_PAD = 20
 	local ICON_SZ   = 120
 	local GAP_      = 14
@@ -376,7 +396,7 @@ local function showFirstDefeatDialogue(onDone)
 	speakerLbl.Font           = Enum.Font.GothamBold
 	speakerLbl.TextSize       = 17
 	speakerLbl.TextColor3     = DLG_COLOR_ACCENT
-	speakerLbl.Text           = "Defeated Pirate"
+	speakerLbl.Text           = speakerName
 	speakerLbl.TextXAlignment = Enum.TextXAlignment.Left
 	speakerLbl.Parent         = textBg
 
@@ -602,32 +622,121 @@ local function findDownedPirateNearby()
 	if not hrp then return nil end
 	local playerPos = hrp.Position
 
-	local closest, closestDist = nil, 15
-	for _, child in workspace:GetChildren() do
-		if child:IsA("Model")
-			and child:FindFirstChild("HumanoidRootPart")
-			and child:FindFirstChildWhichIsA("Humanoid")
-			and not Players:GetPlayerFromCharacter(child)
-			and not CollectionService:HasTag(child, "SpawnedMercenary")
-			and isModelDowned(child)
-			and not child:GetAttribute("Claimed")
-			and not claimedLocally[child]
-		then
+	-- Build the candidate set from CollectionService and workspace
+	-- top-level children. Tagged hostiles are caught regardless of
+	-- how deeply nested they are in workspace (manually-placed rigs
+	-- often live under a Folder), and the workspace pass keeps any
+	-- legacy untagged rigs working.
+	local seen = {}
+	local function consider(child, list)
+		if seen[child] or not child or not child:IsDescendantOf(workspace) then return end
+		seen[child] = true
+		list[#list + 1] = child
+	end
+	local candidates = {}
+	for _, m in CollectionService:GetTagged("HostilePirate") do consider(m, candidates) end
+	-- Top-level workspace pass for legacy untagged rigs.
+	for _, m in workspace:GetChildren() do consider(m, candidates) end
+	-- Pirates can also be authored inside scenery models (e.g. Island_1
+	-- in Studio): they live as children of the island Model, not as
+	-- direct workspace children, and the spawner that would normally
+	-- stamp HostilePirate hasn't run on them. Walk one level deeper
+	-- through every Model in workspace and pick up any descendant
+	-- Model that has a Humanoid — that's enough of a pre-filter to
+	-- avoid scanning the whole workspace while still catching island-
+	-- nested pirates.
+	for _, top in workspace:GetChildren() do
+		if top:IsA("Model") then
+			for _, inner in top:GetDescendants() do
+				if inner:IsA("Model") and inner:FindFirstChildWhichIsA("Humanoid") then
+					consider(inner, candidates)
+				end
+			end
+		end
+	end
+
+	-- 25 studs — the previous 15-stud radius required the player to be
+	-- standing almost on top of the body, which was confusing after a
+	-- shotgun kill at range. CollectionService:HasTag still gates the
+	-- candidate set so we won't pick up unrelated rigs further out.
+	local closest, closestDist = nil, 25
+
+	-- Debug breadcrumbs. When the prompt isn't appearing it's almost
+	-- always one of the gates below silently rejecting the body — the
+	-- prints let the user (or me) see which one fired in the Studio
+	-- output without having to instrument blindly.
+	local DEBUG = true
+	local rejected = {}
+
+	for _, child in candidates do
+		local why
+		local npcInfo = NpcTypes.resolve(child)
+		-- Permissive fallback: if the rig still carries the HostilePirate
+		-- tag we treat it as recruitable even when NpcTypes.resolve
+		-- fails (e.g. cloned ragdoll missing the NpcType attribute on
+		-- some Roblox versions). The tag is set by the spawner and
+		-- preserved through clones in current Roblox.
+		local hostileTag = CollectionService:HasTag(child, "HostilePirate")
+
+		if not npcInfo and not hostileTag then
+			why = "no NpcType + no HostilePirate tag"
+		elseif not child:IsA("Model") then
+			why = "not a Model"
+		elseif not child:FindFirstChildWhichIsA("Humanoid") then
+			why = "no Humanoid"
+		elseif Players:GetPlayerFromCharacter(child) then
+			why = "is a player character"
+		elseif CollectionService:HasTag(child, "SpawnedMercenary") then
+			why = "is SpawnedMercenary"
+		elseif not isModelDowned(child) then
+			why = "not downed"
+		elseif child:GetAttribute("Claimed") then
+			why = "Claimed"
+		elseif claimedLocally[child] then
+			why = "claimedLocally"
+		end
+
+		if not why then
 			-- Use Torso or Head first — HumanoidRootPart can end up at a
-			-- weird position after ragdoll.
+			-- weird position after ragdoll, and some death paths destroy
+			-- it outright. Fall back to ANY BasePart in the rig so a
+			-- ragdolled corpse is still locatable.
 			local part = child:FindFirstChild("Torso")
+				or child:FindFirstChild("UpperTorso")
 				or child:FindFirstChild("Head")
 				or child:FindFirstChild("HumanoidRootPart")
 				or child:FindFirstChildWhichIsA("BasePart", true)
-			if part then
+			if not part then
+				why = "no BasePart"
+			else
 				local d = (playerPos - part.Position).Magnitude
-				if d < closestDist then
+				if d >= closestDist then
+					why = string.format("too far (%.1f studs)", d)
+				else
 					closest = child
 					closestDist = d
 				end
 			end
 		end
+
+		if DEBUG and why then
+			rejected[#rejected + 1] = string.format("%s: %s", child:GetFullName(), why)
+		end
 	end
+
+	if DEBUG and not closest and #rejected > 0 then
+		-- Only print once every ~2s when nothing close was found, so the
+		-- output isn't a wall of text every RenderStepped tick. Uses an
+		-- attribute on the script for the throttle stamp.
+		local now = os.clock()
+		local lastPrint = script:GetAttribute("LastNoMatchPrint") or 0
+		if now - lastPrint > 2 then
+			script:SetAttribute("LastNoMatchPrint", now)
+			print("[Recruit] No downed pirate found nearby; rejected candidates:")
+			for _, r in ipairs(rejected) do print("  ", r) end
+		end
+	end
+
 	return closest
 end
 
@@ -740,11 +849,26 @@ local function openRecruitPanel(pirate)
 	currentPirate = pirate
 	uiOpen = true
 
+	-- Adapt the panel title to the actual NPC type so the player sees
+	-- "Recruit Infected Military?" when the unit type is Infected Military instead of
+	-- the legacy "Recruit Pirate?" string.
+	local npcInfo = NpcTypes.resolve(pirate)
+	if npcInfo then
+		title.Text = "Recruit " .. (npcInfo.displayName or "Enemy") .. "?"
+	end
+
 	if _G.OpenBrainMaze then
 		_G.OpenBrainMaze(pirate, function(result)
 			if result == "completed" and pirate then
 				claimedLocally[pirate] = true
 				recruitEvent:FireServer("recruit", pirate)
+				if npcInfo then
+					-- Lock in the injector / blood-drop path for this
+					-- type from the next kill onward. Session-scoped:
+					-- on relog, the dialogue plays again so the
+					-- player can re-test the recruit flow.
+					recruitedThisSession[npcInfo.mercName] = true
+				end
 
 				if not mercenariesUnlockShown then
 					mercenariesUnlockShown = true
@@ -767,7 +891,12 @@ local function openRecruitPanel(pirate)
 end
 
 UserInputService.InputBegan:Connect(function(input, processed)
-	if processed then return end
+	-- GetFocusedTextBox() is the strict "user is actively typing"
+	-- check. The broader `processed` guard also went true any time a
+	-- GuiObject in the focus chain claimed the keyboard for other
+	-- reasons (e.g. the workbench Search TextBox lingering in the
+	-- focus chain after close), which silently killed E-to-recruit.
+	if UserInputService:GetFocusedTextBox() then return end
 	if input.KeyCode ~= Enum.KeyCode.E then return end
 	if defeatDialogueOpen then return end
 
@@ -780,7 +909,18 @@ UserInputService.InputBegan:Connect(function(input, processed)
 
 	local pirate = findDownedPirateNearby()
 	if pirate then
-		if mercenariesUnlockShown then
+		local npcInfo = NpcTypes.resolve(pirate)
+		local typeId  = npcInfo and npcInfo.mercName
+
+		-- Type the player already recruited THIS SESSION → injector
+		-- blood-collection flow. Studying / recruiting an NPC for the
+		-- first time is a one-shot per type; from the second downed
+		-- body onward the player extracts blood with the Injector +
+		-- EmptyCapsule combo, exactly like the original Pirate flow.
+		-- The session-scoped check (vs. mirroring player.Mercenaries)
+		-- means DEV_AUTO_GRANT can pre-populate the roster for menu
+		-- testing without skipping the first-defeat dialogue.
+		if typeId and recruitedThisSession[typeId] then
 			local char = player.Character
 			local equipped = char and char:FindFirstChildOfClass("Tool")
 			if not equipped or equipped.Name ~= "Injector" then
@@ -806,8 +946,13 @@ UserInputService.InputBegan:Connect(function(input, processed)
 			return
 		end
 
-		if not firstDefeatShown then
-			firstDefeatShown = true
+		-- First encounter with this NPC type: play the defeat
+		-- dialogue, then open the recruit panel. firstDefeatShownByType
+		-- gates the dialogue per-type so the Pirate intro plays once
+		-- and the Infected Military intro plays once.
+		local dialogueKey = typeId or "default"
+		if not firstDefeatShownByType[dialogueKey] then
+			firstDefeatShownByType[dialogueKey] = true
 			defeatDialogueOpen = true
 			_G.SuppressInventoryToggle = true
 			showFirstDefeatDialogue(function()
@@ -821,7 +966,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 				else
 					_G.SuppressInventoryToggle = false
 				end
-			end)
+			end, npcInfo)
 		else
 			openRecruitPanel(pirate)
 		end
@@ -880,8 +1025,12 @@ end)
 
 recruitEvent.OnClientEvent:Connect(function(action, data)
 	if action == "recruited" then
-		showNotification("Pirate Recruited!  (Total: " .. tostring(data) .. ")", Color3.fromRGB(80, 255, 80))
+		showNotification("Mercenary Recruited!  (Total: " .. tostring(data) .. ")", Color3.fromRGB(80, 255, 80))
 	elseif action == "failed" then
 		showNotification("Recruitment Failed", Color3.fromRGB(255, 100, 100))
+	elseif action == "bloodDropped" then
+		local info = NpcTypes.byBloodType(data)
+		local label = (info and info.bloodLabel) or "Blood"
+		showNotification("+1 " .. label, Color3.fromRGB(220, 80, 80))
 	end
 end)

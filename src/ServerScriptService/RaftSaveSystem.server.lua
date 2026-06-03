@@ -7,6 +7,14 @@ local DataStoreService = game:GetService("DataStoreService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TeleportService = game:GetService("TeleportService")
 
+-- Per-player ownership tracking. Forward-declared up here (T18) so
+-- savePlayerData (defined further down) captures the same local as
+-- the join-time + leave-time wiring at line ~750. Previously the
+-- function captured a nil global, and PlayerRemoving / BindToClose
+-- crashed with "attempt to index nil with Instance" trying to read
+-- playerIsRaftOwner[player].
+local playerIsRaftOwner = {} -- [player] = true/false
+
 local raftStore = nil
 local storeOk, storeErr = pcall(function()
 	raftStore = DataStoreService:GetDataStore("RaftSaveData_v1")
@@ -435,26 +443,47 @@ local function rebuildRaft(player, saveData)
 		return (raftCF * CFrame.new(localOffset)).Position
 	end
 
+	-- Save load: snapshot velocity + 3-pass anchor/weld/unanchor per
+	-- item (T13/T15/T16/T24) so replaying the save doesn't bleed
+	-- momentum out of the raft assembly.
+	local primary = raft.PrimaryPart
+
 	local function weldAndUnanchor(clone)
+		local linVel = primary.AssemblyLinearVelocity
+		local angVel = primary.AssemblyAngularVelocity
 		if clone:IsA("Model") then
+			-- Pass 0: force-anchor every part (saved state may have
+			-- unanchored values from when we last saved).
+			for _, part in clone:GetDescendants() do
+				if part:IsA("BasePart") then
+					part.Anchored = true
+				end
+			end
+			-- Pass 1: weld every part while still anchored.
 			for _, part in clone:GetDescendants() do
 				if part:IsA("BasePart") then
 					local weld = Instance.new("WeldConstraint")
-					weld.Part0 = raft.PrimaryPart
+					weld.Part0 = primary
 					weld.Part1 = part
 					weld.Parent = part
 				end
 			end
+			-- Pass 2: unanchor (parts inherit raft velocity via the weld).
 			for _, part in clone:GetDescendants() do
-				if part:IsA("BasePart") then part.Anchored = false end
+				if part:IsA("BasePart") then
+					part.Anchored = false
+				end
 			end
 		else
+			clone.Anchored = true
 			local weld = Instance.new("WeldConstraint")
-			weld.Part0 = raft.PrimaryPart
+			weld.Part0 = primary
 			weld.Part1 = clone
 			weld.Parent = clone
 			clone.Anchored = false
 		end
+		primary.AssemblyLinearVelocity  = linVel
+		primary.AssemblyAngularVelocity = angVel
 	end
 
 	-- Place floors (skip origin 0,0 which already exists)
@@ -682,12 +711,13 @@ local function restoreTools(player, saveData)
 		["Pick-Axe"] = true, ["Hammer"] = true, ["Axe"] = true,
 		["Hook"] = true, ["Machete"] = true, ["Wooden_Spear"] = true,
 		["Cup"] = true, ["Destitalor"] = true, ["Wood_Knife"] = true,
+		["Stone_Axe"] = true,
 	}
 
 	-- Placeholder tools (placement items) — create a simple Tool with transparent Handle
 	local placeholderTools = {
-		["WorkBench"] = true, ["Garden"] = true, ["Furnace"] = true,
-		["Bed"] = true, ["bush"] = true,
+		["WorkBench"] = true, ["Garden"] = true, ["Bed_T"] = true,
+		["Furnace"] = true, ["Bed"] = true, ["bush"] = true,
 	}
 
 	for _, toolName in saveData.tools do
@@ -733,8 +763,9 @@ end
 -- Track whether the raft has already been rebuilt from a save (for group loads)
 local raftRebuiltFromSave = false
 
--- Per-player ownership tracking (only the owner gets raft data saved)
-local playerIsRaftOwner = {} -- [player] = true/false
+-- Per-player ownership tracking (only the owner gets raft data saved).
+-- The local was forward-declared at the top of the file (T18) so
+-- savePlayerData's upvalue resolves to the right slot.
 
 -- ─── Load save data by UserId key ───
 local function loadPlayerDataByUserId(userId)

@@ -83,7 +83,9 @@ end
 
 local function addToPlayerInventory(player, itemName, count)
 	if not _G.AddResourceToInventory then return 0 end
-	return _G.AddResourceToInventory(player, itemName, count, nil) or 0
+	-- silent=true: chest takeout shouldn't fire the InventoryNotify
+	-- "+N item" card (per user brief — only natural pickups notify).
+	return _G.AddResourceToInventory(player, itemName, count, nil, true) or 0
 end
 
 -- Tools (Wood_Knife, Injector, capsules, …) live as Tool Instances in
@@ -203,15 +205,33 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	container:PivotTo(worldCF)
 	container.Parent = raft
 
+	-- T13/T15/T16: snapshot velocity, force-anchor (templates may be
+	-- unanchored), weld while anchored, then unanchor.
+	local primary = raft.PrimaryPart
+	local linVel = primary.AssemblyLinearVelocity
+	local angVel = primary.AssemblyAngularVelocity
+
 	for _, part in container:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.Anchored = false
+			part.Anchored = true
+		end
+	end
+	for _, part in container:GetDescendants() do
+		if part:IsA("BasePart") then
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart
 			weld.Parent = part
 		end
 	end
+	for _, part in container:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
+		end
+	end
+
+	primary.AssemblyLinearVelocity  = linVel
+	primary.AssemblyAngularVelocity = angVel
 
 	setupContainerPrompt(container)
 

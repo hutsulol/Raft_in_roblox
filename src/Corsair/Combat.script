@@ -1,0 +1,868 @@
+-- Combat.script (Corsair — Mercenary AI)
+--
+-- Hybrid melee / ranged AI built on top of two reference scripts:
+--   * src/Pirate_2/Combat.script — whole structure (search → recompute
+--     path → travel → jump check → attack), MERCENARY role contract,
+--     pathfinding around obstacles, line-of-sight raycast, wake-up
+--     normalisation. Borrowed verbatim except where called out.
+--   * src/Infected_Military/NpcAi.script — bullet block (Neon Part +
+--     BodyVelocity, Touched-driven damage). The aiming pose lerp from
+--     NpcAi was intentionally dropped: the original implementation
+--     froze the rig in mid-aim and stopped it approaching the player.
+--     The rig now fires while still walking toward the target, which
+--     matches the user's brief ("approach + shoot"). The Revolver
+--     tool's own ShootSound + LightShotEffect / ShotEffect emitters
+--     are triggered on every shot so the gun still reads as "firing".
+--
+-- Behaviour:
+--   dist ≤ MELEE_RANGE   → swing the Cutlass (Pirate cadence)
+--   dist ≤ RANGED_RANGE  → fire a Revolver bullet WHILE walking
+--   + line of sight        toward the target — does not stop
+--   else                  → walk toward target, no attack
+--
+-- Both weapons live on the rig at once (PRESERVES_AUTHORED_LOADOUT in
+-- MercenarySpawner keeps them through the spawn). At any moment only
+-- one is rendered: setActiveWeapon flips Transparency on every
+-- BasePart / Decal / Texture under the inactive tool so the rig
+-- visibly draws / sheathes between modes.
+
+local CollectionService  = game:GetService("CollectionService")
+local Players            = game:GetService("Players")
+local PathfindingService = game:GetService("PathfindingService")
+local ReplicatedStorage  = game:GetService("ReplicatedStorage")
+local RunService         = game:GetService("RunService")
+local Debris             = game:GetService("Debris")
+
+local Self = script.Parent
+
+-- Per-merc Strength / Speed / Luck spec. Strength drives the swing +
+-- bullet damage we apply server-side. Corsair's base strength is 30
+-- (Marauder tier in StatsSystem.md) → 15 dmg per fist; we use that
+-- for both the cutlass swing and the revolver bullet so the merc's
+-- DPS scales with its tier instead of a hardcoded number.
+-- Required asynchronously so a slow ReplicatedStorage replication
+-- never blocks the AI loop init below — meleeAttack / fireBullet
+-- fall back to flat values until the module loads.
+local MercStats
+task.spawn(function()
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 30)
+	if mod then
+		local ok, result = pcall(require, mod)
+		if ok then MercStats = result end
+	end
+end)
+
+-- ── Tunables ──────────────────────────────────────────────────────────
+local ATTR = {
+	MaximumDetectionDistance = 160,
+	MaxHealth                = 320,
+	WalkSpeed                = 16,
+
+	-- Melee + ranged DAMAGE values are now driven from MercStats —
+	-- both branches read fistDamage(strength) on each strike so a
+	-- maxed Corsair bites harder than a starter Pirate without the
+	-- numbers diverging from the doc. Default fallbacks (22 / 14)
+	-- match the previous hardcoded values for boot-order safety.
+	MeleeFrequency           = 1.6,
+	MeleeRange               = 6,
+
+	-- Ranged (Revolver). RangedRange is intentionally short — the user
+	-- wants the rig to stay aggressive at medium distance and only
+	-- engage with the gun once it's close enough to the player to make
+	-- the shot read. Above this we just chase.
+	RangedFrequency          = 1.0,
+	RangedRange              = 35,
+	BulletSpeed              = 320,
+	BulletLife               = 1.4,
+
+	RecomputePathFrequency   = 1,
+	JumpCheckFrequency       = 1,
+}
+
+local CUTLASS_NAME  = "Cutlass"
+local REVOLVER_NAME = "Revolver"
+
+-- ── Wait for the rig to be in the world ───────────────────────────────
+while not Self:IsDescendantOf(workspace) do
+	Self.AncestryChanged:Wait()
+end
+
+-- Skip combat for non-weapon mercenaries (mirrors Pirate_2 contract).
+local equippedWeapon = Self:GetAttribute("EquippedWeapon") or "Sword"
+if equippedWeapon == "FishingRod" or equippedWeapon == "Unarmed" then
+	return
+end
+
+local humanoid = Self:WaitForChild("Humanoid", 5)
+if humanoid == nil then
+	warn("[Corsair/Combat] no Humanoid — AI cannot run")
+	return
+end
+
+-- Wake the rig up + apply combat stats. Belt-and-suspenders against
+-- a template saved mid-ragdoll or with weird platform-stand state.
+for _, d in Self:GetDescendants() do
+	if d:IsA("BasePart") then d.Anchored = false end
+end
+humanoid.MaxHealth     = ATTR.MaxHealth
+humanoid.Health        = ATTR.MaxHealth
+humanoid.WalkSpeed     = ATTR.WalkSpeed
+humanoid.PlatformStand = false
+humanoid.Sit           = false
+pcall(function()
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Physics, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Jumping, true)
+	humanoid:SetStateEnabled(Enum.HumanoidStateType.Freefall, true)
+end)
+-- Make sure the rig CAN actually jump (PathfindingService waypoints
+-- and the explicit jumpCheck below both rely on this).
+if humanoid.JumpPower == 0 and humanoid.JumpHeight == 0 then
+	humanoid.JumpPower = 50
+end
+
+-- ── Cutlass / Revolver lookup + draw / sheathe helpers ───────────────
+-- IMPORTANT: do NOT call humanoid:EquipTool / Tool:Activate on these
+-- tools. The authored Revolver Server script crashes on NPCs
+-- (it indexes MyPlayer.Character with MyPlayer = nil) and routes the
+-- mouse-icon / scope HUD to the nearest player. We treat each Tool
+-- as a passive visual prop and fire bullets ourselves below.
+--
+-- Tool name resolution is trickier than it looks. The authored
+-- Revolver Server script renames the Tool every frame to embed the
+-- ammo count (e.g. "Revolver" → "Revolver (6)"), so a name-based
+-- FindFirstChild stops working after the first tick. Resolve by the
+-- stable Values.GunOriginalName StringValue child where present, and
+-- fall back to a name-prefix match (the leading word of the renamed
+-- tool still equals its original name).
+local toolRefs = {}   -- ["Revolver"] = Tool, ["Cutlass"] = Tool
+
+local function originalNameOf(tool)
+	local values = tool:FindFirstChild("Values")
+	local origName = values and values:FindFirstChild("GunOriginalName")
+	if origName and origName:IsA("StringValue") and origName.Value ~= "" then
+		return origName.Value
+	end
+	-- Fall back to first word of current Name. "Revolver (6)" → "Revolver".
+	local n = tool.Name:match("^(%S+)") or tool.Name
+	return n
+end
+
+local function resolveToolRefs()
+	table.clear(toolRefs)
+	for _, child in Self:GetChildren() do
+		if child:IsA("Tool") then
+			local key = originalNameOf(child)
+			if key and key ~= "" then
+				toolRefs[key] = child
+			end
+		end
+	end
+end
+
+resolveToolRefs()
+
+-- Re-scan whenever Tools are added or removed so we never hold a
+-- stale reference (the rig may shed / regain a Tool over its
+-- lifetime). Heartbeat-cheap because it only fires on child changes.
+Self.ChildAdded:Connect(function(child)
+	if child:IsA("Tool") then resolveToolRefs() end
+end)
+Self.ChildRemoved:Connect(function(child)
+	if child:IsA("Tool") then resolveToolRefs() end
+end)
+
+local function findTool(name)
+	local t = toolRefs[name]
+	if t and t.Parent then return t end
+	resolveToolRefs()
+	t = toolRefs[name]
+	if t and t.Parent then return t end
+	return nil
+end
+
+local function setToolVisible(tool, visible)
+	if not tool then return end
+	local t = visible and 0 or 1
+	for _, d in tool:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Transparency = t
+		elseif d:IsA("Decal") or d:IsA("Texture") then
+			d.Transparency = t
+		end
+	end
+end
+
+-- Sticky transparency. The authored Revolver Tool ships with its own
+-- Server / Client scripts that appear to reset Handle.Transparency
+-- back to 0 on internal events (the user reported the revolver stayed
+-- visible even after we set Transparency=1). Re-apply our intended
+-- transparency every Heartbeat so our swap always wins. Cheap to
+-- run — just two BasePart children plus their decorative descendants.
+local desiredTransparency = {}   -- [tool] = 0 or 1
+
+local function applyDesired(tool)
+	local t = desiredTransparency[tool]
+	if t == nil then return end
+	for _, d in tool:GetDescendants() do
+		if d:IsA("BasePart") then
+			if d.Transparency ~= t then d.Transparency = t end
+		elseif d:IsA("Decal") or d:IsA("Texture") then
+			if d.Transparency ~= t then d.Transparency = t end
+		end
+	end
+end
+
+-- Generic "draw weapon" sound, played each time we swap. Pulls from
+-- the relevant Tool when an authored sound is available (Revolver
+-- ships ReloadSound), otherwise falls back to a stock Roblox swoosh
+-- so the swap always reads audibly.
+local SWAP_SOUND_FALLBACK = "rbxassetid://130113322"   -- generic blade-draw
+
+local function playSwapSound(forName)
+	local tool = forName == REVOLVER_NAME and findTool(REVOLVER_NAME)
+		or findTool(CUTLASS_NAME)
+	-- Look for a likely swap-cue sound on the new weapon: Reload /
+	-- Equip / Draw — anything authored on the rig. Fall back to a
+	-- Roblox stock id parented to the Head so the cue still plays
+	-- even on a rig with bare-bones tools.
+	local s
+	if tool then
+		for _, name in ipairs({ "ReloadSound", "EquipSound", "DrawSound" }) do
+			local cand = tool:FindFirstChild(name, true)
+			if cand and cand:IsA("Sound") then s = cand; break end
+		end
+	end
+	if s then
+		pcall(function() s:Play() end)
+		return
+	end
+	local head = Self:FindFirstChild("Head")
+	if not head then return end
+	local fallback = Instance.new("Sound")
+	fallback.SoundId = SWAP_SOUND_FALLBACK
+	fallback.Volume  = 1.4
+	fallback.Parent  = head
+	fallback:Play()
+	Debris:AddItem(fallback, 1)
+end
+
+local activeWeaponName  -- "Cutlass" / "Revolver" / nil
+local function setActiveWeapon(name)
+	if activeWeaponName == name then return end
+	local previousName = activeWeaponName
+	activeWeaponName = name
+	local cutlass  = findTool(CUTLASS_NAME)
+	local revolver = findTool(REVOLVER_NAME)
+	if cutlass  then desiredTransparency[cutlass]  = (name == CUTLASS_NAME)  and 0 or 1 end
+	if revolver then desiredTransparency[revolver] = (name == REVOLVER_NAME) and 0 or 1 end
+	-- Apply once immediately so the swap is visible this frame even
+	-- before the Heartbeat enforcer wakes up.
+	if cutlass  then applyDesired(cutlass)  end
+	if revolver then applyDesired(revolver) end
+	-- Only play the swap sfx on actual transitions (not the initial
+	-- nil → revolver setup at script load) so the rig doesn't ring
+	-- its draw sound the moment it spawns.
+	if previousName then
+		playSwapSound(name)
+	end
+end
+
+-- Per the user's brief: spawn with the Revolver in hand. The first
+-- time the rig closes to MELEE_THRESHOLD, the state machine flips
+-- to Cutlass mode; once the target backs away again it flips back
+-- to Revolver and the rig kites.
+setActiveWeapon(REVOLVER_NAME)
+
+-- Heartbeat sticky-transparency enforcer. Beats any Tool-authored
+-- script that tries to make the inactive weapon visible again.
+RunService.Heartbeat:Connect(function()
+	if not Self.Parent then return end
+	local cutlass  = findTool(CUTLASS_NAME)
+	local revolver = findTool(REVOLVER_NAME)
+	if cutlass  then applyDesired(cutlass)  end
+	if revolver then applyDesired(revolver) end
+end)
+
+-- ── Animations ───────────────────────────────────────────────────────
+-- Melee swing animation (R6 toolslash fallback if the user didn't drop
+-- a child Animation called "Attack" on the script). Same fallback
+-- the working Zombie.script uses for hostile pirates.
+local DEFAULT_ATTACK_ID = "rbxassetid://129967390"
+local animator = humanoid:FindFirstChildOfClass("Animator")
+if not animator then
+	animator = Instance.new("Animator")
+	animator.Parent = humanoid
+end
+local attackTrack
+do
+	local anim = script:FindFirstChild("Attack")
+	if not (anim and anim:IsA("Animation")) then
+		anim = Instance.new("Animation")
+		anim.Name = "Attack"
+		anim.AnimationId = DEFAULT_ATTACK_ID
+	end
+	local ok, track = pcall(animator.LoadAnimation, animator, anim)
+	if ok then
+		attackTrack = track
+		attackTrack.Priority = Enum.AnimationPriority.Action
+	end
+end
+
+-- Optional ranged animation track ("AttackRanged" Animation child on
+-- the script). Loaded if present so a custom muzzle-up gun pose can
+-- play while the rig fires; we don't fight the rig's Animate script
+-- with Motor6D :lerp anymore.
+local rangedTrack
+do
+	local anim = script:FindFirstChild("AttackRanged")
+	if anim and anim:IsA("Animation") then
+		local ok, track = pcall(animator.LoadAnimation, animator, anim)
+		if ok then
+			rangedTrack = track
+			rangedTrack.Priority = Enum.AnimationPriority.Action
+		end
+	end
+end
+
+-- ── Helpers (mirror Pirate_2/Combat) ─────────────────────────────────
+local function getTorso(model)
+	return model:FindFirstChild("Torso")
+		or model:FindFirstChild("UpperTorso")
+		or model:FindFirstChild("HumanoidRootPart")
+end
+
+local function getHRP()
+	return Self:FindFirstChild("HumanoidRootPart")
+end
+
+local function isPlayerCharacter(model)
+	return Players:GetPlayerFromCharacter(model) ~= nil
+end
+
+local function isFellowMercenary(model)
+	return CollectionService:HasTag(model, "SpawnedMercenary")
+end
+
+-- ── State ────────────────────────────────────────────────────────────
+local currentTarget    = nil
+local pathCoords       = {}
+local currentNode      = nil
+local currentNodeIndex = 1
+local autoRecompute    = true
+local recomputing      = false
+local lastPathTime     = 0
+local lastJumpCheck    = 0
+local lastMelee        = 0
+local lastShot         = 0
+local alive            = true
+
+humanoid.Died:Connect(function() alive = false end)
+
+-- ── Target search ────────────────────────────────────────────────────
+-- Mercenary contract: any Humanoid that isn't a player and isn't
+-- another mercenary is fair game. Hostile rigs (no SpawnedMercenary
+-- tag) target players + mercs instead.
+local function searchForTarget()
+	local hrp = getHRP()
+	if not hrp then return end
+	local myPos = hrp.Position
+	local mercRole = isFellowMercenary(Self)
+
+	local closestHum, closestDist = nil, math.huge
+
+	for _, model in workspace:GetDescendants() do
+		if model:IsA("Humanoid") and model ~= humanoid and model.Health > 0 then
+			local parent = model.Parent
+			if not parent or parent == Self then continue end
+			local valid = false
+			if mercRole then
+				-- Mercenaries hunt anything that's NOT a player and NOT
+				-- another mercenary (Pirate_2/Combat contract).
+				valid = (not isPlayerCharacter(parent)) and (not isFellowMercenary(parent))
+			else
+				-- Hostile rigs hunt players + mercenaries.
+				valid = isPlayerCharacter(parent) or isFellowMercenary(parent)
+			end
+			if valid then
+				local torso = getTorso(parent)
+				if torso and torso:IsA("BasePart") then
+					local d = (torso.Position - myPos).Magnitude
+					if d < ATTR.MaximumDetectionDistance and d < closestDist then
+						closestHum, closestDist = model, d
+					end
+				end
+			end
+		end
+	end
+
+	currentTarget = closestHum
+end
+
+local function targetIsValid()
+	if currentTarget == nil then return false end
+	if currentTarget.Health <= 0 then return false end
+	local torso = currentTarget.Parent and getTorso(currentTarget.Parent)
+	return torso ~= nil and torso:IsA("BasePart")
+end
+
+local function getTargetPosition()
+	if not targetIsValid() then return nil end
+	return getTorso(currentTarget.Parent).Position
+end
+
+-- ── Pathfinding (mirrors Pirate_2/Combat) ────────────────────────────
+local function hasLineOfSight()
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return false end
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { Self, currentTarget.Parent }
+	local result = workspace:Raycast(hrp.Position, tp - hrp.Position, params)
+	return result == nil
+end
+
+local function recomputePath()
+	if recomputing then return end
+	if not targetIsValid() then return end
+
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+
+	if hasLineOfSight() then
+		autoRecompute    = true
+		pathCoords       = { hrp.Position, tp }
+		currentNode      = nil
+		currentNodeIndex = 2
+		lastPathTime     = tick()
+		return
+	end
+
+	recomputing  = true
+	autoRecompute = false
+
+	local ok, path = pcall(function()
+		return PathfindingService:CreatePath({
+			AgentRadius = 2,
+			AgentHeight = 5,
+			AgentCanJump = true,
+		})
+	end)
+	if not ok or not path then
+		recomputing = false
+		return
+	end
+	local computeOk = pcall(function()
+		path:ComputeAsync(hrp.Position, tp)
+	end)
+	if computeOk and path.Status == Enum.PathStatus.Success then
+		pathCoords = {}
+		for _, wp in path:GetWaypoints() do
+			table.insert(pathCoords, wp.Position)
+		end
+		currentNode      = nil
+		currentNodeIndex = 1
+	else
+		pathCoords = { hrp.Position, tp }
+		currentNode      = nil
+		currentNodeIndex = 2
+	end
+
+	recomputing  = false
+	lastPathTime = tick()
+end
+
+local function tryRecomputePath()
+	if autoRecompute or tick() - lastPathTime > 1 / ATTR.RecomputePathFrequency then
+		recomputePath()
+	end
+end
+
+-- ── Jump check (rubber-band over small obstacles) ────────────────────
+-- Identical to Pirate_2/Combat. Without this the rig walks face-first
+-- into beach rocks / log piles between itself and the target.
+local function jumpCheck()
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+	local checkVector = (tp - hrp.Position)
+	if checkVector.Magnitude < 0.1 then return end
+	checkVector = checkVector.Unit * 2
+	local params = RaycastParams.new()
+	params.FilterType = Enum.RaycastFilterType.Exclude
+	params.FilterDescendantsInstances = { Self }
+	local result = workspace:Raycast(
+		hrp.Position + Vector3.new(0, -2.4, 0),
+		checkVector,
+		params
+	)
+	if result and currentTarget.Parent and not result.Instance:IsDescendantOf(currentTarget.Parent) then
+		humanoid.Jump = true
+	end
+	lastJumpCheck = tick()
+end
+
+local function tryJumpCheck()
+	if tick() - lastJumpCheck > 1 / ATTR.JumpCheckFrequency then
+		jumpCheck()
+	end
+end
+
+-- ── Melee branch (Cutlass swing) ─────────────────────────────────────
+local function meleeAttack()
+	if not targetIsValid() then return end
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+	if (hrp.Position - tp).Magnitude > ATTR.MeleeRange then return end
+	if tick() - lastMelee <= 1 / ATTR.MeleeFrequency then return end
+
+	setActiveWeapon(CUTLASS_NAME)
+	-- Strength → swing damage. Corsair base 30 → 15 dmg; falls back
+	-- to the previous flat 22 if MercStats failed to load.
+	local strength = (MercStats and MercStats.statsFromRig(Self).strength) or 30
+	local meleeDmg = MercStats and MercStats.fistDamage(strength) or 22
+	currentTarget:TakeDamage(meleeDmg)
+	lastMelee = tick()
+	if attackTrack then
+		pcall(function()
+			attackTrack:Stop(0)
+			attackTrack:Play(0.1)
+		end)
+	end
+	-- Intentionally NOT calling Cutlass:Activate(). The user's Tool
+	-- ships with authored client/server scripts whose Activated logic
+	-- latched onto the nearest player when triggered — we damage the
+	-- target manually above and play the swing animation; the Tool
+	-- itself stays a passive visual.
+end
+
+-- ── Ranged branch (Revolver bullet) ──────────────────────────────────
+-- Spawns a Neon bullet from the Revolver muzzle aimed at the target's
+-- head. Damage is applied in Touched, with our own rig + accessories
+-- + fellow mercs / players excluded. Plays the user's authored
+-- ShootSound + LightShotEffect / ShotEffect particle emitters so the
+-- shot reads even without any custom Tool.Activated handler.
+local function findRevolverMuzzle()
+	local rev = findTool(REVOLVER_NAME)
+	if not rev then return nil, nil end
+	local muzzle = rev:FindFirstChild("Muzzle")
+		or rev:FindFirstChild("Handle")
+		or rev:FindFirstChildWhichIsA("BasePart", true)
+	return rev, muzzle
+end
+
+local function findSound(parent, names)
+	for _, n in ipairs(names) do
+		local s = parent:FindFirstChild(n, true)
+		if s and s:IsA("Sound") then return s end
+	end
+	return nil
+end
+
+local function emitMuzzleEffects(muzzle)
+	if not muzzle then return end
+	for _, d in muzzle:GetDescendants() do
+		if d:IsA("ParticleEmitter")
+			and (d.Name == "LightShotEffect" or d.Name == "ShotEffect") then
+			d:Emit(12)
+		end
+	end
+end
+
+local function fireBullet()
+	if not targetIsValid() then return end
+	local rev, muzzle = findRevolverMuzzle()
+	if not muzzle then return end
+	local tp = getTargetPosition()
+	if not tp then return end
+
+	local sound = rev and findSound(rev, { "ShootSound", "shoot", "Shoot" })
+	if sound then pcall(function() sound:Play() end) end
+	emitMuzzleEffects(muzzle)
+	-- Intentionally NOT calling Revolver:Activate(). The authored
+	-- Tool ships a Server BulletScript that crashes for NPCs (its
+	-- OnActivated indexes MyPlayer.Character with MyPlayer = nil).
+	-- We mirror its visual side-effects ourselves below.
+	if rangedTrack then
+		pcall(function()
+			rangedTrack:Stop(0)
+			rangedTrack:Play(0.1)
+		end)
+	end
+
+	-- LightShotEffect on the Handle is a ParticleEmitter or PointLight
+	-- the user authored for the muzzle flash. The Server BulletScript
+	-- does .Enabled = true for 0.25 s and then .Enabled = false. Mirror
+	-- that here so the Corsair's shots flash exactly like the player's.
+	local lightShot = muzzle:FindFirstChild("LightShotEffect")
+	if lightShot then
+		pcall(function() lightShot.Enabled = true end)
+		task.delay(0.25, function()
+			if lightShot then pcall(function() lightShot.Enabled = false end) end
+		end)
+	end
+
+	local origin = muzzle.Position
+	local bullet = Instance.new("Part")
+	bullet.Name      = "CorsairBullet"
+	bullet.Size      = Vector3.new(0.3, 0.3, 3.5)
+	bullet.Material  = Enum.Material.Neon
+	bullet.Color     = Color3.fromRGB(255, 220, 130)
+	bullet.CanCollide = false
+	bullet.CanQuery   = false
+	bullet.CFrame    = CFrame.new(origin, tp)
+	bullet.Parent    = workspace
+
+	-- Attachment on the bullet so the gun's ShotEffect Beam can hook
+	-- a visual line from Handle.Attachment0 to this bullet for the
+	-- shot duration. Mirrors the Server BulletScript's path.
+	local bulletAttach = Instance.new("Attachment")
+	bulletAttach.Name   = "Attachment1"
+	bulletAttach.Parent = bullet
+
+	local shotEffect = muzzle:FindFirstChild("ShotEffect")
+	if shotEffect and (shotEffect:IsA("Beam") or shotEffect:IsA("Trail")) then
+		pcall(function() shotEffect.Attachment1 = bulletAttach end)
+		task.delay(0.25, function()
+			if shotEffect then pcall(function() shotEffect.Attachment1 = nil end) end
+		end)
+	end
+
+	local bv = Instance.new("BodyVelocity")
+	bv.MaxForce = Vector3.new(math.huge, math.huge, math.huge)
+	bv.Velocity = bullet.CFrame.LookVector * ATTR.BulletSpeed
+		+ Vector3.new(math.random(-12, 12), math.random(-12, 12), 0)
+	bv.Parent   = bullet
+
+	-- Brief muzzle flash PointLight on top of the LightShotEffect, in
+	-- case the authored effect is a ParticleEmitter (no light pulse).
+	local flash = Instance.new("PointLight")
+	flash.Color      = Color3.fromRGB(255, 220, 140)
+	flash.Brightness = 4
+	flash.Range      = 6
+	flash.Parent     = muzzle
+	Debris:AddItem(flash, 0.1)
+	Debris:AddItem(bullet, ATTR.BulletLife)
+
+	local mercRole = isFellowMercenary(Self)
+	-- Strength → bullet damage, snapshotted at fire time so each
+	-- bullet hits for the rig's strength at the moment of the shot
+	-- (captured by the closure below). Falls back to the previous
+	-- flat 14 if MercStats failed to load.
+	local strength = (MercStats and MercStats.statsFromRig(Self).strength) or 30
+	local rangedDmg = MercStats and MercStats.fistDamage(strength) or 14
+	local consumed = false
+	bullet.Touched:Connect(function(part)
+		if consumed or not part or not part.Parent then return end
+		if part:IsDescendantOf(Self) then return end
+		if part.Parent:IsA("Accessory") then return end
+		if part.Parent.Parent and part.Parent.Parent:IsA("Accessory") then return end
+
+		local model = part:FindFirstAncestorOfClass("Model")
+		if model then
+			-- Don't friendly-fire fellow mercs / players when this rig
+			-- is the merc; symmetrically don't fire on fellow hostiles
+			-- when this rig is hostile (avoids the gun griefing other
+			-- pirates the player hasn't engaged yet).
+			if mercRole then
+				if Players:GetPlayerFromCharacter(model) then return end
+				if isFellowMercenary(model) and model ~= Self then return end
+			else
+				if not (Players:GetPlayerFromCharacter(model) or isFellowMercenary(model)) then
+					return
+				end
+			end
+			local victim = model:FindFirstChildOfClass("Humanoid")
+			if victim and victim ~= humanoid and victim.Health > 0 then
+				victim:TakeDamage(rangedDmg)
+			end
+		end
+		consumed = true
+		bullet:Destroy()
+	end)
+end
+
+local rangedDebugFired = false
+local rangedDebugBlockedLOS = false
+local function rangedAttack()
+	if not targetIsValid() then return end
+	if not hasLineOfSight() then
+		if not rangedDebugBlockedLOS then
+			rangedDebugBlockedLOS = true
+			warn("[Corsair/Combat] ranged blocked: hasLineOfSight=false (will retry silently)")
+		end
+		return
+	end
+	if tick() - lastShot <= 1 / ATTR.RangedFrequency then return end
+	setActiveWeapon(REVOLVER_NAME)
+	lastShot = tick()
+	if not rangedDebugFired then
+		rangedDebugFired = true
+		warn("[Corsair/Combat] FIRST RANGED SHOT — Revolver should now be visible")
+	end
+	fireBullet()
+end
+
+-- ── Cutlass-mode path travel (mirrors Pirate_2/Combat) ──────────────
+-- Used only while the state machine is in CUTLASS mode. Walks the
+-- pathfinding-or-LOS waypoints toward the target, jumps over short
+-- obstacles, and triggers the cutlass swing when in melee range.
+local function travelCutlassPath()
+	if #pathCoords == 0 then return end
+	local hrp = getHRP()
+	if not hrp then return end
+	local myPos = hrp.Position
+
+	local skipCurrent = currentNode ~= nil and (currentNode - myPos).Magnitude < 3
+
+	local closest, closestDist, closestIdx = nil, math.huge, nil
+	for i = currentNodeIndex, #pathCoords do
+		local c = pathCoords[i]
+		if not (skipCurrent and c == currentNode) then
+			local d = (c - myPos).Magnitude
+			if d < closestDist then
+				closest, closestDist, closestIdx = c, d, i
+			else
+				break
+			end
+		end
+	end
+
+	if closest then
+		currentNode      = closest
+		currentNodeIndex = closestIdx
+		humanoid:MoveTo(closest)
+
+		if humanoid.Health > 0 and targetIsValid() then
+			tryJumpCheck()
+			-- In cutlass mode only the melee branch fires; we skip the
+			-- ranged dispatch entirely so the rig commits to the rush.
+			meleeAttack()
+		end
+
+		if closestIdx == #pathCoords then
+			autoRecompute = true
+		end
+	end
+end
+
+-- ── Revolver-mode behaviour (kite + fire) ───────────────────────────
+-- The user's brief: "When he's holding a revolver, he tries to move
+-- away from the player, but doesn't stand still. He moves, but
+-- doesn't approach". So: keep distance, fire while strafing.
+--
+--   dist < KITE_RADIUS     → step away from the target (back-pedal)
+--   dist > APPROACH_RADIUS → walk toward the target so we don't
+--                            lose them, but only just within range
+--   between the two        → strafe in place (small lateral steps)
+--                            so the rig isn't a static target
+local KITE_RADIUS     = 18   -- below this, back-pedal away from target
+local APPROACH_RADIUS = 30   -- above this, walk closer to maintain LOS
+local STRAFE_PERIOD   = 1.6  -- seconds per strafe direction flip
+
+local strafeFlipAt   = 0
+local strafeSign     = 1
+
+local function revolverStep()
+	if not targetIsValid() then return end
+	local hrp = getHRP()
+	local tp = getTargetPosition()
+	if not hrp or not tp then return end
+
+	local dist = (hrp.Position - tp).Magnitude
+
+	-- Face the target so the muzzle (and bullet) point the right way.
+	if not humanoid.PlatformStand then
+		local flat = Vector3.new(tp.X, hrp.Position.Y, tp.Z)
+		hrp.CFrame = CFrame.new(hrp.Position, flat)
+	end
+
+	-- Movement vector relative to the rig's facing.
+	local toTarget = (tp - hrp.Position)
+	local flatDir
+	if toTarget.Magnitude > 0.1 then
+		flatDir = Vector3.new(toTarget.X, 0, toTarget.Z).Unit
+	else
+		flatDir = Vector3.new(0, 0, 1)
+	end
+	local rightDir = Vector3.new(flatDir.Z, 0, -flatDir.X) -- 90° clockwise
+
+	-- Flip strafe direction periodically so the rig doesn't drift in
+	-- one straight line forever.
+	if tick() - strafeFlipAt > STRAFE_PERIOD then
+		strafeFlipAt = tick()
+		strafeSign   = (math.random() < 0.5) and -1 or 1
+	end
+
+	local moveTo
+	if dist < KITE_RADIUS then
+		-- Too close: back-pedal away while strafing sideways so the
+		-- player can't predict the path with a straight aim.
+		moveTo = hrp.Position + (-flatDir) * 6 + rightDir * (4 * strafeSign)
+	elseif dist > APPROACH_RADIUS then
+		-- Too far: walk toward target. We don't sprint — the goal is
+		-- to maintain ranged engagement, not close to melee.
+		moveTo = hrp.Position + flatDir * 6 + rightDir * (3 * strafeSign)
+	else
+		-- Sweet spot: hold ground but strafe so we read as moving.
+		moveTo = hrp.Position + rightDir * (5 * strafeSign)
+	end
+	humanoid:MoveTo(moveTo)
+
+	-- Fire while moving. rangedAttack handles its own cooldown +
+	-- LOS check and only triggers when the bullet would actually
+	-- have a chance to land.
+	if dist <= ATTR.RangedRange then
+		rangedAttack()
+	end
+end
+
+-- ── State machine ──────────────────────────────────────────────────
+-- "revolver" (default) — kite + shoot from range.
+-- "cutlass" — rush in and swing.
+-- Hysteresis on the threshold so the rig doesn't oscillate at the
+-- boundary: switch to cutlass at dist ≤ 8, switch back to revolver
+-- at dist > 14 (gap of 6 studs, ~0.4 s of player movement at the
+-- default WalkSpeed).
+local CUTLASS_THRESHOLD = 8
+local REVOLVER_THRESHOLD = 14
+
+local mode = "revolver"
+
+print("[Corsair/Combat] AI online for " .. Self:GetFullName())
+
+while alive and Self.Parent and humanoid.Health > 0 do
+	searchForTarget()
+	if targetIsValid() then
+		local hrp = getHRP()
+		local tp  = getTargetPosition()
+		if hrp and tp then
+			local dist = (hrp.Position - tp).Magnitude
+
+			-- State transitions
+			if mode == "revolver" and dist <= CUTLASS_THRESHOLD then
+				mode = "cutlass"
+				setActiveWeapon(CUTLASS_NAME)
+			elseif mode == "cutlass" and dist > REVOLVER_THRESHOLD then
+				mode = "revolver"
+				setActiveWeapon(REVOLVER_NAME)
+			end
+
+			-- State action
+			if mode == "cutlass" then
+				tryRecomputePath()
+				travelCutlassPath()
+			else
+				revolverStep()
+			end
+		end
+	end
+	RunService.Heartbeat:Wait()
+end
+
+if attackTrack then attackTrack:Stop(0) end
+if rangedTrack then rangedTrack:Stop(0) end

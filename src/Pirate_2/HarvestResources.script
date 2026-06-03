@@ -1,7 +1,23 @@
-local Players = game:GetService("Players")
+local Players           = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
-local SoundService = game:GetService("SoundService")
-local Debris = game:GetService("Debris")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService      = game:GetService("SoundService")
+local Debris            = game:GetService("Debris")
+
+-- Per-merc Speed → gather time spec from src/GameDesign/StatsSystem.md.
+-- Replaces the previous ad-hoc 1+speed/100 multiplier with the doc's
+-- linear formula (15 s @ speed 10, 4 s @ speed 200). Required
+-- asynchronously so the harvest loop kicks off immediately even if
+-- the module hasn't replicated yet — getHarvestCooldown falls back
+-- to ATTACK_COOLDOWN until MercStats is available.
+local MercStats
+task.spawn(function()
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 30)
+	if mod then
+		local ok, result = pcall(require, mod)
+		if ok then MercStats = result end
+	end
+end)
 
 -- Per-type break sounds. Log / Leaves ship as a child Sound inside the
 -- resource template; Plastic / Rock live in SoundService. The merc
@@ -302,6 +318,22 @@ end
 
 local lastAttack = 0
 
+-- Harvest cooldown = MercStats.gatherTime(merc speed). The merc's
+-- speed comes from MercStats.statsFromRig (reads the rig's MercName
+-- attribute set by MercenarySpawner; falls back to model name for
+-- hostile placements). Per StatsSystem.md:
+--   speed 10  → 15 s   (Pirate base)
+--   speed 62  → 12 s   (Corsair base)
+--   speed 131 → 8 s    (Soldier base)
+--   speed 200 → 4 s    (max)
+-- Falls back to the previous flat ATTACK_COOLDOWN if MercStats hasn't
+-- loaded yet (boot-order race).
+local function getHarvestCooldown()
+	if not MercStats then return ATTACK_COOLDOWN end
+	local stats = MercStats.statsFromRig(model)
+	return MercStats.gatherTime(stats.speed)
+end
+
 task.spawn(function()
 	while model.Parent and humanoid.Health > 0 do
 		local hrp = getHRP()
@@ -323,9 +355,10 @@ task.spawn(function()
 		end
 
 		local now = tick()
-		if now - lastAttack >= ATTACK_COOLDOWN then
+		local cooldown = getHarvestCooldown()
+		if now - lastAttack >= cooldown then
 			lastAttack = now
-			cooldownEndsAt = now + ATTACK_COOLDOWN
+			cooldownEndsAt = now + cooldown
 			playHitAnim()
 
 			-- Let the swing animation (~0.3 s) finish before the resource

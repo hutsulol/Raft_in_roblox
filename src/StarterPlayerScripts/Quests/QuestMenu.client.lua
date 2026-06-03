@@ -1,0 +1,799 @@
+-- QuestMenu.client.lua
+-- Full-screen quest log opened by the left-side QuestEntryButton or
+-- the J key. Builds incrementally across B1 → B10 so each commit is
+-- testable on its own.
+--
+-- B1 scope: lazy ScreenGui host + _G.OpenQuestMenu / _G.CloseQuestMenu
+-- stubs that flip the host's Enabled flag. Nothing visible yet —
+-- B2 lands the wood panel, B3 the tab rail, etc.
+--
+-- DisplayOrder 110 sits above PhoneMenu (200? actually phone uses
+-- 200 for its main screenGui; the OnboardingTooltip uses 200 too,
+-- and QuestNotificationGui uses 8). Lifting QuestMenu to 110 keeps
+-- it ABOVE in-game HUD and the QuestEntryButton (90) but BELOW the
+-- phone if both happen to be open — phone takes precedence as the
+-- bigger, more deliberate UI.
+--
+-- Public API (final shape across B1 → B10):
+--   _G.OpenQuestMenu()    -- show the menu (no-op if already open)
+--   _G.CloseQuestMenu()   -- hide the menu (no-op if already hidden)
+
+local Players = game:GetService("Players")
+
+local player    = Players.LocalPlayer
+local playerGui = player:WaitForChild("PlayerGui")
+
+local SCREENGUI_DISPLAY_ORDER = 110
+
+-- ─── Wood/paper palette (matches OnboardingTooltip + Claude Design
+-- handoff) ────────────────────────────────────────────────────────────
+local COLOR_WOOD_DARKEST = Color3.fromRGB( 61,  40,  23)
+local COLOR_WOOD_DARK    = Color3.fromRGB( 91,  58,  34)
+local COLOR_WOOD_MID     = Color3.fromRGB(138, 106,  68)
+local COLOR_WOOD_BASE    = Color3.fromRGB(176, 138,  92)
+local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
+local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
+
+-- ─── Layout constants ────────────────────────────────────────────────
+-- Panel is sized to fit four daily quest cards in a single horizontal
+-- row inside the Quests tab (Phase D target design). Content area =
+-- PANEL_W - TAB_RAIL_W - CONTENT_GAP = 578 px; QuestsTab puts 4×130-px
+-- cards with 10-px gaps + 12-px side padding into that band.
+local PANEL_W      = 720
+-- Bumped from 360 → 420 so the new full-width title bar at the top
+-- doesn't squeeze the tab rail / content area below it.
+local PANEL_H      = 420
+local PANEL_RADIUS = 18
+local PANEL_PAD    = 14
+
+-- Tab rail (left half of the panel content). Three vertical tabs:
+-- "Quests", "History", "Challenges". Width tuned so a long label
+-- like "Challenges" fits without clipping at our 14-px font.
+local TAB_RAIL_W   = 130
+local TAB_HEIGHT   = 38
+local TAB_GAP      = 6
+local TAB_RADIUS   = 8
+-- Tabs now start at the top of the rail because the QUESTS title +
+-- scroll glyph + close button live in their own full-width title bar
+-- above the rail (TITLE_BAR_H below). Older builds reserved
+-- TAB_LIST_TOP = 56 inside the rail for the title.
+local TAB_LIST_TOP = 0
+
+-- Right-side content area sits to the right of the tab rail with a
+-- small gap so the rail's active-tab fill doesn't kiss the content
+-- card. Each tab's content lives inside as a child Frame; only the
+-- one matching activeTabId is Visible at any time (B9).
+local CONTENT_GAP   = 12
+local CONTENT_RADIUS = 12
+
+-- Title bar (top of the panel, spans the full content width).
+-- Scroll glyph + "QUESTS" label on the left, X close button on the
+-- right. Tab rail + content root sit below this bar with a small
+-- gap so the wood panel reads as title-on-top, browser-below, like
+-- the reference mockup.
+local TITLE_BAR_H   = 46
+local TITLE_BAR_GAP = 12
+local QUEST_ICON_ASSET  = "rbxassetid://104397826961228"
+local TITLE_GLYPH_SIZE  = 36
+local TITLE_GLYPH_GAP   = 10
+
+-- Header (top-left of the panel content). Scroll/parchment glyph
+-- followed by the "QUESTS" label. Same on every tab — only the right
+-- pane swaps content. Reuses the supplied quest icon asset shrunk
+-- down so the menu shell has a consistent visual language with the
+-- entry button.
+local HEADER_HEIGHT     = 36
+local HEADER_GLYPH_SIZE = 30
+local HEADER_GLYPH_GAP  = 8
+
+-- Close button (top-right of the panel). Now an illustrated wood-X
+-- asset, sized a touch larger than the legacy plain-square button so
+-- the bezel + cross have room to read.
+local CLOSE_BTN_SIZE = 36
+local CLOSE_BTN_RADIUS = 8
+
+-- ─── Tab catalog ─────────────────────────────────────────────────────
+-- Order = vertical order in the rail. id is used as the key for the
+-- right-side content swap (B6) and the active-tab tracking (B9).
+-- Glyph + label per tab. Glyphs are Unicode (no asset id needed) and
+-- mirror the reference design's icon-on-the-left, label-on-the-right
+-- layout: a paper-scroll for the daily Quests tab, an open book for
+-- the Story arc, crossed swords for timed Challenges, a hourglass-ish
+-- counter-clockwise arrow for History.
+local TABS = {
+	{ id = "quests",     label = "Quests",     glyph = "📜" },
+	{ id = "story",      label = "Story",      glyph = "📖" },
+	{ id = "challenges", label = "Challenges", glyph = "⚔" },
+	{ id = "history",    label = "History",    glyph = "↻" },
+}
+
+-- Lazy build: the ScreenGui isn't created until the menu is first
+-- opened. Cuts the cost of one always-resident GUI for players who
+-- never open the quest log. Panel + tabs + content are also built
+-- once during ensureScreenGui's first call.
+local screenGui
+local panel         -- the wood panel root (built in B2)
+local tabRail       -- container for the left-side tab buttons (B3)
+local tabHandles    -- [id] = { tile, dot } populated by B3 / B5
+local activeTabId   -- which tab is currently selected (default = first
+                    -- entry in TABS, applied by buildTabRail)
+local contentRoot   -- right-side content frame (built in B6)
+local contentPages  -- [id] = Frame; one per tab, only the active one
+                    -- is Visible. Populated lazily by Phases D / E /
+                    -- F / G — B6 just creates the empty container.
+
+-- ─── Tab visual states (B4) ─────────────────────────────────────────
+-- Both active and inactive tabs render with a paper fill — the
+-- inactive variant is dimmer (BackgroundTransparency 0.55, faint
+-- text) so the wood-textured rail shows through, the active variant
+-- snaps to fully opaque paper-light + wood-darkest text + a small
+-- dot pinned to the right edge. This matches the reference where
+-- every tile reads as a button instead of bare text on the rail.
+local TAB_DOT_SIZE   = 6
+local TAB_DOT_INSET  = 14   -- distance from the tab's right edge to the dot's centre
+
+local function paintTab(id)
+	local h = tabHandles[id]
+	if not h or not h.tile then return end
+	local tile  = h.tile
+	local dot   = h.dot
+	local glyph = h.glyph
+	local label = h.label
+	if id == activeTabId then
+		tile.BackgroundColor3       = COLOR_PAPER_LIGHT
+		tile.BackgroundTransparency = 0
+		if h.stroke then h.stroke.Color = COLOR_WOOD_DARKEST end
+		if label    then label.TextColor3 = COLOR_WOOD_DARKEST end
+		if glyph    then glyph.TextColor3 = COLOR_WOOD_DARKEST end
+		if dot      then dot.Visible      = true               end
+	else
+		tile.BackgroundColor3       = COLOR_PAPER
+		tile.BackgroundTransparency = 0.45
+		if h.stroke then h.stroke.Color = COLOR_WOOD_DARK end
+		if label    then label.TextColor3 = COLOR_PAPER_LIGHT end
+		if glyph    then glyph.TextColor3 = COLOR_PAPER_LIGHT end
+		if dot      then dot.Visible      = false             end
+	end
+end
+
+local function repaintAllTabs()
+	if not tabHandles then return end
+	for id in pairs(tabHandles) do
+		paintTab(id)
+	end
+end
+
+-- ─── Tab cross-fade (B9) ────────────────────────────────────────────
+-- Visible content swap when the active tab changes. ContentPages is
+-- a per-tab Frame parented to the contentRoot in B6; only the
+-- active page is Visible at any time, plus a brief out-going fade
+-- on the previous one for a soft transition.
+local TweenService = game:GetService("TweenService")
+local CONTENT_FADE_TIME = 0.15
+
+local function fadePage(page, toTransparency, makeInvisibleAtEnd)
+	if not page then return end
+	-- We tween BackgroundTransparency on the page itself + every
+	-- visible descendant Frame / Text / Image / UIStroke so the
+	-- whole subtree fades in/out together. Cheap to do because
+	-- contentPages are mostly empty in Phase B; later phases that
+	-- mount heavier content can override this if needed.
+	local function visit(node)
+		if node:IsA("Frame") and node.BackgroundTransparency < 1 then
+			TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
+				{ BackgroundTransparency = toTransparency }):Play()
+		elseif node:IsA("TextLabel") or node:IsA("TextButton") then
+			TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
+				{ TextTransparency = toTransparency }):Play()
+			if node.BackgroundTransparency < 1 then
+				TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
+					{ BackgroundTransparency = toTransparency }):Play()
+			end
+		elseif node:IsA("ImageLabel") or node:IsA("ImageButton") then
+			TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
+				{ ImageTransparency = toTransparency }):Play()
+		elseif node:IsA("UIStroke") then
+			TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
+				{ Transparency = toTransparency }):Play()
+		end
+	end
+	visit(page)
+	for _, child in ipairs(page:GetDescendants()) do
+		visit(child)
+	end
+	if makeInvisibleAtEnd then
+		task.delay(CONTENT_FADE_TIME, function()
+			-- Don't hide if the player flipped back to this tab
+			-- mid-fade. Re-check before destroying visibility.
+			if activeTabId ~= page:GetAttribute("TabId") then
+				page.Visible = false
+			end
+		end)
+	end
+end
+
+local function setActiveTab(id)
+	if not tabHandles or not tabHandles[id] then return end
+	if activeTabId == id then return end
+
+	local outgoingId = activeTabId
+	activeTabId = id
+	repaintAllTabs()
+
+	-- Cross-fade the per-tab content. The new page is shown
+	-- immediately at full transparency and tweens to opaque; the
+	-- old one tweens to fully transparent then hides itself.
+	if contentPages then
+		local incoming = contentPages[id]
+		local outgoing = outgoingId and contentPages[outgoingId]
+		if incoming then
+			incoming:SetAttribute("TabId", id)
+			incoming.Visible = true
+			fadePage(incoming, 0, false)
+		end
+		if outgoing then
+			outgoing:SetAttribute("TabId", outgoingId)
+			fadePage(outgoing, 1, true)
+		end
+	end
+end
+
+-- ─── Tab rail (B3) ───────────────────────────────────────────────────
+-- Vertical strip on the left side of the panel content. Each tab is a
+-- TextButton holding a label; visual states (active vs inactive
+-- fills, the leading dot indicator) layer on in B4 / B5. Click
+-- handlers are stubbed for B3 — the real "swap content" path lands
+-- in B9.
+local function buildTabRail(parent)
+	tabRail = Instance.new("Frame")
+	tabRail.Name = "TabRail"
+	tabRail.AnchorPoint = Vector2.new(0, 0)
+	-- Pushed below the title bar so the QUESTS title sits above all
+	-- tabs, matching the reference mockup.
+	tabRail.Position = UDim2.fromOffset(0, TITLE_BAR_H + TITLE_BAR_GAP)
+	tabRail.Size = UDim2.new(0, TAB_RAIL_W, 1, -(TITLE_BAR_H + TITLE_BAR_GAP))
+	tabRail.BackgroundTransparency = 1
+	tabRail.BorderSizePixel = 0
+	tabRail.ZIndex = 4
+	tabRail.Parent = parent
+
+	tabHandles = {}
+
+	for i, tab in ipairs(TABS) do
+		local y = TAB_LIST_TOP + (i - 1) * (TAB_HEIGHT + TAB_GAP)
+
+		-- Outer click target. Text on the button itself stays empty —
+		-- the visual content (glyph + label + dot) lives as children
+		-- so they paint independently and don't fight the button's
+		-- own auto-text-color behaviour.
+		local tile = Instance.new("TextButton")
+		tile.Name = "Tab_" .. tab.id
+		tile.AnchorPoint = Vector2.new(0, 0)
+		tile.Position = UDim2.fromOffset(0, y)
+		tile.Size = UDim2.new(1, 0, 0, TAB_HEIGHT)
+		tile.AutoButtonColor = false
+		tile.BackgroundTransparency = 1
+		tile.BorderSizePixel = 0
+		tile.Text = ""
+		tile.ZIndex = 5
+		tile.Parent = tabRail
+
+		local tCorner = Instance.new("UICorner")
+		tCorner.CornerRadius = UDim.new(0, TAB_RADIUS)
+		tCorner.Parent = tile
+
+		-- Stroke gives every tile a defined edge so even the inactive
+		-- ones read as a button instead of a tinted rectangle. paintTab
+		-- swaps the colour between wood-dark / wood-darkest for the
+		-- active state.
+		local tStroke = Instance.new("UIStroke")
+		tStroke.Color = COLOR_WOOD_DARK
+		tStroke.Thickness = 1.5
+		tStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		tStroke.Parent = tile
+
+		-- Glyph icon on the left of the tile. Sized to fit a 14-pt
+		-- bold font's cap height + a little headroom so the emoji-style
+		-- characters render at the same vertical centre as the label.
+		local glyph = Instance.new("TextLabel")
+		glyph.Name = "Glyph"
+		glyph.AnchorPoint = Vector2.new(0, 0.5)
+		glyph.Position = UDim2.new(0, 12, 0.5, 0)
+		glyph.Size = UDim2.fromOffset(20, 20)
+		glyph.BackgroundTransparency = 1
+		glyph.Font = Enum.Font.GothamBold
+		glyph.TextSize = 16
+		glyph.TextColor3 = COLOR_PAPER_LIGHT
+		glyph.TextXAlignment = Enum.TextXAlignment.Center
+		glyph.TextYAlignment = Enum.TextYAlignment.Center
+		glyph.Text = tab.glyph or ""
+		glyph.ZIndex = tile.ZIndex + 1
+		glyph.Parent = tile
+
+		-- Label sits to the right of the glyph and stretches to the
+		-- dot's reserve area, so a long label (e.g. "Challenges")
+		-- can't push past the dot.
+		local label = Instance.new("TextLabel")
+		label.Name = "Label"
+		label.AnchorPoint = Vector2.new(0, 0.5)
+		label.Position = UDim2.new(0, 38, 0.5, 0)
+		label.Size = UDim2.new(1, -38 - (TAB_DOT_INSET + TAB_DOT_SIZE + 4), 1, 0)
+		label.BackgroundTransparency = 1
+		label.Font = Enum.Font.GothamBold
+		label.TextSize = 14
+		label.TextColor3 = COLOR_PAPER_LIGHT
+		label.TextXAlignment = Enum.TextXAlignment.Left
+		label.TextYAlignment = Enum.TextYAlignment.Center
+		label.TextTruncate = Enum.TextTruncate.AtEnd
+		label.Text = tab.label
+		label.ZIndex = tile.ZIndex + 1
+		label.Parent = tile
+
+		-- Active-tab dot indicator pinned to the right edge. Reads as
+		-- a "you are here" marker, matching the reference design where
+		-- the active tile shows a small dot on the right.
+		local dot = Instance.new("Frame")
+		dot.Name = "ActiveDot"
+		dot.AnchorPoint = Vector2.new(1, 0.5)
+		dot.Position = UDim2.new(1, -TAB_DOT_INSET, 0.5, 0)
+		dot.Size = UDim2.fromOffset(TAB_DOT_SIZE, TAB_DOT_SIZE)
+		dot.BackgroundColor3 = COLOR_WOOD_DARK
+		dot.BorderSizePixel = 0
+		dot.Visible = false
+		dot.ZIndex = tile.ZIndex + 2
+		dot.Parent = tile
+		local dotCorner = Instance.new("UICorner")
+		dotCorner.CornerRadius = UDim.new(1, 0)
+		dotCorner.Parent = dot
+
+		tabHandles[tab.id] = {
+			tile   = tile,
+			glyph  = glyph,
+			label  = label,
+			dot    = dot,
+			stroke = tStroke,
+		}
+
+		tile.MouseButton1Click:Connect(function()
+			setActiveTab(tab.id)
+		end)
+
+		-- Inactive-tab hover feedback: brighten the paper fill so the
+		-- player gets affordance without it being mistaken for the
+		-- active tab. paintTab() snaps it back on MouseLeave.
+		tile.MouseEnter:Connect(function()
+			if tab.id == activeTabId then return end
+			tile.BackgroundColor3       = COLOR_PAPER_LIGHT
+			tile.BackgroundTransparency = 0.15
+		end)
+		tile.MouseLeave:Connect(function()
+			paintTab(tab.id)
+		end)
+	end
+
+	-- Seed the default active tab. paintTab requires tabHandles[id]
+	-- to exist, which it now does.
+	activeTabId = TABS[1].id
+	repaintAllTabs()
+
+	return tabRail
+end
+
+-- ─── Right-side content root (B6) ───────────────────────────────────
+-- Single container that stays put while tabs swap their inner Frames.
+-- Phase D / E / F / G mount per-tab page Frames into contentPages
+-- keyed by tab id; B9 toggles their .Visible based on activeTabId.
+-- Today the placeholder per-tab Frame is empty so the menu shell is
+-- visually complete on its own and Phase B is independently shippable.
+local function buildContentRoot(parent)
+	contentRoot = Instance.new("Frame")
+	contentRoot.Name = "Content"
+	contentRoot.AnchorPoint = Vector2.new(0, 0)
+	-- Below the title bar; same horizontal layout as before
+	-- (content sits to the right of the tab rail with CONTENT_GAP
+	-- between).
+	contentRoot.Position = UDim2.fromOffset(TAB_RAIL_W + CONTENT_GAP, TITLE_BAR_H + TITLE_BAR_GAP)
+	contentRoot.Size = UDim2.new(1, -(TAB_RAIL_W + CONTENT_GAP), 1, -(TITLE_BAR_H + TITLE_BAR_GAP))
+	contentRoot.BackgroundColor3 = COLOR_PAPER
+	contentRoot.BackgroundTransparency = 0.15
+	contentRoot.BorderSizePixel = 0
+	contentRoot.ClipsDescendants = true
+	contentRoot.ZIndex = 4
+	contentRoot.Parent = parent
+
+	local cCorner = Instance.new("UICorner")
+	cCorner.CornerRadius = UDim.new(0, CONTENT_RADIUS)
+	cCorner.Parent = contentRoot
+
+	local cStroke = Instance.new("UIStroke")
+	cStroke.Color = COLOR_WOOD_DARK
+	cStroke.Thickness = 2
+	cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	cStroke.Parent = contentRoot
+
+	contentPages = {}
+	for _, tab in ipairs(TABS) do
+		local page = Instance.new("Frame")
+		page.Name = "Page_" .. tab.id
+		page.Size = UDim2.fromScale(1, 1)
+		page.BackgroundTransparency = 1
+		page.BorderSizePixel = 0
+		page.Visible = (tab.id == activeTabId)
+		page.ZIndex = 5
+		page.Parent = contentRoot
+		contentPages[tab.id] = page
+	end
+
+	return contentRoot
+end
+
+-- ─── QUESTS header (B7) ─────────────────────────────────────────────
+-- Top-left of the panel content: scroll/parchment glyph (the supplied
+-- quest icon asset, shrunk) + "QUESTS" label. Same on every tab.
+-- Lives inside the tab rail's column so the label sits flush above
+-- the first tab; the dot indicator aligns with the QUESTS column.
+local function buildHeader(parent)
+	-- Full-width title bar pinned to the top of the panel. Reserves
+	-- room on the right for the close button so the title and X
+	-- never collide on narrow widths.
+	local header = Instance.new("Frame")
+	header.Name = "TitleBar"
+	header.AnchorPoint = Vector2.new(0, 0)
+	header.Position = UDim2.fromOffset(0, 0)
+	header.Size = UDim2.new(1, -(CLOSE_BTN_SIZE + 12), 0, TITLE_BAR_H)
+	header.BackgroundTransparency = 1
+	header.BorderSizePixel = 0
+	header.ZIndex = 5
+	header.Parent = parent
+
+	-- Scroll glyph on the very left, sized to dominate the bar.
+	local glyph = Instance.new("ImageLabel")
+	glyph.Name = "Glyph"
+	glyph.AnchorPoint = Vector2.new(0, 0.5)
+	glyph.Position = UDim2.new(0, 0, 0.5, 0)
+	glyph.Size = UDim2.fromOffset(TITLE_GLYPH_SIZE, TITLE_GLYPH_SIZE)
+	glyph.BackgroundTransparency = 1
+	glyph.BorderSizePixel = 0
+	glyph.Image = QUEST_ICON_ASSET
+	glyph.ScaleType = Enum.ScaleType.Fit
+	glyph.ZIndex = 6
+	glyph.Parent = header
+
+	local label = Instance.new("TextLabel")
+	label.Name = "Label"
+	label.AnchorPoint = Vector2.new(0, 0.5)
+	label.Position = UDim2.new(0, TITLE_GLYPH_SIZE + TITLE_GLYPH_GAP, 0.5, 0)
+	label.Size = UDim2.new(1, -(TITLE_GLYPH_SIZE + TITLE_GLYPH_GAP), 1, 0)
+	label.BackgroundTransparency = 1
+	label.BorderSizePixel = 0
+	label.Font = Enum.Font.GothamBold
+	label.TextSize = 22
+	label.TextColor3 = COLOR_PAPER_LIGHT
+	label.TextXAlignment = Enum.TextXAlignment.Left
+	label.TextYAlignment = Enum.TextYAlignment.Center
+	label.Text = "QUESTS"
+	label.ZIndex = 6
+	label.Parent = header
+
+	return header
+end
+
+-- ─── Close button (B8) ──────────────────────────────────────────────
+-- 26x26 wood-mid X anchored to the panel's top-right. Same recipe as
+-- the OnboardingTooltip's close button — hover darkens to wood-dark.
+-- AnchorPoint (1, 0) with positive offset moves it past the parent
+-- UIPadding so the button kisses the visual edge instead of the
+-- padded box.
+local CLOSE_BTN_ASSET = "rbxassetid://76127527205295"
+
+local function buildCloseButton(parent)
+	-- ImageButton instead of TextButton + glyph: the close art the
+	-- user supplied is a fully self-contained illustration (wood
+	-- bezel + cream X), so we just render the asset and skip the
+	-- BackgroundColor / corner / stroke chrome we used to draw.
+	local close = Instance.new("ImageButton")
+	close.Name = "CloseButton"
+	close.AnchorPoint = Vector2.new(1, 0)
+	-- (PANEL_PAD - 8) lifts the button past the parent's 14-px
+	-- UIPadding by 6 px so the visible 8-px margin from the panel's
+	-- outer rect matches the mockup's `top: 8px; right: 8px`.
+	close.Position = UDim2.new(1, PANEL_PAD - 8, 0, -(PANEL_PAD - 8))
+	close.Size = UDim2.fromOffset(CLOSE_BTN_SIZE, CLOSE_BTN_SIZE)
+	close.BackgroundTransparency = 1
+	close.BorderSizePixel = 0
+	close.AutoButtonColor = false
+	close.Image = CLOSE_BTN_ASSET
+	close.ScaleType = Enum.ScaleType.Fit
+	close.ZIndex = 7
+	close.Parent = parent
+
+	close.MouseEnter:Connect(function()
+		close.ImageTransparency = 0.15
+	end)
+	close.MouseLeave:Connect(function()
+		close.ImageTransparency = 0
+	end)
+
+	close.MouseButton1Click:Connect(function()
+		-- closeQuestMenu is declared at module-bottom; capture by
+		-- name resolves at call time so the upvalue is valid by the
+		-- time the button is clicked.
+		if typeof(_G.CloseQuestMenu) == "function" then
+			_G.CloseQuestMenu()
+		end
+	end)
+
+	return close
+end
+
+local function buildPanel(parent)
+	-- Outer wood panel: same recipe as the onboarding tooltip's
+	-- panel — wood-base fill, 3 px wood-dark border, inner 1 px
+	-- white-18% inset highlight stroke. Centred in the screen via
+	-- AnchorPoint (0.5, 0.5).
+	panel = Instance.new("Frame")
+	panel.Name = "Panel"
+	panel.AnchorPoint = Vector2.new(0.5, 0.5)
+	panel.Position = UDim2.fromScale(0.5, 0.5)
+	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
+	panel.BackgroundColor3 = COLOR_WOOD_BASE
+	panel.BorderSizePixel = 0
+	panel.ZIndex = 2
+	panel.Parent = parent
+
+	local pCorner = Instance.new("UICorner")
+	pCorner.CornerRadius = UDim.new(0, PANEL_RADIUS)
+	pCorner.Parent = panel
+
+	local pStroke = Instance.new("UIStroke")
+	pStroke.Color = COLOR_WOOD_DARK
+	pStroke.Thickness = 3
+	pStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	pStroke.Parent = panel
+
+	local pPad = Instance.new("UIPadding")
+	pPad.PaddingTop    = UDim.new(0, PANEL_PAD)
+	pPad.PaddingBottom = UDim.new(0, PANEL_PAD)
+	pPad.PaddingLeft   = UDim.new(0, PANEL_PAD)
+	pPad.PaddingRight  = UDim.new(0, PANEL_PAD)
+	pPad.Parent = panel
+
+	-- Inner highlight (mockup's `.tip::before` trick): 1 px white-18%
+	-- inset stroke 2 px from the outer border so the panel feels
+	-- raised. Sized to overlap the parent's UIPadding so it kisses
+	-- the visible edge instead of the padded box.
+	local highlight = Instance.new("Frame")
+	highlight.Name = "InnerHighlight"
+	highlight.AnchorPoint = Vector2.new(0.5, 0.5)
+	highlight.Position = UDim2.fromScale(0.5, 0.5)
+	highlight.Size = UDim2.new(1, (PANEL_PAD - 2) * 2, 1, (PANEL_PAD - 2) * 2)
+	highlight.BackgroundTransparency = 1
+	highlight.BorderSizePixel = 0
+	highlight.ZIndex = 3
+	highlight.Parent = panel
+	local hCorner = Instance.new("UICorner")
+	hCorner.CornerRadius = UDim.new(0, PANEL_RADIUS - 4)
+	hCorner.Parent = highlight
+	local hStroke = Instance.new("UIStroke")
+	hStroke.Color = Color3.fromRGB(255, 255, 255)
+	hStroke.Thickness = 1
+	hStroke.Transparency = 0.82
+	hStroke.Parent = highlight
+
+	buildHeader(panel)
+	buildTabRail(panel)
+	buildContentRoot(panel)
+	buildCloseButton(panel)
+
+	return panel
+end
+
+-- ─── Backdrop click-catcher (B10) ────────────────────────────────────
+-- Full-screen TextButton sits behind the panel so the player can
+-- click anywhere outside the panel to dismiss the menu. Doubles as
+-- a soft dim layer.
+local backdrop
+
+local function buildBackdrop(parent)
+	backdrop = Instance.new("TextButton")
+	backdrop.Name = "Backdrop"
+	backdrop.Size = UDim2.fromScale(1, 1)
+	backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
+	backdrop.BackgroundTransparency = 0.55
+	backdrop.BorderSizePixel = 0
+	backdrop.AutoButtonColor = false
+	backdrop.Text = ""
+	backdrop.ZIndex = 1
+	backdrop.Parent = parent
+
+	backdrop.MouseButton1Click:Connect(function()
+		if typeof(_G.CloseQuestMenu) == "function" then
+			_G.CloseQuestMenu()
+		end
+	end)
+
+	return backdrop
+end
+
+local function ensureScreenGui()
+	if screenGui and screenGui.Parent then return screenGui end
+	screenGui = Instance.new("ScreenGui")
+	screenGui.Name = "QuestMenuGui"
+	screenGui.ResetOnSpawn = false
+	-- IgnoreGuiInset=true so the backdrop tween covers the entire
+	-- screen, including the topbar inset area. Without this, the
+	-- top ~36px stripe shows through bright while the rest of the
+	-- screen is dimmed.
+	screenGui.IgnoreGuiInset = true
+	screenGui.DisplayOrder = SCREENGUI_DISPLAY_ORDER
+	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
+	screenGui.Enabled = false   -- shown only after openQuestMenu()
+	screenGui.Parent = playerGui
+
+	buildBackdrop(screenGui)
+	buildPanel(screenGui)
+	return screenGui
+end
+
+-- ─── Open / close animations (B10) ──────────────────────────────────
+-- Mirrors the OnboardingTooltip's approach: capture every fade-able
+-- property under the panel + tween from invisible (1) to rest on
+-- open, and back to invisible on close. Plus a UIScale bounce on the
+-- panel root so the menu pops into view rather than hard-popping.
+local OPEN_INFO  = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
+local CLOSE_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
+
+local panelScale         -- UIScale on the panel for the open/close bounce
+local fadeTargets        -- list of { inst, prop, rest } captured on first build
+local backdropFadeTarget -- the backdrop's BackgroundTransparency rest = 0.55
+local isOpen = false
+
+local function captureFadeTargets()
+	fadeTargets = {}
+	local function visit(node)
+		if not node then return end
+		if node:IsA("Frame") and node.BackgroundTransparency < 1 then
+			table.insert(fadeTargets, {
+				inst = node, prop = "BackgroundTransparency",
+				rest = node.BackgroundTransparency,
+			})
+		elseif node:IsA("TextLabel") or node:IsA("TextButton") then
+			table.insert(fadeTargets, {
+				inst = node, prop = "TextTransparency",
+				rest = node.TextTransparency,
+			})
+			if node.BackgroundTransparency < 1 then
+				table.insert(fadeTargets, {
+					inst = node, prop = "BackgroundTransparency",
+					rest = node.BackgroundTransparency,
+				})
+			end
+		elseif node:IsA("ImageLabel") or node:IsA("ImageButton") then
+			table.insert(fadeTargets, {
+				inst = node, prop = "ImageTransparency",
+				rest = node.ImageTransparency,
+			})
+			if node.BackgroundTransparency < 1 then
+				table.insert(fadeTargets, {
+					inst = node, prop = "BackgroundTransparency",
+					rest = node.BackgroundTransparency,
+				})
+			end
+		elseif node:IsA("UIStroke") and node.Transparency < 1 then
+			table.insert(fadeTargets, {
+				inst = node, prop = "Transparency",
+				rest = node.Transparency,
+			})
+		end
+	end
+	visit(panel)
+	for _, child in ipairs(panel:GetDescendants()) do
+		visit(child)
+	end
+end
+
+local function setFadeAll(value)
+	if not fadeTargets then return end
+	for _, t in ipairs(fadeTargets) do
+		if t.inst.Parent then t.inst[t.prop] = value end
+	end
+end
+
+local function openQuestMenu()
+	local gui = ensureScreenGui()
+	if isOpen then return end
+	isOpen = true
+
+	-- One-time setup the first time we open: UIScale, fadeTargets,
+	-- backdrop fade target. Done lazily so a player who never opens
+	-- the menu doesn't pay for the descendant walk.
+	if not panelScale then
+		panelScale = Instance.new("UIScale")
+		panelScale.Scale = 1
+		panelScale.Parent = panel
+		captureFadeTargets()
+		backdropFadeTarget = backdrop and backdrop.BackgroundTransparency or 0.55
+	end
+
+	-- Snap to invisible / pre-bounce state, then tween to rest.
+	gui.Enabled = true
+	setFadeAll(1)
+	if backdrop then backdrop.BackgroundTransparency = 1 end
+	panelScale.Scale = 0.94
+
+	for _, t in ipairs(fadeTargets) do
+		if t.inst.Parent then
+			TweenService:Create(t.inst, OPEN_INFO,
+				{ [t.prop] = t.rest }):Play()
+		end
+	end
+	if backdrop then
+		TweenService:Create(backdrop, OPEN_INFO,
+			{ BackgroundTransparency = backdropFadeTarget }):Play()
+	end
+	TweenService:Create(panelScale, OPEN_INFO, { Scale = 1.0 }):Play()
+end
+
+local function closeQuestMenu()
+	if not screenGui or not isOpen then return end
+	isOpen = false
+
+	for _, t in ipairs(fadeTargets or {}) do
+		if t.inst.Parent then
+			TweenService:Create(t.inst, CLOSE_INFO,
+				{ [t.prop] = 1 }):Play()
+		end
+	end
+	if backdrop then
+		TweenService:Create(backdrop, CLOSE_INFO,
+			{ BackgroundTransparency = 1 }):Play()
+	end
+	if panelScale then
+		TweenService:Create(panelScale, CLOSE_INFO, { Scale = 0.96 }):Play()
+	end
+
+	-- Hide the GUI after the fade completes so input can pass through
+	-- again. Re-check isOpen so a re-open mid-fade doesn't leave us
+	-- with a hidden screenGui mid-tween.
+	task.delay(CLOSE_INFO.Time + 0.02, function()
+		if not isOpen and screenGui then
+			screenGui.Enabled = false
+		end
+	end)
+end
+
+_G.OpenQuestMenu  = openQuestMenu
+_G.CloseQuestMenu = closeQuestMenu
+
+-- Publish the screenGui so other client UIs (e.g. the QuestEntryButton)
+-- can hide while the menu is open. The reference is set lazily after
+-- ensureScreenGui() runs, so listeners that check on script init may
+-- find it nil — they should poll until it appears, the same way the
+-- entry button polls _G.PhoneScreenGui.
+local function publishMenuRefs()
+	if screenGui then
+		_G.QuestMenuScreenGui = screenGui
+	end
+	if contentPages then
+		-- Per-tab content frames keyed by tab id. Phase D / E / F / G
+		-- mount their cards / lists into these without QuestMenu having
+		-- to know about them. The reference stays stable across menu
+		-- open/close (we only toggle screenGui.Enabled, not destroy).
+		_G.QuestMenuContentPages = contentPages
+	end
+end
+-- Build + publish on script init so listeners don't have to wait
+-- for the player's first openQuestMenu() click.
+ensureScreenGui()
+publishMenuRefs()
+
+-- ─── ESC key + entry-button toggle ───────────────────────────────────
+-- Pressing ESC while the menu is open closes it (gameProcessed-aware
+-- so chat / text-input ESCs don't trip the path).
+local UserInputService = game:GetService("UserInputService")
+UserInputService.InputBegan:Connect(function(input, gameProcessed)
+	if gameProcessed then return end
+	if input.KeyCode == Enum.KeyCode.Escape and isOpen then
+		closeQuestMenu()
+	end
+end)

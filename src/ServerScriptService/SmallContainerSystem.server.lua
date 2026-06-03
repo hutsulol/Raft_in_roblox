@@ -81,12 +81,30 @@ local function swapContainerModel(container)
 		return
 	end
 
+	-- Snapshot raft velocity + capture container pose AS RAFT-RELATIVE
+	-- before any destroy/clone work (T14). The destroy + clone steps span
+	-- a couple of physics frames during which the raft drifts; saving a
+	-- world CFrame and PivotTo'ing it back later places the new parts
+	-- against a stale raft pose, then the welds lock that drift in and
+	-- the solver kicks the assembly to compensate → bouncing.
+	local raft = workspace:FindFirstChild("Raft")
+	local raftPrimary = raft and raft.PrimaryPart or nil
+	local linVel, angVel
+	if raftPrimary then
+		linVel = raftPrimary.AssemblyLinearVelocity
+		angVel = raftPrimary.AssemblyAngularVelocity
+	end
+
 	local savedCF = container.PrimaryPart and container.PrimaryPart.CFrame
 	if not savedCF then
 		local first = container:FindFirstChildWhichIsA("BasePart", true)
 		savedCF = first and first.CFrame
 	end
 	if not savedCF then return end
+	local savedRelCF
+	if raftPrimary then
+		savedRelCF = raftPrimary.CFrame:ToObjectSpace(savedCF)
+	end
 
 	-- Preserve StoredTools across model swaps; only destroy the visual
 	-- children (BaseParts, meshes, etc) the template will replace.
@@ -115,20 +133,51 @@ local function swapContainerModel(container)
 		end
 	end
 
-	container:PivotTo(savedCF)
+	-- Reset WorldPivot to the NEW model's bounding-box centre (T20).
+	-- Container_empty / Container_50 / Container_full can have slightly
+	-- different geometry, and reusing the WorldPivot from the original
+	-- place call leaves PivotTo positioning the new parts against a
+	-- pivot that no longer matches their bounding box. Parts then land
+	-- with a Y offset that overlaps raft logs, and Roblox's collision
+	-- solver applies repulsion forces that kick the assembly into a bob.
+	if container:IsA("Model") then
+		local bbCF = container:GetBoundingBox()
+		container.WorldPivot = CFrame.new(bbCF.Position)
+	end
 
-	local raft = workspace:FindFirstChild("Raft")
+	-- Reposition against the raft's CURRENT pose, not the stale one.
+	if savedRelCF and raftPrimary then
+		container:PivotTo(raftPrimary.CFrame * savedRelCF)
+	else
+		container:PivotTo(savedCF)
+	end
+
+	-- T15/T16/T20: Pass 0 force-anchor every BasePart (defensive — the
+	-- template might be authored unanchored), Pass 1 weld while anchored,
+	-- Pass 2 unanchor.
 	local storage = container:FindFirstChild("StoredTools")
-	if raft and raft.PrimaryPart then
+	if raftPrimary then
+		for _, part in container:GetDescendants() do
+			if part:IsA("BasePart") and not (storage and part:IsDescendantOf(storage)) then
+				part.Anchored = true
+			end
+		end
 		for _, part in container:GetDescendants() do
 			if part:IsA("BasePart") and not (storage and part:IsDescendantOf(storage)) then
 				local weld = Instance.new("WeldConstraint")
 				weld.Part0 = part
-				weld.Part1 = raft.PrimaryPart
+				weld.Part1 = raftPrimary
 				weld.Parent = part
+			end
+		end
+		for _, part in container:GetDescendants() do
+			if part:IsA("BasePart") and not (storage and part:IsDescendantOf(storage)) then
 				part.Anchored = false
 			end
 		end
+
+		raftPrimary.AssemblyLinearVelocity  = linVel
+		raftPrimary.AssemblyAngularVelocity = angVel
 	end
 
 	container:SetAttribute("ModelName", modelName)
@@ -181,7 +230,9 @@ end
 
 local function addToPlayerInventory(player, itemName, count)
 	if not _G.AddResourceToInventory then return 0 end
-	return _G.AddResourceToInventory(player, itemName, count, nil) or 0
+	-- silent=true: chest takeout shouldn't fire the InventoryNotify
+	-- "+N item" card (per user brief — only natural pickups notify).
+	return _G.AddResourceToInventory(player, itemName, count, nil, true) or 0
 end
 
 -- ───────────────── Tool storage helpers ─────────────────
@@ -313,15 +364,33 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	container:PivotTo(worldCF)
 	container.Parent = raft
 
+	-- T13/T15/T16: snapshot velocity, force-anchor (templates may be
+	-- unanchored), weld while anchored, then unanchor.
+	local primary = raft.PrimaryPart
+	local linVel = primary.AssemblyLinearVelocity
+	local angVel = primary.AssemblyAngularVelocity
+
 	for _, part in container:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.Anchored = false
+			part.Anchored = true
+		end
+	end
+	for _, part in container:GetDescendants() do
+		if part:IsA("BasePart") then
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart
 			weld.Parent = part
 		end
 	end
+	for _, part in container:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
+		end
+	end
+
+	primary.AssemblyLinearVelocity  = linVel
+	primary.AssemblyAngularVelocity = angVel
 
 	container:SetAttribute("ModelName", "Container_empty")
 	setupContainerPrompt(container)

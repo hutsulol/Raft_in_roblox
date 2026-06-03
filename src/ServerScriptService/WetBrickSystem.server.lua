@@ -48,15 +48,31 @@ end
 
 local function weldToRaft(model, raft)
 	if not raft or not raft.PrimaryPart then return end
+	-- T13/T15/T16: snapshot velocity, force-anchor (templates may be
+	-- unanchored), weld while anchored, then unanchor.
+	local primary = raft.PrimaryPart
+	local linVel = primary.AssemblyLinearVelocity
+	local angVel = primary.AssemblyAngularVelocity
 	for _, part in model:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.Anchored = false
+			part.Anchored = true
+		end
+	end
+	for _, part in model:GetDescendants() do
+		if part:IsA("BasePart") then
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart
 			weld.Parent = part
 		end
 	end
+	for _, part in model:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
+		end
+	end
+	primary.AssemblyLinearVelocity  = linVel
+	primary.AssemblyAngularVelocity = angVel
 end
 
 local function stripScripts(model)

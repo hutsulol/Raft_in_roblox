@@ -206,16 +206,38 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	-- Find the main part for bed behavior
 	local bedPart = bed.PrimaryPart or bed:FindFirstChildWhichIsA("BasePart", true)
 
-	-- Weld to raft
+	-- T13/T15/T16: snapshot raft velocity, force-anchor every part
+	-- (templates may be authored unanchored), weld while anchored,
+	-- then unanchor in a third pass so the new parts inherit the
+	-- raft's velocity through the rigid weld instead of starting at
+	-- zero. Without these guards, placing the bed (~5 parts) drains
+	-- enough momentum out of the raft assembly to kick the buoyancy
+	-- spring into a sustained vertical bob.
+	local primary = raft.PrimaryPart
+	local linVel = primary.AssemblyLinearVelocity
+	local angVel = primary.AssemblyAngularVelocity
+
 	for _, part in bed:GetDescendants() do
 		if part:IsA("BasePart") then
-			part.Anchored = false
+			part.Anchored = true
+		end
+	end
+	for _, part in bed:GetDescendants() do
+		if part:IsA("BasePart") then
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart
 			weld.Parent = part
 		end
 	end
+	for _, part in bed:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Anchored = false
+		end
+	end
+
+	primary.AssemblyLinearVelocity  = linVel
+	primary.AssemblyAngularVelocity = angVel
 
 	-- Setup bed sleep behavior directly
 	if bedPart then

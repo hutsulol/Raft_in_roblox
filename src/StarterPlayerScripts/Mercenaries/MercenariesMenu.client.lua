@@ -9,8 +9,207 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
 local SoundService      = game:GetService("SoundService")
 local RunService        = game:GetService("RunService")
+local TextService       = game:GetService("TextService")
 
 local player = Players.LocalPlayer
+local UserInputService = game:GetService("UserInputService")
+
+-- ─── Shared Q-hotkey helper (exposed as _G.AttachBackHotkey) ─────────
+-- Inlined here instead of requiring a separate ModuleScript so the
+-- phone doesn't need a new file sync to pick it up — matches the
+-- existing _G.OpenXPage pattern used by every other sub-page.
+--
+-- Usage (from any phone sub-page):
+--   if typeof(_G.AttachBackHotkey) == "function" then
+--       _G.AttachBackHotkey(backBtn, triggerBack, {
+--           activeConnections = activeConnections,
+--           color       = COLOR_TEXT,
+--           haloColor   = HOLO_EDGE,
+--           fontTitle   = FONT_TITLE,
+--       })
+--   end
+--
+-- Visual: a 20x20 "Q" glyph sits 8px outside the right edge of the
+-- BACK button, vertically centred. On Q press a halo circle behind
+-- the glyph tweens in and fades back out.
+--
+-- Input guard: walks the button's ancestry every keypress — if any
+-- GuiObject parent is Visible=false the listener ignores the event,
+-- so overlapping pages (e.g. Mercenaries hidden under HandlingPage)
+-- don't also fire.
+_G.AttachBackHotkey = function(backBtn, onBack, options)
+	if typeof(backBtn) ~= "Instance" then return nil end
+	if typeof(onBack) ~= "function" then return nil end
+	options = options or {}
+
+	local color     = options.color     or Color3.fromRGB(220, 240, 255)
+	local haloColor = options.haloColor or Color3.fromRGB(190, 220, 245)
+	local fontTitle = options.fontTitle or Enum.Font.GothamBold
+	local zIndex    = options.zIndex    or (backBtn.ZIndex or 1) + 2
+	local hintSize  = 20
+	local hintGap   = 8
+
+	local hint = Instance.new("Frame")
+	hint.Name = "QHint"
+	hint.AnchorPoint = Vector2.new(0, 0.5)
+	hint.Position = UDim2.new(1, hintGap, 0.5, 0)
+	hint.Size = UDim2.fromOffset(hintSize, hintSize)
+	hint.BackgroundTransparency = 1
+	hint.BorderSizePixel = 0
+	hint.ZIndex = zIndex
+	hint.Parent = backBtn
+
+	local halo = Instance.new("Frame")
+	halo.Name = "QHalo"
+	halo.AnchorPoint = Vector2.new(0.5, 0.5)
+	halo.Position = UDim2.fromScale(0.5, 0.5)
+	halo.Size = UDim2.fromScale(1, 1)
+	halo.BackgroundColor3 = haloColor
+	halo.BackgroundTransparency = 1
+	halo.BorderSizePixel = 0
+	halo.ZIndex = zIndex
+	halo.Parent = hint
+	local haloCorner = Instance.new("UICorner")
+	haloCorner.CornerRadius = UDim.new(1, 0)
+	haloCorner.Parent = halo
+
+	local letter = Instance.new("TextLabel")
+	letter.Name = "QLetter"
+	letter.BackgroundTransparency = 1
+	letter.BorderSizePixel = 0
+	-- Visually centre the Q in the halo circle. A TextLabel sized (1,1)
+	-- centres the glyph by font metrics, which for Q drops the visible
+	-- O-shape a pixel low because of the descender tail. Anchoring the
+	-- label at (0.5, 0.5) + nudging 1 px up cancels that bias so the Q
+	-- sits in the centre of the halo regardless of its animation state.
+	letter.AnchorPoint = Vector2.new(0.5, 0.5)
+	letter.Position = UDim2.new(0.5, 0, 0.5, -1)
+	letter.Size = UDim2.fromScale(1, 1)
+	letter.Font = fontTitle
+	letter.TextSize = 14
+	letter.TextColor3 = color
+	letter.TextXAlignment = Enum.TextXAlignment.Center
+	letter.TextYAlignment = Enum.TextYAlignment.Center
+	letter.Text = "Q"
+	letter.ZIndex = zIndex + 2
+	letter.Parent = hint
+
+	-- Arrival-flash animation — a double-pulse + expanding ring.
+	-- Plays on the INCOMING page when the user navigated via Q so the
+	-- glow reads like the mockup's "AFTER PRESSING Q" state (not just
+	-- the halo fading from solid).
+	--
+	--   halo        — bright fill inside the hint box, quick pop then
+	--                 slower fade, brighter peak than the static state.
+	--   ring        — transient second Frame parented to the hint, starts
+	--                 at 100% scale and expands to ~220% while stroke
+	--                 fades to transparent — the radiating "ripple".
+	--   letterFlash — short TextColor3 pulse to near-white + back to
+	--                 the normal text color so the glyph "pings" with
+	--                 the rest of the effect.
+	local function flashHalo()
+		-- Halo pop.
+		halo.BackgroundTransparency = 0.05
+		TweenService:Create(halo,
+			TweenInfo.new(0.65, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ BackgroundTransparency = 1 }):Play()
+
+		-- Ring ripple. Own Frame so the expanding scale doesn't disturb
+		-- the hint or letter layout — the hint stays a fixed 20x20 box
+		-- anchored off the BACK button, and the ring is destroyed after
+		-- the animation so no residual state lingers.
+		local ring = Instance.new("Frame")
+		ring.Name = "QRing"
+		ring.AnchorPoint = Vector2.new(0.5, 0.5)
+		ring.Position = UDim2.fromScale(0.5, 0.5)
+		ring.Size = UDim2.fromScale(1, 1)
+		ring.BackgroundTransparency = 1
+		ring.BorderSizePixel = 0
+		ring.ZIndex = zIndex
+		ring.Parent = hint
+		local ringCorner = Instance.new("UICorner")
+		ringCorner.CornerRadius = UDim.new(1, 0)
+		ringCorner.Parent = ring
+		local ringStroke = Instance.new("UIStroke")
+		ringStroke.Color       = haloColor
+		ringStroke.Thickness   = 2
+		ringStroke.Transparency = 0.1
+		ringStroke.Parent      = ring
+
+		local ringInfo = TweenInfo.new(0.7, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
+		TweenService:Create(ring,       ringInfo, { Size = UDim2.fromScale(2.4, 2.4) }):Play()
+		TweenService:Create(ringStroke, ringInfo, { Transparency = 1 }):Play()
+		task.delay(0.8, function()
+			if ring and ring.Parent then ring:Destroy() end
+		end)
+
+		-- Letter "ping": flash toward white for a few frames, then
+		-- tween back. Gives the glyph a little sparkle so it's part of
+		-- the effect rather than a silent label behind the glow.
+		local WHITE = Color3.fromRGB(255, 255, 255)
+		letter.TextColor3 = WHITE
+		TweenService:Create(letter,
+			TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ TextColor3 = color }):Play()
+	end
+
+	local function isButtonOnScreen()
+		if not hint.Parent then return false end
+		local node = backBtn
+		while node and node ~= game do
+			if node:IsA("GuiObject") and node.Visible == false then
+				return false
+			end
+			node = node.Parent
+		end
+		return true
+	end
+
+	-- Handshake for the arrival flash. The listener on the outgoing
+	-- page stamps _G.BackHotkeyArriveAt with the current clock before
+	-- firing onBack; the incoming page's attach (this function, on
+	-- the new Q) consumes the stamp if it's still fresh (< 1 s) and
+	-- plays the flash on the destination halo. A stamp that expires
+	-- without being consumed — e.g. the Q route led to a page with
+	-- no Q (closing the phone) — simply gets ignored when the next
+	-- unrelated attach checks it.
+	local arriveAt = tonumber(_G.BackHotkeyArriveAt)
+	if arriveAt then
+		_G.BackHotkeyArriveAt = nil
+		if (os.clock() - arriveAt) < 1 then
+			task.defer(flashHalo)  -- wait a frame so the halo is parented
+		end
+	end
+
+	local conn = UserInputService.InputBegan:Connect(function(input, gameProcessed)
+		if gameProcessed then return end
+		if input.KeyCode ~= Enum.KeyCode.Q then return end
+		if not isButtonOnScreen() then return end
+		if backBtn:IsA("GuiButton") and backBtn.Active == false then return end
+		_G.BackHotkeyArriveAt = os.clock()
+		task.spawn(onBack)
+	end)
+
+	if typeof(options.activeConnections) == "table" then
+		table.insert(options.activeConnections, conn)
+	end
+
+	hint.AncestryChanged:Connect(function(_, newParent)
+		if newParent == nil and conn.Connected then
+			conn:Disconnect()
+		end
+	end)
+
+	return {
+		hint   = hint,
+		halo   = halo,
+		letter = letter,
+		flash  = flashHalo,
+		disconnect = function()
+			if conn.Connected then conn:Disconnect() end
+		end,
+	}
+end
 
 -- ─── Wait for SpawnMercenary remote ─────────────────────────────────────
 local spawnEvent = ReplicatedStorage:WaitForChild("SpawnMercenary", 30)
@@ -60,6 +259,14 @@ local COLOR_GOLD              = Color3.fromRGB(230, 190, 100)
 local HORIZON                 = Color3.fromRGB(98, 168, 218)
 
 local IDLE_ANIMATION_ID = "rbxassetid://107139405334393"
+local ICON_STAT_STRENGTH = "rbxassetid://121469289292513"
+local ICON_STAT_LUCK     = "rbxassetid://81616209216042"
+local ICON_STAT_SPEED    = "rbxassetid://79004787166831"
+local ICON_PIRATE        = "rbxassetid://86890035031466"
+local STAR_EMPTY         = "rbxassetid://96860361998800"
+local STAR_FULL          = "rbxassetid://128398990741410"
+local STAR_HALF          = "rbxassetid://97995242534538"
+local ICON_PROF_FISHER   = "rbxassetid://109092403607736"
 
 -- Per-mercenary data
 local MERC_THEMES = {
@@ -72,6 +279,13 @@ local MERC_THEMES = {
 		-- lie to the player about how tough their merc actually is.
 		stats       = { hp = 250, damage = 18, mana = "20/min" },
 		spawnModel  = "Pirate_2",
+		-- Default weapon a fresh-recruited merc holds before the player
+		-- visits the equipment page. Pirate sailors are sword-wielders.
+		defaultWeapon = "Sword",
+		-- Y offset applied to the rig in the menu viewport so the camera
+		-- frames the whole body cleanly. Different rig scales need
+		-- different offsets — Pirate sits comfortably at 0.5.
+		viewportPivotY = 0.5,
 		-- Right-column progression + characteristic distribution
 		-- (Strength / Speed / Luck, 0-100). Values mirror the Claude
 		-- Design MercenaryPage.jsx STATS block so the card numbers stay
@@ -79,7 +293,75 @@ local MERC_THEMES = {
 		level       = 1,
 		xp          = 0,
 		xpMax       = 500,
-		charStats   = { str = 72, spd = 48, luck = 35 },
+		-- Strength / Speed / Luck per the StatsSystem.md design doc.
+		-- Pirate is the lowest tier — base 10/10/10 on the universal
+		-- 10–200 scale. Bar fill normalises against UNIVERSAL_MAX in
+		-- refreshRight below.
+		charStats   = { str = 10, spd = 10, luck = 10 },
+		portraitIcon = ICON_PIRATE,
+	},
+	["Corsair"] = {
+		-- Mid-tier sea raider — between the basic Pirate (1★) and the
+		-- Soldier (2★). Same Pirate-family loadout (Sword / FishingRod
+		-- / Unarmed) so the existing weapon restrictedTo lists keep
+		-- working without per-merc plumbing.
+		accent      = Color3.fromRGB(230, 175, 55),
+		displayName = "Corsair",
+		stars       = 2,
+		role        = "Sea Raider · Melee",
+		stats       = { hp = 320, damage = 24, mana = "25/min" },
+		spawnModel  = "Corsair",
+		defaultWeapon = "Sword",
+		viewportPivotY = 0.4,
+		level       = 1,
+		xp          = 0,
+		xpMax       = 650,
+		-- Marauder tier from StatsSystem.md (mid-rung): 30/62/35 base.
+		charStats   = { str = 30, spd = 62, luck = 35 },
+		portraitIcon = ICON_PIRATE,
+	},
+	["Infected Military"] = {
+		-- Internal id stays "Infected Military" so it matches the
+		-- ReplicatedStorage rig and the player.Mercenaries entry.
+		-- displayName is what the card actually renders — keep it
+		-- friendly so the in-world copy doesn't lean on the internal
+		-- system name.
+		accent      = Color3.fromRGB(80, 200, 255),
+		displayName = "Soldier",
+		stars       = 2,
+		role        = "Infected Soldier · Military",
+		-- Higher base stats than Pirate per spec — mirror in
+		-- ServerScriptService/Mercenaries/MercenarySpawner so the
+		-- spawned rig matches what the card promises.
+		stats       = { hp = 420, damage = 32, mana = "30/min" },
+		-- The recruited mercenary version (used for the menu viewport
+		-- and the actual spawned merc) is the "Infected_Military_Menu"
+		-- rig in ReplicatedStorage. The hostile encounter rig
+		-- ("Infected Military") is a separate model.
+		spawnModel  = "Infected_Military_Menu",
+		-- Firearm is the Soldier's signature loadout — the MAIN HAND
+		-- tile shows it on the management page and the recruit comes
+		-- with an automatic pistol pre-selected.
+		defaultWeapon = "Firearm",
+		-- Rig children that ARE the visual for an equippable weapon.
+		-- The AK-47 Model lives directly under Infected_Military_Menu
+		-- and serves as the Firearm rendering. When the player picks
+		-- a different weapon (Hands, Shotgun, FishingRod), the AK-47
+		-- hides; when they pick Firearm, it shows. This is what stops
+		-- a sword + AK-47 doubled-up in the merc's hands.
+		rigBuiltinWeapons = {
+			Firearm = "AK-47",
+		},
+		-- Soldier rig is taller / wider than the Pirate; tweaked
+		-- toward the middle so the camera at (0.6, 2.3, 6.2) frames
+		-- his torso similar to how the Pirate's is framed.
+		viewportPivotY = 0.3,
+		level       = 1,
+		xp          = 0,
+		xpMax       = 800,
+		-- Military tier from StatsSystem.md: 110/131/75 base.
+		charStats   = { str = 110, spd = 131, luck = 75 },
+		portraitIcon = ICON_PIRATE,
 	},
 }
 local DEFAULT_THEME = {
@@ -91,8 +373,43 @@ local DEFAULT_THEME = {
 	level       = 1,
 	xp          = 0,
 	xpMax       = 100,
-	charStats   = { str = 30, spd = 30, luck = 30 },
+	-- Default (Pirate-tier) stats — same 10/10/10 baseline as the
+	-- weakest registered merc. Bars + numbers normalise against the
+	-- 10–200 universal scale from StatsSystem.md.
+	charStats   = { str = 10, spd = 10, luck = 10 },
 }
+
+-- Per-merc weapon allow-list. Mirrored from
+-- MercenaryEquipment.server.ALLOWED_WEAPONS_BY_MERC; the client uses
+-- it to scrub stale EquippedWeapon attributes that point at a weapon
+-- this merc can't actually hold. Without this, a Soldier who carried
+-- "Sword" across a session before per-merc restrictedTo was enforced
+-- would keep getting ClassicSword welded onto him in every viewport.
+local ALLOWED_WEAPONS_BY_MERC = {
+	["Pirate lvl1"]       = { Sword = true, FishingRod = true, Unarmed = true },
+	["Corsair"]           = { Sword = true, FishingRod = true, Unarmed = true },
+	["Infected Military"] = { Firearm = true, Shotgun = true, FishingRod = true, Unarmed = true },
+}
+
+-- Single source of truth for "what weapon should this merc actually
+-- hold right now": prefer the EquippedWeapon attribute, fall back to
+-- the merc's defaultWeapon, then "Sword" (legacy). Disallowed
+-- attributes are cleared in place so subsequent reads land on the
+-- default — keeps the menu / handling / body-select pages in sync
+-- without having to wait for a server-side validation round-trip.
+local function resolveMercWeapon(mercName, mercEntry, themeOverride)
+	local theme = themeOverride or MERC_THEMES[mercName] or DEFAULT_THEME
+	local default = (theme and theme.defaultWeapon) or "Sword"
+	if not mercEntry then return default end
+	local cur = mercEntry:GetAttribute("EquippedWeapon")
+	if not cur or cur == "" then return default end
+	local allowed = ALLOWED_WEAPONS_BY_MERC[mercName]
+	if allowed and not allowed[cur] then
+		mercEntry:SetAttribute("EquippedWeapon", nil)
+		return default
+	end
+	return cur
+end
 
 -- ─── Small UI helpers ───────────────────────────────────────────────────
 
@@ -549,6 +866,20 @@ local function makeCircleIcon(parent, size, color)
 	return c
 end
 
+-- ImageLabel icon from an uploaded Roblox asset id. We use this for the
+-- authored characteristic glyphs so they match the provided artwork.
+local function makeAssetIcon(parent, imageId, size)
+	local icon = Instance.new("ImageLabel")
+	icon.Name = "AssetIcon"
+	icon.BackgroundTransparency = 1
+	icon.BorderSizePixel = 0
+	icon.Size = UDim2.fromOffset(size, size)
+	icon.Image = imageId
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.Parent = parent
+	return icon
+end
+
 -- Chevron-right — two thin Frames meeting at the right forming a ">".
 local function makeChevronRight(parent, size, color)
 	local c = Instance.new("Frame")
@@ -671,6 +1002,50 @@ local function makeStarRow(parent, filled, total, size, color)
 	return c
 end
 
+-- Image-based rarity stars (full / half / empty). Matches the meta-bar
+-- visuals and is used in the left mercenary list cards as requested.
+local function makeImageStarRow(parent, filled, total, size)
+	total = total or 5
+	size = size or 12
+	local gap = 3
+
+	local c = Instance.new("Frame")
+	c.Name = "ImageStarRow"
+	c.BackgroundTransparency = 1
+	c.BorderSizePixel = 0
+	c.Size = UDim2.fromOffset(total * size + (total - 1) * gap, size)
+	c.Parent = parent
+
+	local raw = tonumber(filled) or 0
+	local full = math.floor(raw)
+	local half = (raw - full) >= 0.5
+
+	local layout = Instance.new("UIListLayout")
+	layout.FillDirection = Enum.FillDirection.Horizontal
+	layout.HorizontalAlignment = Enum.HorizontalAlignment.Left
+	layout.VerticalAlignment = Enum.VerticalAlignment.Center
+	layout.Padding = UDim.new(0, gap)
+	layout.Parent = c
+
+	for i = 1, total do
+		local star = Instance.new("ImageLabel")
+		star.Name = "Star_" .. i
+		star.BackgroundTransparency = 1
+		star.BorderSizePixel = 0
+		star.Size = UDim2.fromOffset(size, size)
+		if i <= full then
+			star.Image = STAR_FULL
+		elseif i == full + 1 and half then
+			star.Image = STAR_HALF
+		else
+			star.Image = STAR_EMPTY
+		end
+		star.Parent = c
+	end
+
+	return c
+end
+
 local function makeGemIcon(parent, size, color)
 	local c = Instance.new("Frame")
 	c.Name = "GemIcon"
@@ -710,7 +1085,15 @@ end
 local page = nil
 local hiddenPanels = {}    -- panels hidden while mercenaries page is open
 local currentMercNames = {}  -- remembered across page switches
+-- Set of mercenary IDs the player has actually recruited. Locked
+-- entries (in MERC_THEMES but not in player.Mercenaries) still appear
+-- in the roster as greyed-out cards; this set is what the UI checks
+-- to decide whether interactions (Spawn / Manage / Equip) are
+-- enabled and which chip ("OWNED" vs "LOCKED") gets drawn.
+local currentOwnedSet  = {}
 local currentSelectedMerc = nil
+local mercStatUpgrades = {}   -- [mercName] = { str = n, spd = n, luck = n }
+local mercSpentUpgradePoints = {} -- [mercName] = total spent points
 
 -- Persistent viewport cache so switching between the character page and the
 -- equipment page (and swapping weapons within the equipment page) doesn't
@@ -723,6 +1106,17 @@ local viewportCache = {}
 -- Forward declarations so character page and equipment page can call each other
 local buildPage
 local buildEquipmentPage
+-- Equipment catalog lives further down so it can cross-reference helpers;
+-- forward-declare here so the MANAGE→HandlingPage ctx hand-off (which
+-- runs inside a closure created in buildPage) can see it as an upvalue
+-- instead of an always-nil global.
+local EQUIP_CATEGORIES
+local EQUIP_ITEMS
+-- Roster-refresh connection bag + its disposer — declared at the
+-- bottom of the file but called from the MANAGE-click closure (which
+-- lexically precedes them), so they need the same upvalue hand-off.
+local rosterConns
+local clearRosterConns
 
 -- Detach every cached viewport from its current parent. Call BEFORE
 -- destroying a page so the viewport survives the teardown and can be
@@ -734,6 +1128,132 @@ local function detachCachedViewports()
 		end
 	end
 end
+
+-- ─── Cached-viewport skin sync ──────────────────────────────────────
+-- The cached merc rig that powers MANAGE / Handling / SkinSelect lives
+-- inside a ViewportFrame on the client, so it isn't tagged
+-- "SpawnedMercenary" — the server's live retro-fit can't reach it.
+-- We mirror MercenarySkin's snapshot here and swap the clone's Shirt /
+-- Pants whenever a state push arrives so the centre preview always
+-- shows the equipped skin alongside the in-world rigs.
+--
+-- Catalog is loaded asynchronously from the shared ReplicatedStorage
+-- module. We MUST NOT block the LocalScript's top level on it: if the
+-- module hasn't replicated yet (rare boot race), require(nil) throws
+-- and takes the whole menu down with it. Hold the reference in a
+-- nullable upvalue and short-circuit the swap when it isn't loaded —
+-- the rig will catch up the next time a "state" snapshot arrives
+-- after the require resolves.
+local SkinCatalog
+task.spawn(function()
+	local mod = ReplicatedStorage:WaitForChild("SkinCatalog", 30)
+	if mod then
+		local ok, result = pcall(require, mod)
+		if ok then SkinCatalog = result end
+	end
+end)
+
+local function findSkinsFolder()
+	return ReplicatedStorage:FindFirstChild("Skins")
+end
+
+-- Resolve the source ShirtTemplate / PantsTemplate asset ids from
+-- ReplicatedStorage.Skins. The earlier "destroy + Instance.new"
+-- approach left the rig naked when one of the two paths failed; we
+-- now mutate the rig's existing Shirt / Pants in place where possible
+-- and only fall back to creating fresh ones when they're missing.
+local function readTemplate(skinsFolder, name)
+	if not skinsFolder then return nil, nil end
+	if typeof(name) ~= "string" or name == "" then return nil, nil end
+	local node = skinsFolder:FindFirstChild(name)
+	if not node then return nil, nil end
+	if node:IsA("Shirt") then
+		return "Shirt", node.ShirtTemplate
+	elseif node:IsA("Pants") then
+		return "Pants", node.PantsTemplate
+	end
+	return nil, nil
+end
+
+local function applySkinToCachedClone(clone, skinId)
+	if not (clone and clone.Parent) then return end
+	local def = SkinCatalog and SkinCatalog.get(skinId)
+	if not def then return end
+	local skinsFolder = findSkinsFolder()
+	if not skinsFolder then
+		warn("[MercenariesMenu] ReplicatedStorage.Skins folder missing")
+		return
+	end
+
+	local _, shirtAsset = readTemplate(skinsFolder, def.shirtName)
+	local _, pantsAsset = readTemplate(skinsFolder, def.pantsName)
+
+	if not shirtAsset and not pantsAsset then
+		warn(string.format(
+			"[MercenariesMenu] skin %q: neither %q (Shirt) nor %q (Pants) "
+				.. "resolved under ReplicatedStorage.Skins — rig will keep "
+				.. "its current clothing",
+			tostring(skinId),
+			tostring(def.shirtName),
+			tostring(def.pantsName)
+		))
+		return
+	end
+
+	-- ViewportFrames don't re-paint Shirt / Pants when their template
+	-- ids change after the model is already parented in. Detach the
+	-- rig from its current parent, do the swap with the rig in
+	-- limbo, then reparent — the viewport renders the new clothing
+	-- on re-attach. We also rebuild fresh Shirt / Pants instances
+	-- (instead of mutating in place) for the same reason: the swap
+	-- has to look like "model just gained clothing" to the renderer.
+	local previousParent = clone.Parent
+	clone.Parent = nil
+
+	for _, child in clone:GetChildren() do
+		if child:IsA("Shirt") or child:IsA("Pants") then
+			child:Destroy()
+		end
+	end
+
+	if shirtAsset then
+		local s = Instance.new("Shirt")
+		s.Name = def.shirtName or "Shirt"
+		s.ShirtTemplate = shirtAsset
+		s.Parent = clone
+	end
+
+	if pantsAsset then
+		local p = Instance.new("Pants")
+		p.Name = def.pantsName or "Pants"
+		p.PantsTemplate = pantsAsset
+		p.Parent = clone
+	end
+
+	clone.Parent = previousParent
+end
+
+task.spawn(function()
+	local skinEvent = ReplicatedStorage:WaitForChild("MercenarySkin", 30)
+	if not skinEvent then return end
+	skinEvent.OnClientEvent:Connect(function(action, payload)
+		if action ~= "state" or type(payload) ~= "table" then return end
+		-- Catalog is read from the shared module, not the payload, so
+		-- shirtName / pantsName are guaranteed present. We only need
+		-- the equipped map from the snapshot to know which skin to
+		-- apply per cached merc rig.
+		local equipped = payload.equipped or {}
+		for mercName, skinId in pairs(equipped) do
+			local entry = viewportCache[mercName]
+			if entry and entry.clone then
+				applySkinToCachedClone(entry.clone, skinId)
+			end
+		end
+	end)
+	-- Ask for an initial state so the cached rigs born before the
+	-- player ever opens the wardrobe are still skinned correctly.
+	skinEvent:FireServer("getState")
+end)
 
 -- Hide all phone-menu panels (direct children of root) except the
 -- mercenaries page itself.
@@ -762,7 +1282,59 @@ end
 -- Rebuild only the weapon inside an already-constructed clone. Called at
 -- viewport creation time and on every equipment change so swapping
 -- between Sword and FishingRod doesn't restart the idle animation.
-local function applyWeaponToClone(clone, weaponId)
+-- Backpack ids never belong in the weapon slot — they're body-slot
+-- accessories handled by syncBackpackVisibility. If one ever leaks in
+-- (stale cache, wrong caller), we downgrade to Unarmed so the hand
+-- cleanup still runs but no ReplicatedStorage "Backpack" Tool gets
+-- welded to the right arm. Keep this table in lock-step with the
+-- server's EQUIPPABLE_BACKPACKS in MercenaryEquipment.server.lua.
+local WEAPON_SLOT_BACKPACK_IDS = {
+	Backpack      = true,
+	BackPack_lvl2 = true,
+}
+
+-- Toggle visibility of any rigBuiltinWeapon Models declared in the
+-- merc's theme so the rig only ever shows ONE weapon at a time. The
+-- Soldier rig ships with an AK-47 Model under it that visualises the
+-- "Firearm" equip; if the player picks Shotgun / FishingRod / Hands
+-- we hide the AK-47 so the welded weapon isn't doubled up on the
+-- existing model. Visible iff the weapon id matches the mapping.
+local function syncRigBuiltinWeapons(clone, mercName, weaponId)
+	if not mercName then return end
+	local theme = MERC_THEMES[mercName]
+	if not theme or not theme.rigBuiltinWeapons then return end
+
+	local function setVisible(inst, visible)
+		local t = visible and 0 or 1
+		if inst:IsA("BasePart") then inst.Transparency = t end
+		for _, desc in inst:GetDescendants() do
+			if desc:IsA("BasePart") then desc.Transparency = t end
+			if desc:IsA("Decal") then desc.Transparency = t end
+		end
+	end
+
+	for slotId, modelName in pairs(theme.rigBuiltinWeapons) do
+		local part = clone:FindFirstChild(modelName)
+		if part then
+			setVisible(part, slotId == weaponId)
+		end
+	end
+end
+
+local function applyWeaponToClone(clone, weaponId, mercName)
+	-- Sanitise backpack ids up front so the ReplicatedStorage lookup
+	-- below can't possibly grab a backpack Tool and weld it to the
+	-- hand. Falls through to the Unarmed branch (strip-only, no attach).
+	if weaponId and WEAPON_SLOT_BACKPACK_IDS[weaponId] then
+		weaponId = "Unarmed"
+	end
+
+	-- Toggle rig-baked weapon Models (e.g. AK-47) so only the one
+	-- matching the equipped slot is visible. Done before the weld
+	-- pass so the welded mesh and the hidden rig-baked one don't
+	-- overlap visually for a frame.
+	syncRigBuiltinWeapons(clone, mercName, weaponId)
+
 	local requestedTool = weaponId
 	if not requestedTool or requestedTool == "Sword" then
 		requestedTool = "ClassicSword"
@@ -883,14 +1455,27 @@ local function syncBackpackVisibility(clone, mercName)
 	local mEntry = mFolder and mFolder:FindFirstChild(mercName)
 	local equipped = mEntry and mEntry:GetAttribute("EquippedBackpack") or ""
 
-	for _, bpName in BACKPACK_MODELS do
-		local bpPart = clone:FindFirstChild(bpName)
-		if bpPart then
-			local show = (equipped == bpName)
+	-- Fuzzy match: any direct child whose name contains "backpack"
+	-- (case-insensitive) is treated as a backpack accessory. Lets
+	-- rigs that name their backpacks differently still get toggled
+	-- without a per-merc registry. Accessory instances toggle their
+	-- Handle as well, since the visible mesh hangs off it.
+	local function nameContainsBackpack(s)
+		return s:lower():find("backpack", 1, true) ~= nil
+	end
+
+	for _, child in clone:GetChildren() do
+		if nameContainsBackpack(child.Name) then
+			local show = (child.Name == equipped)
 			local t = show and 0 or 1
-			if bpPart:IsA("BasePart") then bpPart.Transparency = t end
-			for _, desc in bpPart:GetDescendants() do
+			if child:IsA("BasePart") then child.Transparency = t end
+			if child:IsA("Accessory") then
+				local handle = child:FindFirstChild("Handle")
+				if handle and handle:IsA("BasePart") then handle.Transparency = t end
+			end
+			for _, desc in child:GetDescendants() do
 				if desc:IsA("BasePart") then desc.Transparency = t end
+				if desc:IsA("Decal") then desc.Transparency = t end
 			end
 		end
 	end
@@ -904,10 +1489,12 @@ local function buildMercViewport(parent, mercName, weaponId)
 		cached.vp.Parent = parent
 	end
 	if cached and cached.vp then
-		if cached.weaponId ~= weaponId then
-			applyWeaponToClone(cached.clone, weaponId)
-			cached.weaponId = weaponId
-		end
+		-- Re-applying is cheap (idempotent strip+reweld) and it also
+		-- acts as a self-heal: any leftover Tool in the right arm from
+		-- a polluted earlier state gets stripped on the next cache hit,
+		-- not only when the weapon id actually differs.
+		applyWeaponToClone(cached.clone, weaponId, mercName)
+		cached.weaponId = weaponId
 		syncBackpackVisibility(cached.clone, mercName)
 		return cached.vp
 	end
@@ -1120,11 +1707,15 @@ local function buildMercViewport(parent, mercName, weaponId)
 		end
 	end
 
-	-- Position and rotate to face camera
-	clone:PivotTo(CFrame.new(0, 0.5, 0) * CFrame.Angles(0, math.pi, 0))
+	-- Position and rotate to face camera. Per-merc viewportPivotY lifts
+	-- rigs whose bind-pose origin sits below the camera focus so the
+	-- whole body fits in the viewport instead of half of it falling
+	-- below the SPAWN button.
+	local pivotY = (theme and theme.viewportPivotY) or 0.5
+	clone:PivotTo(CFrame.new(0, pivotY, 0) * CFrame.Angles(0, math.pi, 0))
 
 	-- Set up the picked weapon (sword / rod) on the rig.
-	applyWeaponToClone(clone, weaponId)
+	applyWeaponToClone(clone, weaponId, mercName)
 
 	-- Play the plain body idle so the pirate has its breathing / sway in
 	-- the preview. Runs once during the initial build; subsequent equipment
@@ -1200,7 +1791,15 @@ buildPage = function(mercNames)
 	if page then page:Destroy() end
 
 	currentMercNames = mercNames
+	-- Default selection prefers the first OWNED merc so the right
+	-- panel doesn't open onto a locked card with disabled buttons.
 	local selectedName = mercNames[1]
+	for _, n in mercNames do
+		if currentOwnedSet[n] then
+			selectedName = n
+			break
+		end
+	end
 	currentSelectedMerc = selectedName
 
 	-- Full-screen page container, fully transparent — the holo
@@ -1222,9 +1821,12 @@ buildPage = function(mercNames)
 	-- built so the mote-fade heartbeat finds them.
 	table.clear(motesOccludeList)
 
-	-- Holo sea-mist backdrop — first child so everything below
-	-- renders on top of it.
-	buildHoloBackground(page)
+	-- Holo sea-mist backdrop lives on the persistent PhoneMenu screenGui
+	-- now, so the gradient + motes carry across page transitions
+	-- instead of restarting from the bottom every time a sub-page
+	-- builds. Intentionally no per-page backdrop here — `page` stays
+	-- transparent and the shared backdrop shows through.
+	-- buildHoloBackground(page)  -- intentionally disabled
 
 	-- ── Responsive artboard (matches PhoneMenu) ──────────────────────
 	-- The Claude Design canvas base is 960x600; we use a wider artboard here
@@ -1265,7 +1867,7 @@ buildPage = function(mercNames)
 	-- BACK button's static y inside scaleWrap — matches the old
 	-- topBar-local (16 + 23) layout so the visual offset from the top
 	-- of the artboard is unchanged.
-	local BACK_BTN_Y = 39
+	local BACK_BTN_Y = 10  -- matches DNAStudyPage for consistent BACK placement
 
 	local function updateResponsiveScale()
 		local size = screenGui.AbsoluteSize
@@ -1380,45 +1982,56 @@ buildPage = function(mercNames)
 	-- the left column uses — otherwise BACK's absolute x slides around
 	-- with scaleWrap's centering while the left column stays glued to
 	-- the screen edge, making the two drift apart at different scales.
+	-- Matches DNAStudyPage's BACK button 1:1: 92×34 holo panel, glyph
+	-- + left-aligned uppercase label, ZIndex 52. updateResponsiveScale
+	-- above overrides the Position.X via dynamicBleed so BACK sits
+	-- SCREEN_MARGIN from the left edge.
 	local backBtn = Instance.new("TextButton")
 	backBtn.Name = "BackButton"
 	backBtn.AnchorPoint = Vector2.new(0, 0)
-	backBtn.Position = UDim2.fromOffset(-EDGE_BLEED_X, 39) -- overridden by updateResponsiveScale
-	backBtn.Size = UDim2.fromOffset(84, 34)
+	backBtn.Position = UDim2.fromOffset(0, BACK_BTN_Y)
+	backBtn.Size = UDim2.fromOffset(92, 34)
 	backBtn.BackgroundColor3 = HOLO_PANEL_FILL
 	backBtn.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
 	backBtn.BorderSizePixel = 0
 	backBtn.AutoButtonColor = true
-	backBtn.Text = "" -- label drawn as a child for precise positioning
-	backBtn.ZIndex = 6
+	backBtn.Text = "" -- glyph + label drawn as children
+	backBtn.ZIndex = 52
 	backBtn.Parent = scaleWrap
-	backBtnRef = backBtn
 	local backStroke = Instance.new("UIStroke")
 	backStroke.Color     = HOLO_PANEL_BORDER
 	backStroke.Thickness = 1
 	backStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
 	backStroke.Parent    = backBtn
+	backBtnRef = backBtn
 
 	local backGlyph = makeBackIcon(backBtn, 14, COLOR_TEXT)
 	backGlyph.AnchorPoint = Vector2.new(0, 0.5)
-	backGlyph.Position = UDim2.new(0, 14, 0.5, 0)
-	backGlyph.Visible = false
+	backGlyph.Position = UDim2.new(0, 12, 0.5, 0)
+	backGlyph.ZIndex = 53
 
 	local backLabel = Instance.new("TextLabel")
 	backLabel.BackgroundTransparency = 1
 	backLabel.BorderSizePixel = 0
-	backLabel.Position = UDim2.fromOffset(0, 0)
-	backLabel.Size = UDim2.fromScale(1, 1)
+	backLabel.Position = UDim2.fromOffset(30, 0)
+	backLabel.Size = UDim2.new(1, -34, 1, 0)
 	backLabel.Font = FONT_TITLE
-	backLabel.TextSize = 15
+	backLabel.TextSize = 13
 	backLabel.TextColor3 = COLOR_TEXT
-	backLabel.TextXAlignment = Enum.TextXAlignment.Center
+	backLabel.TextXAlignment = Enum.TextXAlignment.Left
 	backLabel.Text = "BACK"
+	backLabel.ZIndex = 53
 	backLabel.Parent = backBtn
 
-	backBtn.MouseButton1Click:Connect(function()
+	local function triggerBack()
 		closePage()
-	end)
+	end
+	backBtn.MouseButton1Click:Connect(triggerBack);
+	_G.AttachBackHotkey(backBtn, triggerBack, {
+		color     = COLOR_TEXT,
+		haloColor = HOLO_EDGE,
+		fontTitle = FONT_TITLE,
+	})
 
 	-- Centred uppercase MERCENARIES title in holo-edge cyan.
 	local title = Instance.new("TextLabel")
@@ -1516,7 +2129,7 @@ buildPage = function(mercNames)
 	leftCol.BorderSizePixel = 0
 	local LEFT_MAX_H = REFERENCE_H - (PANELS_TOP_Y + PANELS_BOT_PAD)
 	local LEFT_MIN_H = 170
-	local CARD_ROW_H = 72
+	local CARD_ROW_H = 112
 	local CARD_ROW_GAP = 8
 	local visibleRows = math.max(1, #mercNames)
 	local rowsHeight = visibleRows * CARD_ROW_H + math.max(0, visibleRows - 1) * CARD_ROW_GAP
@@ -1563,9 +2176,15 @@ buildPage = function(mercNames)
 
 	-- Cap of 6 matches the design's MERCS roster — it's purely a text
 	-- hint; actual slot count is driven by what's in player.Mercenaries.
+	-- The HIRED counter only counts OWNED mercs (locked roster entries
+	-- still take up card slots but aren't "hired" yet).
 	local ROSTER_CAP = 6
+	local ownedCount = 0
+	for _, n in mercNames do
+		if currentOwnedSet[n] then ownedCount = ownedCount + 1 end
+	end
 	local countLabel = makeLabel(leftHeader,
-		string.format("%d / %d HIRED", #mercNames, ROSTER_CAP),
+		string.format("%d / %d HIRED", ownedCount, ROSTER_CAP),
 		FONT_BODY, 11, COLOR_TEXT_DIM, Enum.TextXAlignment.Right)
 	countLabel.AnchorPoint = Vector2.new(1, 0.5)
 	countLabel.Position = UDim2.new(1, 0, 0.5, 0)
@@ -1580,18 +2199,14 @@ buildPage = function(mercNames)
 	leftDivider.Position = UDim2.fromOffset(0, 28)
 	leftDivider.Parent = leftCol
 
-	-- Scrolling card list.
-	local cardList = Instance.new("ScrollingFrame")
+	-- Card list (no scrollbar — panel height is computed to show cards
+	-- directly in the window without a scroll thumb for this section).
+	local cardList = Instance.new("Frame")
 	cardList.Name = "CardList"
 	cardList.BackgroundTransparency = 1
 	cardList.BorderSizePixel = 0
 	cardList.Position = UDim2.fromOffset(0, 40)
 	cardList.Size = UDim2.new(1, 0, 1, -48)
-	cardList.CanvasSize = UDim2.new(0, 0, 0, 0)
-	cardList.AutomaticCanvasSize = Enum.AutomaticSize.Y
-	cardList.ScrollBarThickness = 4
-	cardList.ScrollBarImageColor3 = HOLO_PANEL_BORDER
-	cardList.ScrollBarImageTransparency = 0.3
 	cardList.Parent = leftCol
 
 	local cardLayout = Instance.new("UIListLayout")
@@ -1617,6 +2232,8 @@ buildPage = function(mercNames)
 		for name, rec in pairs(mercCards) do
 			local isSel = (name == mercName)
 			local color = isSel and HOLO_EDGE or HOLO_PANEL_BORDER
+			rec.frame.BackgroundColor3 = isSel and Color3.fromRGB(28, 72, 116) or HOLO_PANEL_FILL
+			rec.frame.BackgroundTransparency = isSel and 0.08 or HOLO_PANEL_TRANSPARENCY
 			rec.stroke.Color = color
 			rec.portraitStroke.Color = color
 			for _, bracket in rec.brackets do
@@ -1627,9 +2244,14 @@ buildPage = function(mercNames)
 		refreshRight(mercName)
 	end
 
-	-- Build one holo card per recruited mercenary.
+	-- Build one holo card per known mercenary type. Cards for types
+	-- the player hasn't recruited yet are still rendered, but greyed
+	-- out with a "LOCKED" chip and the click handler is a no-op so
+	-- the right-hand panel can't open onto a card the player can't
+	-- actually use.
 	for i, mercName in mercNames do
 		local theme = MERC_THEMES[mercName] or DEFAULT_THEME
+		local isOwned = currentOwnedSet[mercName] == true
 		local displayName = theme.displayName or mercName
 
 		local card = Instance.new("TextButton")
@@ -1639,7 +2261,7 @@ buildPage = function(mercNames)
 		card.BorderSizePixel = 0
 		card.AutoButtonColor = false
 		card.Text = ""
-		card.Size = UDim2.new(1, -6, 0, 72)
+		card.Size = UDim2.new(1, -6, 0, 112)
 		card.LayoutOrder = i
 		card.Parent = cardList
 
@@ -1649,19 +2271,20 @@ buildPage = function(mercNames)
 		cardStroke.Parent    = card
 
 		local cardPad = Instance.new("UIPadding")
-		cardPad.PaddingTop    = UDim.new(0, 10)
-		cardPad.PaddingBottom = UDim.new(0, 10)
+		cardPad.PaddingTop    = UDim.new(0, 12)
+		cardPad.PaddingBottom = UDim.new(0, 12)
 		cardPad.PaddingLeft   = UDim.new(0, 10)
 		cardPad.PaddingRight  = UDim.new(0, 10)
 		cardPad.Parent = card
 
-		-- Portrait slot — 52x52, translucent fill, hairline border, mini
+		-- Portrait slot — enlarged for readability, translucent fill,
+		-- hairline border, mini corner L's.
 		-- corner L's. Character icon sits centred inside.
 		local portrait = Instance.new("Frame")
 		portrait.Name = "Portrait"
 		portrait.AnchorPoint = Vector2.new(0, 0.5)
 		portrait.Position = UDim2.new(0, 0, 0.5, 0)
-		portrait.Size = UDim2.fromOffset(52, 52)
+		portrait.Size = UDim2.fromOffset(88, 88)
 		portrait.BackgroundColor3 = Color3.fromRGB(15, 35, 65)
 		portrait.BackgroundTransparency = 0.65
 		portrait.BorderSizePixel = 0
@@ -1674,41 +2297,70 @@ buildPage = function(mercNames)
 
 		cornerLs(portrait, 5, HOLO_PANEL_LBRACKET, 1.5)
 
-		local charGlyph = makeCharacterIcon(portrait, 28, HOLO_PANEL_LBRACKET)
-		charGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
-		charGlyph.Position = UDim2.fromScale(0.5, 0.5)
+		local portraitIconId = theme.portraitIcon
+		if portraitIconId then
+			local charIcon = makeAssetIcon(portrait, portraitIconId, 84)
+			charIcon.Name = "PortraitIcon"
+			charIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+			charIcon.Position = UDim2.fromScale(0.5, 0.5)
+			-- Dim and desaturate the portrait for locked entries so
+			-- the player visually parses them as "not yet earned".
+			if not isOwned then
+				charIcon.ImageColor3 = Color3.fromRGB(120, 120, 130)
+				charIcon.ImageTransparency = 0.35
+			end
+		else
+			local charGlyph = makeCharacterIcon(portrait, 56, HOLO_PANEL_LBRACKET)
+			charGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
+			charGlyph.Position = UDim2.fromScale(0.5, 0.5)
+		end
 
-		-- Right side of the card: name row (+ OWNED chip) / star row / role
-		-- line, all left-aligned starting 62 px in so they sit clear of
-		-- the 52-wide portrait plus its 10 px gap.
-		local name = makeLabel(card, displayName, FONT_TITLE, 15, COLOR_TEXT)
-		name.Position = UDim2.fromOffset(62, 0)
-		name.Size = UDim2.fromOffset(130, 18)
+		if not isOwned then
+			-- Whole card sits at lower opacity so it reads as disabled.
+			card.BackgroundTransparency = math.min(0.85, HOLO_PANEL_TRANSPARENCY + 0.15)
+			portrait.BackgroundTransparency = 0.85
+		end
 
-		-- OWNED chip in green stroke — every merc we render here comes
-		-- from player.Mercenaries, so they're by definition recruited.
+		-- Right side of the card: name row (+ OWNED/LOCKED chip) /
+		-- star row / role line, all left-aligned starting 100 px in
+		-- so they sit clear of the 88-wide portrait plus its 12 px gap.
+		-- Locked cards mask the actual displayName so unrecruited
+		-- mercenaries read as "Unknown" until the player encounters
+		-- them in the world.
+		local nameText = isOwned and displayName or "Unknown"
+		local nameColor = isOwned and COLOR_TEXT or COLOR_TEXT_DIM
+		local name = makeLabel(card, nameText, FONT_TITLE, 22, nameColor)
+		name.Position = UDim2.fromOffset(100, 4)
+		name.Size = UDim2.new(1, -210, 0, 26)
+
+		-- Status chip: green "OWNED" when recruited, grey "LOCKED"
+		-- when not. Locked cards keep the same shape so the roster
+		-- layout doesn't shift as new mercs are unlocked.
+		local chipColor = isOwned and Color3.fromRGB(110, 200, 140) or Color3.fromRGB(170, 170, 180)
+		local chipText  = isOwned and "OWNED" or "LOCKED"
 		local ownedChip = Instance.new("Frame")
 		ownedChip.Name = "OwnedChip"
-		ownedChip.AnchorPoint = Vector2.new(0, 0.5)
-		ownedChip.Position = UDim2.new(0, 62 + 80, 0, 9)
-		ownedChip.Size = UDim2.fromOffset(44, 14)
+		ownedChip.AnchorPoint = Vector2.new(1, 0.5)
+		ownedChip.Position = UDim2.new(1, -10, 0, 16)
+		ownedChip.Size = UDim2.fromOffset(56, 18)
 		ownedChip.BackgroundTransparency = 1
 		ownedChip.BorderSizePixel = 0
 		ownedChip.Parent = card
 		local ownedStroke = Instance.new("UIStroke")
-		ownedStroke.Color     = Color3.fromRGB(110, 200, 140)
+		ownedStroke.Color     = chipColor
 		ownedStroke.Thickness = 1
 		ownedStroke.Parent    = ownedChip
-		local ownedLbl = makeLabel(ownedChip, "OWNED", FONT_TITLE, 8,
-			Color3.fromRGB(110, 200, 140), Enum.TextXAlignment.Center)
+		local ownedLbl = makeLabel(ownedChip, chipText, FONT_TITLE, 9,
+			chipColor, Enum.TextXAlignment.Center)
 		ownedLbl.Size = UDim2.fromScale(1, 1)
 
-		local starRow = makeStarRow(card, theme.stars or 1, 5, 9, COLOR_GOLD)
-		starRow.Position = UDim2.fromOffset(62, 24)
+		local starRow = makeImageStarRow(card, theme.stars or 1, 5, 12)
+		starRow.AnchorPoint = Vector2.new(1, 0)
+		starRow.Position = UDim2.new(1, -10, 0, 44)
 
-		local role = makeLabel(card, theme.role or "Crew", FONT_BODY, 10, COLOR_TEXT_DIM)
-		role.Position = UDim2.fromOffset(62, 38)
-		role.Size = UDim2.fromOffset(150, 14)
+		local role = makeLabel(card, theme.role or "Crew", FONT_BODY, 16, COLOR_TEXT_DIM)
+		role.Position = UDim2.fromOffset(100, 64)
+		role.Size = UDim2.new(1, -210, 0, 22)
 
 		-- Collect bracket refs so selection recolouring can tint them
 		-- without re-creating the Frames.
@@ -1728,6 +2380,11 @@ buildPage = function(mercNames)
 			end
 		end
 
+		-- Locked cards are clickable for browsing — selection swaps the
+		-- centre viewport + right-hand stat panel so the player can
+		-- preview every mercenary type. Spawn / Manage actions still
+		-- gate on currentOwnedSet so the player can't act on a merc
+		-- they haven't recruited yet.
 		card.MouseButton1Click:Connect(function()
 			setSelectedCard(mercName)
 		end)
@@ -1768,6 +2425,7 @@ buildPage = function(mercNames)
 	metaBar.BorderSizePixel = 0
 	metaBar.Position = UDim2.fromOffset(0, META_TOP_OFFSET)
 	metaBar.Size = UDim2.new(1, 0, 0, META_HEIGHT)
+	metaBar.Visible = false -- hidden per feedback: remove top "Pirate + stars" strip
 	metaBar.Parent = centreCol
 	local metaStroke = Instance.new("UIStroke")
 	metaStroke.Color     = HOLO_PANEL_LBRACKET
@@ -1799,9 +2457,6 @@ buildPage = function(mercNames)
 	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 
 	-- Rarity stars: image-based icons on the right side of the meta strip.
-	local STAR_EMPTY = "rbxassetid://96860361998800"
-	local STAR_FULL  = "rbxassetid://128398990741410"
-	local STAR_HALF  = "rbxassetid://97995242534538"
 	local rarityIconsRow = Instance.new("Frame")
 	rarityIconsRow.Name = "RarityIconsRow"
 	rarityIconsRow.AnchorPoint = Vector2.new(1, 0.5)
@@ -1842,7 +2497,7 @@ buildPage = function(mercNames)
 		end
 	end
 
-	-- ── Character slot (rings + ground glow + ViewportFrame) ──────────
+	-- ── Character slot (ground glow + ViewportFrame) ───────────────────
 	local slot = Instance.new("Frame")
 	slot.Name = "CharacterSlot"
 	slot.BackgroundTransparency = 1
@@ -1875,30 +2530,86 @@ buildPage = function(mercNames)
 	groundGrad.Rotation = 0
 	groundGrad.Parent = ground
 
-	-- Concentric rim rings behind the character, slightly above centre
-	-- so the ViewportFrame sits inside them.
-	local function rimCircle(sizePx, strokeColor, strokeTransparency)
-		local r = Instance.new("Frame")
-		r.Name = "RimCircle"
-		r.AnchorPoint = Vector2.new(0.5, 0.5)
-		r.Position = UDim2.fromScale(0.5, 0.48)
-		r.Size = UDim2.fromOffset(sizePx, sizePx)
-		r.BackgroundTransparency = 1
-		r.BorderSizePixel = 0
-		r.ZIndex = 2
-		r.Parent = slot
-		local rc = Instance.new("UICorner")
-		rc.CornerRadius = UDim.new(1, 0)
-		rc.Parent = r
-		local rs = Instance.new("UIStroke")
-		rs.Color        = strokeColor
-		rs.Thickness    = 1
-		rs.Transparency = strokeTransparency or 0
-		rs.Parent       = r
-		return r
+	-- Profession block above the mercenary model. Profession is derived
+	-- from the currently-equipped main-hand weapon on the selected merc.
+	local profCard = Instance.new("Frame")
+	profCard.Name = "ProfessionCard"
+	profCard.AnchorPoint = Vector2.new(0, 1)
+	profCard.Position = UDim2.fromOffset(leftCol.Position.X.Offset, leftCol.Position.Y.Offset - 10)
+	profCard.Size = UDim2.fromOffset(240, 59)
+	profCard.BackgroundColor3 = HOLO_PANEL_FILL
+	profCard.BackgroundTransparency = HOLO_PANEL_TRANSPARENCY
+	profCard.BorderSizePixel = 0
+	profCard.ZIndex = 6
+	profCard.Parent = scaleWrap
+	local profStroke = Instance.new("UIStroke")
+	profStroke.Color = HOLO_EDGE
+	profStroke.Thickness = 1
+	profStroke.Parent = profCard
+
+	local profIconRing = Instance.new("Frame")
+	profIconRing.Name = "IconRing"
+	profIconRing.AnchorPoint = Vector2.new(0, 0.5)
+	profIconRing.Position = UDim2.new(0, 11, 0.5, 0)
+	profIconRing.Size = UDim2.fromOffset(42, 42)
+	profIconRing.BackgroundTransparency = 1
+	profIconRing.BorderSizePixel = 0
+	profIconRing.ZIndex = 7
+	profIconRing.Parent = profCard
+	local profIconCorner = Instance.new("UICorner")
+	profIconCorner.CornerRadius = UDim.new(1, 0)
+	profIconCorner.Parent = profIconRing
+	local profIconStroke = Instance.new("UIStroke")
+	profIconStroke.Color = HOLO_EDGE
+	profIconStroke.Thickness = 1
+	profIconStroke.Transparency = 0.25
+	profIconStroke.Parent = profIconRing
+
+	local profIconImage = Instance.new("ImageLabel")
+	profIconImage.Name = "IconImage"
+	profIconImage.BackgroundTransparency = 1
+	profIconImage.BorderSizePixel = 0
+	profIconImage.AnchorPoint = Vector2.new(0.5, 0.5)
+	profIconImage.Position = UDim2.fromScale(0.5, 0.5)
+	profIconImage.Size = UDim2.fromOffset(24, 24)
+	profIconImage.Image = ICON_PROF_FISHER
+	profIconImage.ImageColor3 = COLOR_TEXT
+	profIconImage.ScaleType = Enum.ScaleType.Fit
+	profIconImage.ZIndex = 8
+	profIconImage.Parent = profIconRing
+
+	local profIconLetter = makeLabel(profIconRing, "A", FONT_TITLE, 20, COLOR_TEXT, Enum.TextXAlignment.Center)
+	profIconLetter.Size = UDim2.fromScale(1, 1)
+	profIconLetter.ZIndex = 8
+	profIconLetter.Visible = false
+
+	local profTag = makeLabel(profCard, "PROFESSION:", FONT_TITLE, 14, COLOR_TEXT_DIM)
+	profTag.Position = UDim2.fromOffset(62, 10)
+	profTag.Size = UDim2.fromOffset(160, 16)
+	profTag.ZIndex = 7
+
+	local profValue = makeLabel(profCard, "ASSISTANT", FONT_TITLE, 24, COLOR_TEXT)
+	profValue.Position = UDim2.fromOffset(62, 24)
+	profValue.Size = UDim2.fromOffset(168, 26)
+	profValue.ZIndex = 7
+
+	local function layoutProfessionCard(roleText)
+		local rightEdge = leftCol.Position.X.Offset + leftCol.Size.X.Offset
+		local textX = 62
+		local rightPad = 10
+
+		local tagW = TextService:GetTextSize("PROFESSION:", 14, FONT_TITLE, Vector2.new(1000, 1000)).X
+		local roleW = TextService:GetTextSize(roleText, 24, FONT_TITLE, Vector2.new(1000, 1000)).X
+		local textW = math.max(tagW, roleW)
+
+		local cardW = math.max(170, textX + textW + rightPad)
+		profCard.Size = UDim2.fromOffset(cardW, 59)
+		profCard.Position = UDim2.fromOffset(rightEdge - cardW, leftCol.Position.Y.Offset - 10)
+
+		profTag.Size = UDim2.fromOffset(textW, 16)
+		profValue.Size = UDim2.fromOffset(textW, 26)
 	end
-	rimCircle(340, HOLO_EDGE,          0.70) -- outer faint
-	rimCircle(280, HOLO_PANEL_BORDER,  0.55) -- inner denser
+	layoutProfessionCard("ASSISTANT")
 
 	-- ── Handling button ──────────────────────────────────────────────
 	-- Gradient pill floating at the foot of the character slot, matching
@@ -1958,7 +2669,12 @@ buildPage = function(mercNames)
 	hChev.Visible = false
 
 	handlingBtn.MouseButton1Click:Connect(function()
-		if spawnEvent and currentSelectedMerc then
+		-- Locked merc selected → Spawn does nothing. The user can
+		-- still browse the locked card but actions are gated until
+		-- they actually recruit the type in the world.
+		if not currentSelectedMerc then return end
+		if not currentOwnedSet[currentSelectedMerc] then return end
+		if spawnEvent then
 			spawnEvent:FireServer(currentSelectedMerc)
 		end
 		closePage()
@@ -1971,11 +2687,11 @@ buildPage = function(mercNames)
 	-- text, rebuilds the rarity star row, and hands off to the shared
 	-- buildMercViewport pipeline (which caches per merc, so the idle
 	-- animation keeps ticking across selections).
-		refreshCentre = function(mercName)
-			local theme = MERC_THEMES[mercName] or DEFAULT_THEME
+	refreshCentre = function(mercName)
+		local theme = MERC_THEMES[mercName] or DEFAULT_THEME
 
-			nameLabel.Text   = theme.displayName or mercName
-			rebuildMetaStars(theme.stars or 1, 5)
+		nameLabel.Text   = theme.displayName or mercName
+		rebuildMetaStars(theme.stars or 1, 5)
 
 		-- Detach the previous merc's ViewportFrame (if any) so it doesn't
 		-- linger next to the new one. The cache keeps the clone alive so
@@ -1988,7 +2704,30 @@ buildPage = function(mercNames)
 
 		local mercFolder = player:FindFirstChild("Mercenaries")
 		local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
-		local weaponId = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+		local mercTheme = MERC_THEMES[mercName] or DEFAULT_THEME
+		local weaponId = resolveMercWeapon(mercName, mercEntry, mercTheme)
+
+		local profession = "ASSISTANT"
+		if weaponId == "FishingRod" then
+			profession = "FISHERMAN"
+		elseif weaponId == "Firearm" or weaponId == "Shotgun" then
+			profession = "SOLDIER"
+		elseif weaponId == "Sword" then
+			profession = "WARRIOR"
+		end
+		profValue.Text = profession
+		layoutProfessionCard(profession)
+		if profession == "FISHERMAN" then
+			profIconImage.Image = ICON_PROF_FISHER
+			profIconImage.ImageTransparency = 0
+			profIconLetter.Visible = false
+		else
+			profIconImage.Image = ICON_PROF_FISHER
+			profIconImage.ImageTransparency = 1
+			profIconLetter.Text = (profession == "WARRIOR") and "W" or "A"
+			profIconLetter.Visible = true
+		end
+
 		local vp = buildMercViewport(slot, mercName, weaponId)
 		if vp then
 			vp.ZIndex = 5 -- render on top of rings + glow
@@ -2108,38 +2847,66 @@ buildPage = function(mercNames)
 	lvlDivider.Position = UDim2.fromOffset(0, LVL_H + 12)
 	lvlDivider.Parent = rightCol
 
-	-- ── Characteristics section ────────────────────────────────────────
-	local CHARS_Y = LVL_H + 24
+	-- Upgrade points row sits directly under the level/XP block.
+	local pointsLabel = makeLabel(rightCol, "UPGRADE POINTS: 0", FONT_TITLE, 12, HOLO_EDGE)
+	pointsLabel.Position = UDim2.fromOffset(0, LVL_H + 18)
+	pointsLabel.Size = UDim2.new(1, 0, 0, 16)
 
+	-- Scroll window for characteristic+ability content only. Right panel
+	-- size stays fixed; this inner area gets a scrollbar when content grows.
+	local CHARS_Y = LVL_H + 40
+	local statsScroll = Instance.new("ScrollingFrame")
+	statsScroll.Name = "StatsAbilitiesScroll"
+	statsScroll.BackgroundTransparency = 1
+	statsScroll.BorderSizePixel = 0
+	statsScroll.Position = UDim2.fromOffset(0, CHARS_Y)
+	statsScroll.Size = UDim2.new(1, 0, 1, -(CHARS_Y + 52))
+	statsScroll.CanvasSize = UDim2.new(0, 0, 0, 0)
+	statsScroll.AutomaticCanvasSize = Enum.AutomaticSize.Y
+	statsScroll.ScrollBarThickness = 4
+	statsScroll.ScrollBarImageColor3 = HOLO_PANEL_BORDER
+	statsScroll.ScrollBarImageTransparency = 0.3
+	statsScroll.Parent = rightCol
+
+	local contentRoot = Instance.new("Frame")
+	contentRoot.Name = "Content"
+	contentRoot.BackgroundTransparency = 1
+	contentRoot.BorderSizePixel = 0
+	contentRoot.Size = UDim2.new(1, -6, 0, 0)
+	contentRoot.AutomaticSize = Enum.AutomaticSize.Y
+	contentRoot.Parent = statsScroll
+
+	-- ── Characteristics section ────────────────────────────────────────
 	local charsHeader = Instance.new("Frame")
 	charsHeader.Name = "CharsHeader"
 	charsHeader.BackgroundTransparency = 1
 	charsHeader.BorderSizePixel = 0
-	charsHeader.Position = UDim2.fromOffset(0, CHARS_Y)
-	charsHeader.Size = UDim2.new(1, 0, 0, 18)
-	charsHeader.Parent = rightCol
+	charsHeader.Position = UDim2.fromOffset(0, 0)
+	charsHeader.Size = UDim2.new(1, 0, 0, 24)
+	charsHeader.Parent = contentRoot
 
-	local charsGlyph = makeDiamondIcon(charsHeader, 13, HOLO_EDGE)
+	local charsGlyph = makeDiamondIcon(charsHeader, 16, HOLO_EDGE)
 	charsGlyph.AnchorPoint = Vector2.new(0, 0.5)
 	charsGlyph.Position = UDim2.fromScale(0, 0.5)
 
-	makeLabel(charsHeader, "CHARACTERISTICS", FONT_TITLE, 14, COLOR_TEXT).Position = UDim2.fromOffset(22, 0)
-	charsHeader:FindFirstChildOfClass("TextLabel").Size = UDim2.fromOffset(240, 18)
+	local charsTitle = makeLabel(charsHeader, "CHARACTERISTICS", FONT_TITLE, 16, COLOR_TEXT)
+	charsTitle.Position = UDim2.fromOffset(24, 0)
+	charsTitle.Size = UDim2.fromOffset(240, 24)
 
 	local charsDivider = Instance.new("Frame")
 	charsDivider.BackgroundColor3 = HOLO_PANEL_BORDER
 	charsDivider.BackgroundTransparency = 0.3
 	charsDivider.BorderSizePixel = 0
 	charsDivider.Size = UDim2.new(1, 0, 0, 1)
-	charsDivider.Position = UDim2.fromOffset(0, CHARS_Y + 28)
-	charsDivider.Parent = rightCol
+	charsDivider.Position = UDim2.fromOffset(0, 30)
+	charsDivider.Parent = contentRoot
 
-	-- Three stat rows. Each row is 28 tall: [icon 14] [label / value]
-	-- on top line, holo bar (5 tall) below.
+	-- Enlarged stat rows with plus buttons (PhoneMenu-style upgrade
+	-- interaction using spent XP points per mercenary).
 	local statDefs = {
-		{ key = "str",  label = "STRENGTH", iconFn = makeSparkIcon   },
-		{ key = "spd",  label = "SPEED",    iconFn = makeCircleIcon  },
-		{ key = "luck", label = "LUCK",     iconFn = makeDiamondIcon },
+		{ key = "str",  label = "STRENGTH", icon = ICON_STAT_STRENGTH },
+		{ key = "spd",  label = "SPEED",    icon = ICON_STAT_SPEED    },
+		{ key = "luck", label = "LUCK",     icon = ICON_STAT_LUCK     },
 	}
 	local statRefs = {}
 	for i, s in ipairs(statDefs) do
@@ -2147,80 +2914,137 @@ buildPage = function(mercNames)
 		row.Name = "Stat_" .. s.key
 		row.BackgroundTransparency = 1
 		row.BorderSizePixel = 0
-		row.Position = UDim2.fromOffset(0, CHARS_Y + 40 + (i - 1) * 28)
-		row.Size = UDim2.new(1, 0, 0, 22)
-		row.Parent = rightCol
+		row.Position = UDim2.fromOffset(0, 40 + (i - 1) * 52)
+		row.Size = UDim2.new(1, 0, 0, 46)
+		row.Parent = contentRoot
 
 		local topLine = Instance.new("Frame")
 		topLine.BackgroundTransparency = 1
 		topLine.BorderSizePixel = 0
-		topLine.Size = UDim2.new(1, 0, 0, 14)
+		topLine.Size = UDim2.new(1, 0, 0, 24)
 		topLine.Parent = row
 
-		local statIcon = s.iconFn(topLine, 14, HOLO_EDGE)
+		local statIcon = makeAssetIcon(topLine, s.icon, 24)
 		statIcon.AnchorPoint = Vector2.new(0, 0.5)
 		statIcon.Position = UDim2.new(0, 0, 0.5, 0)
 
-		local statLbl = makeLabel(topLine, s.label, FONT_BODY, 10, COLOR_TEXT_DIM)
-		statLbl.Position = UDim2.fromOffset(20, 0)
-		statLbl.Size = UDim2.new(1, -80, 1, 0)
+		local statLbl = makeLabel(topLine, s.label, FONT_TITLE, 14, COLOR_TEXT_DIM)
+		statLbl.Position = UDim2.fromOffset(30, 0)
+		statLbl.Size = UDim2.new(1, -150, 1, 0)
 
-		local statVal = makeLabel(topLine, "0", FONT_TITLE, 14, COLOR_TEXT, Enum.TextXAlignment.Right)
+		local statVal = makeLabel(topLine, "0", FONT_TITLE, 20, COLOR_TEXT, Enum.TextXAlignment.Right)
 		statVal.AnchorPoint = Vector2.new(1, 0.5)
-		statVal.Position = UDim2.new(1, 0, 0.5, 0)
-		statVal.Size = UDim2.fromOffset(50, 14)
+		statVal.Position = UDim2.new(1, -34, 0.5, 0)
+		statVal.Size = UDim2.fromOffset(64, 24)
 
-		local sTrack, sFill = makeHoloBar(row, UDim2.new(1, 0, 0, 5), 0)
-		sTrack.Position = UDim2.fromOffset(0, 16)
+		local plusBtn = Instance.new("TextButton")
+		plusBtn.Name = "PlusButton"
+		plusBtn.Text = ""
+		plusBtn.AutoButtonColor = false
+		plusBtn.AnchorPoint = Vector2.new(1, 0.5)
+		plusBtn.Position = UDim2.new(1, 0, 0.5, 0)
+		plusBtn.Size = UDim2.fromOffset(24, 24)
+		plusBtn.BackgroundColor3 = Color3.fromRGB(44, 56, 78)
+		plusBtn.BorderSizePixel = 0
+		plusBtn.Parent = topLine
+		local pStroke = Instance.new("UIStroke")
+		pStroke.Color = HOLO_PANEL_BORDER
+		pStroke.Thickness = 1
+		pStroke.Parent = plusBtn
+		local plusIcon = Instance.new("Frame")
+		plusIcon.Name = "PlusIcon"
+		plusIcon.Size = UDim2.fromScale(1, 1)
+		plusIcon.BackgroundTransparency = 1
+		plusIcon.Parent = plusBtn
+		local plusH = Instance.new("Frame")
+		plusH.AnchorPoint = Vector2.new(0.5, 0.5)
+		plusH.Position = UDim2.fromScale(0.5, 0.5)
+		plusH.Size = UDim2.fromOffset(12, 2)
+		plusH.BackgroundColor3 = COLOR_GOLD
+		plusH.BorderSizePixel = 0
+		plusH.Parent = plusIcon
+		local plusV = Instance.new("Frame")
+		plusV.AnchorPoint = Vector2.new(0.5, 0.5)
+		plusV.Position = UDim2.fromScale(0.5, 0.5)
+		plusV.Size = UDim2.fromOffset(2, 12)
+		plusV.BackgroundColor3 = COLOR_GOLD
+		plusV.BorderSizePixel = 0
+		plusV.Parent = plusIcon
 
-		statRefs[s.key] = { value = statVal, fill = sFill }
+		local sTrack, sFill = makeHoloBar(row, UDim2.new(1, -6, 0, 8), 0)
+		sTrack.Position = UDim2.fromOffset(0, 30)
+
+		statRefs[s.key] = {
+			value = statVal,
+			fill = sFill,
+			button = plusBtn,
+			stroke = pStroke,
+			plusIcon = plusIcon,
+			key = s.key,
+		}
+
+		plusBtn.MouseButton1Click:Connect(function()
+			if not currentSelectedMerc then return end
+			local mercName = currentSelectedMerc
+			local theme = MERC_THEMES[mercName] or DEFAULT_THEME
+			local xp = theme.xp or 0
+			local totalFromXp = math.floor(xp / 100)
+
+			mercSpentUpgradePoints[mercName] = mercSpentUpgradePoints[mercName] or 0
+			local available = math.max(0, totalFromXp - mercSpentUpgradePoints[mercName])
+			if available <= 0 then return end
+
+			mercStatUpgrades[mercName] = mercStatUpgrades[mercName] or { str = 0, spd = 0, luck = 0 }
+			mercStatUpgrades[mercName][s.key] = (mercStatUpgrades[mercName][s.key] or 0) + 1
+			mercSpentUpgradePoints[mercName] += 1
+			refreshRight(mercName)
+		end)
 	end
 
 	-- ── Abilities section ──────────────────────────────────────────────
-	local ABIL_Y = CHARS_Y + 40 + 3 * 28 + 8
+	local ABIL_Y = 40 + 3 * 52 + 10
 
 	local abilHeader = Instance.new("Frame")
 	abilHeader.Name = "AbilHeader"
 	abilHeader.BackgroundTransparency = 1
 	abilHeader.BorderSizePixel = 0
 	abilHeader.Position = UDim2.fromOffset(0, ABIL_Y)
-	abilHeader.Size = UDim2.new(1, 0, 0, 18)
-	abilHeader.Parent = rightCol
+	abilHeader.Size = UDim2.new(1, 0, 0, 24)
+	abilHeader.Parent = contentRoot
 
-	local abilGlyph = makeSparkIcon(abilHeader, 13, HOLO_EDGE)
+	local abilGlyph = makeSparkIcon(abilHeader, 16, HOLO_EDGE)
 	abilGlyph.AnchorPoint = Vector2.new(0, 0.5)
 	abilGlyph.Position = UDim2.fromScale(0, 0.5)
 
-	local abilTitle = makeLabel(abilHeader, "ABILITIES", FONT_TITLE, 14, COLOR_TEXT)
-	abilTitle.Position = UDim2.fromOffset(22, 0)
-	abilTitle.Size = UDim2.fromOffset(200, 18)
+	local abilTitle = makeLabel(abilHeader, "ABILITIES", FONT_TITLE, 16, COLOR_TEXT)
+	abilTitle.Position = UDim2.fromOffset(24, 0)
+	abilTitle.Size = UDim2.fromOffset(200, 24)
 
 	local abilDivider = Instance.new("Frame")
 	abilDivider.BackgroundColor3 = HOLO_PANEL_BORDER
 	abilDivider.BackgroundTransparency = 0.3
 	abilDivider.BorderSizePixel = 0
 	abilDivider.Size = UDim2.new(1, 0, 0, 1)
-	abilDivider.Position = UDim2.fromOffset(0, ABIL_Y + 26)
-	abilDivider.Parent = rightCol
+	abilDivider.Position = UDim2.fromOffset(0, ABIL_Y + 30)
+	abilDivider.Parent = contentRoot
 
-	-- Three ability rows. Each row: 30×30 icon box (spark when
-	-- unlocked, lock when not) + name + description line.
+	-- Three enlarged ability rows.
 	local abilDefs = {
-		{ name = "Iron Grip",   desc = "+15% melee damage while boarding.",           raritySpan = 1 },
-		{ name = "Plunder",     desc = "Chance to double loot drops.",                raritySpan = 3 },
-		{ name = "Sea Veteran", desc = "Reduces stamina cost on long voyages.",       raritySpan = 4 },
+		{ name = "Iron Grip",   desc = "+30% melee damage while boarding.",            raritySpan = 1 },
+		{ name = "Plunder",     desc = "Chance to quadruple loot drops.",              raritySpan = 3 },
+		{ name = "Sea Veteran", desc = "Greatly reduces stamina cost on long voyages.", raritySpan = 4 },
 	}
 	local abilRefs = {}
-	local ABIL_ROW_H = 44
+	local ABIL_ROW_H = 76
 	for i, a in ipairs(abilDefs) do
 		local row = Instance.new("Frame")
 		row.Name = "Ability_" .. i
 		row.BackgroundColor3 = HOLO_PANEL_FILL
 		row.BackgroundTransparency = 0.55
 		row.BorderSizePixel = 0
-		row.Position = UDim2.fromOffset(0, ABIL_Y + 36 + (i - 1) * (ABIL_ROW_H + 6))
+		row.Position = UDim2.fromOffset(0, ABIL_Y + 40 + (i - 1) * (ABIL_ROW_H + 8))
 		row.Size = UDim2.new(1, 0, 0, ABIL_ROW_H)
-		row.Parent = rightCol
+		row.Parent = contentRoot
 		local rStroke = Instance.new("UIStroke")
 		rStroke.Color     = HOLO_PANEL_BORDER
 		rStroke.Thickness = 1
@@ -2236,8 +3060,8 @@ buildPage = function(mercNames)
 		local iconBox = Instance.new("Frame")
 		iconBox.Name = "IconBox"
 		iconBox.AnchorPoint = Vector2.new(0, 0.5)
-		iconBox.Position = UDim2.new(0, 8, 0.5, 0)
-		iconBox.Size = UDim2.fromOffset(30, 30)
+		iconBox.Position = UDim2.new(0, 10, 0.5, 0)
+		iconBox.Size = UDim2.fromOffset(40, 40)
 		iconBox.BackgroundColor3 = HOLO_PANEL_FILL
 		iconBox.BackgroundTransparency = 0.3
 		iconBox.BorderSizePixel = 0
@@ -2247,13 +3071,13 @@ buildPage = function(mercNames)
 		iStroke.Thickness = 1
 		iStroke.Parent    = iconBox
 
-		local nameLbl = makeLabel(row, a.name, FONT_TITLE, 13, COLOR_TEXT)
-		nameLbl.Position = UDim2.fromOffset(46, 6)
-		nameLbl.Size = UDim2.new(1, -52, 0, 15)
+		local nameLbl = makeLabel(row, a.name, FONT_TITLE, 20, COLOR_TEXT)
+		nameLbl.Position = UDim2.fromOffset(60, 8)
+		nameLbl.Size = UDim2.new(1, -66, 0, 24)
 
-		local descLbl = makeLabel(row, a.desc, FONT_BODY, 10, COLOR_TEXT_DIM)
-		descLbl.Position = UDim2.fromOffset(46, 22)
-		descLbl.Size = UDim2.new(1, -52, 0, 14)
+		local descLbl = makeLabel(row, a.desc, FONT_BODY, 16, COLOR_TEXT_DIM)
+		descLbl.Position = UDim2.fromOffset(60, 36)
+		descLbl.Size = UDim2.new(1, -66, 0, 30)
 		descLbl.TextWrapped = true
 
 		abilRefs[i] = {
@@ -2302,6 +3126,8 @@ buildPage = function(mercNames)
 
 	manageBtn.MouseButton1Click:Connect(function()
 		if not currentSelectedMerc then return end
+		-- Locked merc selected → Manage does nothing.
+		if not currentOwnedSet[currentSelectedMerc] then return end
 		local mercName  = currentSelectedMerc
 		local mercNames = currentMercNames
 
@@ -2319,6 +3145,8 @@ buildPage = function(mercNames)
 				mercName              = mercName,
 				mercNames             = mercNames,
 				theme                 = MERC_THEMES[mercName] or DEFAULT_THEME,
+				equipItems            = EQUIP_ITEMS,
+				resolveMercWeapon     = resolveMercWeapon,
 				hidePhonePanels       = hidePhonePanels,
 				detachCachedViewports = detachCachedViewports,
 				buildMercViewport     = buildMercViewport,
@@ -2351,11 +3179,36 @@ buildPage = function(mercNames)
 		xpFill.Size = UDim2.new(pct, 0, 1, 0)
 		xpHint.Text = string.format("%d XP to next level", math.max(0, xpMax - xp))
 
+		mercSpentUpgradePoints[mercName] = mercSpentUpgradePoints[mercName] or 0
+		mercStatUpgrades[mercName] = mercStatUpgrades[mercName] or { str = 0, spd = 0, luck = 0 }
+		local totalFromXp = math.floor(xp / 100)
+		local availablePoints = math.max(0, totalFromXp - mercSpentUpgradePoints[mercName])
+		pointsLabel.Text = string.format("UPGRADE POINTS: %d", availablePoints)
+
+		-- charStats are the doc's level-1 base values on the universal
+		-- 10–200 scale (see src/GameDesign/StatsSystem.md and the
+		-- MercStats ReplicatedStorage module). The displayed number
+		-- IS the stat value — no hidden multiplier — so the player
+		-- can correlate the menu bar with the in-rig damage / gather
+		-- time formulas applied server-side.
 		local s = theme.charStats or DEFAULT_THEME.charStats
 		for key, rec in pairs(statRefs) do
-			local v = s[key] or 0
-			rec.value.Text = tostring(v)
-			rec.fill.Size = UDim2.new(math.clamp(v / 100, 0, 1), 0, 1, 0)
+			local base = s[key] or 0
+			local upgraded = base + (mercStatUpgrades[mercName][key] or 0)
+			local shown = math.floor(upgraded + 0.5)
+			rec.value.Text = tostring(shown)
+			rec.fill.Size = UDim2.new(math.clamp(shown / 200, 0, 1), 0, 1, 0)
+
+			rec.button.AutoButtonColor = availablePoints > 0
+			rec.button.BackgroundColor3 = (availablePoints > 0)
+				and Color3.fromRGB(44, 56, 78) or Color3.fromRGB(32, 40, 58)
+			rec.stroke.Color = (availablePoints > 0) and COLOR_GOLD or HOLO_PANEL_BORDER
+			for _, child in rec.plusIcon:GetChildren() do
+				if child:IsA("Frame") then
+					child.BackgroundColor3 = (availablePoints > 0) and COLOR_GOLD or COLOR_TEXT_DIM
+					child.BackgroundTransparency = (availablePoints > 0) and 0 or 0.4
+				end
+			end
 		end
 
 		-- Ability unlock depends on rarity (stars). Iron Grip always
@@ -2376,9 +3229,9 @@ buildPage = function(mercNames)
 			-- padlock when not.
 			if rec.glyph then rec.glyph:Destroy() end
 			if unlocked then
-				rec.glyph = makeSparkIcon(rec.iconBox, 15, HOLO_EDGE)
+				rec.glyph = makeSparkIcon(rec.iconBox, 22, HOLO_EDGE)
 			else
-				rec.glyph = makeLockIcon(rec.iconBox, 13, COLOR_TEXT_MUTE)
+				rec.glyph = makeLockIcon(rec.iconBox, 18, COLOR_TEXT_MUTE)
 			end
 			rec.glyph.AnchorPoint = Vector2.new(0.5, 0.5)
 			rec.glyph.Position = UDim2.fromScale(0.5, 0.5)
@@ -2391,16 +3244,18 @@ end
 
 -- ─── Equipment data ─────────────────────────────────────────────────────
 
-local EQUIP_CATEGORIES = { "Weapons", "Artifacts" }
+EQUIP_CATEGORIES = { "Weapons", "Artifacts" }
 
-local EQUIP_ITEMS = {
+EQUIP_ITEMS = {
 	Weapons = {
 		{
 			id            = "Unarmed",
 			displayName   = "Unarmed",
 			typeName      = "None",
+			profession    = "Assistant",
 			stars         = 1,
 			baseAttack    = 0,
+			baseExtractSpeed = 4,
 			description   = "No weapon. Mercenary carries nothing in hand.",
 			alwaysUnlocked = true,
 		},
@@ -2408,19 +3263,46 @@ local EQUIP_ITEMS = {
 			id            = "Sword",
 			displayName   = "Pirate Sword",
 			typeName      = "Melee",
+			profession    = "Warrior",
 			stars         = 1,
 			baseAttack    = 10,
 			description   = "A basic pirate cutlass. Short range but reliable in close combat.",
 			alwaysUnlocked = true,
+			-- Pirate-family weapon — Soldier never sees this in the
+			-- arsenal grid. Corsair shares the Pirate's melee loadout so
+			-- it appears on his arsenal too.
+			restrictedTo  = { "Pirate lvl1", "Corsair" },
 		},
 		{
 			id            = "FishingRod",
 			displayName   = "Fishing Rod",
 			typeName      = "Utility",
+			profession    = "Fisherman",
 			stars         = 1,
 			baseAttack    = 0,
+			baseFishSpeed = 8,
 			icon          = "rbxassetid://105180666555503",
 			description   = "Cast your line to catch fish. Equip to a mercenary for automated fishing.",
+		},
+		{
+			id            = "Firearm",
+			displayName   = "Firearm",
+			typeName      = "Ranged",
+			profession    = "Soldier",
+			stars         = 2,
+			baseAttack    = 24,
+			description   = "Standard military sidearm. Default issue for Infected Military units.",
+			restrictedTo  = { "Infected Military" },
+		},
+		{
+			id            = "Shotgun",
+			displayName   = "Shotgun",
+			typeName      = "Ranged",
+			profession    = "Soldier",
+			stars         = 2,
+			baseAttack    = 36,
+			description   = "Heavy close-range punch. Infected Military units only.",
+			restrictedTo  = { "Infected Military" },
 		},
 	},
 	Artifacts = {
@@ -2460,17 +3342,17 @@ buildEquipmentPage = function(mercName, mercNames)
 
 	-- Which category is active
 	local activeCategory = "Weapons"
-	local selectedItemId = "Sword" -- default selection
+	-- Default selection respects the merc's defaultWeapon (e.g. the
+	-- Soldier opens to "Unarmed" / "Firearm" instead of Sword).
+	local selectedItemId = theme.defaultWeapon or "Sword"
 
 	-- Read currently equipped weapon from attribute
 	local mercFolder = player:FindFirstChild("Mercenaries")
-	if mercFolder then
-		local entry = mercFolder:FindFirstChild(mercName)
-		if entry then
-			local eq = entry:GetAttribute("EquippedWeapon")
-			if eq then selectedItemId = eq end
-		end
-	end
+	local entry = mercFolder and mercFolder:FindFirstChild(mercName)
+	-- Use the shared resolver so a stale "Sword" attribute on the
+	-- Soldier (or any disallowed combo) gets scrubbed and the page
+	-- opens to the merc's defaultWeapon instead.
+	selectedItemId = resolveMercWeapon(mercName, entry, theme)
 
 	-- Read unlocked equipment
 	local unlockedSet = {}
@@ -2538,9 +3420,15 @@ buildEquipmentPage = function(mercName, mercNames)
 	backBtn.Parent = topBar
 	corner(backBtn, 8)
 
-	backBtn.MouseButton1Click:Connect(function()
+	local function triggerBack()
 		buildPage(currentMercNames)
-	end)
+	end
+	backBtn.MouseButton1Click:Connect(triggerBack);
+	_G.AttachBackHotkey(backBtn, triggerBack, {
+		color     = COLOR_TEXT,
+		haloColor = HOLO_EDGE,
+		fontTitle = FONT_TITLE,
+	})
 
 	-- ── Category tabs (centered) ────────────────────────────────────
 	local tabW, tabH, tabGap = 110, 34, 10
@@ -2709,7 +3597,7 @@ buildEquipmentPage = function(mercName, mercNames)
 		if activeCategory ~= "Weapons" then
 			-- If browsing artifacts, show currently equipped weapon
 			local mercEntry = mercFolder and mercFolder:FindFirstChild(mercName)
-			weaponToShow = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+			weaponToShow = resolveMercWeapon(mercName, mercEntry, theme)
 		end
 		currentViewport = buildMercViewport(page, mercName, weaponToShow)
 	end
@@ -2720,8 +3608,29 @@ buildEquipmentPage = function(mercName, mercNames)
 
 	local gridCards = {}
 
+	-- An item is shown for this merc when it has no restrictedTo list
+	-- (universal) or when the merc's name is in the list. Lets us add
+	-- SCP-only weapons (Firearm, Shotgun) without polluting the
+	-- Pirate's loadout grid.
+	local function isItemForMerc(item, mn)
+		if not item.restrictedTo then return true end
+		for _, allowed in ipairs(item.restrictedTo) do
+			if allowed == mn then return true end
+		end
+		return false
+	end
+
+	local function getItemsForMerc(category)
+		local raw = EQUIP_ITEMS[category] or {}
+		local out = {}
+		for _, it in raw do
+			if isItemForMerc(it, mercName) then table.insert(out, it) end
+		end
+		return out
+	end
+
 	local function refreshDetails()
-		local items = EQUIP_ITEMS[activeCategory] or {}
+		local items = getItemsForMerc(activeCategory)
 		local item
 		for _, it in items do
 			if it.id == selectedItemId then item = it; break end
@@ -2748,7 +3657,7 @@ buildEquipmentPage = function(mercName, mercNames)
 		if activeCategory == "Artifacts" then
 			currentEquip = mercEntry and mercEntry:GetAttribute("EquippedBackpack") or ""
 		else
-			currentEquip = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+			currentEquip = resolveMercWeapon(mercName, mercEntry, theme)
 		end
 		if currentEquip == selectedItemId then
 			equipBtn.Text = "EQUIPPED"
@@ -2774,7 +3683,7 @@ buildEquipmentPage = function(mercName, mercNames)
 		for _, card in gridCards do card:Destroy() end
 		gridCards = {}
 
-		local items = EQUIP_ITEMS[activeCategory] or {}
+		local items = getItemsForMerc(activeCategory)
 		if #items == 0 then
 			local empty = Instance.new("TextLabel")
 			empty.BackgroundTransparency = 1
@@ -3040,23 +3949,46 @@ end
 -- the folder gains / loses a child while the page is open, rebuild
 -- the page from the fresh list so newly-hired mercs appear and lost
 -- ones disappear without the player having to close + reopen.
-local rosterConns = {}
-local function clearRosterConns()
+rosterConns = {}
+function clearRosterConns()
 	for _, c in ipairs(rosterConns) do c:Disconnect() end
 	table.clear(rosterConns)
 end
 
+-- Returns the full roster (every key in MERC_THEMES) plus a set of
+-- which IDs the player has actually recruited. Locked entries stay in
+-- the list so future mercenary additions automatically show up as
+-- greyed-out cards without any per-type wiring at the call site.
 local function collectMercNames()
+	local owned = {}
 	local folder = player:FindFirstChild("Mercenaries")
-	local names = {}
 	if folder then
 		for _, child in folder:GetChildren() do
 			if child:IsA("StringValue") then
-				table.insert(names, child.Value)
+				owned[child.Value] = true
 			end
 		end
 	end
-	return names
+
+	-- All known types from MERC_THEMES, owned ones first so the
+	-- player's actual roster sits at the top of the list.
+	local ownedList   = {}
+	local lockedList  = {}
+	for id, _ in pairs(MERC_THEMES) do
+		if owned[id] then
+			table.insert(ownedList, id)
+		else
+			table.insert(lockedList, id)
+		end
+	end
+	table.sort(ownedList)
+	table.sort(lockedList)
+
+	local names = {}
+	for _, n in ownedList do table.insert(names, n) end
+	for _, n in lockedList do table.insert(names, n) end
+
+	return names, owned
 end
 
 -- ─── Close the page ─────────────────────────────────────────────────────
@@ -3084,7 +4016,11 @@ end
 local function openMercenariesMenu()
 	if page then return end
 
-	local mercNames = collectMercNames()
+	-- Every entry in MERC_THEMES is rendered, so the page is never
+	-- empty even if the player hasn't recruited anyone yet — locked
+	-- cards take the empty slots.
+	local mercNames, ownedSet = collectMercNames()
+	currentOwnedSet = ownedSet
 	if #mercNames == 0 then return end
 
 	buildPage(mercNames)
@@ -3094,10 +4030,12 @@ local function openMercenariesMenu()
 	-- buildPage, which handles viewport detach + page teardown for us.
 	clearRosterConns()
 	local folder = player:FindFirstChild("Mercenaries")
+		or player:WaitForChild("Mercenaries", 5)
 	if folder then
 		local function rebuild()
 			if not page then return end
-			local names = collectMercNames()
+			local names, owned = collectMercNames()
+			currentOwnedSet = owned
 			if #names > 0 then
 				buildPage(names)
 			else
