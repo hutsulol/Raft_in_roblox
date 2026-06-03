@@ -9,6 +9,10 @@ local START_LOG = 200
 local START_PLASTIC = 0
 local START_STONE = 60
 local START_LEAVES = 60
+local START_TILAPIA_FISH = 10  -- raw fish for campfire-cooking tests
+local START_CARP_FISH = 10     -- raw fish for campfire-cooking tests
+local START_LEGENDARY_FISH = 5 -- rare fish for mesh-texture cooking tests
+local START_MEAT = 10          -- raw meat for campfire-cooking tests
 
 local Players = game:GetService("Players")
 
@@ -20,10 +24,17 @@ end
 local function giveStartResources(player)
 	task.wait(3)
 
-	if START_LOG > 0 then _G.AddResourceToInventory(player, "Log", START_LOG, nil) end
-	if START_PLASTIC > 0 then _G.AddResourceToInventory(player, "Plastic", START_PLASTIC, nil) end
-	if START_STONE > 0 then _G.AddResourceToInventory(player, "Stone", START_STONE, nil) end
-	if START_LEAVES > 0 then _G.AddResourceToInventory(player, "Leaves", START_LEAVES, nil) end
+	-- silent=true on the initial spawn grants — these aren't "pickup"
+	-- events from the player's perspective and would spawn 4 cards
+	-- the moment they join.
+	if START_LOG > 0 then _G.AddResourceToInventory(player, "Log", START_LOG, nil, true) end
+	if START_PLASTIC > 0 then _G.AddResourceToInventory(player, "Plastic", START_PLASTIC, nil, true) end
+	if START_STONE > 0 then _G.AddResourceToInventory(player, "Stone", START_STONE, nil, true) end
+	if START_LEAVES > 0 then _G.AddResourceToInventory(player, "Leaves", START_LEAVES, nil, true) end
+	if START_TILAPIA_FISH > 0 then _G.AddResourceToInventory(player, "Tilapia_Fish", START_TILAPIA_FISH, nil, true) end
+	if START_CARP_FISH > 0 then _G.AddResourceToInventory(player, "Carp_Fish", START_CARP_FISH, nil, true) end
+	if START_LEGENDARY_FISH > 0 then _G.AddResourceToInventory(player, "Legendary_Fish", START_LEGENDARY_FISH, nil, true) end
+	if START_MEAT > 0 then _G.AddResourceToInventory(player, "Meat", START_MEAT, nil, true) end
 end
 
 Players.PlayerAdded:Connect(function(player)

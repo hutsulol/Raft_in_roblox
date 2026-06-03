@@ -91,19 +91,58 @@ local function findDiggable(instance)
 end
 
 -- ─── Play dig animation if available ───
+-- The user's authored Animation lives at Shovel.Handle.Dig. Cache the
+-- loaded AnimationTrack per (humanoid + Animation) pair so we don't
+-- spam the Animator with a new track on every click — Roblox will
+-- otherwise leak the previous track until the next garbage cycle.
+local cachedTrack = nil
+local cachedAnimator = nil
+local cachedAnim = nil
+
+local function findShovelAnim(tool)
+	if not tool then return nil end
+	-- Prefer an Animation explicitly named "Dig" (matches the asset
+	-- the user added). Fall back to the first Animation anywhere in
+	-- the tool so a future rename doesn't silently break the cue.
+	for _, d in tool:GetDescendants() do
+		if d:IsA("Animation") and d.Name == "Dig" then
+			return d
+		end
+	end
+	return tool:FindFirstChildWhichIsA("Animation", true)
+end
+
 local function playDigAnimation()
 	local char = player.Character
 	if not char then return end
 	local humanoid = char:FindFirstChildWhichIsA("Humanoid")
 	if not humanoid then return end
-
-	if currentTool then
-		local anim = currentTool:FindFirstChildWhichIsA("Animation", true)
-		if anim then
-			local track = humanoid:LoadAnimation(anim)
-			track:Play()
-		end
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = humanoid
 	end
+	if not currentTool then return end
+
+	local anim = findShovelAnim(currentTool)
+	if not anim then return end
+
+	-- Rebuild the cache if the player respawned (new Animator) or the
+	-- tool's Animation instance changed.
+	if cachedTrack and (cachedAnimator ~= animator or cachedAnim ~= anim) then
+		cachedTrack:Stop()
+		cachedTrack = nil
+	end
+	if not cachedTrack then
+		cachedTrack    = animator:LoadAnimation(anim)
+		cachedAnimator = animator
+		cachedAnim     = anim
+	end
+
+	-- Restart from the top each click so back-to-back swings look
+	-- snappy instead of waiting for the previous loop to finish.
+	cachedTrack:Stop()
+	cachedTrack:Play()
 end
 
 -- ─── Update highlight each frame ───

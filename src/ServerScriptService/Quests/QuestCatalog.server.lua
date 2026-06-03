@@ -42,10 +42,10 @@ local function addQuest(entry)
 end
 
 -- ─── Story quest #1 — Lost in the Woods (C2) ───────────────────────
--- The user's reference design ("Lost in the Woods") for the Story
--- tab: 4 multi-step objectives covering early-game progression
--- through pirate combat + DNA research, then a single big reward.
--- Permanent so it never re-rolls or shows up twice.
+-- Early-game story arc: the player chops the path open, scavenges
+-- the trash for raft mats, and crafts their first workbench. Three
+-- objectives matching the user's reference design. Reward is a
+-- single Woodcutter's Chest. Permanent so it never re-rolls.
 addQuest({
 	id    = "lostInTheWoods",
 	kind  = "story",
@@ -53,12 +53,17 @@ addQuest({
 	body  = "The path is blocked. Clear the way and find your way forward.",
 	icon  = "rbxassetid://121862782555497",
 	objectives = {
-		{ eventType = "merc:hired",        goal = 1, label = "Hire 1 mercenary" },
-		{ eventType = "pirate:kill",       goal = 3, label = "Defeat 3 hostile pirates" },
-		{ eventType = "pirate:bloodTaken", goal = 5, label = "Collect 5 blood samples" },
-		{ eventType = "dna:analyzed",      goal = 1, label = "Analyse a mercenary's DNA" },
+		{ eventType = "resource:Log",       goal = 10, label = "Chop down 10 trees" },
+		{ eventType = "resource:Plastic",   goal = 15, label = "Collect 15 pieces of trash" },
+		{ eventType = "crafted:WorkBench",  goal = 1,  label = "Build a workbench" },
 	},
-	reward    = { kind = "item", name = "WoodcutterChest", count = 1 },
+	reward    = {
+		kind  = "item",
+		name  = "WoodcutterChest",
+		label = "Woodcutter's Chest",
+		icon  = "rbxassetid://82337855669175",
+		count = 1,
+	},
 	permanent = true,
 })
 
@@ -78,7 +83,13 @@ addQuest({
 		{ eventType = "crafted:WallPanel",  goal = 4,  label = "Build 4 wall panels" },
 		{ eventType = "resource:Log",       goal = 50, label = "Stockpile 50 logs" },
 	},
-	reward    = { kind = "item", name = "SurvivorChest", count = 1 },
+	reward    = {
+		kind  = "item",
+		name  = "SurvivorChest",
+		label = "Survivor's Chest",
+		icon  = "rbxassetid://82337855669175",
+		count = 1,
+	},
 	permanent = true,
 })
 
@@ -109,7 +120,7 @@ addQuest({
 	kind  = "daily",
 	title = "Plastic Patrol",
 	body  = "Fish 8 plastic canisters out of the sea.",
-	icon  = "rbxassetid://121862782555497",
+	icon  = "rbxassetid://82407088576684",
 	objectives = {
 		{ eventType = "resource:Plastic", goal = 8, label = "Collect plastic" },
 	},
@@ -121,7 +132,7 @@ addQuest({
 	kind  = "daily",
 	title = "Green Harvest",
 	body  = "Gather 12 bunches of leaves.",
-	icon  = "rbxassetid://121862782555497",
+	icon  = "rbxassetid://137638372265731",
 	objectives = {
 		{ eventType = "resource:Leaves", goal = 12, label = "Gather leaves" },
 	},
@@ -161,7 +172,7 @@ addQuest({
 	kind  = "daily",
 	title = "Sunny Garden",
 	body  = "Plant 5 berry bushes.",
-	icon  = "rbxassetid://121862782555497",
+	icon  = "rbxassetid://98928050466796",
 	objectives = {
 		{ eventType = "planted:BerryBush", goal = 5, label = "Plant berry bushes" },
 	},
@@ -219,7 +230,7 @@ addQuest({
 	kind  = "challenge",
 	title = "Reef Cleanup",
 	body  = "Fish 8 plastic canisters in 60 seconds.",
-	icon  = "rbxassetid://121862782555497",
+	icon  = "rbxassetid://82407088576684",
 	objectives = {
 		{ eventType = "resource:Plastic", goal = 8, label = "Collect plastic" },
 	},

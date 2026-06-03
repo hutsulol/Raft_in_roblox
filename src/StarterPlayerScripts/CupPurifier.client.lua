@@ -20,8 +20,14 @@ local placingPurifier = false
 local placingBush = false
 local placingWorkbench = false
 local placingGarden = false
+local placingBedGardenForTree = false
 local placingBed = false
 local placingSawmill = false
+-- Seed-tool-in-hand planting (Banana_Seed / Palm_seed / etc.) — the
+-- player can click a watered Bed_T to drop the seedling
+-- there. No ghost is needed; we use the mouse target instead.
+local placingSeed = false
+local currentSeedTool = nil
 local lastGhostValid = false
 local lastGhostCF = nil
 local lastGhostRaftOffset = nil -- CFrame offset relative to raft
@@ -75,6 +81,12 @@ local function updateHint()
 		return
 	end
 
+	if placingBedGardenForTree then
+		hintLabel.Text = "Click on raft to place tree garden bed | [R] Rotate"
+		hintLabel.Visible = true
+		return
+	end
+
 	-- Placement hints
 	if placingPurifier then
 		hintLabel.Text = "Click on raft to place purifier | [R] Rotate"
@@ -107,6 +119,16 @@ local function updateHint()
 		return
 	end
 
+	-- Seed-tool hint: appears whenever a *_seed / *_Seed Tool is
+	-- equipped, regardless of whether the player is currently aiming
+	-- at a watered bed. Matches the user's expectation that the
+	-- prompt is visible while the seed is in hand.
+	if placingSeed then
+		hintLabel.Text = "Click on watered tree garden bed to plant"
+		hintLabel.Visible = true
+		return
+	end
+
 	local cupState = currentTool:GetAttribute("CupState")
 	if cupState == "empty" then
 		hintLabel.Text = "[Q] Fill with saltwater (aim at water)"
@@ -125,8 +147,28 @@ end
 -- ─── Ghost Preview for Placement ───
 local function createGhost(templateName)
 	if ghost then ghost:Destroy() end
-	local template = ReplicatedStorage:FindFirstChild(templateName or "Destitalor")
-	if not template then return end
+	-- Try a flat lookup first, then a recursive search so templates
+	-- nested in organisation folders (Trees_Grow, etc.) still resolve.
+	-- Fall back to a case-insensitive sweep so any spelling drift
+	-- (PineApple leaves / Pineapple leaves / PineApple Leaves, …)
+	-- still finds the asset instead of silently returning nil.
+	local name = templateName or "Destitalor"
+	local template = ReplicatedStorage:FindFirstChild(name)
+		or ReplicatedStorage:FindFirstChild(name, true)
+	if not template then
+		local lowerTarget = name:lower()
+		for _, desc in ReplicatedStorage:GetDescendants() do
+			if (desc:IsA("Model") or desc:IsA("BasePart"))
+				and desc.Name:lower() == lowerTarget then
+				template = desc
+				break
+			end
+		end
+	end
+	if not template then
+		warn(("[CupPurifier] ghost template %q not found in ReplicatedStorage"):format(name))
+		return
+	end
 
 	ghost = template:Clone()
 	ghost.Name = "PlacementGhost"
@@ -155,6 +197,22 @@ local function createGhost(templateName)
 			part:Destroy()
 		end
 	end
+
+	-- Highlight overlay — drives the green/red valid/invalid feedback
+	-- in a way that survives MeshParts whose visible look comes from a
+	-- TextureID, not BasePart.Color. The per-part Color tint above
+	-- still lights up solid-colour primitives like the berry-bush
+	-- parts; this Highlight covers the textured pineapple-bush mesh.
+	local highlight = Instance.new("Highlight")
+	highlight.Name                = "GhostHighlight"
+	highlight.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
+	highlight.FillColor           = Color3.fromRGB(80, 255, 80)
+	highlight.FillTransparency    = 0.3
+	highlight.OutlineColor        = Color3.fromRGB(80, 255, 80)
+	highlight.OutlineTransparency = 0
+	highlight.Adornee             = ghost
+	highlight.Parent              = ghost
+
 	ghost.Parent = workspace
 end
 
@@ -172,20 +230,53 @@ end
 local function setGhostColor(valid)
 	lastGhostValid = valid
 	local color = valid and Color3.fromRGB(80, 255, 80) or Color3.fromRGB(255, 80, 80)
-	if ghost then
-		for _, part in ghost:GetDescendants() do
-			if part:IsA("BasePart") then
-				part.Color = color
-			end
+	if not ghost then return end
+
+	-- Per-part BasePart.Color tint — works on plain-colour primitives
+	-- (berry bush parts); no-op on textured MeshParts where the
+	-- Highlight below picks up the slack.
+	for _, part in ghost:GetDescendants() do
+		if part:IsA("BasePart") then
+			part.Color = color
+		end
+	end
+
+	-- Single Highlight on the model — paints the whole silhouette of
+	-- the bush with a clean fill + outline, instead of the busy
+	-- per-part SelectionBox look the previous iteration produced.
+	-- Self-heal if the original createGhost-time Highlight isn't
+	-- present so the feedback still arrives.
+	local highlight = ghost:FindFirstChild("GhostHighlight")
+	if not highlight then
+		highlight = Instance.new("Highlight")
+		highlight.Name      = "GhostHighlight"
+		highlight.DepthMode = Enum.HighlightDepthMode.AlwaysOnTop
+		highlight.Adornee   = ghost
+		highlight.Parent    = ghost
+	end
+	highlight.FillColor           = color
+	highlight.OutlineColor        = color
+	highlight.FillTransparency    = 0.3
+	highlight.OutlineTransparency = 0
+
+	-- Tidy up any SelectionBox leftovers from the previous approach
+	-- so a hot-reload of this script doesn't leave the busy box look
+	-- baked into an existing ghost.
+	for _, desc in ghost:GetDescendants() do
+		if desc:IsA("SelectionBox") and desc.Name == "GhostSelectionBox" then
+			desc:Destroy()
 		end
 	end
 end
 
 -- ─── Find garden bed from hit instance ───
+-- Bushes only plant on the small flat Garden, never on the tree-sized
+-- Bed_T (which also carries IsGarden=true so the watering pipeline
+-- can be shared). Skip past tree beds so the ghost can't snap to them.
 local function findGardenBed(instance)
 	local current = instance
 	while current and current ~= workspace do
-		if current:GetAttribute("IsGarden") then
+		if current:GetAttribute("IsGarden") and not current:GetAttribute("IsBedGardenForTree") then
 			return current
 		end
 		current = current.Parent
@@ -220,6 +311,7 @@ local function isPlacementBlocked(placeCF, ghostSize)
 	-- Known placed object names to check against
 	local placedObjectNames = {
 		WorkBench = true, Purifier = true, Garden = true,
+		Bed_T = true,
 		Bed = true, Destitalor = true, bush = true, Sawmill = true,
 	}
 
@@ -266,13 +358,19 @@ local function updateGhost()
 		-- Bush: only valid on garden beds
 		local garden = findGardenBed(result.Instance)
 		if garden and not gardenHasBush(garden) then
-			-- Snap to top center of garden bed
+			-- Snap to top center of garden bed. PivotTo lands the bush's
+			-- pivot (= bbox centre, set in createGhost) on the supplied
+			-- CFrame, so raise the Y by half the ghost's height to put
+			-- the bbox BOTTOM on the bed's top surface — otherwise the
+			-- bush sinks halfway into the dirt (visible on the textured
+			-- pineapple-bush mesh; the berry bush's authored pivot
+			-- happens to sit lower so it always looked fine).
 			local gardenCF, gardenSize = garden:GetBoundingBox()
 			local ghostSize = ghost:GetExtentsSize()
 			local topY = gardenCF.Position.Y + gardenSize.Y / 2
 			local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 
-			local placeCF = CFrame.new(gardenCF.Position.X, topY, gardenCF.Position.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0) * ghostTemplateRotation
+			local placeCF = CFrame.new(gardenCF.Position.X, topY + ghostSize.Y / 2, gardenCF.Position.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0) * ghostTemplateRotation
 			ghost:PivotTo(placeCF)
 			lastGhostCF = placeCF
 			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
@@ -360,6 +458,17 @@ local function onToolEquipped(tool)
 		placingGarden = false
 		placingBed = false
 		createGhost("bush")
+	elseif tool.Name == "Pineapple_Bush_Seed" then
+		-- Pineapple bush seed (the inventory-routed variant created
+		-- by BushSeedSystem). Same ghost-preview flow as the berry
+		-- bush; the Tool is consumed on placement and refunds the
+		-- resource if unequipped without being used.
+		placingBush = true
+		placingPurifier = false
+		placingWorkbench = false
+		placingGarden = false
+		placingBed = false
+		createGhost("PineApple leaves")
 	elseif tool.Name == "WorkBench" then
 		placingWorkbench = true
 		placingPurifier = false
@@ -373,13 +482,24 @@ local function onToolEquipped(tool)
 		placingBush = false
 		placingWorkbench = false
 		placingBed = false
+		placingBedGardenForTree = false
 		createGhost("Garden")
+	elseif tool.Name == "Bed_T" then
+		placingBedGardenForTree = true
+		placingGarden = false
+		placingPurifier = false
+		placingBush = false
+		placingWorkbench = false
+		placingBed = false
+		placingSawmill = false
+		createGhost("Bed_T")
 	elseif tool.Name == "Bed" then
 		placingBed = true
 		placingPurifier = false
 		placingBush = false
 		placingWorkbench = false
 		placingGarden = false
+		placingBedGardenForTree = false
 		placingSawmill = false
 		createGhost("Bed")
 	elseif tool.Name == "Sawmill" then
@@ -388,6 +508,7 @@ local function onToolEquipped(tool)
 		placingBush = false
 		placingWorkbench = false
 		placingGarden = false
+		placingBedGardenForTree = false
 		placingBed = false
 		createGhost("Sawmill")
 	else
@@ -395,8 +516,11 @@ local function onToolEquipped(tool)
 		placingBush = false
 		placingWorkbench = false
 		placingGarden = false
+		placingBedGardenForTree = false
 		placingBed = false
 		placingSawmill = false
+		placingSeed = false
+		currentSeedTool = nil
 		destroyGhost()
 	end
 
@@ -415,8 +539,11 @@ local function onToolUnequipped()
 	placingBush = false
 	placingWorkbench = false
 	placingGarden = false
+	placingBedGardenForTree = false
 	placingBed = false
 	placingSawmill = false
+	placingSeed = false
+	currentSeedTool = nil
 	destroyGhost()
 	updateHint()
 end
@@ -450,15 +577,15 @@ player.CharacterAdded:Connect(setupCharacter)
 
 -- ─── Update ghost every frame ───
 RunService.RenderStepped:Connect(function()
-	if (placingPurifier or placingBush or placingWorkbench or placingGarden or placingBed or placingSawmill) and ghost then
+	if (placingPurifier or placingBush or placingWorkbench or placingGarden or placingBedGardenForTree or placingBed or placingSawmill) and ghost then
 		updateGhost()
 	end
 end)
 
 -- ─── R key to rotate placement ───
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	if input.KeyCode == Enum.KeyCode.R and (placingPurifier or placingWorkbench or placingGarden or placingBed or placingBush or placingSawmill) then
+	if UserInputService:GetFocusedTextBox() then return end
+	if input.KeyCode == Enum.KeyCode.R and (placingPurifier or placingWorkbench or placingGarden or placingBedGardenForTree or placingBed or placingBush or placingSawmill) then
 		rotationAngle = rotationAngle + math.rad(90)
 	end
 end)
@@ -513,6 +640,16 @@ mouse.Button1Down:Connect(function()
 		return
 	end
 
+	-- Tree garden bed placement (bigger variant)
+	if placingBedGardenForTree and ghost then
+		if not lastGhostValid or not lastGhostRaftOffset then return end
+		gardenActionEvent:FireServer("placeBedGardenForTree", lastGhostRaftOffset)
+		playPlaceSound()
+		destroyGhost()
+		placingBedGardenForTree = false
+		return
+	end
+
 	-- Bed placement
 	if placingBed and ghost then
 		if not lastGhostValid or not lastGhostRaftOffset then return end
@@ -530,6 +667,34 @@ mouse.Button1Down:Connect(function()
 		playPlaceSound()
 		destroyGhost()
 		placingSawmill = false
+		return
+	end
+
+	-- Seed-tool planting: raycast from mouse to find a watered tree
+	-- garden bed under the cursor and ask the server to plant a
+	-- seedling on it. Server destroys the Tool + drives the growth
+	-- stages (palm seeds → 4-stage growth; everything else stops at
+	-- the seedling).
+	if placingSeed and currentSeedTool then
+		local unitRay = camera:ViewportPointToRay(mouse.X, mouse.Y)
+		local params = RaycastParams.new()
+		params.FilterType = Enum.RaycastFilterType.Exclude
+		params.FilterDescendantsInstances = { player.Character }
+		local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 200, params)
+		if not result then return end
+
+		-- Walk up to the bed Model (the ray hits one of its parts).
+		local target = result.Instance
+		while target and target ~= workspace do
+			if target:IsA("Model") and target:GetAttribute("IsBedGardenForTree") then break end
+			target = target.Parent
+		end
+		if not target or not target:IsA("Model") or not target:GetAttribute("IsBedGardenForTree") then return end
+		if not target:GetAttribute("IsWatered") then return end
+		if target:GetAttribute("GrowthStage") then return end
+
+		gardenActionEvent:FireServer("plantSeedTool", target)
+		playPlaceSound()
 		return
 	end
 

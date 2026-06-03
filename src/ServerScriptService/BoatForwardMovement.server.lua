@@ -62,9 +62,14 @@ ensureGroup("FloatingResource")
 pcall(function()
 	PhysicsService:CollisionGroupSetCollidable("Raft", "FloatingResource", false)
 end)
-pcall(function()
-	PhysicsService:CollisionGroupSetCollidable("Default", "FloatingResource", false)
-end)
+-- Previously we also disabled Default ↔ FloatingResource collisions so
+-- characters / mercenaries wouldn't get bumped by passing logs. That
+-- side-effect, though, was that resources also stopped interacting with
+-- TERRAIN (terrain lives in the Default group) — including the water
+-- voxels — so Roblox's native water buoyancy never applied and every
+-- spawned resource dropped through the surface to the seabed. Keep
+-- only the Raft-vs-Resource and Resource-vs-Resource rules so the
+-- water still pushes them up.
 pcall(function()
 	PhysicsService:CollisionGroupSetCollidable("FloatingResource", "FloatingResource", false)
 end)

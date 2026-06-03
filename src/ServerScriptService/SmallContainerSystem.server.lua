@@ -230,7 +230,9 @@ end
 
 local function addToPlayerInventory(player, itemName, count)
 	if not _G.AddResourceToInventory then return 0 end
-	return _G.AddResourceToInventory(player, itemName, count, nil) or 0
+	-- silent=true: chest takeout shouldn't fire the InventoryNotify
+	-- "+N item" card (per user brief — only natural pickups notify).
+	return _G.AddResourceToInventory(player, itemName, count, nil, true) or 0
 end
 
 -- ───────────────── Tool storage helpers ─────────────────

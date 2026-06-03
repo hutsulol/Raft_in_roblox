@@ -154,7 +154,9 @@ local function startChopTreesTip(initialProgress)
 		eyebrow   = "HINT",
 		title     = "Get the first logs",
 		body      = "To break a log, click on it <b>5 times</b>.",
-		iconKind  = "axe",
+		-- Custom hand-and-log art replaces the generic axe icon for
+		-- the "break logs" tutorial step.
+		iconImage = "rbxassetid://81750050758868",
 		goal      = CHOP_TREES_GOAL,
 		progress  = initialProgress or 0,
 		showClose = true,

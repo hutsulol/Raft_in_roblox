@@ -5,15 +5,95 @@
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 
 local spawnEvent = Instance.new("RemoteEvent")
 spawnEvent.Name = "SpawnMercenary"
 spawnEvent.Parent = ReplicatedStorage
 
--- Map recruited mercenary names to the model to clone
+-- Map recruited mercenary names to the model to clone. Add a new
+-- recruitable type by dropping its rig under ReplicatedStorage and
+-- registering both this map and NpcTypes.module.lua. The map points
+-- at the FRIENDLY rig (e.g. Pirate_2 / Infected_Military_Menu);
+-- the hostile encounter rigs ("Pirate lvl1" / "Infected Military")
+-- are separate models and live in their own spawners.
 local SPAWN_MAP = {
-	["Pirate lvl1"] = "Pirate_2",
+	["Pirate lvl1"]       = "Pirate_2",
+	["Corsair"]           = "Corsair",
+	["Infected Military"] = "Infected_Military_Menu",
 }
+
+-- Per-mercenary baseline overrides applied when the rig is spawned.
+-- Lets the Infected Military come out of the gate tougher than Pirate
+-- without hand-editing every rig template. nil entries leave the
+-- rig's authored values untouched.
+local SPAWN_STAT_OVERRIDES = {
+	["Corsair"] = {
+		-- Tougher than the Pirate but lighter than the Soldier; matches
+		-- the MERC_THEMES card stats so the spawned rig doesn't lie.
+		MaxHealth = 320,
+		WalkSpeed = 13,
+	},
+	["Infected Military"] = {
+		MaxHealth = 420,
+		WalkSpeed = 14,
+	},
+}
+
+-- Default weapon a merc spawns with when its EquippedWeapon attribute
+-- isn't set yet (i.e. fresh recruit who has never visited the
+-- equipment page). Pirates default to Sword; Soldiers default to
+-- Firearm so the rig comes out holding an automatic pistol instead
+-- of a sword.
+local DEFAULT_WEAPON_BY_MERC = {
+	["Pirate lvl1"]       = "Sword",
+	["Corsair"]           = "Sword",
+	["Infected Military"] = "Firearm",
+}
+
+-- Per-merc map: equip-slot id → child Model name baked into the rig
+-- as the visual for that weapon. The Soldier rig ships with an
+-- "AK-47" Model that visualises the Firearm equip; we hide it when
+-- a different weapon is selected so the rig isn't holding two
+-- weapons at once. Mirror of MERC_THEMES.rigBuiltinWeapons on the
+-- client.
+local RIG_BUILTIN_WEAPONS_BY_MERC = {
+	["Infected Military"] = { Firearm = "AK-47" },
+}
+
+local function syncRigBuiltinWeapons(clone, mercName, equippedWeapon)
+	local map = RIG_BUILTIN_WEAPONS_BY_MERC[mercName]
+	if not map then return end
+	for slotId, modelName in pairs(map) do
+		local part = clone:FindFirstChild(modelName)
+		if part then
+			local visible = (slotId == equippedWeapon)
+			local t = visible and 0 or 1
+			if part:IsA("BasePart") then part.Transparency = t end
+			for _, desc in part:GetDescendants() do
+				if desc:IsA("BasePart") then desc.Transparency = t end
+				if desc:IsA("Decal") then desc.Transparency = t end
+			end
+		end
+	end
+end
+
+-- Locate a rig template anywhere it might reasonably live: top-level
+-- of ReplicatedStorage / ServerStorage, or nested inside a folder
+-- under either. Lets the user organise their assets without forcing a
+-- flat layout on the spawner.
+local function findTemplate(modelName)
+	local candidates = {
+		ReplicatedStorage:FindFirstChild(modelName),
+		ReplicatedStorage:FindFirstChild(modelName, true),
+		ServerStorage:FindFirstChild(modelName),
+		ServerStorage:FindFirstChild(modelName, true),
+	}
+	for _, c in candidates do
+		if c then return c end
+	end
+	return nil
+end
 
 -- Prevent spam: one active mercenary per player per type
 local activeMercs = {} -- [player] = { [mercName] = modelInstance }
@@ -29,9 +109,10 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local modelName = SPAWN_MAP[mercName]
 	if not modelName then return end
 
-	local template = ReplicatedStorage:FindFirstChild(modelName)
+	local template = findTemplate(modelName)
 	if not template then
-		warn("[MercenarySpawner] Model not found:", modelName)
+		warn("[MercenarySpawner] Model not found:", modelName,
+			"(searched ReplicatedStorage + ServerStorage, recursive)")
 		return
 	end
 
@@ -55,39 +136,61 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local clone = template:Clone()
 	template.Archivable = wasArchivable
 
-	-- Read equipped weapon and swap to the correct one
+	-- Read equipped weapon and swap to the correct one. Falls back to
+	-- the per-merc default so a fresh recruit (never visited equipment
+	-- page) gets the right weapon — Pirate → Sword, Soldier → Unarmed.
 	local mercEntry = folder:FindFirstChild(mercName)
-	local equippedWeapon = mercEntry and mercEntry:GetAttribute("EquippedWeapon") or "Sword"
+	local equippedWeapon = (mercEntry and mercEntry:GetAttribute("EquippedWeapon"))
+		or DEFAULT_WEAPON_BY_MERC[mercName]
+		or "Sword"
 
-	-- Remove all existing tools from the clone (template may have a FishingRod, etc.)
-	for _, child in clone:GetChildren() do
-		if child:IsA("Tool") then
-			child:Destroy()
-		end
+	-- Per-merc, per-equipment-slot toggle: when does the rig spawn with
+	-- its FULL authored Tool set (Cutlass + Revolver welded on) vs the
+	-- standard "strip everything, equip the chosen weapon" path?
+	-- Today only the Corsair has an authored multi-weapon loadout, and
+	-- only for the Sword slot — that's his combat role with the hybrid
+	-- melee/ranged AI. For FishingRod / Unarmed he needs to behave like
+	-- a normal Pirate (fish or harvest), so we strip his combat tools
+	-- and let the standard path attach the FishingRod (or no tool).
+	local function preservesAuthoredLoadout(merc, weapon)
+		if merc == "Corsair" and weapon == "Sword" then return true end
+		return false
 	end
 
-	-- Equip the chosen weapon from ReplicatedStorage.
-	-- FishingRod mercs spawn with a fake (visual-only) rod so they can walk
-	-- around holding it. The real rod is swapped in by MercenaryMovement
-	-- when the pirate reaches the fishing spot.
-	if equippedWeapon ~= "Unarmed" then
-		local weaponName = equippedWeapon
-		if weaponName == "Sword" then
-			weaponName = "ClassicSword"
-		elseif weaponName == "FishingRod" then
-			weaponName = "FishingRod_Fake"
+	if not preservesAuthoredLoadout(mercName, equippedWeapon) then
+		-- Remove all existing tools from the clone (template may have a
+		-- FishingRod, Cutlass, Revolver, etc.) so the rig holds exactly
+		-- the equipped weapon — same path Pirate uses for swapping
+		-- between Sword / FishingRod / Unarmed roles.
+		for _, child in clone:GetChildren() do
+			if child:IsA("Tool") then
+				child:Destroy()
+			end
 		end
 
-		local weaponTemplate = ReplicatedStorage:FindFirstChild(weaponName)
-			or ReplicatedStorage:FindFirstChild(weaponName, true)
-			or ReplicatedStorage:FindFirstChild(equippedWeapon)
-			or ReplicatedStorage:FindFirstChild(equippedWeapon, true)
-		if weaponTemplate and weaponTemplate:IsA("Tool") then
-			local wArchivable = weaponTemplate.Archivable
-			weaponTemplate.Archivable = true
-			local weaponClone = weaponTemplate:Clone()
-			weaponTemplate.Archivable = wArchivable
-			weaponClone.Parent = clone
+		-- Equip the chosen weapon from ReplicatedStorage.
+		-- FishingRod mercs spawn with a fake (visual-only) rod so they
+		-- can walk around holding it. The real rod is swapped in by
+		-- MercenaryMovement when the pirate reaches the fishing spot.
+		if equippedWeapon ~= "Unarmed" then
+			local weaponName = equippedWeapon
+			if weaponName == "Sword" then
+				weaponName = "ClassicSword"
+			elseif weaponName == "FishingRod" then
+				weaponName = "FishingRod_Fake"
+			end
+
+			local weaponTemplate = ReplicatedStorage:FindFirstChild(weaponName)
+				or ReplicatedStorage:FindFirstChild(weaponName, true)
+				or ReplicatedStorage:FindFirstChild(equippedWeapon)
+				or ReplicatedStorage:FindFirstChild(equippedWeapon, true)
+			if weaponTemplate and weaponTemplate:IsA("Tool") then
+				local wArchivable = weaponTemplate.Archivable
+				weaponTemplate.Archivable = true
+				local weaponClone = weaponTemplate:Clone()
+				weaponTemplate.Archivable = wArchivable
+				weaponClone.Parent = clone
+			end
 		end
 	end
 
@@ -95,19 +198,54 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local equipScript = clone:FindFirstChild("EquipFishingRod")
 	if equipScript then equipScript:Destroy() end
 
+	-- Toggle rig-baked weapon Models (e.g. the Soldier's AK-47) so the
+	-- merc never holds two weapons at once: the welded equip and the
+	-- baked rig piece.
+	syncRigBuiltinWeapons(clone, mercName, equippedWeapon)
+
 	-- Toggle backpack model visibility: show only the equipped one,
-	-- hide all others. If none is equipped, hide them all.
+	-- hide all others. If none is equipped, hide them all. The match
+	-- is fuzzy — any direct child whose name contains "ackpack" /
+	-- "ackPack" counts, so rigs that name accessories slightly
+	-- differently (Backpack, BackPack_lvl2, Soldier_Backpack, …) all
+	-- work without per-rig hooks. Accessory instances toggle their
+	-- Handle's Transparency (and any descendant BaseParts).
 	local equippedBp = mercEntry and mercEntry:GetAttribute("EquippedBackpack") or ""
-	for _, bpName in { "Backpack", "BackPack_lvl2" } do
-		local bpPart = clone:FindFirstChild(bpName)
-		if bpPart then
-			local show = (equippedBp == bpName)
-			local t = show and 0 or 1
-			if bpPart:IsA("BasePart") then bpPart.Transparency = t end
-			for _, desc in bpPart:GetDescendants() do
-				if desc:IsA("BasePart") then desc.Transparency = t end
-			end
+
+	local function nameContainsBackpack(s)
+		return s:lower():find("backpack", 1, true) ~= nil
+	end
+
+	local function setVisible(inst, visible)
+		local t = visible and 0 or 1
+		if inst:IsA("BasePart") then inst.Transparency = t end
+		if inst:IsA("Accessory") then
+			local handle = inst:FindFirstChild("Handle")
+			if handle and handle:IsA("BasePart") then handle.Transparency = t end
 		end
+		for _, desc in inst:GetDescendants() do
+			if desc:IsA("BasePart") then desc.Transparency = t end
+			if desc:IsA("Decal") then desc.Transparency = t end
+		end
+	end
+
+	for _, child in clone:GetChildren() do
+		if nameContainsBackpack(child.Name) then
+			setVisible(child, child.Name == equippedBp)
+		end
+	end
+
+	-- Apply the chosen skin (Shirt + Pants pair from ReplicatedStorage.Skins)
+	-- before the rig hits workspace so the player never sees a one-frame
+	-- flash of the rig's authored default clothing. _G.ApplyMercSkin is
+	-- published by MercenarySkin.server.lua; if that script hasn't loaded
+	-- yet (boot-order race) we silently fall back to the rig's authored
+	-- clothing — the live retro-fit path will catch up the next time the
+	-- player equips.
+	local equippedSkin = mercEntry and mercEntry:GetAttribute("EquippedSkin")
+	if typeof(equippedSkin) == "string" and equippedSkin ~= ""
+		and typeof(_G.ApplyMercSkin) == "function" then
+		_G.ApplyMercSkin(clone, equippedSkin)
 	end
 
 	-- Keep the ZombieScript alive on the mercenary so it can fight back
@@ -121,6 +259,36 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	local ragdoller = clone:FindFirstChild("Ragdoller")
 	if ragdoller and (ragdoller:IsA("Script") or ragdoller:IsA("LocalScript")) then
 		ragdoller:Destroy()
+	end
+
+	-- Per-merc-rig scripts (NPC AI, Health, HurtScript, Respawn, etc.)
+	-- are left alone — the user authors them on the rig in Studio and
+	-- expects them to drive the merc behaviour. The legacy Ragdoller
+	-- strip above is the only blanket removal we still do, because
+	-- the old R6 ragdoll-cloning path doesn't survive the spawn flow.
+
+	-- Inject the Pirate_2 mercenary behaviours that aren't expected to
+	-- be authored on every rig. The Soldier rig ships its own "NPC AI"
+	-- that plays the combat role, so we don't inject Combat — only
+	-- Fishing + HarvestResources, which are rig-agnostic and the
+	-- Soldier rig doesn't author itself. The injector skips when the
+	-- clone already carries an authored copy with the same name.
+	local pirateMercTemplate = ReplicatedStorage:FindFirstChild("Pirate_2")
+		or ReplicatedStorage:FindFirstChild("Pirate_2", true)
+	if pirateMercTemplate then
+		local MERC_SCRIPTS = { "Fishing", "HarvestResources" }
+		for _, scriptName in MERC_SCRIPTS do
+			if not clone:FindFirstChild(scriptName) then
+				local source = pirateMercTemplate:FindFirstChild(scriptName)
+				if source and (source:IsA("Script") or source:IsA("LocalScript")) then
+					local wasArchivable = source.Archivable
+					source.Archivable = true
+					local copy = source:Clone()
+					source.Archivable = wasArchivable
+					copy.Parent = clone
+				end
+			end
+		end
 	end
 
 	local configs = clone:FindFirstChild("Configurations")
@@ -146,6 +314,19 @@ spawnEvent.OnServerEvent:Connect(function(player, mercName)
 	if mercHum then
 		if mercHum.WalkSpeed <= 0 then
 			mercHum.WalkSpeed = 12
+		end
+		-- Per-type baseline overrides. Future tuning of HP / speed for
+		-- a specific mercenary type happens in SPAWN_STAT_OVERRIDES,
+		-- not by editing the shared rig template.
+		local override = SPAWN_STAT_OVERRIDES[mercName]
+		if override then
+			if override.MaxHealth then
+				mercHum.MaxHealth = override.MaxHealth
+				mercHum.Health    = override.MaxHealth
+			end
+			if override.WalkSpeed then
+				mercHum.WalkSpeed = override.WalkSpeed
+			end
 		end
 		mercHum.PlatformStand = false
 		mercHum.Sit = false

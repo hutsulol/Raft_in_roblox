@@ -240,6 +240,10 @@ local function spawnPirateRaft()
 		local offsetX = (i - 1) * 3 - 1.5
 		pirate:PivotTo(CFrame.new(spawnPos + Vector3.new(offsetX, 5, 0)))
 		CollectionService:AddTag(pirate, "HostilePirate")
+		-- NpcType drives recruitment / blood / merc filtering. The
+		-- recruitment system rejects models without a known NpcType
+		-- so a stray ragdoll never opens the wrong recruit panel.
+		pirate:SetAttribute("NpcType", "Pirate lvl1")
 		pirate.Parent = workspace
 
 		local hrp = pirate:FindFirstChild("HumanoidRootPart")

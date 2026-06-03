@@ -521,14 +521,33 @@ local function openWeaponSelectPage(ctx)
 	-- the character jump. No clip frame here — no bottom cards need
 	-- to crop the rig on this page, so the pirate renders fully.
 	-- Per Q9 we don't add any "FOR · <MERC>" label — just the model.
-	local equippedWeaponId = "Sword"
+	local theme = ctx.theme or {}
+	-- Resolve via the shared helper (scrubs stale-but-disallowed
+	-- attributes in place); falls back to a local resolution if the
+	-- helper isn't threaded through ctx.
 	local mercFolder = player:FindFirstChild("Mercenaries")
-	if mercFolder and ctx.mercName then
-		local entry = mercFolder:FindFirstChild(ctx.mercName)
+	local entry = mercFolder and ctx.mercName and mercFolder:FindFirstChild(ctx.mercName)
+	local equippedWeaponId
+	if typeof(ctx.resolveMercWeapon) == "function" then
+		equippedWeaponId = ctx.resolveMercWeapon(ctx.mercName, entry, theme)
+	else
+		equippedWeaponId = theme.defaultWeapon or "Sword"
 		if entry then
 			local eq = entry:GetAttribute("EquippedWeapon")
 			if eq and eq ~= "" then equippedWeaponId = eq end
 		end
+	end
+
+	-- Per-merc restrictedTo filter: SCP-only weapons (Firearm /
+	-- Shotgun) shouldn't appear on the Pirate's grid, and the Pirate
+	-- Sword shouldn't appear on the Soldier's. A def with no
+	-- restrictedTo list is universal and shows for everyone.
+	local function isWeaponForMerc(def)
+		if not def.restrictedTo then return true end
+		for _, allowed in ipairs(def.restrictedTo) do
+			if allowed == ctx.mercName then return true end
+		end
+		return false
 	end
 
 	local viewportHost = Instance.new("Frame")
@@ -655,7 +674,7 @@ local function openWeaponSelectPage(ctx)
 	do
 		local weapons = ctx.equipItems and ctx.equipItems.Weapons or {}
 		for _, def in ipairs(weapons) do
-			if def.id == equippedWeaponId and def.profession then
+			if isWeaponForMerc(def) and def.id == equippedWeaponId and def.profession then
 				arsenalActiveProfession = def.profession
 				break
 			end
@@ -731,9 +750,51 @@ local function openWeaponSelectPage(ctx)
 		end)
 	end
 
-	buildTab("Warrior",   "WARRIOR",   1)
-	buildTab("Fisherman", "FISHERMAN", 2)
-	buildTab("Assistant", "ASSISTANT", 3)
+	-- Profession tabs are filtered per-merc: a tab only appears when
+	-- at least one weapon for that profession survives the merc's
+	-- restrictedTo filter. Pirate gets WARRIOR / FISHERMAN /
+	-- ASSISTANT (no SOLDIER tab — Firearm and Shotgun are SCP-only).
+	-- Soldier gets SOLDIER / FISHERMAN / ASSISTANT (no WARRIOR — the
+	-- Pirate Sword is restricted to Pirate). The catch-all bucket
+	-- (defs without a profession field) counts toward whichever tab
+	-- buildGrid eventually renders them under.
+	local function professionHasItemsForMerc(profession)
+		local weapons = ctx.equipItems and ctx.equipItems.Weapons or {}
+		for _, def in ipairs(weapons) do
+			if isWeaponForMerc(def)
+				and (def.profession == nil or def.profession == profession) then
+				return true
+			end
+		end
+		return false
+	end
+
+	local PROFESSION_LIST = {
+		{ id = "Warrior",   label = "WARRIOR"   },
+		{ id = "Soldier",   label = "SOLDIER"   },
+		{ id = "Fisherman", label = "FISHERMAN" },
+		{ id = "Assistant", label = "ASSISTANT" },
+	}
+	local visibleTabIndex = 0
+	for _, prof in ipairs(PROFESSION_LIST) do
+		if professionHasItemsForMerc(prof.id) then
+			visibleTabIndex = visibleTabIndex + 1
+			buildTab(prof.id, prof.label, visibleTabIndex)
+		end
+	end
+
+	-- If the active profession we computed earlier doesn't have a tab
+	-- (rare — e.g. equipped weapon's profession is filtered out for
+	-- this merc), fall back to the first visible tab so the grid has
+	-- something to render.
+	if not arsenalTabRefs[arsenalActiveProfession] then
+		for _, prof in ipairs(PROFESSION_LIST) do
+			if arsenalTabRefs[prof.id] then
+				arsenalActiveProfession = prof.id
+				break
+			end
+		end
+	end
 	refreshTabVisuals()
 
 	-- ── Arsenal weapon grid (cards) ─────────────────────────────────
@@ -1051,7 +1112,8 @@ local function openWeaponSelectPage(ctx)
 		local unlockedSet = collectUnlockedSet()
 		local visible = 0
 		for _, def in ipairs(weapons) do
-			if def.profession == nil or def.profession == profession then
+			if isWeaponForMerc(def)
+				and (def.profession == nil or def.profession == profession) then
 				local col = (visible % GRID_COLS) + 1
 				local row = math.floor(visible / GRID_COLS) + 1
 				local unlocked = def.alwaysUnlocked or unlockedSet[def.id] == true
