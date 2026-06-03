@@ -78,37 +78,11 @@ local function deserializeCFrame(t)
 	return CFrame.new(unpack(t))
 end
 
--- ─── Grid lattice phase ───
--- Mirror of the BuildingSystem helper: snap the grid origin onto the actual
--- Raft_part tile lattice so saved tiles restore aligned even when the raft's
--- PrimaryPart (e.g. a SpawnLocation) drifted a fraction of a cell off the
--- tiles in Studio. Returns (0, 0) when the PrimaryPart is already aligned.
-local function getGridPhase(raft, gridSize)
-	local primary = raft and raft.PrimaryPart
-	if not primary then return 0, 0 end
-	local restYaw = primary:GetAttribute("RestYaw")
-	if not restYaw then
-		local _, yaw, _ = primary.CFrame:ToEulerAnglesYXZ()
-		restYaw = yaw
-	end
-	local flatCF = CFrame.new(primary.Position) * CFrame.Angles(0, restYaw, 0)
-	for _, child in raft:GetChildren() do
-		if child.Name == "Raft_part" and child:GetAttribute("GridX") == nil then
-			local pos
-			if child:IsA("Model") then
-				pos = child:GetPivot().Position
-			elseif child:IsA("BasePart") then
-				pos = child.Position
-			end
-			if pos then
-				local lp = flatCF:PointToObjectSpace(pos)
-				return lp.X - math.round(lp.X / gridSize) * gridSize,
-					lp.Z - math.round(lp.Z / gridSize) * gridSize
-			end
-		end
-	end
-	return 0, 0
-end
+-- Build placement alignment offset (raft-local studs, X/Z). Mirror of the
+-- BuildingSystem PLACE_OFFSET so restored pieces land on the same tiles new
+-- builds use. Keep equal to the BuildingSystem values.
+local PLACE_OFFSET_X = 2
+local PLACE_OFFSET_Z = 2
 
 -- ─── Collect raft data ───
 local function collectRaftData(player)
@@ -401,10 +375,6 @@ local function rebuildRaft(player, saveData)
 		end
 	end
 
-	-- Snap restored tiles onto the real Raft_part lattice (see getGridPhase),
-	-- so a PrimaryPart nudged off the tile centres can't shift the rebuild.
-	local phaseX, phaseZ = getGridPhase(raft, GRID_SIZE)
-
 	-- Beam measurements
 	local BEAM_HEIGHT = 0
 	local BEAM_INSET = 0
@@ -474,7 +444,7 @@ local function rebuildRaft(player, saveData)
 	end
 
 	local function localToWorldPos(studX, studZ)
-		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX + phaseX, 0, studZ + phaseZ))
+		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX + PLACE_OFFSET_X, 0, studZ + PLACE_OFFSET_Z))
 		local localOffset = restCF:VectorToObjectSpace(worldOffset)
 		return (raftCF * CFrame.new(localOffset)).Position
 	end
@@ -526,7 +496,7 @@ local function rebuildRaft(player, saveData)
 	if floorTemplate and raftData.floors then
 		for _, floor in raftData.floors do
 			if not (floor.gx == 0 and floor.gz == 0) then
-				local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(floor.gx * GRID_SIZE + phaseX, 0, floor.gz * GRID_SIZE + phaseZ))
+				local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(floor.gx * GRID_SIZE + PLACE_OFFSET_X, 0, floor.gz * GRID_SIZE + PLACE_OFFSET_Z))
 				local localOffset = restCF:VectorToObjectSpace(worldOffset)
 				local worldCF = raftCF * CFrame.new(localOffset)
 

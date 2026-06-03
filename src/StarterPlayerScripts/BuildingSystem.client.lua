@@ -80,6 +80,12 @@ local ARCH_ICON = "rbxassetid://90064054384398"
 -- Beam/wall X-axis correction (pivot offset in template)
 local BEAM_X_OFFSET = 1
 
+-- Build placement alignment offset (raft-local studs, X/Z). Mirror of the
+-- server's PLACE_OFFSET so the preview ghost lands exactly where the server
+-- will place the piece. Keep these equal to the server values.
+local PLACE_OFFSET_X = 2
+local PLACE_OFFSET_Z = 2
+
 -- Building items organized by category
 local categories = {
 	{
@@ -118,38 +124,6 @@ local function getRaft()
 	return workspace:FindFirstChild("Raft")
 end
 
--- ─── Grid lattice phase ───
--- Mirror of the server helper: snap the build grid origin onto the actual
--- Raft_part tile lattice so a PrimaryPart (e.g. a SpawnLocation) that drifted
--- a fraction of a cell when the model was edited can't shift detection or the
--- placement preview. Returns (0, 0) for an already-aligned raft.
-local function getGridPhase(raft, gridSize)
-	local primary = raft and raft.PrimaryPart
-	if not primary then return 0, 0 end
-	local restYaw = primary:GetAttribute("RestYaw")
-	if not restYaw then
-		local _, yaw, _ = primary.CFrame:ToEulerAnglesYXZ()
-		restYaw = yaw
-	end
-	local flatCF = CFrame.new(primary.Position) * CFrame.Angles(0, restYaw, 0)
-	for _, child in raft:GetChildren() do
-		if child.Name == "Raft_part" and child:GetAttribute("GridX") == nil then
-			local pos
-			if child:IsA("Model") then
-				pos = child:GetPivot().Position
-			elseif child:IsA("BasePart") then
-				pos = child.Position
-			end
-			if pos then
-				local lp = flatCF:PointToObjectSpace(pos)
-				return lp.X - math.round(lp.X / gridSize) * gridSize,
-					lp.Z - math.round(lp.Z / gridSize) * gridSize
-			end
-		end
-	end
-	return 0, 0
-end
-
 local function getFloorOffsets()
 	local raft = getRaft()
 	if not raft or not raft.PrimaryPart then return {} end
@@ -167,8 +141,7 @@ local function getFloorOffsets()
 		local _, yaw, _ = primary.CFrame:ToEulerAnglesYXZ()
 		restYaw = yaw
 	end
-	local phaseX, phaseZ = getGridPhase(raft, GRID_SIZE)
-	local flatCF = CFrame.new(primary.Position) * CFrame.Angles(0, restYaw, 0) * CFrame.new(phaseX, 0, phaseZ)
+	local flatCF = CFrame.new(primary.Position) * CFrame.Angles(0, restYaw, 0)
 
 	for _, child in raft:GetChildren() do
 		local gx = child:GetAttribute("GridX")
@@ -423,8 +396,7 @@ local function raycastToRaftPlane()
 	-- Convert the world hit into the raft's yaw-aligned local frame. Only
 	-- X and Z matter for grid snapping — the plane frame is rotated around
 	-- the world Y axis, so the local XZ is independent of the frame's Y.
-	local phaseX, phaseZ = getGridPhase(raft, GRID_SIZE)
-	local flatCF = CFrame.new(cf.Position.X, hitWorld.Y, cf.Position.Z) * CFrame.Angles(0, restYaw, 0) * CFrame.new(phaseX, 0, phaseZ)
+	local flatCF = CFrame.new(cf.Position.X, hitWorld.Y, cf.Position.Z) * CFrame.Angles(0, restYaw, 0)
 	return flatCF:PointToObjectSpace(hitWorld)
 end
 
@@ -437,8 +409,7 @@ local function localToWorld(studX, studZ)
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
 	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
-	local phaseX, phaseZ = getGridPhase(raft, GRID_SIZE)
-	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX + phaseX, 0, studZ + phaseZ))
+	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX + PLACE_OFFSET_X, 0, studZ + PLACE_OFFSET_Z))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
 	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
 end
@@ -454,10 +425,9 @@ local function getFloorGridFromMouse()
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
 	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
-	local phaseX, phaseZ = getGridPhase(raft, GRID_SIZE)
 	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(
-		math.round(localHit.X / GRID_SIZE) * GRID_SIZE + phaseX, 0,
-		math.round(localHit.Z / GRID_SIZE) * GRID_SIZE + phaseZ
+		math.round(localHit.X / GRID_SIZE) * GRID_SIZE + PLACE_OFFSET_X, 0,
+		math.round(localHit.Z / GRID_SIZE) * GRID_SIZE + PLACE_OFFSET_Z
 	))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
 

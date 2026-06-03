@@ -78,6 +78,13 @@ raftPartTemplate:SetAttribute("DoorHeight", DOOR_HEIGHT)
 -- Beam/wall X-axis correction (pivot offset in template)
 local BEAM_X_OFFSET = 1
 
+-- Build placement alignment offset (raft-local studs, X/Z). New pieces were
+-- landing ~2 studs off the existing Raft_part tiles after the raft model was
+-- re-edited in Studio, so nudge every placement back onto them. Flip a sign
+-- (or set to 0) if a piece snaps to the wrong side.
+local PLACE_OFFSET_X = 2
+local PLACE_OFFSET_Z = 2
+
 local RAFT_COST = 2
 local BEAM_COST = 1
 local WALL_PANEL_COST = 3
@@ -86,43 +93,6 @@ local DOOR_COST = 2
 
 local function getRaft()
 	return workspace:FindFirstChild("Raft")
-end
-
--- ─── Grid lattice phase ───
--- The build grid's origin is the raft's PrimaryPart. If that part (often the
--- SpawnLocation) is not centred on a Raft_part tile — which happens when the
--- raft model is edited in Studio and the PrimaryPart drifts a fraction of a
--- cell — every tile reads at a fractional grid coord, so rounding misreads
--- existing tiles AND places new builds offset by that fraction. We snap the
--- grid origin back onto the real tile lattice by measuring the fractional
--- offset of an initial Raft_part tile and correcting for it everywhere.
--- Returns (0, 0) when the PrimaryPart is already aligned, so correctly built
--- rafts are completely unaffected.
-local function getGridPhase(raft, gridSize)
-	local primary = raft and raft.PrimaryPart
-	if not primary then return 0, 0 end
-	local restYaw = primary:GetAttribute("RestYaw")
-	if not restYaw then
-		local _, yaw, _ = primary.CFrame:ToEulerAnglesYXZ()
-		restYaw = yaw
-	end
-	local flatCF = CFrame.new(primary.Position) * CFrame.Angles(0, restYaw, 0)
-	for _, child in raft:GetChildren() do
-		if child.Name == "Raft_part" and child:GetAttribute("GridX") == nil then
-			local pos
-			if child:IsA("Model") then
-				pos = child:GetPivot().Position
-			elseif child:IsA("BasePart") then
-				pos = child.Position
-			end
-			if pos then
-				local lp = flatCF:PointToObjectSpace(pos)
-				return lp.X - math.round(lp.X / gridSize) * gridSize,
-					lp.Z - math.round(lp.Z / gridSize) * gridSize
-			end
-		end
-	end
-	return 0, 0
 end
 
 local function getFloorOffsets(raft)
@@ -143,8 +113,7 @@ local function getFloorOffsets(raft)
 		local _, yaw, _ = primary.CFrame:ToEulerAnglesYXZ()
 		restYaw = yaw
 	end
-	local phaseX, phaseZ = getGridPhase(raft, GRID_SIZE)
-	local flatCF = CFrame.new(primary.Position) * CFrame.Angles(0, restYaw, 0) * CFrame.new(phaseX, 0, phaseZ)
+	local flatCF = CFrame.new(primary.Position) * CFrame.Angles(0, restYaw, 0)
 
 	for _, child in raft:GetChildren() do
 		local gx = child:GetAttribute("GridX")
@@ -335,8 +304,7 @@ local function localToWorld(raft, studX, studZ)
 	local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or primaryCF
 	local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 	local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
-	local phaseX, phaseZ = getGridPhase(raft, GRID_SIZE)
-	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX + phaseX, 0, studZ + phaseZ))
+	local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(studX + PLACE_OFFSET_X, 0, studZ + PLACE_OFFSET_Z))
 	local localOffset = restCF:VectorToObjectSpace(worldOffset)
 	return (primaryCF * CFrame.new(localOffset)).Position, restYaw
 end
@@ -435,8 +403,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
 		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 		local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
-		local phaseX, phaseZ = getGridPhase(raft, GRID_SIZE)
-		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE + phaseX, 0, gz * GRID_SIZE + phaseZ))
+		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE + PLACE_OFFSET_X, 0, gz * GRID_SIZE + PLACE_OFFSET_Z))
 		local localOffset = restCF:VectorToObjectSpace(worldOffset)
 		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft) * ANCHOR_PIVOT_COMPENSATION
 
@@ -531,8 +498,7 @@ placeBlockEvent.OnServerEvent:Connect(function(player, buildType, ...)
 		local restCF = raft.PrimaryPart:GetAttribute("RestCFrame") or raft.PrimaryPart.CFrame
 		local restYaw = raft.PrimaryPart:GetAttribute("RestYaw") or 0
 		local restFlat = CFrame.new(Vector3.zero) * CFrame.Angles(0, restYaw, 0)
-		local phaseX, phaseZ = getGridPhase(raft, GRID_SIZE)
-		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE + phaseX, 0, gz * GRID_SIZE + phaseZ))
+		local worldOffset = restFlat:VectorToWorldSpace(Vector3.new(gx * GRID_SIZE + PLACE_OFFSET_X, 0, gz * GRID_SIZE + PLACE_OFFSET_Z))
 		local localOffset = restCF:VectorToObjectSpace(worldOffset)
 		local worldCF = raft.PrimaryPart.CFrame * CFrame.new(localOffset) * getTileRotationCorrection(raft)
 
