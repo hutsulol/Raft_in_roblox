@@ -502,6 +502,15 @@ local COOK_FADE      = 1     -- decal cross-fade duration
 local COOK_POLL      = 0.5   -- detection cadence
 local COOK_ZONE_PAD  = 3     -- vertical slack above/below the model bbox
 local COOKED_SUFFIX  = "_Cooked"
+local COOK_STACK_EXTRA_PER_FISH = 0.4 -- +40% of base time per extra fish in stack-drop
+local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
+local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
+local LEGENDARY_RAW_TEXTURE_ID = "http://www.roblox.com/asset/?id=155812542"
+local LEGENDARY_COOKED_TEXTURE_ID = "rbxassetid://138934138408588"
+local LEGENDARY_RAW_TEXTURE_NUM = "155812542"
+local MEAT_RAW_TEXTURE_ID = "rbxassetid://96631156827637"
+local MEAT_COOKED_TEXTURE_ID = "rbxassetid://81212406244264"
+local MEAT_BASE_COOK_MULT = 2 -- meat cooks 2x slower than fish baseline
 
 local cookProgress = {}  -- [droppedModel] = seconds accumulated in heat
 
@@ -509,7 +518,14 @@ local cookProgress = {}  -- [droppedModel] = seconds accumulated in heat
 -- because the authored "raw" decal is actually named " raw" with a
 -- leading space — an exact == "raw" never matched it.
 local function normName(inst)
-	return (inst.Name:gsub("%s+", "")):lower()
+	return (inst.Name:gsub("[%s_]+", "")):lower()
+end
+
+local function fishDecalState(inst)
+	local n = normName(inst)
+	if n:find("cooked", 1, true) then return "cooked" end
+	if n:find("raw", 1, true) then return "raw" end
+	return nil
 end
 
 -- A fish is "adapted for cooking" if it carries a Decal named
@@ -519,16 +535,66 @@ end
 local function findFishDecals(model)
 	local raw, cooked, scripts = nil, nil, {}
 	for _, d in model:GetDescendants() do
-		local n = (d:IsA("Decal") or d:IsA("Texture") or d:IsA("SurfaceAppearance")) and normName(d)
-		if n == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
+		local state = (d:IsA("Decal") or d:IsA("Texture") or d:IsA("SurfaceAppearance")) and fishDecalState(d)
+		if state == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
 			cooked = d
-		elseif n == "raw" then
+		elseif state == "raw" then
 			raw = d
 		elseif d:IsA("BaseScript") then
 			table.insert(scripts, d)
 		end
 	end
 	return raw, cooked, scripts
+end
+
+local function hasTilapiaMeshTexture(model)
+	for _, d in model:GetDescendants() do
+		if d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
+			return true
+		end
+	end
+	return false
+end
+
+local function hasLegendaryMeshTexture(model)
+	for _, d in model:GetDescendants() do
+		local tex = (d:IsA("MeshPart") and d.TextureID) or (d:IsA("SpecialMesh") and d.TextureId)
+		if type(tex) == "string" and tex:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) then
+			return true
+		end
+	end
+	return false
+end
+
+local function canCookFish(model, cookedDecal)
+	-- Legacy fish path: explicit cooked overlay exists.
+	if cookedDecal then return true end
+	-- Mesh-authored path (Tilapia): no cooked decal.
+	if hasTilapiaMeshTexture(model) then return true end
+	if hasLegendaryMeshTexture(model) then return true end
+	-- Resource-key fallback for fish that should be cookable even if
+	-- authored decals are inconsistent in a given asset revision.
+	local resType = model:GetAttribute("ResourceType")
+	if resType == "Tilapia_Fish" or resType == "Carp_Fish" or resType == "Legendary_Fish" or resType == "Meat" then
+		return true
+	end
+	for _, d in model:GetDescendants() do
+		if d:IsA("MeshPart") and d.TextureID == MEAT_RAW_TEXTURE_ID then return true end
+	end
+	return false
+end
+
+local function requiredCookTime(item)
+	-- Dropped stacks can represent multiple fish in one world model
+	-- (ResourceAmount > 1). Keep the single-fish baseline and add
+	-- +40% * COOK_TIME for each extra fish for more realistic batches.
+	local amount = tonumber(item:GetAttribute("ResourceAmount")) or 1
+	amount = math.max(1, math.floor(amount + 0.0001))
+	local base = COOK_TIME
+	if item:GetAttribute("ResourceType") == "Meat" then
+		base = base * MEAT_BASE_COOK_MULT
+	end
+	return base * (1 + COOK_STACK_EXTRA_PER_FISH * (amount - 1))
 end
 
 local function itemPosition(item)
@@ -577,6 +643,25 @@ local function hideRaw(inst)
 	end
 end
 
+local function swapMeshTextureIds(model)
+	-- Some fish (Tilapia) are authored without separate raw/cooked
+	-- decals. Their MeshPart carries a baked TextureID that must be
+	-- swapped directly when cooking completes.
+	for _, d in model:GetDescendants() do
+		if d:IsA("MeshPart") and d.TextureID == TILAPIA_RAW_TEXTURE_ID then
+			d.TextureID = TILAPIA_COOKED_TEXTURE_ID
+		elseif d:IsA("MeshPart") and type(d.TextureID) == "string"
+			and d.TextureID:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) then
+			d.TextureID = LEGENDARY_COOKED_TEXTURE_ID
+		elseif d:IsA("SpecialMesh") and type(d.TextureId) == "string"
+			and d.TextureId:find(LEGENDARY_RAW_TEXTURE_NUM, 1, true) then
+			d.TextureId = LEGENDARY_COOKED_TEXTURE_ID
+		elseif d:IsA("MeshPart") and d.TextureID == MEAT_RAW_TEXTURE_ID then
+			d.TextureID = MEAT_COOKED_TEXTURE_ID
+		end
+	end
+end
+
 local function cookFish(model, raw, cooked, scripts)
 	model:SetAttribute("Cooked", true)
 
@@ -591,16 +676,17 @@ local function cookFish(model, raw, cooked, scripts)
 	-- parts / mixed classes / whitespace in names, not just the first).
 	for _, d in model:GetDescendants() do
 		if d:IsA("Decal") or d:IsA("Texture") or d:IsA("SurfaceAppearance") then
-			local n = normName(d)
-			if n == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
+			local state = fishDecalState(d)
+			if state == "cooked" and (d:IsA("Decal") or d:IsA("Texture")) then
 				d.Transparency = 1
 				TweenService:Create(d, TweenInfo.new(COOK_FADE, Enum.EasingStyle.Linear),
 					{ Transparency = 0 }):Play()
-			elseif n == "raw" then
+			elseif state == "raw" then
 				hideRaw(d)
 			end
 		end
 	end
+	swapMeshTextureIds(model)
 
 	-- Flip the resource so pickup yields the edible cooked variant.
 	local resType = model:GetAttribute("ResourceType")
@@ -619,11 +705,12 @@ task.spawn(function()
 				cookProgress[item] = nil
 			elseif not item:GetAttribute("Cooked") then
 				local raw, cooked, scripts = findFishDecals(item)
-				if cooked then
+				if canCookFish(item, cooked) then
 					local pos = itemPosition(item)
 					if pos and #zones > 0 and posInZones(pos, zones) then
 						local t = (cookProgress[item] or 0) + COOK_POLL
-						if t >= COOK_TIME then
+						local need = requiredCookTime(item)
+						if t >= need then
 							cookProgress[item] = nil
 							cookFish(item, raw, cooked, scripts)
 						else
@@ -635,4 +722,3 @@ task.spawn(function()
 		end
 	end
 end)
-
