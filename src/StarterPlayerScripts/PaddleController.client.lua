@@ -30,6 +30,7 @@ local mouse = player:GetMouse()
 local camera = workspace.CurrentCamera
 
 local COOLDOWN = 1.0 -- seconds between paddle strokes
+local FEEDBACK_REMOTE_NAME = "PaddleFeedback"
 -- Maximum stud distance from the character to the water hit point.
 -- Without this the paddle would still register valid as long as the
 -- cursor was over water somewhere — the player could stand in the
@@ -104,6 +105,16 @@ local function onActivated()
 	direction = direction.Unit
 
 	lastPaddleTime = now
+
+	-- Boat movement still uses the global PaddleAction event, but the
+	-- visual/audio stroke is mirrored through a Tool-local RemoteEvent.
+	-- This keeps feedback working if a MeshPart Handle prevents the
+	-- server Tool.Activated signal from arriving reliably.
+	local feedbackRemote = currentTool and currentTool:FindFirstChild(FEEDBACK_REMOTE_NAME)
+	if feedbackRemote and feedbackRemote:IsA("RemoteEvent") then
+		feedbackRemote:FireServer()
+	end
+
 	paddleEvent:FireServer(direction)
 end
 
