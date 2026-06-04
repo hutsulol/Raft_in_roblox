@@ -107,6 +107,7 @@ local AGENT_HEIGHT = 5             -- высота агента ≈ высота
 local PATH_RECOMPUTE_INTERVAL = 0.5 -- макс. период пересчёта пути, сек
 local PATH_GOAL_MOVE_THRESHOLD = 5  -- цель сместилась дальше — пересчитать, studs
 local WAYPOINT_REACH = 2.5          -- радиус «waypoint достигнут», studs
+local NAV_LOS_MARGIN = 4            -- «вижу цель напрямую»: не докидывать луч до цели, studs
 
 --====================================================
 -- COLLISION GROUPS
@@ -1487,7 +1488,9 @@ local pathOk = false
 local pathComputing = false
 
 -- Пересчёт пути идёт в отдельном потоке: ComputeAsync уступает (yield),
--- а Heartbeat ждать нельзя.
+-- а Heartbeat ждать нельзя. При неудаче СТАРЫЙ путь не сбрасываем (идём по нём).
+local lastPathWarnClock = 0
+
 local function computePathAsync(goal)
 	pathComputing = true
 	task.spawn(function()
@@ -1499,47 +1502,80 @@ local function computePathAsync(goal)
 			pathWaypoints = navPath:GetWaypoints()
 			waypointIndex = 1
 			pathOk = true
-		else
-			pathWaypoints = {}
-			pathOk = false
+			pathGoal = goal
+		elseif os.clock() - lastPathWarnClock > 3 then
+			lastPathWarnClock = os.clock()
+			warn(string.format(
+				"[PirateUnitAI] %s: путь не построен (%s). Проверь, что у препятствий есть CanCollide-парт, и габариты AGENT_RADIUS/AGENT_HEIGHT.",
+				npc.Name,
+				ok and tostring(navPath.Status) or "ошибка ComputeAsync"
+			))
 		end
 
-		pathGoal = goal
 		pathComputeClock = os.clock()
 		pathComputing = false
 	end)
 end
 
--- Идти к goal, обходя препятствия/воду через PathfindingService. Если свежего
--- пути ещё/уже нет — двигаемся НАПРЯМУЮ к цели (никогда не стоим на месте).
-local function navigateTo(goal, speed)
-	local goalChanged = (not pathGoal) or flatDistance(pathGoal, goal) > PATH_GOAL_MOVE_THRESHOLD
-	local recompute = goalChanged
-		or (os.clock() - pathComputeClock > PATH_RECOMPUTE_INTERVAL
-			and (not pathOk or waypointIndex > #pathWaypoints))
+-- Прямая видимость до точки на уровне корпуса тремя лучами (центр + бока на
+-- ширину агента), чтобы не «продеть» взгляд в щель между столбами забора.
+local function hasClearPath(toPos)
+	local origin = rootCollider.Position
+	local flat = Vector3.new(toPos.X - origin.X, 0, toPos.Z - origin.Z)
+	local dist = flat.Magnitude
+	if dist <= NAV_LOS_MARGIN then
+		return true
+	end
 
-	if recompute and not pathComputing then
+	local dir = flat.Unit
+	local rayVec = dir * (dist - NAV_LOS_MARGIN)
+	local side = Vector3.new(-dir.Z, 0, dir.X) * AGENT_RADIUS
+
+	for _, offset in ipairs({ Vector3.zero, side, -side }) do
+		if workspace:Raycast(origin + offset, rayVec, raycastParams) then
+			return false
+		end
+	end
+
+	return true
+end
+
+-- Идти к goal. Видно цель напрямую — идём ровно прямо (без пасфайндинга и
+-- виляния). На пути преграда — обходим её по маршруту PathfindingService.
+local function navigateTo(goal, speed)
+	if hasClearPath(goal) then
+		faceTowards(goal)
+		moveTowards(goal, speed)
+		return
+	end
+
+	local needRecompute = (not pathOk)
+		or (not pathGoal)
+		or flatDistance(pathGoal, goal) > PATH_GOAL_MOVE_THRESHOLD
+		or waypointIndex > #pathWaypoints
+		or (os.clock() - pathComputeClock > PATH_RECOMPUTE_INTERVAL)
+
+	if needRecompute and not pathComputing then
 		computePathAsync(goal)
 	end
 
-	-- По умолчанию — прямо к цели. Если есть АКТУАЛЬНЫЙ путь (посчитан под эту же
-	-- цель) — идём по waypoints, пропуская уже достигнутые.
-	local moveTarget = goal
-	local pathFresh = pathOk and pathGoal
-		and flatDistance(pathGoal, goal) <= PATH_GOAL_MOVE_THRESHOLD * 2
-
-	if pathFresh then
+	if pathOk and #pathWaypoints > 0 then
 		while waypointIndex <= #pathWaypoints
 			and flatDistance(rootCollider.Position, pathWaypoints[waypointIndex].Position) <= WAYPOINT_REACH do
 			waypointIndex += 1
 		end
-		if waypointIndex <= #pathWaypoints then
-			moveTarget = pathWaypoints[waypointIndex].Position
-		end
-	end
 
-	faceTowards(moveTarget)
-	moveTowards(moveTarget, speed)
+		local moveTarget = (waypointIndex <= #pathWaypoints)
+			and pathWaypoints[waypointIndex].Position
+			or goal
+		faceTowards(moveTarget)
+		moveTowards(moveTarget, speed)
+	else
+		-- Маршрут ещё считается → подходим к цели медленно, чтобы не влететь в
+		-- преграду до готовности пути.
+		faceTowards(goal)
+		moveTowards(goal, speed * 0.35)
+	end
 end
 
 --====================================================
