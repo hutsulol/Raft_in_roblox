@@ -60,6 +60,39 @@ local USE_LINE_OF_SIGHT = false
 local FORCE_DIRECT_ROTATION = true
 
 --====================================================
+-- ПОВЕДЕНИЕ: СТРАЖ / ЗРЕНИЕ / ПАМЯТЬ (Этап 1)
+--====================================================
+
+-- Вариант поведения (пока только «Страж»). Задел под будущие варианты.
+local BEHAVIOR_VARIANT = "Guard"
+
+-- ПАТРУЛЬ по ручным маркерам.
+-- Внутри модели пирата создай Folder "PatrolPoints" и положи туда Part'ы
+-- (или Attachment'ы) — пират обойдёт их по порядку имён и вернётся на пост.
+-- Маркеры удобно сделать Anchored, CanCollide=false, Transparency=1.
+-- Если папки нет/она пуста — пират просто охраняет точку спавна.
+local PATROL_POINTS_FOLDER_NAME = "PatrolPoints"
+local GUARD_DURATION = 60        -- сколько стоять на посту перед обходом, сек
+local PATROL_POINT_REACH = 3     -- радиус «точка достигнута», studs
+local PATROL_PAUSE = 0.5         -- пауза на каждой точке маршрута, сек
+
+-- ЗРЕНИЕ (FOV + луч прямой видимости).
+local SIGHT_RANGE = 50           -- макс. дальность видимости, studs
+local FOV_FRONT_DEGREES = 50     -- полуугол «быстро видит спереди»
+local FOV_SIDE_DEGREES = 110     -- полуугол «медленно видит сбоку» (дальше — спина)
+local EYE_HEIGHT_OFFSET = 1      -- глаза чуть выше центра HeadCollider, studs
+
+-- ПОДОЗРЕНИЕ 0..100.
+local SUSPICION_GAIN_FRONT = 90  -- набор/сек в лоб (вблизи)
+local SUSPICION_GAIN_SIDE = 35   -- набор/сек сбоку
+local SUSPICION_DECAY = 25       -- спад/сек, когда никого не видит
+local SUSPICION_INVESTIGATE = 50 -- порог «пойти проверить»
+local SUSPICION_ALERT = 100      -- порог «точно враг» → погоня
+
+-- ПАМЯТЬ / поиск.
+local SEARCH_DURATION = 6        -- сколько искать у последней точки, сек
+
+--====================================================
 -- COLLISION GROUPS
 --====================================================
 
@@ -1128,14 +1161,6 @@ end
 local lastAttackTime = 0
 local isAttacking = false
 
-local currentTargetCharacter = nil
-local isChasingEscapedTarget = false
-
-local function clearTarget()
-	currentTargetCharacter = nil
-	isChasingEscapedTarget = false
-end
-
 local function stopMovement()
 	local velocity = rootCollider.AssemblyLinearVelocity
 	rootCollider.AssemblyLinearVelocity = Vector3.new(0, velocity.Y, 0)
@@ -1237,12 +1262,361 @@ local function attackTarget(targetRoot, targetHumanoid)
 end
 
 --====================================================
+-- ВОСПРИЯТИЕ (зрение + подозрение)
+--====================================================
+
+local headCollider = findColliderPartByName("HeadCollider")
+
+local function flatDistance(a, b)
+	return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
+end
+
+-- Куда «смотрит» пират (с учётом MODEL_YAW_OFFSET_DEGREES).
+local function getLookDirection()
+	local _, yaw = rootCollider.CFrame:ToOrientation()
+	local faceYaw = yaw - math.rad(MODEL_YAW_OFFSET_DEGREES)
+	return Vector3.new(-math.sin(faceYaw), 0, -math.cos(faceYaw))
+end
+
+local function getEyePosition()
+	local base = headCollider and headCollider.Position or rootCollider.Position
+	return base + Vector3.new(0, EYE_HEIGHT_OFFSET, 0)
+end
+
+-- Жёстко повернуть корпус на заданный yaw (для возврата на пост и т.п.).
+local function faceYaw(yaw)
+	desiredYaw = yaw
+	alignOrientation.CFrame = CFrame.Angles(0, yaw, 0)
+
+	if FORCE_DIRECT_ROTATION then
+		local position = rootCollider.Position
+		local velocity = rootCollider.AssemblyLinearVelocity
+		rootCollider.CFrame = CFrame.new(position) * CFrame.Angles(0, yaw, 0)
+		rootCollider.AssemblyLinearVelocity = velocity
+		rootCollider.AssemblyAngularVelocity = Vector3.zero
+	end
+end
+
+-- Прямая видимость до персонажа: луч от глаз, стена/препятствие рвут обзор.
+local function canSeeCharacter(targetRoot)
+	local origin = getEyePosition()
+	local direction = targetRoot.Position - origin
+	local result = workspace:Raycast(origin, direction, raycastParams)
+
+	if result and not result.Instance:IsDescendantOf(targetRoot.Parent) then
+		return false
+	end
+
+	return true
+end
+
+-- Состояние восприятия и памяти.
+local suspicion = 0
+local lastKnownPosition = nil
+local chaseTarget = nil
+
+-- Обновляет подозрение по FOV + LOS. Возвращает ближайшего видимого игрока.
+local function updatePerception(dt)
+	local lookDir = getLookDirection()
+	local eye = getEyePosition()
+	local bestRoot, bestChar, bestDist = nil, nil, math.huge
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		local character = player.Character
+
+		if character and isAliveCharacter(character) then
+			local root = getCharacterRoot(character)
+
+			if root then
+				local flat = Vector3.new(root.Position.X - eye.X, 0, root.Position.Z - eye.Z)
+				local dist = flat.Magnitude
+
+				if dist > 0.05 and dist <= SIGHT_RANGE then
+					local angle = math.deg(math.acos(math.clamp(lookDir:Dot(flat.Unit), -1, 1)))
+					local gain = nil
+
+					if angle <= FOV_FRONT_DEGREES then
+						gain = SUSPICION_GAIN_FRONT
+					elseif angle <= FOV_SIDE_DEGREES then
+						gain = SUSPICION_GAIN_SIDE
+					end
+
+					if gain and canSeeCharacter(root) then
+						local distFactor = 1 - (dist / SIGHT_RANGE) * 0.6 -- ближе → быстрее
+						suspicion = math.min(100, suspicion + gain * distFactor * dt)
+
+						if dist < bestDist then
+							bestDist, bestRoot, bestChar = dist, root, character
+						end
+					end
+				end
+			end
+		end
+	end
+
+	if bestRoot then
+		lastKnownPosition = bestRoot.Position
+	else
+		suspicion = math.max(0, suspicion - SUSPICION_DECAY * dt)
+	end
+
+	return bestRoot, bestChar
+end
+
+--====================================================
+-- ИНДИКАТОР ПОДОЗРЕНИЯ (полоса над головой)
+--====================================================
+
+local suspicionAdornee = headCollider or rootCollider
+
+local suspicionGui = Instance.new("BillboardGui")
+suspicionGui.Name = "SuspicionBar"
+suspicionGui.Size = UDim2.new(0, 80, 0, 8)
+suspicionGui.StudsOffsetWorldSpace = Vector3.new(0, 3.4, 0)
+suspicionGui.AlwaysOnTop = true
+suspicionGui.MaxDistance = 90
+suspicionGui.Enabled = false
+suspicionGui.Adornee = suspicionAdornee
+suspicionGui.Parent = suspicionAdornee
+
+local suspicionBg = Instance.new("Frame")
+suspicionBg.Size = UDim2.new(1, 0, 1, 0)
+suspicionBg.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+suspicionBg.BackgroundTransparency = 0.4
+suspicionBg.BorderSizePixel = 0
+suspicionBg.Parent = suspicionGui
+
+local suspicionFill = Instance.new("Frame")
+suspicionFill.Size = UDim2.new(0, 0, 1, 0)
+suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+suspicionFill.BorderSizePixel = 0
+suspicionFill.Parent = suspicionBg
+
+local function updateSuspicionBar()
+	suspicionGui.Enabled = suspicion > 1
+	suspicionFill.Size = UDim2.new(math.clamp(suspicion / 100, 0, 1), 0, 1, 0)
+
+	if suspicion >= SUSPICION_ALERT then
+		suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+	elseif suspicion >= SUSPICION_INVESTIGATE then
+		suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 220, 120)
+	else
+		suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	end
+end
+
+--====================================================
+-- ПАТРУЛЬ И ДОМ (память места)
+--====================================================
+
+local function collectPatrolPoints()
+	local points = {}
+	local folder = npc:FindFirstChild(PATROL_POINTS_FOLDER_NAME)
+
+	if not folder then
+		return points
+	end
+
+	local markers = {}
+	for _, child in ipairs(folder:GetChildren()) do
+		if child:IsA("BasePart") or child:IsA("Attachment") then
+			table.insert(markers, child)
+		end
+	end
+
+	table.sort(markers, function(a, b)
+		return a.Name < b.Name
+	end)
+
+	for _, marker in ipairs(markers) do
+		if marker:IsA("Attachment") then
+			table.insert(points, marker.WorldPosition)
+		else
+			table.insert(points, marker.Position)
+		end
+	end
+
+	return points
+end
+
+local homePosition = rootCollider.Position
+local homeYaw = select(2, rootCollider.CFrame:ToOrientation())
+faceYaw(homeYaw)
+
+local patrolPoints = collectPatrolPoints()
+local patrolIndex = 1
+local pauseUntil = 0
+
+--====================================================
+-- КОНЕЧНЫЙ АВТОМАТ (FSM)
+--====================================================
+
+local STATE = {
+	GUARD = "Guard",             -- стоит на посту, играет Idle
+	PATROL = "Patrol",           -- обходит маршрут по маркерам
+	INVESTIGATE = "Investigate", -- подозрение >= 50%, идёт проверить
+	CHASE = "Chase",             -- точно видит врага, бежит на него
+	ATTACK = "Attack",           -- бьёт в радиусе атаки
+	SEARCH = "Search",           -- потерял из виду, ищет у последней точки
+	RETURN = "Return",           -- возвращается на пост
+}
+
+local currentState = STATE.GUARD
+local stateClock = os.clock()
+
+local function setState(newState)
+	if newState == currentState then
+		return
+	end
+	currentState = newState
+	stateClock = os.clock()
+end
+
+local function stateAge()
+	return os.clock() - stateClock
+end
+
+-- Медленно осматриваемся, стоя на месте.
+local function scan()
+	local yaw = stateAge() * 1.2
+	local dir = Vector3.new(math.sin(yaw), 0, math.cos(yaw))
+	faceTowards(rootCollider.Position + dir * 10)
+end
+
+-- ── Поведение состояний ───────────────────────────────────────────────
+
+local function runGuard()
+	stopMovement()
+	playIdle()
+
+	if #patrolPoints > 0 and stateAge() >= GUARD_DURATION then
+		patrolIndex = 1
+		setState(STATE.PATROL)
+	end
+end
+
+local function runPatrol()
+	if os.clock() < pauseUntil then
+		stopMovement()
+		playIdle()
+		return
+	end
+
+	local target = patrolPoints[patrolIndex]
+	faceTowards(target)
+	moveTowards(target, MOVE_SPEED)
+	playWalk()
+
+	if flatDistance(rootCollider.Position, target) <= PATROL_POINT_REACH then
+		if patrolIndex >= #patrolPoints then
+			setState(STATE.RETURN)
+		else
+			patrolIndex += 1
+			pauseUntil = os.clock() + PATROL_PAUSE
+		end
+	end
+end
+
+local function runInvestigate()
+	local target = lastKnownPosition or homePosition
+	faceTowards(target)
+
+	if flatDistance(rootCollider.Position, target) > PATROL_POINT_REACH then
+		moveTowards(target, MOVE_SPEED)
+		playWalk()
+	else
+		stopMovement()
+		playIdle()
+		scan()
+
+		if suspicion < SUSPICION_INVESTIGATE * 0.5 then
+			setState(STATE.RETURN)
+		end
+	end
+end
+
+local function runChase(visibleRoot)
+	if not visibleRoot then
+		setState(STATE.SEARCH)
+		return
+	end
+
+	lastKnownPosition = visibleRoot.Position
+	faceTowards(visibleRoot.Position)
+
+	if flatDistance(rootCollider.Position, visibleRoot.Position) <= ATTACK_RANGE then
+		setState(STATE.ATTACK)
+	else
+		moveTowards(visibleRoot.Position, MOVE_SPEED * RUN_SPEED_MULTIPLIER)
+		playRun()
+	end
+end
+
+local function runAttack()
+	local root, humanoid, dist = getTargetData(chaseTarget)
+
+	if not root or not humanoid then
+		setState(STATE.SEARCH)
+		return
+	end
+
+	faceTowards(root.Position)
+
+	if dist > ATTACK_RANGE then
+		setState(STATE.CHASE)
+		return
+	end
+
+	lastKnownPosition = root.Position
+	stopMovement()
+	attackTarget(root, humanoid)
+
+	if not isAttacking then
+		playIdle()
+	end
+end
+
+local function runSearch()
+	local target = lastKnownPosition or homePosition
+	faceTowards(target)
+
+	if flatDistance(rootCollider.Position, target) > PATROL_POINT_REACH then
+		moveTowards(target, MOVE_SPEED)
+		playWalk()
+	else
+		stopMovement()
+		playIdle()
+		scan()
+	end
+
+	if stateAge() >= SEARCH_DURATION then
+		chaseTarget = nil
+		setState(STATE.RETURN)
+	end
+end
+
+local function runReturn()
+	faceTowards(homePosition)
+
+	if flatDistance(rootCollider.Position, homePosition) > PATROL_POINT_REACH then
+		moveTowards(homePosition, MOVE_SPEED)
+		playWalk()
+	else
+		suspicion = 0
+		chaseTarget = nil
+		lastKnownPosition = nil
+		faceYaw(homeYaw)
+		setState(STATE.GUARD)
+	end
+end
+
+--====================================================
 -- ГЛАВНЫЙ ЦИКЛ
 --====================================================
 
 playIdle()
 
-RunService.Heartbeat:Connect(function()
+RunService.Heartbeat:Connect(function(dt)
 	if not rootCollider.Parent then
 		return
 	end
@@ -1260,87 +1634,50 @@ RunService.Heartbeat:Connect(function()
 
 	stabilizeOnGround()
 
-	-- 1. Если текущей цели нет, ищем игрока в обычном радиусе 20.
-	if not currentTargetCharacter then
-		local character = nil
-		local root = nil
-		local humanoid = nil
-		local distance = nil
+	local visibleRoot, visibleChar = updatePerception(dt)
+	updateSuspicionBar()
 
-		character, root, humanoid, distance = findNearestTargetInRadius(DETECTION_RADIUS)
+	-- Эскалация по подозрению.
+	if suspicion >= SUSPICION_ALERT and visibleRoot then
+		chaseTarget = visibleChar
+		setState(STATE.CHASE)
+	elseif suspicion >= SUSPICION_INVESTIGATE
+		and (currentState == STATE.GUARD or currentState == STATE.PATROL or currentState == STATE.RETURN) then
+		setState(STATE.INVESTIGATE)
+	end
 
-		if character and root and humanoid then
-			currentTargetCharacter = character
-			isChasingEscapedTarget = false
-		else
-			stopMovement()
-			playIdle()
-
-			local _, yaw, _ = rootCollider.CFrame:ToOrientation()
-			desiredYaw = yaw
-			alignOrientation.CFrame = CFrame.Angles(0, desiredYaw, 0)
-
-			return
+	-- В режиме преследования цель «видна», если есть LOS и она в радиусе
+	-- (без ограничения по FOV — пират активно следит и доворачивается).
+	local chaseVisibleRoot = nil
+	if chaseTarget then
+		local root = getCharacterRoot(chaseTarget)
+		if root and isAliveCharacter(chaseTarget)
+			and flatDistance(rootCollider.Position, root.Position) <= SIGHT_RANGE
+			and canSeeCharacter(root) then
+			chaseVisibleRoot = root
 		end
 	end
 
-	local targetRoot, targetHumanoid, distance = getTargetData(currentTargetCharacter)
-
-	if not targetRoot or not targetHumanoid then
-		clearTarget()
-		stopMovement()
-		playIdle()
-		return
-	end
-
-	-- 2. Если цель вышла дальше 35, Пират забывает игрока.
-	if distance > CHASE_GIVE_UP_DISTANCE then
-		clearTarget()
-		stopMovement()
-		playIdle()
-		return
-	end
-
-	-- 3. Если цель вышла за 20, включаем ускоренную погоню.
-	if distance > DETECTION_RADIUS then
-		isChasingEscapedTarget = true
-	end
-
-	-- 4. Если в режиме погони Пират приблизился до 5,
-	-- выключаем ускоренную погоню.
-	if isChasingEscapedTarget and distance <= CHASE_STOP_DISTANCE then
-		isChasingEscapedTarget = false
-	end
-
-	faceTowards(targetRoot.Position)
-
-	-- 5. Атака работает в любом режиме, если игрок близко.
-	if distance <= ATTACK_RANGE then
-		stopMovement()
-		attackTarget(targetRoot, targetHumanoid)
-
-		if not isAttacking then
-			playIdle()
-		end
-
-		return
-	end
-
-	if isAttacking then
-		stopMovement()
-		return
-	end
-
-	-- 6. Движение:
-	-- обычный режим = Walk
-	-- игрок убежал за 20 после обнаружения = Run x1.5
-	if isChasingEscapedTarget then
-		moveTowards(targetRoot.Position, MOVE_SPEED * RUN_SPEED_MULTIPLIER)
-		playRun()
-	else
-		moveTowards(targetRoot.Position, MOVE_SPEED)
-		playWalk()
+	if currentState == STATE.GUARD then
+		runGuard()
+	elseif currentState == STATE.PATROL then
+		runPatrol()
+	elseif currentState == STATE.INVESTIGATE then
+		runInvestigate()
+	elseif currentState == STATE.CHASE then
+		runChase(chaseVisibleRoot)
+	elseif currentState == STATE.ATTACK then
+		runAttack()
+	elseif currentState == STATE.SEARCH then
+		runSearch()
+	elseif currentState == STATE.RETURN then
+		runReturn()
 	end
 end)
 
-print("[PirateUnitAI] Pirate AI with chase mode loaded. Root:", rootCollider:GetFullName())
+print(string.format(
+	"[PirateUnitAI] Guard AI (Stage 1) loaded. Variant=%s PatrolPoints=%d Root=%s",
+	BEHAVIOR_VARIANT,
+	#patrolPoints,
+	rootCollider:GetFullName()
+))
