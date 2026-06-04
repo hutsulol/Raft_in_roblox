@@ -74,7 +74,8 @@ local BEHAVIOR_VARIANT = "Guard"
 local PATROL_POINTS_FOLDER_NAME = "PatrolPoints"
 local GUARD_DURATION = 60        -- сколько стоять на посту перед обходом, сек
 local PATROL_POINT_REACH = 3     -- радиус «точка достигнута», studs
-local PATROL_PAUSE = 0.5         -- пауза на каждой точке маршрута, сек
+local PATROL_PAUSE_MIN = 10      -- мин. стоянка на точке маршрута, сек
+local PATROL_PAUSE_MAX = 30      -- макс. стоянка на точке маршрута, сек
 
 -- ЗРЕНИЕ (FOV + луч прямой видимости).
 local SIGHT_RANGE = 50           -- макс. дальность видимости, studs
@@ -91,6 +92,13 @@ local SUSPICION_ALERT = 100      -- порог «точно враг» → по�
 
 -- ПАМЯТЬ / поиск.
 local SEARCH_DURATION = 6        -- сколько искать у последней точки, сек
+
+-- ТРЕВОГА ОТРЯДА (Этап 2).
+local GUARD_TAG = "PirateGuard"  -- тег только для пиратов (для «крика» отряду)
+local SQUAD_ALERT_RADIUS = 200   -- на этом радиусе пираты слышат крик
+local SQUAD_ENGAGE_RADIUS = 60   -- ближе этого к месту тревоги — идут в бой
+local ALERT_MEMORY = 8           -- сколько помнить крик без обновления, сек
+local SHOUT_INTERVAL = 2         -- как часто перекрикивать, пока идёт бой, сек
 
 --====================================================
 -- COLLISION GROUPS
@@ -278,6 +286,8 @@ end
 npc.PrimaryPart = rootCollider
 
 CollectionService:AddTag(npc, UNIT_TAG)
+-- Отдельный тег только для пиратов — по нему идёт «крик» отряда (Этап 2).
+CollectionService:AddTag(npc, GUARD_TAG)
 
 --====================================================
 -- HEALTH (без Humanoid)
@@ -1446,6 +1456,8 @@ faceYaw(homeYaw)
 local patrolPoints = collectPatrolPoints()
 local patrolIndex = 1
 local pauseUntil = 0
+local atPoint = false
+local patrolRng = Random.new()
 
 --====================================================
 -- КОНЕЧНЫЙ АВТОМАТ (FSM)
@@ -1459,10 +1471,23 @@ local STATE = {
 	ATTACK = "Attack",           -- бьёт в радиусе атаки
 	SEARCH = "Search",           -- потерял из виду, ищет у последней точки
 	RETURN = "Return",           -- возвращается на пост
+	ALERTED = "Alerted",         -- поднят по тревоге отряда (не знает, где игрок)
 }
 
 local currentState = STATE.GUARD
 local stateClock = os.clock()
+
+-- Тревога отряда (Этап 2): крик приходит через атрибут AlertClock на модели.
+-- Память тревоги считаем по СВОИМ часам (по событию смены атрибута), чтобы не
+-- зависеть от сравнения времени между скриптами.
+local alertedUntil = 0
+local alertPosition = nil
+local lastShoutClock = 0
+
+npc:GetAttributeChangedSignal("AlertClock"):Connect(function()
+	alertedUntil = os.clock() + ALERT_MEMORY
+	alertPosition = npc:GetAttribute("AlertPosition")
+end)
 
 local function setState(newState)
 	if newState == currentState then
@@ -1474,6 +1499,33 @@ end
 
 local function stateAge()
 	return os.clock() - stateClock
+end
+
+-- Свежая тревога отряда (позиция) или nil.
+local function getSquadAlert()
+	if os.clock() < alertedUntil then
+		return alertPosition
+	end
+	return nil
+end
+
+-- «Крик»: разослать позицию игрока пиратам отряда в радиусе SQUAD_ALERT_RADIUS.
+local function broadcastAlert()
+	local pos = lastKnownPosition
+	if not pos then
+		return
+	end
+
+	local now = os.clock()
+	for _, other in ipairs(CollectionService:GetTagged(GUARD_TAG)) do
+		if other ~= npc and other.PrimaryPart
+			and flatDistance(rootCollider.Position, other.PrimaryPart.Position) <= SQUAD_ALERT_RADIUS then
+			other:SetAttribute("AlertPosition", pos)
+			other:SetAttribute("AlertClock", now)
+		end
+	end
+
+	lastShoutClock = now
 end
 
 -- Медленно осматриваемся, стоя на месте.
@@ -1491,29 +1543,41 @@ local function runGuard()
 
 	if #patrolPoints > 0 and stateAge() >= GUARD_DURATION then
 		patrolIndex = 1
+		pauseUntil = 0
+		atPoint = false
 		setState(STATE.PATROL)
 	end
 end
 
 local function runPatrol()
+	-- Стоим на точке, пока идёт случайная пауза (PATROL_PAUSE_MIN..MAX).
 	if os.clock() < pauseUntil then
 		stopMovement()
 		playIdle()
 		return
 	end
 
+	-- Пауза кончилась, а мы стоим на точке → решаем, куда дальше.
+	if atPoint then
+		atPoint = false
+		if patrolIndex >= #patrolPoints then
+			setState(STATE.RETURN)
+		else
+			patrolIndex += 1
+		end
+		return
+	end
+
+	-- Идём к текущей точке маршрута.
 	local target = patrolPoints[patrolIndex]
 	faceTowards(target)
 	moveTowards(target, MOVE_SPEED)
 	playWalk()
 
+	-- Дошли до точки: стоим случайные 10..30 c, потом двинемся дальше.
 	if flatDistance(rootCollider.Position, target) <= PATROL_POINT_REACH then
-		if patrolIndex >= #patrolPoints then
-			setState(STATE.RETURN)
-		else
-			patrolIndex += 1
-			pauseUntil = os.clock() + PATROL_PAUSE
-		end
+		atPoint = true
+		pauseUntil = os.clock() + patrolRng:NextNumber(PATROL_PAUSE_MIN, PATROL_PAUSE_MAX)
 	end
 end
 
@@ -1529,7 +1593,7 @@ local function runInvestigate()
 		playIdle()
 		scan()
 
-		if suspicion < SUSPICION_INVESTIGATE * 0.5 then
+		if suspicion < SUSPICION_INVESTIGATE * 0.5 and not getSquadAlert() then
 			setState(STATE.RETURN)
 		end
 	end
@@ -1610,6 +1674,28 @@ local function runReturn()
 	end
 end
 
+-- Поднят по тревоге, но точной позиции игрока не знает: подтягивается к месту
+-- крика, осматриваясь. Дойдя в зону боя (SQUAD_ENGAGE_RADIUS) — начинает
+-- активно проверять место. Своё зрение работает: увидит игрока → погоня.
+local function runAlerted()
+	local target = getSquadAlert() or homePosition
+	faceTowards(target)
+
+	if flatDistance(rootCollider.Position, target) > SQUAD_ENGAGE_RADIUS then
+		moveTowards(target, MOVE_SPEED)
+		playWalk()
+	else
+		lastKnownPosition = target
+		setState(STATE.INVESTIGATE)
+		return
+	end
+
+	-- Тревога протухла, сами никого не увидели → возвращаемся на пост.
+	if not getSquadAlert() then
+		setState(STATE.RETURN)
+	end
+end
+
 --====================================================
 -- ГЛАВНЫЙ ЦИКЛ
 --====================================================
@@ -1640,10 +1726,32 @@ RunService.Heartbeat:Connect(function(dt)
 	-- Эскалация по подозрению.
 	if suspicion >= SUSPICION_ALERT and visibleRoot then
 		chaseTarget = visibleChar
+		if currentState ~= STATE.CHASE and currentState ~= STATE.ATTACK then
+			broadcastAlert() -- первый крик отряду
+		end
 		setState(STATE.CHASE)
 	elseif suspicion >= SUSPICION_INVESTIGATE
 		and (currentState == STATE.GUARD or currentState == STATE.PATROL or currentState == STATE.RETURN) then
 		setState(STATE.INVESTIGATE)
+	end
+
+	-- Пока бой идёт — перекрикиваем, обновляя позицию игрока для отряда.
+	if (currentState == STATE.CHASE or currentState == STATE.ATTACK)
+		and os.clock() - lastShoutClock >= SHOUT_INTERVAL then
+		broadcastAlert()
+	end
+
+	-- Реакция на чужой крик, если сами ещё не в активном бою.
+	local squadAlertPos = getSquadAlert()
+	if squadAlertPos and currentState ~= STATE.CHASE and currentState ~= STATE.ATTACK then
+		if flatDistance(rootCollider.Position, squadAlertPos) <= SQUAD_ENGAGE_RADIUS then
+			lastKnownPosition = squadAlertPos
+			if currentState ~= STATE.INVESTIGATE then
+				setState(STATE.INVESTIGATE)
+			end
+		elseif currentState == STATE.GUARD or currentState == STATE.PATROL or currentState == STATE.RETURN then
+			setState(STATE.ALERTED)
+		end
 	end
 
 	-- В режиме преследования цель «видна», если есть LOS и она в радиусе
@@ -1672,11 +1780,13 @@ RunService.Heartbeat:Connect(function(dt)
 		runSearch()
 	elseif currentState == STATE.RETURN then
 		runReturn()
+	elseif currentState == STATE.ALERTED then
+		runAlerted()
 	end
 end)
 
 print(string.format(
-	"[PirateUnitAI] Guard AI (Stage 1) loaded. Variant=%s PatrolPoints=%d Root=%s",
+	"[PirateUnitAI] Guard AI (Stage 1-2) loaded. Variant=%s PatrolPoints=%d Root=%s",
 	BEHAVIOR_VARIANT,
 	#patrolPoints,
 	rootCollider:GetFullName()
