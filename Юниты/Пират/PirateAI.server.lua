@@ -910,6 +910,11 @@ if not alignOrientation then
 	alignOrientation.Parent = rootCollider
 end
 
+-- Плавный, ограниченный по скорости поворот через физику (без насильного CFrame).
+alignOrientation.RigidityEnabled = false
+alignOrientation.Responsiveness = 40
+alignOrientation.MaxAngularVelocity = math.rad(TURN_SPEED_DEGREES)
+
 local desiredYaw = 0
 
 local function getYawFacingPosition(targetPosition)
@@ -936,19 +941,12 @@ local function faceTowards(targetPosition)
 	desiredYaw = getYawFacingPosition(targetPosition)
 end
 
--- Плавно доворачиваем корпус к desiredYaw, не быстрее TURN_SPEED_DEGREES/сек.
+-- Поворот выполняет физика (AlignOrientation) — мы лишь задаём целевую
+-- ориентацию. НИКАКОГО прямого rootCollider.CFrame каждый кадр: иначе при
+-- контакте коллайдеров с землёй сборку «разрывает» физическим солвером
+-- (парты разлетаются, NPC зависает).
 local function updateRotation(dt)
-	local _, currentYaw = rootCollider.CFrame:ToOrientation()
-	local diff = (desiredYaw - currentYaw + math.pi) % (2 * math.pi) - math.pi
-	local maxStep = math.rad(TURN_SPEED_DEGREES) * dt
-	local newYaw = currentYaw + math.clamp(diff, -maxStep, maxStep)
-
-	local position = rootCollider.Position
-	local velocity = rootCollider.AssemblyLinearVelocity
-	rootCollider.CFrame = CFrame.new(position) * CFrame.Angles(0, newYaw, 0)
-	rootCollider.AssemblyLinearVelocity = velocity
-	rootCollider.AssemblyAngularVelocity = Vector3.zero
-	alignOrientation.CFrame = CFrame.Angles(0, newYaw, 0)
+	alignOrientation.CFrame = CFrame.Angles(0, desiredYaw, 0)
 end
 
 --====================================================
