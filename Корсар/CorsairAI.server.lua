@@ -63,6 +63,12 @@ local PLAYER_GROUP = "PlayerCharacters"
 local NPC_BODY_GROUP = "PirateBody"
 local NPC_LEGS_GROUP = "PirateLegs"
 local NPC_GHOST_GROUP = "PirateGhost"
+local DEFAULT_WORLD_GROUP = "Default"
+
+-- Насколько выше пола держать низ коллайдеров ног.
+local LEG_GROUND_PADDING = 0.06
+local LEG_GROUND_RAYCAST_HEIGHT = 8
+local LEG_GROUND_RAYCAST_DEPTH = 16
 
 local COLLIDER_SETTINGS = {
 	HeadCollider = {
@@ -116,6 +122,12 @@ registerCollisionGroup(NPC_GHOST_GROUP)
 PhysicsService:CollisionGroupSetCollidable(NPC_BODY_GROUP, PLAYER_GROUP, true)
 PhysicsService:CollisionGroupSetCollidable(NPC_LEGS_GROUP, PLAYER_GROUP, false)
 PhysicsService:CollisionGroupSetCollidable(NPC_GHOST_GROUP, PLAYER_GROUP, false)
+
+-- Ноги должны быть физическими для земли, иначе Корсар проваливается под пол.
+-- При этом ноги всё ещё не сталкиваются с игроком, чтобы игрок не подкидывал NPC.
+PhysicsService:CollisionGroupSetCollidable(NPC_LEGS_GROUP, DEFAULT_WORLD_GROUP, true)
+PhysicsService:CollisionGroupSetCollidable(NPC_BODY_GROUP, DEFAULT_WORLD_GROUP, true)
+PhysicsService:CollisionGroupSetCollidable(NPC_GHOST_GROUP, DEFAULT_WORLD_GROUP, false)
 
 PhysicsService:CollisionGroupSetCollidable(NPC_BODY_GROUP, NPC_BODY_GROUP, false)
 PhysicsService:CollisionGroupSetCollidable(NPC_BODY_GROUP, NPC_LEGS_GROUP, false)
@@ -187,11 +199,33 @@ if #colliders == 0 then
 	return
 end
 
-local rootCollider = bodyColliders:FindFirstChild(ROOT_COLLIDER_NAME, true)
+local function findColliderPartByName(colliderName)
+	for _, collider in ipairs(colliders) do
+		if collider.Name == colliderName then
+			return collider
+		end
+	end
 
-if not rootCollider or not rootCollider:IsA("BasePart") then
-	warn("[PirateAI] Root collider not found, using first collider:", colliders[1].Name)
+	return nil
+end
+
+local rootCollider = findColliderPartByName(ROOT_COLLIDER_NAME)
+
+if not rootCollider then
+	warn("[PirateAI] Root collider BasePart not found, using first collider:", colliders[1].Name)
 	rootCollider = colliders[1]
+end
+
+local legColliders = {}
+
+for _, collider in ipairs(colliders) do
+	if collider.Name == "LeftLegCollider" or collider.Name == "RightLegCollider" then
+		table.insert(legColliders, collider)
+	end
+end
+
+if #legColliders == 0 then
+	warn("[PirateAI] Leg colliders not found. Create LeftLegCollider and RightLegCollider so Corsair can stand on the ground.")
 end
 
 npc.PrimaryPart = rootCollider
@@ -275,7 +309,14 @@ for _, collider in ipairs(colliders) do
 			1
 		)
 	else
+		-- Ноги остаются Massless, чтобы не перевешивать Корсара,
+		-- но CanCollide + PirateLegs позволяют им отталкиваться от пола.
 		collider.Massless = true
+
+		if collider.Name == "LeftLegCollider" or collider.Name == "RightLegCollider" then
+			collider.CanCollide = true
+			collider.CollisionGroup = NPC_LEGS_GROUP
+		end
 
 		collider.CustomPhysicalProperties = PhysicalProperties.new(
 			0.01,
@@ -302,6 +343,72 @@ visualWeld.Parent = rootCollider
 pcall(function()
 	rootCollider:SetNetworkOwner(nil)
 end)
+
+local groundRaycastParams = RaycastParams.new()
+groundRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
+groundRaycastParams.FilterDescendantsInstances = { npc }
+groundRaycastParams.IgnoreWater = true
+
+local function getLegBottomY()
+	local bottomY = math.huge
+
+	for _, legCollider in ipairs(legColliders) do
+		if legCollider.Parent then
+			local legBottomY = legCollider.Position.Y - legCollider.Size.Y / 2
+
+			if legBottomY < bottomY then
+				bottomY = legBottomY
+			end
+		end
+	end
+
+	if bottomY == math.huge then
+		return nil
+	end
+
+	return bottomY
+end
+
+local function getGroundYUnderLegs()
+	local bestGroundY = nil
+
+	for _, legCollider in ipairs(legColliders) do
+		if legCollider.Parent then
+			local rayOrigin = legCollider.Position + Vector3.new(0, LEG_GROUND_RAYCAST_HEIGHT, 0)
+			local rayDirection = Vector3.new(0, -(LEG_GROUND_RAYCAST_HEIGHT + LEG_GROUND_RAYCAST_DEPTH), 0)
+			local result = workspace:Raycast(rayOrigin, rayDirection, groundRaycastParams)
+
+			if result then
+				if not bestGroundY or result.Position.Y > bestGroundY then
+					bestGroundY = result.Position.Y
+				end
+			end
+		end
+	end
+
+	return bestGroundY
+end
+
+local function liftCorsairOutOfGround()
+	local legBottomY = getLegBottomY()
+	local groundY = getGroundYUnderLegs()
+
+	if not legBottomY or not groundY then
+		return
+	end
+
+	local targetBottomY = groundY + LEG_GROUND_PADDING
+
+	if legBottomY >= targetBottomY then
+		return
+	end
+
+	local liftAmount = math.clamp(targetBottomY - legBottomY, 0, 3)
+	local velocity = rootCollider.AssemblyLinearVelocity
+
+	rootCollider.CFrame = rootCollider.CFrame + Vector3.new(0, liftAmount, 0)
+	rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, math.max(velocity.Y, 0), velocity.Z)
+end
 
 --====================================================
 -- СТАБИЛИЗАЦИЯ И ПОВОРОТ
@@ -703,6 +810,8 @@ RunService.Heartbeat:Connect(function()
 			rootCollider:SetNetworkOwner(nil)
 		end
 	end)
+
+	liftCorsairOutOfGround()
 
 	-- 1. Если текущей цели нет, ищем игрока в обычном радиусе 20.
 	if not currentTargetCharacter then
