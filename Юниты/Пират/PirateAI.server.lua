@@ -92,7 +92,7 @@ local SUSPICION_INVESTIGATE = 50 -- порог «пойти проверить»
 local SUSPICION_ALERT = 100      -- порог «точно враг» → погоня
 
 -- ПАМЯТЬ / поиск.
-local SEARCH_DURATION = 6        -- сколько искать у последней точки, сек
+local SEARCH_DURATION = 15       -- сейфти-таймер поиска (если не дошёл/не нашёл), сек
 
 -- ТРЕВОГА ОТРЯДА (Этап 2).
 local GUARD_TAG = "PirateGuard"  -- тег только для пиратов (для «крика» отряду)
@@ -1374,8 +1374,6 @@ local function updatePerception(dt)
 
 	if bestRoot then
 		lastKnownPosition = bestRoot.Position
-	else
-		suspicion = math.max(0, suspicion - SUSPICION_DECAY * dt)
 	end
 
 	return bestRoot, bestChar
@@ -1512,45 +1510,36 @@ local function computePathAsync(goal)
 	end)
 end
 
--- Идти к goal, обходя препятствия/воду. Пути нет (цель за водой и т.п.) — стоим.
+-- Идти к goal, обходя препятствия/воду через PathfindingService. Если свежего
+-- пути ещё/уже нет — двигаемся НАПРЯМУЮ к цели (никогда не стоим на месте).
 local function navigateTo(goal, speed)
-	local recompute = false
-
-	if not pathGoal then
-		recompute = true
-	elseif flatDistance(pathGoal, goal) > PATH_GOAL_MOVE_THRESHOLD then
-		recompute = true
-	elseif os.clock() - pathComputeClock > PATH_RECOMPUTE_INTERVAL
-		and (not pathOk or waypointIndex > #pathWaypoints) then
-		recompute = true
-	end
+	local goalChanged = (not pathGoal) or flatDistance(pathGoal, goal) > PATH_GOAL_MOVE_THRESHOLD
+	local recompute = goalChanged
+		or (os.clock() - pathComputeClock > PATH_RECOMPUTE_INTERVAL
+			and (not pathOk or waypointIndex > #pathWaypoints))
 
 	if recompute and not pathComputing then
 		computePathAsync(goal)
 	end
 
-	local moveTarget = nil
+	-- По умолчанию — прямо к цели. Если есть АКТУАЛЬНЫЙ путь (посчитан под эту же
+	-- цель) — идём по waypoints, пропуская уже достигнутые.
+	local moveTarget = goal
+	local pathFresh = pathOk and pathGoal
+		and flatDistance(pathGoal, goal) <= PATH_GOAL_MOVE_THRESHOLD * 2
 
-	if pathOk and waypointIndex <= #pathWaypoints then
-		moveTarget = pathWaypoints[waypointIndex].Position
-		if flatDistance(rootCollider.Position, moveTarget) <= WAYPOINT_REACH then
+	if pathFresh then
+		while waypointIndex <= #pathWaypoints
+			and flatDistance(rootCollider.Position, pathWaypoints[waypointIndex].Position) <= WAYPOINT_REACH do
 			waypointIndex += 1
-			moveTarget = (waypointIndex <= #pathWaypoints)
-				and pathWaypoints[waypointIndex].Position
-				or goal
 		end
-	elseif pathOk then
-		moveTarget = goal       -- waypoints кончились → финишный отрезок напрямую
-	elseif not pathGoal then
-		moveTarget = goal       -- путь ещё ни разу не посчитан → пока напрямую
+		if waypointIndex <= #pathWaypoints then
+			moveTarget = pathWaypoints[waypointIndex].Position
+		end
 	end
 
-	if moveTarget then
-		faceTowards(moveTarget)
-		moveTowards(moveTarget, speed)
-	else
-		stopMovement()
-	end
+	faceTowards(moveTarget)
+	moveTowards(moveTarget, speed)
 end
 
 --====================================================
@@ -1744,7 +1733,9 @@ local function runSearch()
 		scan()
 	end
 
-	if stateAge() >= SEARCH_DURATION then
+	-- Уходим, когда тревога полностью спала (уже проверив место) либо по
+	-- сейфти-таймеру (если не смогли дойти до точки).
+	if suspicion <= 0 or stateAge() >= SEARCH_DURATION then
 		chaseTarget = nil
 		setState(STATE.RETURN)
 	end
@@ -1809,6 +1800,23 @@ RunService.Heartbeat:Connect(function(dt)
 	stabilizeOnGround()
 
 	local visibleRoot, visibleChar = updatePerception(dt)
+
+	-- Спад подозрения. Пока цель видно — держится/растёт. В погоне/атаке НЕ
+	-- падает. В проверке/поиске падает только ПОСЛЕ прихода на последнюю
+	-- известную точку — сначала проверить место, и лишь потом забывать.
+	if not visibleRoot then
+		local allowDecay = true
+		if currentState == STATE.CHASE or currentState == STATE.ATTACK then
+			allowDecay = false
+		elseif currentState == STATE.INVESTIGATE or currentState == STATE.SEARCH then
+			local spot = lastKnownPosition or homePosition
+			allowDecay = flatDistance(rootCollider.Position, spot) <= PATROL_POINT_REACH
+		end
+		if allowDecay then
+			suspicion = math.max(0, suspicion - SUSPICION_DECAY * dt)
+		end
+	end
+
 	updateSuspicionBar()
 
 	-- Эскалация по подозрению.
