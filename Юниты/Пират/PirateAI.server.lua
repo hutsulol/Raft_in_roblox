@@ -385,6 +385,150 @@ end
 healFunction.OnInvoke = heal
 
 --====================================================
+-- ХИТБОКС ПОЛУЧЕНИЯ УРОНА (по коллайдерам)
+--====================================================
+-- У юнита нет Humanoid, поэтому классический меч игрока
+-- (Handle.Touched -> FindFirstChildOfClass("Humanoid")) не может его
+-- ранить. Принимаем урон на стороне юнита: ловим взмах оружия игрока
+-- (Tool.Activated) и проверяем, дотянулось ли оружие/игрок до любого
+-- нашего коллайдера. Так не нужен Humanoid и не ломаются анимации/физика.
+--
+-- ВАЖНО: на collider.Touched полагаться нельзя — коллайдеры ног/головы/рук
+-- лежат в коллизионных группах, несовместимых с группой игрока
+-- (CollisionGroupSetCollidable = false), а это глушит и Touched. Поэтому
+-- ловим попадание запросом по расстоянию до коллайдеров.
+
+-- Урон по умолчанию, если у оружия не задан свой (атрибут/NumberValue "Damage").
+local DEFAULT_WEAPON_DAMAGE = 10
+-- На каком расстоянии до поверхности коллайдера засчитывается удар, studs.
+local HIT_REACH = 4.5
+-- Не чаще одного попадания от одного игрока за это время, сек.
+local HIT_DEBOUNCE = 0.4
+
+local lastHitClock = {}
+local hookedTools = setmetatable({}, { __mode = "k" })
+
+local function getToolDamage(tool)
+	local attribute = tool:GetAttribute("Damage")
+	if typeof(attribute) == "number" and attribute > 0 then
+		return attribute
+	end
+
+	local value = tool:FindFirstChild("Damage")
+	if value and value:IsA("NumberValue") and value.Value > 0 then
+		return value.Value
+	end
+
+	return DEFAULT_WEAPON_DAMAGE
+end
+
+-- Кратчайшее расстояние от точки до коробки коллайдера (OBB).
+-- 0, если точка внутри коллайдера.
+local function pointToColliderDistance(point, collider)
+	local localPoint = collider.CFrame:PointToObjectSpace(point)
+	local half = collider.Size * 0.5
+	local clamped = Vector3.new(
+		math.clamp(localPoint.X, -half.X, half.X),
+		math.clamp(localPoint.Y, -half.Y, half.Y),
+		math.clamp(localPoint.Z, -half.Z, half.Z)
+	)
+	return (localPoint - clamped).Magnitude
+end
+
+-- true, если оружие игрока (Handle) или сам игрок (HumanoidRootPart)
+-- дотянулись до любого нашего коллайдера.
+local function weaponReachesColliders(tool, character)
+	local probeParts = {}
+
+	local handle = tool:FindFirstChild("Handle")
+	if handle and handle:IsA("BasePart") then
+		table.insert(probeParts, handle)
+	end
+
+	local hrp = character and character:FindFirstChild("HumanoidRootPart")
+	if hrp then
+		table.insert(probeParts, hrp)
+	end
+
+	if #probeParts == 0 then
+		return false
+	end
+
+	for _, collider in ipairs(colliders) do
+		if collider.Parent then
+			for _, part in ipairs(probeParts) do
+				if pointToColliderDistance(part.Position, collider) <= HIT_REACH then
+					return true
+				end
+			end
+		end
+	end
+
+	return false
+end
+
+local function onPlayerSwing(player, tool)
+	if isDead then
+		return
+	end
+
+	local character = tool.Parent
+	if not character or not character:IsA("Model") then
+		return
+	end
+
+	local now = os.clock()
+	if now - (lastHitClock[player] or 0) < HIT_DEBOUNCE then
+		return
+	end
+
+	if not weaponReachesColliders(tool, character) then
+		return
+	end
+
+	lastHitClock[player] = now
+	takeDamage(getToolDamage(tool))
+end
+
+local function hookTool(tool)
+	if not tool:IsA("Tool") or hookedTools[tool] then
+		return
+	end
+	hookedTools[tool] = true
+
+	tool.Activated:Connect(function()
+		local player = Players:GetPlayerFromCharacter(tool.Parent)
+		if player then
+			onPlayerSwing(player, tool)
+		end
+	end)
+end
+
+local function hookCharacterTools(character)
+	for _, child in ipairs(character:GetChildren()) do
+		hookTool(child)
+	end
+	character.ChildAdded:Connect(hookTool)
+end
+
+local function registerPlayerForHitbox(player)
+	if player.Character then
+		hookCharacterTools(player.Character)
+	end
+	player.CharacterAdded:Connect(hookCharacterTools)
+end
+
+for _, player in ipairs(Players:GetPlayers()) do
+	registerPlayerForHitbox(player)
+end
+
+Players.PlayerAdded:Connect(registerPlayerForHitbox)
+
+Players.PlayerRemoving:Connect(function(player)
+	lastHitClock[player] = nil
+end)
+
+--====================================================
 -- ФИЗИКА NPC
 --====================================================
 
