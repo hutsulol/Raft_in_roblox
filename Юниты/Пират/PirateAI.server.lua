@@ -236,32 +236,69 @@ end
 npc.PrimaryPart = rootCollider
 
 --====================================================
--- HEALTH
+-- HEALTH (без Humanoid)
 --====================================================
+-- ВАЖНО: Humanoid здесь НЕ используется специально.
+-- Если добавить Humanoid в эту модель, он:
+--   1) перехватывает воспроизведение анимаций у AnimationController
+--      (у модели должен быть либо Humanoid, либо AnimationController,
+--      но не оба сразу) — из-за этого анимации перестают играть;
+--   2) запускает свою физическую state-machine (Running / Falling /
+--      Ragdoll и т.д.), которая конфликтует с ручным движением через
+--      AssemblyLinearVelocity, поворотом через AlignOrientation и
+--      велдированными коллайдерами — из-за этого ломается физика.
+-- Поэтому здоровье храним отдельно — в атрибутах модели, и даём
+-- Humanoid-подобный API (TakeDamage / Heal / Died).
 
-local humanoid = npc:FindFirstChildOfClass("Humanoid")
-
-if not humanoid then
-	humanoid = Instance.new("Humanoid")
-	humanoid.Name = "Humanoid"
-	humanoid.Parent = npc
+-- Подчищаем Humanoid, если он остался от прошлых экспериментов,
+-- иначе анимации и физика снова сломаются.
+for _, child in ipairs(npc:GetChildren()) do
+	if child:IsA("Humanoid") then
+		child:Destroy()
+	end
 end
 
-humanoid.MaxHealth = UNIT_MAX_HEALTH
-humanoid.Health = math.clamp(humanoid.Health, 1, UNIT_MAX_HEALTH)
-humanoid.BreakJointsOnDeath = false
-humanoid.RequiresNeck = false
-humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+local maxHealth = UNIT_MAX_HEALTH
+npc:SetAttribute("MaxHealth", maxHealth)
+
+do
+	local startHealth = npc:GetAttribute("Health")
+	if typeof(startHealth) ~= "number" then
+		startHealth = maxHealth
+	end
+	npc:SetAttribute("Health", math.clamp(startHealth, 1, maxHealth))
+end
 
 local isDead = false
 
-humanoid.Died:Connect(function()
+local function getHealth()
+	local health = npc:GetAttribute("Health")
+	return typeof(health) == "number" and health or 0
+end
+
+-- BindableEvent "Died": внешние системы (квесты, дроп лута) могут
+-- слушать смерть юнита так же, как Humanoid.Died.
+local diedEvent = npc:FindFirstChild("Died")
+if not diedEvent or not diedEvent:IsA("BindableEvent") then
+	diedEvent = Instance.new("BindableEvent")
+	diedEvent.Name = "Died"
+	diedEvent.Parent = npc
+end
+
+local function onDeath()
+	if isDead then
+		return
+	end
 	isDead = true
+
+	npc:SetAttribute("Health", 0)
 
 	if rootCollider.Parent then
 		rootCollider.AssemblyLinearVelocity = Vector3.zero
 		rootCollider.AssemblyAngularVelocity = Vector3.zero
 	end
+
+	diedEvent:Fire()
 
 	if DESTROY_ON_DEATH then
 		task.delay(3, function()
@@ -270,7 +307,82 @@ humanoid.Died:Connect(function()
 			end
 		end)
 	end
+end
+
+-- Любое изменение здоровья (через TakeDamage / Heal или напрямую
+-- через атрибут Health из других скриптов) проходит здесь: держим
+-- значение в границах 0..MaxHealth и ловим смерть.
+npc:GetAttributeChangedSignal("Health"):Connect(function()
+	if isDead then
+		return
+	end
+
+	local health = npc:GetAttribute("Health")
+	if typeof(health) ~= "number" then
+		return
+	end
+
+	local clamped = math.clamp(health, 0, maxHealth)
+	if clamped ~= health then
+		-- SetAttribute снова вызовет этот обработчик, но уже с
+		-- корректным значением, поэтому выходим.
+		npc:SetAttribute("Health", clamped)
+		return
+	end
+
+	if clamped <= 0 then
+		onDeath()
+	end
 end)
+
+-- Наносит урон юниту. Возвращает оставшееся здоровье.
+local function takeDamage(amount)
+	if isDead then
+		return 0
+	end
+
+	amount = tonumber(amount) or 0
+	if amount <= 0 then
+		return getHealth()
+	end
+
+	npc:SetAttribute("Health", math.clamp(getHealth() - amount, 0, maxHealth))
+	return getHealth()
+end
+
+-- Лечит юнита (добавляет HP). Возвращает текущее здоровье.
+local function heal(amount)
+	if isDead then
+		return getHealth()
+	end
+
+	amount = tonumber(amount) or 0
+	if amount <= 0 then
+		return getHealth()
+	end
+
+	npc:SetAttribute("Health", math.clamp(getHealth() + amount, 0, maxHealth))
+	return getHealth()
+end
+
+-- Humanoid-подобный API для оружия и других систем:
+--   model.TakeDamage:Invoke(20)
+--   model.Heal:Invoke(10)
+local takeDamageFunction = npc:FindFirstChild("TakeDamage")
+if not takeDamageFunction or not takeDamageFunction:IsA("BindableFunction") then
+	takeDamageFunction = Instance.new("BindableFunction")
+	takeDamageFunction.Name = "TakeDamage"
+	takeDamageFunction.Parent = npc
+end
+takeDamageFunction.OnInvoke = takeDamage
+
+local healFunction = npc:FindFirstChild("Heal")
+if not healFunction or not healFunction:IsA("BindableFunction") then
+	healFunction = Instance.new("BindableFunction")
+	healFunction.Name = "Heal"
+	healFunction.Parent = npc
+end
+healFunction.OnInvoke = heal
 
 --====================================================
 -- ФИЗИКА NPC
@@ -870,7 +982,7 @@ RunService.Heartbeat:Connect(function()
 		return
 	end
 
-	if isDead or humanoid.Health <= 0 then
+	if isDead or getHealth() <= 0 then
 		stopMovement()
 		return
 	end
