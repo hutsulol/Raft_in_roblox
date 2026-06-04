@@ -2,6 +2,7 @@ local RunService = game:GetService("RunService")
 local PhysicsService = game:GetService("PhysicsService")
 local Players = game:GetService("Players")
 local CollectionService = game:GetService("CollectionService")
+local PathfindingService = game:GetService("PathfindingService")
 
 local npc = script.Parent
 
@@ -99,6 +100,13 @@ local SQUAD_ALERT_RADIUS = 200   -- на этом радиусе пираты с
 local SQUAD_ENGAGE_RADIUS = 60   -- ближе этого к месту тревоги — идут в бой
 local ALERT_MEMORY = 8           -- сколько помнить крик без обновления, сек
 local SHOUT_INTERVAL = 2         -- как часто перекрикивать, пока идёт бой, сек
+
+-- НАВИГАЦИЯ (Этап 3: PathfindingService — обход препятствий и воды).
+local AGENT_RADIUS = 2              -- радиус агента ≈ полширины коллайдеров
+local AGENT_HEIGHT = 5             -- высота агента ≈ высота пирата
+local PATH_RECOMPUTE_INTERVAL = 0.5 -- макс. период пересчёта пути, сек
+local PATH_GOAL_MOVE_THRESHOLD = 5  -- цель сместилась дальше — пересчитать, studs
+local WAYPOINT_REACH = 2.5          -- радиус «waypoint достигнут», studs
 
 --====================================================
 -- COLLISION GROUPS
@@ -1460,6 +1468,92 @@ local atPoint = false
 local patrolRng = Random.new()
 
 --====================================================
+-- НАВИГАЦИЯ (PathfindingService: обход препятствий и воды)
+--====================================================
+
+local AGENT_PARAMS = {
+	AgentRadius = AGENT_RADIUS,
+	AgentHeight = AGENT_HEIGHT,
+	AgentCanJump = false,           -- перелаз препятствий пока выключен
+	AgentCanClimb = false,
+	WaypointSpacing = 4,
+	Costs = { Water = math.huge },  -- вода непроходима
+}
+
+local navPath = PathfindingService:CreatePath(AGENT_PARAMS)
+local pathWaypoints = {}
+local waypointIndex = 1
+local pathGoal = nil       -- цель, для которой посчитан путь
+local pathComputeClock = 0
+local pathOk = false
+local pathComputing = false
+
+-- Пересчёт пути идёт в отдельном потоке: ComputeAsync уступает (yield),
+-- а Heartbeat ждать нельзя.
+local function computePathAsync(goal)
+	pathComputing = true
+	task.spawn(function()
+		local ok = pcall(function()
+			navPath:ComputeAsync(rootCollider.Position, goal)
+		end)
+
+		if ok and navPath.Status == Enum.PathStatus.Success then
+			pathWaypoints = navPath:GetWaypoints()
+			waypointIndex = 1
+			pathOk = true
+		else
+			pathWaypoints = {}
+			pathOk = false
+		end
+
+		pathGoal = goal
+		pathComputeClock = os.clock()
+		pathComputing = false
+	end)
+end
+
+-- Идти к goal, обходя препятствия/воду. Пути нет (цель за водой и т.п.) — стоим.
+local function navigateTo(goal, speed)
+	local recompute = false
+
+	if not pathGoal then
+		recompute = true
+	elseif flatDistance(pathGoal, goal) > PATH_GOAL_MOVE_THRESHOLD then
+		recompute = true
+	elseif os.clock() - pathComputeClock > PATH_RECOMPUTE_INTERVAL
+		and (not pathOk or waypointIndex > #pathWaypoints) then
+		recompute = true
+	end
+
+	if recompute and not pathComputing then
+		computePathAsync(goal)
+	end
+
+	local moveTarget = nil
+
+	if pathOk and waypointIndex <= #pathWaypoints then
+		moveTarget = pathWaypoints[waypointIndex].Position
+		if flatDistance(rootCollider.Position, moveTarget) <= WAYPOINT_REACH then
+			waypointIndex += 1
+			moveTarget = (waypointIndex <= #pathWaypoints)
+				and pathWaypoints[waypointIndex].Position
+				or goal
+		end
+	elseif pathOk then
+		moveTarget = goal       -- waypoints кончились → финишный отрезок напрямую
+	elseif not pathGoal then
+		moveTarget = goal       -- путь ещё ни разу не посчитан → пока напрямую
+	end
+
+	if moveTarget then
+		faceTowards(moveTarget)
+		moveTowards(moveTarget, speed)
+	else
+		stopMovement()
+	end
+end
+
+--====================================================
 -- КОНЕЧНЫЙ АВТОМАТ (FSM)
 --====================================================
 
@@ -1568,10 +1662,9 @@ local function runPatrol()
 		return
 	end
 
-	-- Идём к текущей точке маршрута.
+	-- Идём к текущей точке маршрута (обходя препятствия).
 	local target = patrolPoints[patrolIndex]
-	faceTowards(target)
-	moveTowards(target, MOVE_SPEED)
+	navigateTo(target, MOVE_SPEED)
 	playWalk()
 
 	-- Дошли до точки: стоим случайные 10..30 c, потом двинемся дальше.
@@ -1583,10 +1676,9 @@ end
 
 local function runInvestigate()
 	local target = lastKnownPosition or homePosition
-	faceTowards(target)
 
 	if flatDistance(rootCollider.Position, target) > PATROL_POINT_REACH then
-		moveTowards(target, MOVE_SPEED)
+		navigateTo(target, MOVE_SPEED)
 		playWalk()
 	else
 		stopMovement()
@@ -1606,12 +1698,12 @@ local function runChase(visibleRoot)
 	end
 
 	lastKnownPosition = visibleRoot.Position
-	faceTowards(visibleRoot.Position)
 
 	if flatDistance(rootCollider.Position, visibleRoot.Position) <= ATTACK_RANGE then
+		faceTowards(visibleRoot.Position)
 		setState(STATE.ATTACK)
 	else
-		moveTowards(visibleRoot.Position, MOVE_SPEED * RUN_SPEED_MULTIPLIER)
+		navigateTo(visibleRoot.Position, MOVE_SPEED * RUN_SPEED_MULTIPLIER)
 		playRun()
 	end
 end
@@ -1642,10 +1734,9 @@ end
 
 local function runSearch()
 	local target = lastKnownPosition or homePosition
-	faceTowards(target)
 
 	if flatDistance(rootCollider.Position, target) > PATROL_POINT_REACH then
-		moveTowards(target, MOVE_SPEED)
+		navigateTo(target, MOVE_SPEED)
 		playWalk()
 	else
 		stopMovement()
@@ -1660,10 +1751,8 @@ local function runSearch()
 end
 
 local function runReturn()
-	faceTowards(homePosition)
-
 	if flatDistance(rootCollider.Position, homePosition) > PATROL_POINT_REACH then
-		moveTowards(homePosition, MOVE_SPEED)
+		navigateTo(homePosition, MOVE_SPEED)
 		playWalk()
 	else
 		suspicion = 0
@@ -1679,10 +1768,9 @@ end
 -- активно проверять место. Своё зрение работает: увидит игрока → погоня.
 local function runAlerted()
 	local target = getSquadAlert() or homePosition
-	faceTowards(target)
 
 	if flatDistance(rootCollider.Position, target) > SQUAD_ENGAGE_RADIUS then
-		moveTowards(target, MOVE_SPEED)
+		navigateTo(target, MOVE_SPEED)
 		playWalk()
 	else
 		lastKnownPosition = target
@@ -1786,7 +1874,7 @@ RunService.Heartbeat:Connect(function(dt)
 end)
 
 print(string.format(
-	"[PirateUnitAI] Guard AI (Stage 1-2) loaded. Variant=%s PatrolPoints=%d Root=%s",
+	"[PirateUnitAI] Guard AI (Stage 1-3) loaded. Variant=%s PatrolPoints=%d Root=%s",
 	BEHAVIOR_VARIANT,
 	#patrolPoints,
 	rootCollider:GetFullName()
