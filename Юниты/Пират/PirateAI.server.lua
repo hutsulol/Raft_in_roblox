@@ -17,7 +17,7 @@ local WALK_ANIMATION_NAME = "Walk"
 local RUN_ANIMATION_NAME = "Run"
 local ATTACK_ANIMATION_NAME = "Attack"
 
-local ROOT_COLLIDER_NAME = "HumanoidRootPart"
+local ROOT_COLLIDER_NAME = "TorsoCollider"
 
 local UNIT_MAX_HEALTH = 100
 local DESTROY_ON_DEATH = false
@@ -60,29 +60,6 @@ local USE_LINE_OF_SIGHT = false
 local FORCE_DIRECT_ROTATION = true
 
 --====================================================
--- УРОН ПО ЗОНАМ И РЕАКЦИЯ НА ПОПАДАНИЕ
---====================================================
-
--- Сколько ударов до смерти (голова — всегда насмерть, мгновенно).
-local BODY_HITS_TO_KILL = 4   -- удары по торсу: держи в районе 3-5
-local LIMB_HITS_TO_KILL = 7   -- удары по рукам/ногам наносят меньше урона
-
--- Хитбокс: на каком расстоянии до парта засчитывается попадание, studs.
-local HIT_REACH = 3.0
--- Не чаще одного удара от одного игрока за это время, сек.
-local HIT_DEBOUNCE = 0.35
-
--- Реакция на попадание.
-local STAGGER_TIME = 0.25     -- NPC вздрагивает (замирает) после любого удара
-local LEG_SLOW_TIME = 1.6     -- замедление после удара по ноге, сек
-local LEG_SLOW_FACTOR = 0.5   -- во сколько раз медленнее с перебитой ногой
-
--- Разведение юнитов, чтобы не налезали друг на друга.
-local UNIT_TAG = "RaftMeleeUnit"
-local SEPARATION_RADIUS = 5
-local SEPARATION_STRENGTH = 1.2
-
---====================================================
 -- COLLISION GROUPS
 --====================================================
 
@@ -98,6 +75,14 @@ local LEG_GROUND_RAYCAST_HEIGHT = 8
 local LEG_GROUND_RAYCAST_DEPTH = 16
 local MAX_GROUND_LIFT_PER_HEARTBEAT = 0.25
 local MAX_UPWARD_VELOCITY = 2.5
+
+-- Чтобы юниты не залезали друг на друга, помечаем их тегом. Это нужно для двух
+-- вещей: (1) raycast «земли» игнорирует чужие хитбоксы (иначе юнит принимает
+-- соседа за пол и встаёт на него как на ступеньку); (2) при движении юниты
+-- мягко расходятся, а не занимают одну точку.
+local UNIT_TAG = "RaftMeleeUnit"
+local SEPARATION_RADIUS = 5
+local SEPARATION_STRENGTH = 1.2
 
 local COLLIDER_SETTINGS = {
 	HeadCollider = {
@@ -248,9 +233,7 @@ end
 local legColliders = {}
 
 for _, collider in ipairs(colliders) do
-	local name = collider.Name
-	if name == "LeftLegCollider" or name == "RightLegCollider"
-		or string.find(name, "Foot") or string.find(name, "Leg") then
+	if collider.Name == "LeftLegCollider" or collider.Name == "RightLegCollider" then
 		table.insert(legColliders, collider)
 	end
 end
@@ -261,7 +244,6 @@ end
 
 npc.PrimaryPart = rootCollider
 
--- Тег, по которому юниты находят друг друга для разведения (separation).
 CollectionService:AddTag(npc, UNIT_TAG)
 
 --====================================================
@@ -414,43 +396,42 @@ end
 healFunction.OnInvoke = heal
 
 --====================================================
--- ХИТБОКС ПО ЗОНАМ + РЕАКЦИЯ НА ПОПАДАНИЕ
+-- ХИТБОКС ПОЛУЧЕНИЯ УРОНА (по коллайдерам)
 --====================================================
--- У юнита нет Humanoid, поэтому урон принимаем сами: на взмах оружия
--- игрока (Tool.Activated) находим, в какой парт-коллайдер попали, и по
--- зоне выбираем урон: голова — насмерть, торс — за BODY_HITS_TO_KILL
--- ударов, конечности — слабее. На попадание NPC вздрагивает, а удар
--- по ноге его замедляет.
+-- У юнита нет Humanoid, поэтому классический меч игрока
+-- (Handle.Touched -> FindFirstChildOfClass("Humanoid")) не может его
+-- ранить. Принимаем урон на стороне юнита: ловим взмах оружия игрока
+-- (Tool.Activated) и проверяем, дотянулось ли оружие/игрок до любого
+-- нашего коллайдера. Так не нужен Humanoid и не ломаются анимации/физика.
 --
--- На collider.Touched не полагаемся: коллайдеры ног/головы/рук лежат в
--- коллизионных группах, несовместимых с группой игрока, что глушит
--- Touched. Поэтому ищем ближайший парт запросом по расстоянию.
+-- ВАЖНО: на collider.Touched полагаться нельзя — коллайдеры ног/головы/рук
+-- лежат в коллизионных группах, несовместимых с группой игрока
+-- (CollisionGroupSetCollidable = false), а это глушит и Touched. Поэтому
+-- ловим попадание запросом по расстоянию до коллайдеров.
 
--- Реакция на попадание (читается в главном цикле).
-local staggerUntil = 0
-local slowUntil = 0
+-- Урон по умолчанию, если у оружия не задан свой (атрибут/NumberValue "Damage").
+local DEFAULT_WEAPON_DAMAGE = 10
+-- На каком расстоянии до поверхности коллайдера засчитывается удар, studs.
+local HIT_REACH = 4.5
+-- Не чаще одного попадания от одного игрока за это время, сек.
+local HIT_DEBOUNCE = 0.4
 
 local lastHitClock = {}
 local hookedTools = setmetatable({}, { __mode = "k" })
 
--- Зона парта по имени (R15-имена и старые имена коллайдеров).
-local function colliderZone(colliderName)
-	local lower = string.lower(colliderName)
-	if string.find(lower, "head") then
-		return "Head"
+local function getToolDamage(tool)
+	local attribute = tool:GetAttribute("Damage")
+	if typeof(attribute) == "number" and attribute > 0 then
+		return attribute
 	end
-	if string.find(lower, "torso") or string.find(lower, "humanoidrootpart") or string.find(lower, "pelvis") then
-		return "Body"
-	end
-	return "Limb"
-end
 
--- Урон по зонам. Голова = весь запас HP => мгновенная смерть.
-local ZONE_DAMAGE = {
-	Head = UNIT_MAX_HEALTH,
-	Body = math.ceil(UNIT_MAX_HEALTH / BODY_HITS_TO_KILL),
-	Limb = math.ceil(UNIT_MAX_HEALTH / LIMB_HITS_TO_KILL),
-}
+	local value = tool:FindFirstChild("Damage")
+	if value and value:IsA("NumberValue") and value.Value > 0 then
+		return value.Value
+	end
+
+	return DEFAULT_WEAPON_DAMAGE
+end
 
 -- Кратчайшее расстояние от точки до коробки коллайдера (OBB).
 -- 0, если точка внутри коллайдера.
@@ -465,37 +446,36 @@ local function pointToColliderDistance(point, collider)
 	return (localPoint - clamped).Magnitude
 end
 
--- Точка, по которой ищем попадание: рукоять оружия, иначе сам игрок.
-local function getProbePoint(tool, character)
+-- true, если оружие игрока (Handle) или сам игрок (HumanoidRootPart)
+-- дотянулись до любого нашего коллайдера.
+local function weaponReachesColliders(tool, character)
+	local probeParts = {}
+
 	local handle = tool:FindFirstChild("Handle")
 	if handle and handle:IsA("BasePart") then
-		return handle.Position
+		table.insert(probeParts, handle)
 	end
 
 	local hrp = character and character:FindFirstChild("HumanoidRootPart")
 	if hrp then
-		return hrp.Position
+		table.insert(probeParts, hrp)
 	end
 
-	return nil
-end
-
--- Ближайший к точке коллайдер в пределах HIT_REACH (или nil).
-local function nearestColliderTo(point)
-	local nearest = nil
-	local nearestDist = HIT_REACH
+	if #probeParts == 0 then
+		return false
+	end
 
 	for _, collider in ipairs(colliders) do
 		if collider.Parent then
-			local dist = pointToColliderDistance(point, collider)
-			if dist <= nearestDist then
-				nearest = collider
-				nearestDist = dist
+			for _, part in ipairs(probeParts) do
+				if pointToColliderDistance(part.Position, collider) <= HIT_REACH then
+					return true
+				end
 			end
 		end
 	end
 
-	return nearest
+	return false
 end
 
 local function onPlayerSwing(player, tool)
@@ -513,28 +493,12 @@ local function onPlayerSwing(player, tool)
 		return
 	end
 
-	local point = getProbePoint(tool, character)
-	if not point then
-		return
-	end
-
-	local hitCollider = nearestColliderTo(point)
-	if not hitCollider then
+	if not weaponReachesColliders(tool, character) then
 		return
 	end
 
 	lastHitClock[player] = now
-
-	local zone = colliderZone(hitCollider.Name)
-	local lowerName = string.lower(hitCollider.Name)
-
-	-- Реакция: любой удар — вздрагивание; по ноге — ещё и замедление.
-	staggerUntil = now + STAGGER_TIME
-	if string.find(lowerName, "leg") or string.find(lowerName, "foot") then
-		slowUntil = now + LEG_SLOW_TIME
-	end
-
-	takeDamage(ZONE_DAMAGE[zone] or ZONE_DAMAGE.Body)
+	takeDamage(getToolDamage(tool))
 end
 
 local function hookTool(tool)
@@ -575,24 +539,6 @@ Players.PlayerRemoving:Connect(function(player)
 	lastHitClock[player] = nil
 end)
 
--- Вектор «прочь от соседей»: чтобы юниты не налезали друг на друга.
-local function getSeparationVector()
-	local push = Vector3.zero
-
-	for _, other in ipairs(CollectionService:GetTagged(UNIT_TAG)) do
-		if other ~= npc and other.PrimaryPart then
-			local offset = rootCollider.Position - other.PrimaryPart.Position
-			offset = Vector3.new(offset.X, 0, offset.Z)
-			local dist = offset.Magnitude
-			if dist > 0.05 and dist < SEPARATION_RADIUS then
-				push = push + offset.Unit * (1 - dist / SEPARATION_RADIUS)
-			end
-		end
-	end
-
-	return push
-end
-
 --====================================================
 -- ПОЛОСКА ЗДОРОВЬЯ (HP BAR)
 --====================================================
@@ -600,7 +546,7 @@ end
 local SHOW_HEALTH_BAR = true
 
 if SHOW_HEALTH_BAR then
-	local barAdornee = findColliderPartByName("Head") or findColliderPartByName("HeadCollider") or rootCollider
+	local barAdornee = findColliderPartByName("HeadCollider") or rootCollider
 
 	local billboard = Instance.new("BillboardGui")
 	billboard.Name = "HealthBar"
@@ -777,6 +723,14 @@ local function updateGroundRaycastFilter()
 	for _, player in ipairs(Players:GetPlayers()) do
 		if player.Character then
 			table.insert(filterList, player.Character)
+		end
+	end
+
+	-- Игнорируем хитбоксы других юнитов: иначе наш raycast «земли» цепляет
+	-- соседа и поднимает нас на него как на ступеньку (юниты стопками).
+	for _, other in ipairs(CollectionService:GetTagged(UNIT_TAG)) do
+		if other ~= npc then
+			table.insert(filterList, other)
 		end
 	end
 
@@ -1187,6 +1141,25 @@ local function stopMovement()
 	rootCollider.AssemblyLinearVelocity = Vector3.new(0, velocity.Y, 0)
 end
 
+-- Вектор «прочь от соседних юнитов»: физически друг с другом они не
+-- сталкиваются, поэтому расталкиваемся скриптом, чтобы не занимать одну точку.
+local function getSeparationVector()
+	local push = Vector3.zero
+
+	for _, other in ipairs(CollectionService:GetTagged(UNIT_TAG)) do
+		if other ~= npc and other.PrimaryPart then
+			local away = rootCollider.Position - other.PrimaryPart.Position
+			away = Vector3.new(away.X, 0, away.Z)
+			local dist = away.Magnitude
+			if dist > 0.05 and dist < SEPARATION_RADIUS then
+				push = push + away.Unit * (1 - dist / SEPARATION_RADIUS)
+			end
+		end
+	end
+
+	return push
+end
+
 local function moveTowards(targetPosition, speed)
 	local currentPosition = rootCollider.Position
 	local flatTarget = Vector3.new(targetPosition.X, currentPosition.Y, targetPosition.Z)
@@ -1197,7 +1170,7 @@ local function moveTowards(targetPosition, speed)
 		return
 	end
 
-	-- К направлению на цель добавляем разведение от соседних юнитов.
+	-- К направлению на цель добавляем разведение от соседей.
 	local direction = offset.Unit + getSeparationVector() * SEPARATION_STRENGTH
 	if direction.Magnitude < 0.05 then
 		direction = offset.Unit
@@ -1287,13 +1260,6 @@ RunService.Heartbeat:Connect(function()
 
 	stabilizeOnGround()
 
-	-- Реакция на попадание: пока длится вздрагивание, NPC замирает.
-	if os.clock() < staggerUntil then
-		stopMovement()
-		playIdle()
-		return
-	end
-
 	-- 1. Если текущей цели нет, ищем игрока в обычном радиусе 20.
 	if not currentTargetCharacter then
 		local character = nil
@@ -1368,14 +1334,11 @@ RunService.Heartbeat:Connect(function()
 	-- 6. Движение:
 	-- обычный режим = Walk
 	-- игрок убежал за 20 после обнаружения = Run x1.5
-	-- перебитая нога (недавний удар по ноге) замедляет.
-	local speedFactor = (os.clock() < slowUntil) and LEG_SLOW_FACTOR or 1
-
 	if isChasingEscapedTarget then
-		moveTowards(targetRoot.Position, MOVE_SPEED * RUN_SPEED_MULTIPLIER * speedFactor)
+		moveTowards(targetRoot.Position, MOVE_SPEED * RUN_SPEED_MULTIPLIER)
 		playRun()
 	else
-		moveTowards(targetRoot.Position, MOVE_SPEED * speedFactor)
+		moveTowards(targetRoot.Position, MOVE_SPEED)
 		playWalk()
 	end
 end)
