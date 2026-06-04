@@ -18,6 +18,9 @@ local ATTACK_ANIMATION_NAME = "Attack"
 
 local ROOT_COLLIDER_NAME = "TorsoCollider"
 
+local UNIT_MAX_HEALTH = 100
+local DESTROY_ON_DEATH = false
+
 -- false = коллайдеры невидимые
 -- true = коллайдеры видны для настройки
 local DEBUG_VISIBLE = false
@@ -69,6 +72,8 @@ local DEFAULT_WORLD_GROUP = "Default"
 local LEG_GROUND_PADDING = 0.06
 local LEG_GROUND_RAYCAST_HEIGHT = 8
 local LEG_GROUND_RAYCAST_DEPTH = 16
+local MAX_GROUND_LIFT_PER_HEARTBEAT = 0.25
+local MAX_UPWARD_VELOCITY = 2.5
 
 local COLLIDER_SETTINGS = {
 	HeadCollider = {
@@ -231,6 +236,43 @@ end
 npc.PrimaryPart = rootCollider
 
 --====================================================
+-- HEALTH
+--====================================================
+
+local humanoid = npc:FindFirstChildOfClass("Humanoid")
+
+if not humanoid then
+	humanoid = Instance.new("Humanoid")
+	humanoid.Name = "Humanoid"
+	humanoid.Parent = npc
+end
+
+humanoid.MaxHealth = UNIT_MAX_HEALTH
+humanoid.Health = math.clamp(humanoid.Health, 1, UNIT_MAX_HEALTH)
+humanoid.BreakJointsOnDeath = false
+humanoid.RequiresNeck = false
+humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.Viewer
+
+local isDead = false
+
+humanoid.Died:Connect(function()
+	isDead = true
+
+	if rootCollider.Parent then
+		rootCollider.AssemblyLinearVelocity = Vector3.zero
+		rootCollider.AssemblyAngularVelocity = Vector3.zero
+	end
+
+	if DESTROY_ON_DEATH then
+		task.delay(3, function()
+			if npc.Parent then
+				npc:Destroy()
+			end
+		end)
+	end
+end)
+
+--====================================================
 -- ФИЗИКА NPC
 --====================================================
 
@@ -346,8 +388,19 @@ end)
 
 local groundRaycastParams = RaycastParams.new()
 groundRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
-groundRaycastParams.FilterDescendantsInstances = { npc }
 groundRaycastParams.IgnoreWater = true
+
+local function updateGroundRaycastFilter()
+	local filterList = { npc }
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		if player.Character then
+			table.insert(filterList, player.Character)
+		end
+	end
+
+	groundRaycastParams.FilterDescendantsInstances = filterList
+end
 
 local function getLegBottomY()
 	local bottomY = math.huge
@@ -370,6 +423,8 @@ local function getLegBottomY()
 end
 
 local function getGroundYUnderLegs()
+	updateGroundRaycastFilter()
+
 	local bestGroundY = nil
 
 	for _, legCollider in ipairs(legColliders) do
@@ -378,7 +433,7 @@ local function getGroundYUnderLegs()
 			local rayDirection = Vector3.new(0, -(LEG_GROUND_RAYCAST_HEIGHT + LEG_GROUND_RAYCAST_DEPTH), 0)
 			local result = workspace:Raycast(rayOrigin, rayDirection, groundRaycastParams)
 
-			if result then
+			if result and result.Normal.Y >= 0.45 then
 				if not bestGroundY or result.Position.Y > bestGroundY then
 					bestGroundY = result.Position.Y
 				end
@@ -403,11 +458,21 @@ local function liftCorsairOutOfGround()
 		return
 	end
 
-	local liftAmount = math.clamp(targetBottomY - legBottomY, 0, 3)
+	local liftAmount = math.clamp(targetBottomY - legBottomY, 0, MAX_GROUND_LIFT_PER_HEARTBEAT)
 	local velocity = rootCollider.AssemblyLinearVelocity
 
 	rootCollider.CFrame = rootCollider.CFrame + Vector3.new(0, liftAmount, 0)
-	rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, math.max(velocity.Y, 0), velocity.Z)
+	rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, math.clamp(velocity.Y, 0, MAX_UPWARD_VELOCITY), velocity.Z)
+end
+
+local function limitUpwardLaunch()
+	local velocity = rootCollider.AssemblyLinearVelocity
+
+	if velocity.Y <= MAX_UPWARD_VELOCITY then
+		return
+	end
+
+	rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, MAX_UPWARD_VELOCITY, velocity.Z)
 end
 
 --====================================================
@@ -736,7 +801,7 @@ local function moveTowards(targetPosition, speed)
 	end
 
 	local direction = offset.Unit
-	local currentYVelocity = rootCollider.AssemblyLinearVelocity.Y
+	local currentYVelocity = math.min(rootCollider.AssemblyLinearVelocity.Y, MAX_UPWARD_VELOCITY)
 
 	rootCollider.AssemblyLinearVelocity = Vector3.new(
 		direction.X * speed,
@@ -805,6 +870,11 @@ RunService.Heartbeat:Connect(function()
 		return
 	end
 
+	if isDead or humanoid.Health <= 0 then
+		stopMovement()
+		return
+	end
+
 	pcall(function()
 		if rootCollider:GetNetworkOwner() ~= nil then
 			rootCollider:SetNetworkOwner(nil)
@@ -812,6 +882,7 @@ RunService.Heartbeat:Connect(function()
 	end)
 
 	liftCorsairOutOfGround()
+	limitUpwardLaunch()
 
 	-- 1. Если текущей цели нет, ищем игрока в обычном радиусе 20.
 	if not currentTargetCharacter then
