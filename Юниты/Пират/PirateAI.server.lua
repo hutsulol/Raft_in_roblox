@@ -49,6 +49,7 @@ local MOVE_SPEED = 10
 local RUN_SPEED_MULTIPLIER = 1.5
 
 local ATTACK_RANGE = 4.2
+local ATTACK_RANGE_BUFFER = 2    -- гистерезис: из атаки выходим только за этим радиусом
 local ATTACK_COOLDOWN = 1.4
 local ATTACK_DAMAGE = 20
 local ATTACK_HIT_DELAY = 0.35
@@ -93,6 +94,8 @@ local SUSPICION_ALERT = 100      -- порог «точно враг» → по�
 
 -- ПАМЯТЬ / поиск.
 local SEARCH_DURATION = 15       -- сейфти-таймер поиска (если не дошёл/не нашёл), сек
+local SEARCH_HOLD_TIME = 3       -- держим полную тревогу столько, идя к месту, сек
+local LOSE_SIGHT_GRACE = 1.5     -- сколько ещё гнаться к последней точке без LOS, сек
 
 -- ТРЕВОГА ОТРЯДА (Этап 2).
 local GUARD_TAG = "PirateGuard"  -- тег только для пиратов (для «крика» отряду)
@@ -102,12 +105,16 @@ local ALERT_MEMORY = 8           -- сколько помнить крик бе�
 local SHOUT_INTERVAL = 2         -- как часто перекрикивать, пока идёт бой, сек
 
 -- НАВИГАЦИЯ (Этап 3: PathfindingService — обход препятствий и воды).
-local AGENT_RADIUS = 2              -- радиус агента ≈ полширины коллайдеров
-local AGENT_HEIGHT = 5             -- высота агента ≈ высота пирата
+local AGENT_RADIUS = 1.5            -- радиус агента (меньше — пролезает в проёмы)
+local AGENT_HEIGHT = 4              -- высота агента
 local PATH_RECOMPUTE_INTERVAL = 0.5 -- макс. период пересчёта пути, сек
 local PATH_GOAL_MOVE_THRESHOLD = 5  -- цель сместилась дальше — пересчитать, studs
-local WAYPOINT_REACH = 2.5          -- радиус «waypoint достигнут», studs
+local WAYPOINT_REACH = 2            -- радиус «waypoint достигнут», studs
 local NAV_LOS_MARGIN = 4            -- «вижу цель напрямую»: не докидывать луч до цели, studs
+local STUCK_TIME = 2.5             -- застряли на месте дольше — бросаем прямую погоню, сек
+
+-- Поворот корпуса (плавный, не рывком).
+local TURN_SPEED_DEGREES = 540      -- макс. скорость разворота, град/сек
 
 --====================================================
 -- COLLISION GROUPS
@@ -923,19 +930,25 @@ local function getYawFacingPosition(targetPosition)
 	return yaw
 end
 
+-- Состояния только ЗАДАЮТ желаемое направление; сам поворот — плавный, в
+-- updateRotation (раз в кадр). Так пират не «дёргается» рывком.
 local function faceTowards(targetPosition)
 	desiredYaw = getYawFacingPosition(targetPosition)
+end
 
-	alignOrientation.CFrame = CFrame.Angles(0, desiredYaw, 0)
+-- Плавно доворачиваем корпус к desiredYaw, не быстрее TURN_SPEED_DEGREES/сек.
+local function updateRotation(dt)
+	local _, currentYaw = rootCollider.CFrame:ToOrientation()
+	local diff = (desiredYaw - currentYaw + math.pi) % (2 * math.pi) - math.pi
+	local maxStep = math.rad(TURN_SPEED_DEGREES) * dt
+	local newYaw = currentYaw + math.clamp(diff, -maxStep, maxStep)
 
-	if FORCE_DIRECT_ROTATION then
-		local position = rootCollider.Position
-		local velocity = rootCollider.AssemblyLinearVelocity
-
-		rootCollider.CFrame = CFrame.new(position) * CFrame.Angles(0, desiredYaw, 0)
-		rootCollider.AssemblyLinearVelocity = velocity
-		rootCollider.AssemblyAngularVelocity = Vector3.zero
-	end
+	local position = rootCollider.Position
+	local velocity = rootCollider.AssemblyLinearVelocity
+	rootCollider.CFrame = CFrame.new(position) * CFrame.Angles(0, newYaw, 0)
+	rootCollider.AssemblyLinearVelocity = velocity
+	rootCollider.AssemblyAngularVelocity = Vector3.zero
+	alignOrientation.CFrame = CFrame.Angles(0, newYaw, 0)
 end
 
 --====================================================
@@ -1302,18 +1315,9 @@ local function getEyePosition()
 	return base + Vector3.new(0, EYE_HEIGHT_OFFSET, 0)
 end
 
--- Жёстко повернуть корпус на заданный yaw (для возврата на пост и т.п.).
+-- Задать желаемый yaw (поворот доведёт updateRotation плавно).
 local function faceYaw(yaw)
 	desiredYaw = yaw
-	alignOrientation.CFrame = CFrame.Angles(0, yaw, 0)
-
-	if FORCE_DIRECT_ROTATION then
-		local position = rootCollider.Position
-		local velocity = rootCollider.AssemblyLinearVelocity
-		rootCollider.CFrame = CFrame.new(position) * CFrame.Angles(0, yaw, 0)
-		rootCollider.AssemblyLinearVelocity = velocity
-		rootCollider.AssemblyAngularVelocity = Vector3.zero
-	end
 end
 
 -- Прямая видимость до персонажа: луч от глаз, стена/препятствие рвут обзор.
@@ -1571,10 +1575,10 @@ local function navigateTo(goal, speed)
 		faceTowards(moveTarget)
 		moveTowards(moveTarget, speed)
 	else
-		-- Маршрут ещё считается → подходим к цели медленно, чтобы не влететь в
-		-- преграду до готовности пути.
+		-- Маршрута ещё/уже нет (считается или не построился) → не тарануем
+		-- преграду: стоим. Не появится — сработает детектор застревания.
 		faceTowards(goal)
-		moveTowards(goal, speed * 0.35)
+		stopMovement()
 	end
 end
 
@@ -1595,6 +1599,10 @@ local STATE = {
 
 local currentState = STATE.GUARD
 local stateClock = os.clock()
+local lastSeenClock = 0       -- когда последний раз был LOS до цели (для погони)
+local stuckTime = 0           -- как долго стоим на месте при попытке идти, сек
+local lastStuckPos = nil
+local lastStuckClock = 0
 
 -- Тревога отряда (Этап 2): крик приходит через атрибут AlertClock на модели.
 -- Память тревоги считаем по СВОИМ часам (по событию смены атрибута), чтобы не
@@ -1614,6 +1622,8 @@ local function setState(newState)
 	end
 	currentState = newState
 	stateClock = os.clock()
+	stuckTime = 0
+	lastStuckPos = nil
 end
 
 local function stateAge()
@@ -1717,20 +1727,36 @@ local function runInvestigate()
 end
 
 local function runChase(visibleRoot)
-	if not visibleRoot then
+	-- Застряли (не можем дойти до цели) → бросаем прямую погоню, идём искать.
+	if stuckTime > STUCK_TIME then
 		setState(STATE.SEARCH)
 		return
 	end
 
-	lastKnownPosition = visibleRoot.Position
+	if visibleRoot then
+		lastKnownPosition = visibleRoot.Position
+		lastSeenClock = os.clock()
 
-	if flatDistance(rootCollider.Position, visibleRoot.Position) <= ATTACK_RANGE then
-		faceTowards(visibleRoot.Position)
-		setState(STATE.ATTACK)
-	else
+		if flatDistance(rootCollider.Position, visibleRoot.Position) <= ATTACK_RANGE then
+			faceTowards(visibleRoot.Position)
+			stopMovement()
+			setState(STATE.ATTACK)
+			return
+		end
+
 		navigateTo(visibleRoot.Position, MOVE_SPEED * RUN_SPEED_MULTIPLIER)
 		playRun()
+		return
 	end
+
+	-- Цель зашла за угол: ещё немного держим погоню к последней точке.
+	if os.clock() - lastSeenClock > LOSE_SIGHT_GRACE then
+		setState(STATE.SEARCH)
+		return
+	end
+
+	navigateTo(lastKnownPosition or homePosition, MOVE_SPEED * RUN_SPEED_MULTIPLIER)
+	playRun()
 end
 
 local function runAttack()
@@ -1743,12 +1769,15 @@ local function runAttack()
 
 	faceTowards(root.Position)
 
-	if dist > ATTACK_RANGE then
+	-- Гистерезис: из атаки выходим, только когда цель ушла заметно за радиус,
+	-- иначе пират «дёргается» на границе и таранит игрока вместо ударов.
+	if dist > ATTACK_RANGE + ATTACK_RANGE_BUFFER then
 		setState(STATE.CHASE)
 		return
 	end
 
 	lastKnownPosition = root.Position
+	lastSeenClock = os.clock()
 	stopMovement()
 	attackTarget(root, humanoid)
 
@@ -1835,6 +1864,24 @@ RunService.Heartbeat:Connect(function(dt)
 
 	stabilizeOnGround()
 
+	-- Детектор застревания: в состоянии движения почти не сдвинулись → копим время.
+	if not lastStuckPos then
+		lastStuckPos = rootCollider.Position
+		lastStuckClock = os.clock()
+	elseif os.clock() - lastStuckClock >= 0.4 then
+		local moved = flatDistance(rootCollider.Position, lastStuckPos)
+		local movingState = currentState == STATE.CHASE or currentState == STATE.SEARCH
+			or currentState == STATE.INVESTIGATE or currentState == STATE.RETURN
+			or currentState == STATE.ALERTED
+		if movingState and moved < 0.8 then
+			stuckTime += os.clock() - lastStuckClock
+		else
+			stuckTime = 0
+		end
+		lastStuckPos = rootCollider.Position
+		lastStuckClock = os.clock()
+	end
+
 	local visibleRoot, visibleChar = updatePerception(dt)
 
 	-- Спад подозрения. Пока цель видно — держится/растёт. В погоне/атаке НЕ
@@ -1845,8 +1892,11 @@ RunService.Heartbeat:Connect(function(dt)
 		if currentState == STATE.CHASE or currentState == STATE.ATTACK then
 			allowDecay = false
 		elseif currentState == STATE.INVESTIGATE or currentState == STATE.SEARCH then
+			-- Сначала идём проверить место. Спад включается по приходу туда ИЛИ
+			-- через SEARCH_HOLD_TIME — чтобы шкала ТОЧНО начала падать.
 			local spot = lastKnownPosition or homePosition
-			allowDecay = flatDistance(rootCollider.Position, spot) <= PATROL_POINT_REACH
+			local arrived = flatDistance(rootCollider.Position, spot) <= PATROL_POINT_REACH * 1.5
+			allowDecay = arrived or stateAge() > SEARCH_HOLD_TIME
 		end
 		if allowDecay then
 			suspicion = math.max(0, suspicion - SUSPICION_DECAY * dt)
@@ -1915,6 +1965,9 @@ RunService.Heartbeat:Connect(function(dt)
 	elseif currentState == STATE.ALERTED then
 		runAlerted()
 	end
+
+	-- Плавный доворот корпуса к выбранному направлению (раз в кадр).
+	updateRotation(dt)
 end)
 
 print(string.format(
