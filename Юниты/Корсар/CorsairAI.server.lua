@@ -529,6 +529,66 @@ Players.PlayerRemoving:Connect(function(player)
 end)
 
 --====================================================
+-- ПОЛОСКА ЗДОРОВЬЯ (HP BAR)
+--====================================================
+-- Полоска над головой, читает атрибут Health. Поставь false, чтобы скрыть.
+local SHOW_HEALTH_BAR = true
+
+if SHOW_HEALTH_BAR then
+	local barAdornee = findColliderPartByName("HeadCollider") or rootCollider
+
+	local billboard = Instance.new("BillboardGui")
+	billboard.Name = "HealthBar"
+	billboard.Adornee = barAdornee
+	billboard.Size = UDim2.fromScale(4, 0.55)
+	billboard.StudsOffsetWorldSpace = Vector3.new(0, 2.6, 0)
+	billboard.AlwaysOnTop = true
+	billboard.LightInfluence = 0
+	billboard.MaxDistance = 80
+	billboard.Parent = barAdornee
+
+	local background = Instance.new("Frame")
+	background.Name = "Background"
+	background.Size = UDim2.fromScale(1, 1)
+	background.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+	background.BackgroundTransparency = 0.3
+	background.BorderSizePixel = 0
+	background.Parent = billboard
+
+	local backgroundCorner = Instance.new("UICorner")
+	backgroundCorner.CornerRadius = UDim.new(0.5, 0)
+	backgroundCorner.Parent = background
+
+	local fill = Instance.new("Frame")
+	fill.Name = "Fill"
+	fill.AnchorPoint = Vector2.new(0, 0.5)
+	fill.Position = UDim2.fromScale(0, 0.5)
+	fill.Size = UDim2.fromScale(1, 1)
+	fill.BackgroundColor3 = Color3.fromRGB(60, 200, 75)
+	fill.BorderSizePixel = 0
+	fill.Parent = background
+
+	local fillCorner = Instance.new("UICorner")
+	fillCorner.CornerRadius = UDim.new(0.5, 0)
+	fillCorner.Parent = fill
+
+	local function updateHealthBar()
+		local ratio = math.clamp(getHealth() / maxHealth, 0, 1)
+		fill.Size = UDim2.fromScale(ratio, 1)
+		-- Зелёный при полном HP, красный при низком.
+		fill.BackgroundColor3 = Color3.fromRGB(
+			math.floor(220 * (1 - ratio)) + 35,
+			math.floor(200 * ratio) + 35,
+			60
+		)
+		billboard.Enabled = getHealth() > 0
+	end
+
+	updateHealthBar()
+	npc:GetAttributeChangedSignal("Health"):Connect(updateHealthBar)
+end
+
+--====================================================
 -- ФИЗИКА NPC
 --====================================================
 
@@ -700,25 +760,41 @@ local function getGroundYUnderLegs()
 	return bestGroundY
 end
 
-local function liftCorsairOutOfGround()
+-- Если ноги поднялись выше нормальной высоты больше чем на столько —
+-- считаем это баг-подбросом и жёстко возвращаем NPC к земле.
+local MAX_HOVER_ABOVE_GROUND = 2.5
+
+local function stabilizeOnGround()
 	local legBottomY = getLegBottomY()
 	local groundY = getGroundYUnderLegs()
 
 	if not legBottomY or not groundY then
+		-- Под ногами нет опоры (вода/пропасть) — хотя бы не даём улетать вверх.
+		limitUpwardLaunch()
 		return
 	end
 
 	local targetBottomY = groundY + LEG_GROUND_PADDING
-
-	if legBottomY >= targetBottomY then
-		return
-	end
-
-	local liftAmount = math.clamp(targetBottomY - legBottomY, 0, MAX_GROUND_LIFT_PER_HEARTBEAT)
 	local velocity = rootCollider.AssemblyLinearVelocity
 
-	rootCollider.CFrame = rootCollider.CFrame + Vector3.new(0, liftAmount, 0)
-	rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, math.clamp(velocity.Y, 0, MAX_UPWARD_VELOCITY), velocity.Z)
+	if legBottomY < targetBottomY then
+		-- Просел под пол — плавно поднимаем.
+		local liftAmount = math.min(targetBottomY - legBottomY, MAX_GROUND_LIFT_PER_HEARTBEAT)
+		rootCollider.CFrame = rootCollider.CFrame + Vector3.new(0, liftAmount, 0)
+		rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, math.clamp(velocity.Y, 0, MAX_UPWARD_VELOCITY), velocity.Z)
+	elseif legBottomY > targetBottomY + MAX_HOVER_ABOVE_GROUND then
+		-- Подбросило выше нормы (баг физики при контакте с поверхностью) —
+		-- жёстко опускаем к земле и гасим вертикальную/угловую скорость,
+		-- чтобы NPC не улетал в небо.
+		rootCollider.CFrame = rootCollider.CFrame - Vector3.new(0, legBottomY - targetBottomY, 0)
+		rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, 0, velocity.Z)
+		rootCollider.AssemblyAngularVelocity = Vector3.zero
+	else
+		-- В пределах нормы — просто не даём резко взлетать.
+		if velocity.Y > MAX_UPWARD_VELOCITY then
+			rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, MAX_UPWARD_VELOCITY, velocity.Z)
+		end
+	end
 end
 
 local function limitUpwardLaunch()
@@ -1137,8 +1213,7 @@ RunService.Heartbeat:Connect(function()
 		end
 	end)
 
-	liftCorsairOutOfGround()
-	limitUpwardLaunch()
+	stabilizeOnGround()
 
 	-- 1. Если текущей цели нет, ищем игрока в обычном радиусе 20.
 	if not currentTargetCharacter then
