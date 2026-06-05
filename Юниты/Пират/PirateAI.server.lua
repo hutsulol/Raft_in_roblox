@@ -34,17 +34,6 @@ local MODEL_YAW_OFFSET_DEGREES = 180
 -- НАСТРОЙКИ ИИ
 --====================================================
 
--- Радиус обычного обнаружения.
-local DETECTION_RADIUS = 20
-
--- Если игрок уже был замечен и убежал дальше 20,
--- Пират продолжает погоню до этой дистанции.
-local CHASE_GIVE_UP_DISTANCE = 35
-
--- Если Пират в режиме погони приблизился к игроку до этой дистанции,
--- режим ускоренной погони выключается.
-local CHASE_STOP_DISTANCE = 5
-
 local MOVE_SPEED = 10
 local RUN_SPEED_MULTIPLIER = 1.5
 
@@ -52,10 +41,6 @@ local ATTACK_RANGE = 4.2
 local ATTACK_COOLDOWN = 1.4
 local ATTACK_DAMAGE = 20
 local ATTACK_HIT_DELAY = 0.35
-
--- Для теста лучше false.
--- Если true, пират будет проверять стены Raycast'ом.
-local USE_LINE_OF_SIGHT = false
 
 -- Если true, скрипт напрямую разворачивает TorsoCollider через CFrame.
 local FORCE_DIRECT_ROTATION = true
@@ -113,13 +98,27 @@ local NAV_LOS_MARGIN = 4            -- «вижу цель напрямую»: �
 local TURN_SPEED_DEGREES = 420      -- скорость доворота, град/сек (меньше = плавнее)
 
 -- ПРЫЖОК через низкие препятствия — КИНЕМАТИЧЕСКИЙ (без Humanoid и без физических
--- импульсов: тело едет по дуге через CFrame, поэтому сборку не рвёт).
-local JUMP_HEIGHT = 6              -- высота дуги, studs
-local JUMP_DISTANCE = 7            -- на сколько вперёд перепрыгивает, studs
-local JUMP_DURATION = 0.55         -- длительность прыжка, сек
-local JUMP_COOLDOWN = 1.0          -- пауза между прыжками, сек
-local JUMP_CHECK_DISTANCE = 3.5    -- препятствие ближе этого по курсу → прыжок
-local JUMP_CLEAR_HEIGHT = 5        -- занято выше этого → преграда высокая, не прыгаем
+-- импульсов: вся модель едет по дуге через CFrame). Всё в ОДНОЙ таблице, чтобы
+-- не плодить локалы (в Luau лимит 200 локальных на скрипт).
+local Jump = {
+	HEIGHT = 6,            -- высота дуги, studs
+	DISTANCE = 7,          -- на сколько вперёд перепрыгивает, studs
+	DURATION = 0.55,       -- длительность прыжка, сек
+	COOLDOWN = 1.0,        -- пауза между прыжками, сек
+	CHECK_DISTANCE = 3.5,  -- препятствие ближе этого по курсу → прыжок
+	CLEAR_HEIGHT = 5,      -- занято выше этого → преграда высокая, не прыгаем
+
+	active = false,
+	startClock = 0,
+	lastClock = -math.huge,
+	startPos = Vector3.zero,
+	landPos = Vector3.zero,
+	yaw = 0,
+	canCollideBackup = {},
+	offsets = {},
+	assemblyParts = {},
+	track = nil,
+}
 
 --====================================================
 -- COLLISION GROUPS
@@ -1017,12 +1016,13 @@ end
 
 -- Анимация прыжка опциональна: объект Animation с именем "Jump" внутри модели.
 -- Нет — прыжок просто без анимации (добавишь позже — заработает сам).
-local jumpTrack = nil
-local jumpAnimation = npc:FindFirstChild("Jump", true)
-if jumpAnimation and jumpAnimation:IsA("Animation") then
-	jumpTrack = animator:LoadAnimation(jumpAnimation)
-	jumpTrack.Looped = false
-	jumpTrack.Priority = Enum.AnimationPriority.Action
+do
+	local jumpAnim = npc:FindFirstChild("Jump", true)
+	if jumpAnim and jumpAnim:IsA("Animation") then
+		Jump.track = animator:LoadAnimation(jumpAnim)
+		Jump.track.Looped = false
+		Jump.track.Priority = Enum.AnimationPriority.Action
+	end
 end
 
 idleTrack.Looped = true
@@ -1107,24 +1107,6 @@ local function playAttack()
 	attackTrack:Play(0.05)
 end
 
-local function playJump()
-	if not jumpTrack or currentAnimationState == "Jump" then
-		return
-	end
-
-	currentAnimationState = "Jump"
-
-	idleTrack:Stop(0.05)
-	walkTrack:Stop(0.05)
-
-	if runTrack ~= walkTrack then
-		runTrack:Stop(0.05)
-	end
-
-	jumpTrack:Stop(0)
-	jumpTrack:Play(0.05)
-end
-
 --====================================================
 -- ПОИСК ЦЕЛИ
 --====================================================
@@ -1153,53 +1135,6 @@ local function isAliveCharacter(character)
 	end
 
 	return humanoid.Health > 0
-end
-
-local function hasLineOfSight(targetRoot)
-	if not USE_LINE_OF_SIGHT then
-		return true
-	end
-
-	local npcPosition = rootCollider.Position + Vector3.new(0, 2, 0)
-	local targetPosition = targetRoot.Position + Vector3.new(0, 2, 0)
-	local direction = targetPosition - npcPosition
-
-	local result = workspace:Raycast(npcPosition, direction, raycastParams)
-
-	if result and not result.Instance:IsDescendantOf(targetRoot.Parent) then
-		return false
-	end
-
-	return true
-end
-
-local function findNearestTargetInRadius(radius)
-	local bestCharacter = nil
-	local bestRoot = nil
-	local bestHumanoid = nil
-	local bestDistance = math.huge
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		local character = player.Character
-
-		if character and isAliveCharacter(character) then
-			local root = getCharacterRoot(character)
-			local humanoid = getCharacterHumanoid(character)
-
-			if root and humanoid then
-				local distance = (root.Position - rootCollider.Position).Magnitude
-
-				if distance <= radius and distance < bestDistance and hasLineOfSight(root) then
-					bestDistance = distance
-					bestCharacter = character
-					bestRoot = root
-					bestHumanoid = humanoid
-				end
-			end
-		end
-	end
-
-	return bestCharacter, bestRoot, bestHumanoid, bestDistance
 end
 
 local function getTargetData(character)
@@ -1594,56 +1529,57 @@ end
 -- ПРЫЖОК (кинематический — перепрыгнуть низкое препятствие)
 --====================================================
 
-local isJumping = false
-local jumpStartClock = 0
-local lastJumpClock = -math.huge
-local jumpStartPos = Vector3.zero
-local jumpLandPos = Vector3.zero
-local jumpYaw = 0
-local jumpCanCollideBackup = {}
-local jumpOffsets = {}
-
--- Все парты сборки (коллайдеры + визуальный меш), которые в прыжке двигаем
--- ВМЕСТЕ как единое тело. PatrolPoints сюда НЕ входят (маршрут не должен ехать).
-local assemblyParts = {}
+-- Парты сборки (коллайдеры + меш), которые в прыжке двигаем ВМЕСТЕ как единое
+-- тело. PatrolPoints сюда НЕ входят (маршрут не должен ехать с прыжком).
 for _, collider in ipairs(colliders) do
-	table.insert(assemblyParts, collider)
+	table.insert(Jump.assemblyParts, collider)
 end
-if visualMesh and not table.find(assemblyParts, visualMesh) then
-	table.insert(assemblyParts, visualMesh)
+if visualMesh and not table.find(Jump.assemblyParts, visualMesh) then
+	table.insert(Jump.assemblyParts, visualMesh)
 end
 
 -- Высота земли под точкой (XZ), либо nil (нет опоры / вода).
-local function groundYAt(position)
+function Jump.groundYAt(position)
 	updateGroundRaycastFilter()
-	local origin = position + Vector3.new(0, 12, 0)
-	local result = workspace:Raycast(origin, Vector3.new(0, -48, 0), groundRaycastParams)
-	if result then
-		return result.Position.Y
+	local result = workspace:Raycast(position + Vector3.new(0, 12, 0), Vector3.new(0, -48, 0), groundRaycastParams)
+	return result and result.Position.Y or nil
+end
+
+-- Анимация прыжка (если в модели есть объект Animation "Jump").
+function Jump.playAnim()
+	if not Jump.track or currentAnimationState == "Jump" then
+		return
 	end
-	return nil
+	currentAnimationState = "Jump"
+	idleTrack:Stop(0.05)
+	walkTrack:Stop(0.05)
+	if runTrack ~= walkTrack then
+		runTrack:Stop(0.05)
+	end
+	Jump.track:Stop(0)
+	Jump.track:Play(0.05)
 end
 
 -- На время прыжка выключаем столкновения тела (дуга чистая), на посадке вернём.
-local function setBodyCollision(enabled)
+function Jump.setBodyCollision(enabled)
 	if enabled then
-		for collider, wasCollide in pairs(jumpCanCollideBackup) do
+		for collider, wasCollide in pairs(Jump.canCollideBackup) do
 			if collider.Parent then
 				collider.CanCollide = wasCollide
 			end
 		end
-		jumpCanCollideBackup = {}
+		Jump.canCollideBackup = {}
 	else
-		jumpCanCollideBackup = {}
+		Jump.canCollideBackup = {}
 		for _, collider in ipairs(colliders) do
-			jumpCanCollideBackup[collider] = collider.CanCollide
+			Jump.canCollideBackup[collider] = collider.CanCollide
 			collider.CanCollide = false
 		end
 	end
 end
 
 -- Низкое препятствие вплотную по курсу к toPos, и за ним есть куда приземлиться?
-local function jumpableObstacleAhead(toPos)
+function Jump.obstacleAhead(toPos)
 	local origin = rootCollider.Position
 	local flat = Vector3.new(toPos.X - origin.X, 0, toPos.Z - origin.Z)
 	local dist = flat.Magnitude
@@ -1653,100 +1589,95 @@ local function jumpableObstacleAhead(toPos)
 
 	local dir = flat.Unit
 
-	-- низкий луч по корпусу — преграда впритык по курсу?
-	local lowHit = workspace:Raycast(origin - Vector3.new(0, 1, 0), dir * JUMP_CHECK_DISTANCE, raycastParams)
+	local lowHit = workspace:Raycast(origin - Vector3.new(0, 1, 0), dir * Jump.CHECK_DISTANCE, raycastParams)
 	if not lowHit then
 		return false
 	end
 
-	-- это сам игрок/персонаж, а не преграда?
 	local model = lowHit.Instance:FindFirstAncestorWhichIsA("Model")
 	if model and Players:GetPlayerFromCharacter(model) then
 		return false
 	end
 
-	-- высокий луч: выше JUMP_CLEAR_HEIGHT занято → преграда высокая, не прыгаем
-	local highHit = workspace:Raycast(origin + Vector3.new(0, JUMP_CLEAR_HEIGHT, 0), dir * JUMP_CHECK_DISTANCE, raycastParams)
+	local highHit = workspace:Raycast(origin + Vector3.new(0, Jump.CLEAR_HEIGHT, 0), dir * Jump.CHECK_DISTANCE, raycastParams)
 	if highHit then
 		return false
 	end
 
-	-- есть ли земля в точке приземления (не прыгаем в пропасть/воду)?
-	if not groundYAt(origin + dir * JUMP_DISTANCE) then
+	if not Jump.groundYAt(origin + dir * Jump.DISTANCE) then
 		return false
 	end
 
 	return true, dir
 end
 
--- Ставим ВСЮ сборку так, чтобы корень оказался в rootCF, сохраняя смещения
--- всех партов. Никакого «дотаскивания» велдами — отваливаться нечему.
-local function moveAssemblyTo(rootCF)
-	for _, part in ipairs(assemblyParts) do
+-- Ставим ВСЮ сборку так, чтобы корень оказался в rootCF, сохраняя смещения.
+function Jump.moveAssemblyTo(rootCF)
+	for _, part in ipairs(Jump.assemblyParts) do
 		if part.Parent then
-			part.CFrame = rootCF * jumpOffsets[part]
+			part.CFrame = rootCF * Jump.offsets[part]
 		end
 	end
 	rootCollider.AssemblyLinearVelocity = Vector3.zero
 	rootCollider.AssemblyAngularVelocity = Vector3.zero
 end
 
-local function endJump()
-	isJumping = false
-	moveAssemblyTo(CFrame.new(jumpLandPos) * CFrame.Angles(0, jumpYaw, 0))
-	setBodyCollision(true)
-	alignOrientation.CFrame = CFrame.Angles(0, jumpYaw, 0)
-	desiredYaw = jumpYaw
+function Jump.finish()
+	Jump.active = false
+	Jump.moveAssemblyTo(CFrame.new(Jump.landPos) * CFrame.Angles(0, Jump.yaw, 0))
+	Jump.setBodyCollision(true)
+	alignOrientation.CFrame = CFrame.Angles(0, Jump.yaw, 0)
+	desiredYaw = Jump.yaw
 end
 
-local function startJump(dir)
+function Jump.start(dir)
 	local startPos = rootCollider.Position
-	local startGroundY = groundYAt(startPos) or (startPos.Y - 3)
+	local startGroundY = Jump.groundYAt(startPos) or (startPos.Y - 3)
 	local rootOffset = startPos.Y - startGroundY
-	local landXZ = startPos + dir * JUMP_DISTANCE
-	local landGroundY = groundYAt(landXZ) or startGroundY
+	local landXZ = startPos + dir * Jump.DISTANCE
+	local landGroundY = Jump.groundYAt(landXZ) or startGroundY
 
-	jumpStartPos = startPos
-	jumpLandPos = Vector3.new(landXZ.X, landGroundY + rootOffset, landXZ.Z)
+	Jump.startPos = startPos
+	Jump.landPos = Vector3.new(landXZ.X, landGroundY + rootOffset, landXZ.Z)
 
 	-- Запоминаем смещения ВСЕХ партов относительно корня (yaw-only поза корня).
-	jumpYaw = select(2, rootCollider.CFrame:ToOrientation())
-	local rootCF = CFrame.new(startPos) * CFrame.Angles(0, jumpYaw, 0)
-	jumpOffsets = {}
-	for _, part in ipairs(assemblyParts) do
-		jumpOffsets[part] = rootCF:Inverse() * part.CFrame
+	Jump.yaw = select(2, rootCollider.CFrame:ToOrientation())
+	local rootCF = CFrame.new(startPos) * CFrame.Angles(0, Jump.yaw, 0)
+	Jump.offsets = {}
+	for _, part in ipairs(Jump.assemblyParts) do
+		Jump.offsets[part] = rootCF:Inverse() * part.CFrame
 	end
 
-	isJumping = true
-	jumpStartClock = os.clock()
-	lastJumpClock = os.clock()
+	Jump.active = true
+	Jump.startClock = os.clock()
+	Jump.lastClock = os.clock()
 
-	setBodyCollision(false)
-	playJump()
+	Jump.setBodyCollision(false)
+	Jump.playAnim()
 end
 
 -- Едем по дуге, двигая ВСЮ сборку разом (коллизии выключены — солверу нечего
 -- ломать). По завершении дуги приземляемся.
-local function updateJump()
-	local t = (os.clock() - jumpStartClock) / JUMP_DURATION
+function Jump.update()
+	local t = (os.clock() - Jump.startClock) / Jump.DURATION
 	if t >= 1 then
-		endJump()
+		Jump.finish()
 		return
 	end
 
-	local base = jumpStartPos:Lerp(jumpLandPos, t)
-	local arcY = JUMP_HEIGHT * 4 * t * (1 - t)
-	moveAssemblyTo(CFrame.new(base.X, base.Y + arcY, base.Z) * CFrame.Angles(0, jumpYaw, 0))
+	local base = Jump.startPos:Lerp(Jump.landPos, t)
+	local arcY = Jump.HEIGHT * 4 * t * (1 - t)
+	Jump.moveAssemblyTo(CFrame.new(base.X, base.Y + arcY, base.Z) * CFrame.Angles(0, Jump.yaw, 0))
 end
 
 -- Идти к goal. Видно цель напрямую — идём ровно прямо (без пасфайндинга и
 -- виляния). На пути преграда — обходим её по маршруту PathfindingService.
 local function navigateTo(goal, speed)
 	-- Низкое препятствие вплотную по курсу → перепрыгиваем (а не упираемся).
-	if not isJumping and os.clock() - lastJumpClock >= JUMP_COOLDOWN then
-		local canJump, jumpAt = jumpableObstacleAhead(goal)
+	if not Jump.active and os.clock() - Jump.lastClock >= Jump.COOLDOWN then
+		local canJump, jumpAt = Jump.obstacleAhead(goal)
 		if canJump then
-			startJump(jumpAt)
+			Jump.start(jumpAt)
 			return
 		end
 	end
@@ -2037,8 +1968,8 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 
 	-- Кинематический прыжок: едем по дуге, физику/стабилизацию пропускаем.
-	if isJumping then
-		updateJump()
+	if Jump.active then
+		Jump.update()
 		return
 	end
 
