@@ -150,7 +150,8 @@ end
 
 local BULLET_SPEED = 140
 local BULLET_LIFETIME = 8
-local MUZZLE_FORWARD = 2
+local MUZZLE_FORWARD = 3
+local ARM_TIME = 0.15
 local BOOM_LIFETIME = 3
 local EXPLOSION_RADIUS = 18
 local EXPLOSION_DAMAGE = 300
@@ -308,7 +309,7 @@ local function launchProjectile(player)
 		end
 	end
 	bulletPart.Anchored = false
-	bulletPart.CanCollide = true
+	bulletPart.CanCollide = false
 	bulletPart.CanTouch = true
 
 	if bullet:IsA("Model") then
@@ -325,10 +326,12 @@ local function launchProjectile(player)
 		bulletPart:SetNetworkOwner(nil)
 	end)
 
+	local launchClock = os.clock()
 	local exploded = false
 	local touchConn
 	touchConn = bulletPart.Touched:Connect(function(hit)
 		if exploded then return end
+		if os.clock() - launchClock < ARM_TIME then return end
 		if not hit or not hit.Parent then return end
 		if hit:IsDescendantOf(cannon) then return end
 		if hit:IsDescendantOf(bullet) then return end
