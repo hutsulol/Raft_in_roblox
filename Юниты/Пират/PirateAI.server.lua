@@ -1598,6 +1598,7 @@ local isJumping = false
 local jumpClock = 0
 local lastJumpClock = -math.huge
 local jumpDir = Vector3.zero
+local jumpCanCollideBackup = {}
 
 -- Низкое препятствие вплотную по курсу к toPos? Возвращает (true, dir).
 local function jumpableObstacleAhead(toPos)
@@ -1631,17 +1632,45 @@ local function jumpableObstacleAhead(toPos)
 	return true, dir
 end
 
+-- На время прыжка отключаем столкновения тела: дуга чистая, и физический солвер
+-- не «взрывает» сборку на контакте с преградой/землёй. На приземлении вернём.
+local function setBodyCollision(enabled)
+	if enabled then
+		for collider, wasCollide in pairs(jumpCanCollideBackup) do
+			if collider.Parent then
+				collider.CanCollide = wasCollide
+			end
+		end
+		jumpCanCollideBackup = {}
+	else
+		jumpCanCollideBackup = {}
+		for _, collider in ipairs(colliders) do
+			jumpCanCollideBackup[collider] = collider.CanCollide
+			collider.CanCollide = false
+		end
+	end
+end
+
+local function endJump()
+	isJumping = false
+	setBodyCollision(true)
+	local vel = rootCollider.AssemblyLinearVelocity
+	rootCollider.AssemblyLinearVelocity = Vector3.new(0, vel.Y, 0)
+end
+
 local function startJump(dir)
 	isJumping = true
 	jumpClock = os.clock()
 	lastJumpClock = os.clock()
 	jumpDir = dir
+	setBodyCollision(false) -- сначала выключаем коллизию, потом импульс
 	rootCollider.AssemblyLinearVelocity =
 		Vector3.new(dir.X * JUMP_FORWARD_SPEED, JUMP_VELOCITY, dir.Z * JUMP_FORWARD_SPEED)
 	playJump()
 end
 
--- Полёт по дуге: держим тягу вперёд, вертикаль отдаём гравитации; ловим посадку.
+-- Полёт по дуге: тяга вперёд (коллизии тела выключены — безопасно), вертикаль —
+-- гравитация; ловим приземление по нижней точке ног.
 local function updateJump()
 	local vel = rootCollider.AssemblyLinearVelocity
 	rootCollider.AssemblyLinearVelocity =
@@ -1653,13 +1682,13 @@ local function updateJump()
 		local groundY = getGroundYUnderLegs()
 		local legBottom = getLegBottomY()
 		if groundY and legBottom and legBottom <= groundY + 0.5 then
-			isJumping = false
+			endJump()
 			return
 		end
 	end
 
 	if airTime >= JUMP_MAX_TIME then
-		isJumping = false
+		endJump()
 	end
 end
 
