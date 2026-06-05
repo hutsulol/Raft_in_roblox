@@ -1601,6 +1601,17 @@ local jumpStartPos = Vector3.zero
 local jumpLandPos = Vector3.zero
 local jumpYaw = 0
 local jumpCanCollideBackup = {}
+local jumpOffsets = {}
+
+-- Все парты сборки (коллайдеры + визуальный меш), которые в прыжке двигаем
+-- ВМЕСТЕ как единое тело. PatrolPoints сюда НЕ входят (маршрут не должен ехать).
+local assemblyParts = {}
+for _, collider in ipairs(colliders) do
+	table.insert(assemblyParts, collider)
+end
+if visualMesh and not table.find(assemblyParts, visualMesh) then
+	table.insert(assemblyParts, visualMesh)
+end
 
 -- Высота земли под точкой (XZ), либо nil (нет опоры / вода).
 local function groundYAt(position)
@@ -1668,11 +1679,21 @@ local function jumpableObstacleAhead(toPos)
 	return true, dir
 end
 
-local function endJump()
-	isJumping = false
-	rootCollider.CFrame = CFrame.new(jumpLandPos) * CFrame.Angles(0, jumpYaw, 0)
+-- Ставим ВСЮ сборку так, чтобы корень оказался в rootCF, сохраняя смещения
+-- всех партов. Никакого «дотаскивания» велдами — отваливаться нечему.
+local function moveAssemblyTo(rootCF)
+	for _, part in ipairs(assemblyParts) do
+		if part.Parent then
+			part.CFrame = rootCF * jumpOffsets[part]
+		end
+	end
 	rootCollider.AssemblyLinearVelocity = Vector3.zero
 	rootCollider.AssemblyAngularVelocity = Vector3.zero
+end
+
+local function endJump()
+	isJumping = false
+	moveAssemblyTo(CFrame.new(jumpLandPos) * CFrame.Angles(0, jumpYaw, 0))
 	setBodyCollision(true)
 	alignOrientation.CFrame = CFrame.Angles(0, jumpYaw, 0)
 	desiredYaw = jumpYaw
@@ -1687,7 +1708,15 @@ local function startJump(dir)
 
 	jumpStartPos = startPos
 	jumpLandPos = Vector3.new(landXZ.X, landGroundY + rootOffset, landXZ.Z)
+
+	-- Запоминаем смещения ВСЕХ партов относительно корня (yaw-only поза корня).
 	jumpYaw = select(2, rootCollider.CFrame:ToOrientation())
+	local rootCF = CFrame.new(startPos) * CFrame.Angles(0, jumpYaw, 0)
+	jumpOffsets = {}
+	for _, part in ipairs(assemblyParts) do
+		jumpOffsets[part] = rootCF:Inverse() * part.CFrame
+	end
+
 	isJumping = true
 	jumpStartClock = os.clock()
 	lastJumpClock = os.clock()
@@ -1696,8 +1725,8 @@ local function startJump(dir)
 	playJump()
 end
 
--- Едем по дуге через CFrame (тело как одно целое; коллизии выключены — солверу
--- нечего «взрывать»). По завершении дуги приземляемся.
+-- Едем по дуге, двигая ВСЮ сборку разом (коллизии выключены — солверу нечего
+-- ломать). По завершении дуги приземляемся.
 local function updateJump()
 	local t = (os.clock() - jumpStartClock) / JUMP_DURATION
 	if t >= 1 then
@@ -1707,9 +1736,7 @@ local function updateJump()
 
 	local base = jumpStartPos:Lerp(jumpLandPos, t)
 	local arcY = JUMP_HEIGHT * 4 * t * (1 - t)
-	rootCollider.CFrame = CFrame.new(base.X, base.Y + arcY, base.Z) * CFrame.Angles(0, jumpYaw, 0)
-	rootCollider.AssemblyLinearVelocity = Vector3.zero
-	rootCollider.AssemblyAngularVelocity = Vector3.zero
+	moveAssemblyTo(CFrame.new(base.X, base.Y + arcY, base.Z) * CFrame.Angles(0, jumpYaw, 0))
 end
 
 -- Идти к goal. Видно цель напрямую — идём ровно прямо (без пасфайндинга и
