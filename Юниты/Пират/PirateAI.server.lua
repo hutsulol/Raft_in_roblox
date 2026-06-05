@@ -112,15 +112,6 @@ local NAV_LOS_MARGIN = 4            -- «вижу цель напрямую»: �
 -- Плавный разворот корпуса.
 local TURN_SPEED_DEGREES = 420      -- скорость доворота, град/сек (меньше = плавнее)
 
--- ПРЫЖОК через низкие препятствия (анимацию Jump/Up можно добавить позже).
-local JUMP_VELOCITY = 55           -- начальная скорость вверх, studs/сек
-local JUMP_FORWARD_SPEED = 14      -- горизонтальная скорость в прыжке, studs/сек
-local JUMP_COOLDOWN = 1.2          -- пауза между прыжками, сек
-local JUMP_CHECK_DISTANCE = 3.5    -- препятствие ближе этого по курсу → прыжок
-local JUMP_CLEAR_HEIGHT = 5        -- занято выше этого → препятствие высокое, не прыгаем
-local JUMP_MIN_AIR_TIME = 0.25     -- мин. время в воздухе до проверки приземления, сек
-local JUMP_MAX_TIME = 2            -- сейфти: принудительно приземлить через это, сек
-
 --====================================================
 -- COLLISION GROUPS
 --====================================================
@@ -1015,16 +1006,6 @@ else
 	runTrack = walkTrack
 end
 
--- Анимация прыжка опциональна: ищем объект "Jump" или "Up". Нет — прыжок просто
--- без анимации (добавишь позже — заработает автоматически).
-local jumpTrack = nil
-local jumpAnimation = npc:FindFirstChild("Jump", true) or npc:FindFirstChild("Up", true)
-if jumpAnimation and jumpAnimation:IsA("Animation") then
-	jumpTrack = animator:LoadAnimation(jumpAnimation)
-	jumpTrack.Looped = false
-	jumpTrack.Priority = Enum.AnimationPriority.Action
-end
-
 idleTrack.Looped = true
 walkTrack.Looped = true
 runTrack.Looped = true
@@ -1105,24 +1086,6 @@ local function playAttack()
 
 	attackTrack:Stop(0)
 	attackTrack:Play(0.05)
-end
-
-local function playJump()
-	if not jumpTrack or currentAnimationState == "Jump" then
-		return
-	end
-
-	currentAnimationState = "Jump"
-
-	idleTrack:Stop(0.05)
-	walkTrack:Stop(0.05)
-
-	if runTrack ~= walkTrack then
-		runTrack:Stop(0.05)
-	end
-
-	jumpTrack:Stop(0)
-	jumpTrack:Play(0.05)
 end
 
 --====================================================
@@ -1590,120 +1553,9 @@ local function hasClearPath(toPos)
 	return true
 end
 
---====================================================
--- ПРЫЖОК (перепрыгнуть низкое препятствие на пути)
---====================================================
-
-local isJumping = false
-local jumpClock = 0
-local lastJumpClock = -math.huge
-local jumpDir = Vector3.zero
-local jumpCanCollideBackup = {}
-
--- Низкое препятствие вплотную по курсу к toPos? Возвращает (true, dir).
-local function jumpableObstacleAhead(toPos)
-	local origin = rootCollider.Position
-	local flat = Vector3.new(toPos.X - origin.X, 0, toPos.Z - origin.Z)
-	local dist = flat.Magnitude
-	if dist < 0.5 then
-		return false
-	end
-
-	local dir = flat.Unit
-
-	-- низкий луч по корпусу — есть преграда впритык по курсу?
-	local lowHit = workspace:Raycast(origin - Vector3.new(0, 1, 0), dir * JUMP_CHECK_DISTANCE, raycastParams)
-	if not lowHit then
-		return false
-	end
-
-	-- это сам игрок/персонаж, а не преграда?
-	local model = lowHit.Instance:FindFirstAncestorWhichIsA("Model")
-	if model and Players:GetPlayerFromCharacter(model) then
-		return false
-	end
-
-	-- высокий луч: выше JUMP_CLEAR_HEIGHT занято → преграда высокая, не прыгаем
-	local highHit = workspace:Raycast(origin + Vector3.new(0, JUMP_CLEAR_HEIGHT, 0), dir * JUMP_CHECK_DISTANCE, raycastParams)
-	if highHit then
-		return false
-	end
-
-	return true, dir
-end
-
--- На время прыжка отключаем столкновения тела: дуга чистая, и физический солвер
--- не «взрывает» сборку на контакте с преградой/землёй. На приземлении вернём.
-local function setBodyCollision(enabled)
-	if enabled then
-		for collider, wasCollide in pairs(jumpCanCollideBackup) do
-			if collider.Parent then
-				collider.CanCollide = wasCollide
-			end
-		end
-		jumpCanCollideBackup = {}
-	else
-		jumpCanCollideBackup = {}
-		for _, collider in ipairs(colliders) do
-			jumpCanCollideBackup[collider] = collider.CanCollide
-			collider.CanCollide = false
-		end
-	end
-end
-
-local function endJump()
-	isJumping = false
-	setBodyCollision(true)
-	local vel = rootCollider.AssemblyLinearVelocity
-	rootCollider.AssemblyLinearVelocity = Vector3.new(0, vel.Y, 0)
-end
-
-local function startJump(dir)
-	isJumping = true
-	jumpClock = os.clock()
-	lastJumpClock = os.clock()
-	jumpDir = dir
-	setBodyCollision(false) -- сначала выключаем коллизию, потом импульс
-	rootCollider.AssemblyLinearVelocity =
-		Vector3.new(dir.X * JUMP_FORWARD_SPEED, JUMP_VELOCITY, dir.Z * JUMP_FORWARD_SPEED)
-	playJump()
-end
-
--- Полёт по дуге: тяга вперёд (коллизии тела выключены — безопасно), вертикаль —
--- гравитация; ловим приземление по нижней точке ног.
-local function updateJump()
-	local vel = rootCollider.AssemblyLinearVelocity
-	rootCollider.AssemblyLinearVelocity =
-		Vector3.new(jumpDir.X * JUMP_FORWARD_SPEED, vel.Y, jumpDir.Z * JUMP_FORWARD_SPEED)
-
-	local airTime = os.clock() - jumpClock
-
-	if airTime >= JUMP_MIN_AIR_TIME and vel.Y <= 0 then
-		local groundY = getGroundYUnderLegs()
-		local legBottom = getLegBottomY()
-		if groundY and legBottom and legBottom <= groundY + 0.5 then
-			endJump()
-			return
-		end
-	end
-
-	if airTime >= JUMP_MAX_TIME then
-		endJump()
-	end
-end
-
 -- Идти к goal. Видно цель напрямую — идём ровно прямо (без пасфайндинга и
 -- виляния). На пути преграда — обходим её по маршруту PathfindingService.
 local function navigateTo(goal, speed)
-	-- Низкое препятствие вплотную по курсу → перепрыгиваем (а не упираемся).
-	if not isJumping and os.clock() - lastJumpClock >= JUMP_COOLDOWN then
-		local canJump, jumpAt = jumpableObstacleAhead(goal)
-		if canJump then
-			startJump(jumpAt)
-			return
-		end
-	end
-
 	if hasClearPath(goal) then
 		faceTowards(goal)
 		moveTowards(goal, speed)
@@ -1994,14 +1846,6 @@ RunService.Heartbeat:Connect(function(dt)
 			rootCollider:SetNetworkOwner(nil)
 		end
 	end)
-
-	-- В прыжке: ведём дугу (гравитация + тяга вперёд), землю НЕ стабилизируем,
-	-- остальную логику пропускаем до приземления.
-	if isJumping then
-		playJump()
-		updateJump()
-		return
-	end
 
 	stabilizeOnGround()
 
