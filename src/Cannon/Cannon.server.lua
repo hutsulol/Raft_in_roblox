@@ -96,9 +96,29 @@ local function load()
 	cannon:SetAttribute("Loaded", true)
 end
 
-local RECOIL_OFFSET = Vector3.new(0, -1, 1)
+local RECOIL_BACK = 1
+local RECOIL_DOWN = 1
 local RECOIL_OUT_TIME = 0.045
 local RECOIL_RETURN_TIME = 0.09
+
+local muzzleLocalDir = Vector3.new(0, 0, -1)
+if main then
+	local off = main.PivotOffset.Position
+	if off.Magnitude > 0.05 then
+		muzzleLocalDir = off.Unit
+	end
+end
+
+local function muzzleDirection()
+	if not main then return Vector3.new(0, 0, -1) end
+	return main.CFrame:VectorToWorldSpace(muzzleLocalDir).Unit
+end
+
+local recoilOffsetLocal = Vector3.zero
+if main then
+	local downLocal = main.CFrame:VectorToObjectSpace(Vector3.new(0, -1, 0))
+	recoilOffsetLocal = (-muzzleLocalDir) * RECOIL_BACK + downLocal * RECOIL_DOWN
+end
 
 local restC0 = recoilWeld and recoilWeld.C0
 local recoilTween = nil
@@ -112,7 +132,7 @@ local function playRecoil()
 	local outTween = TweenService:Create(
 		recoilWeld,
 		TweenInfo.new(RECOIL_OUT_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-		{ C0 = restC0 * CFrame.new(RECOIL_OFFSET) }
+		{ C0 = restC0 * CFrame.new(recoilOffsetLocal) }
 	)
 	recoilTween = outTween
 	outTween.Completed:Connect(function(state)
@@ -270,7 +290,9 @@ local function launchProjectile(player)
 	if not bulletTemplate or not main then return end
 
 	local shooterChar = player and player.Character
-	local muzzle = main:GetPivot() * CFrame.new(0, 0, -MUZZLE_FORWARD)
+	local dir = muzzleDirection()
+	local origin = main:GetPivot().Position + dir * MUZZLE_FORWARD
+	local muzzle = CFrame.lookAt(origin, origin + dir)
 	local bullet = bulletTemplate:Clone()
 	local bulletPart = bullet:IsA("BasePart") and bullet or bullet:FindFirstChildWhichIsA("BasePart")
 	if not bulletPart then
@@ -298,7 +320,7 @@ local function launchProjectile(player)
 
 	bullet.Parent = workspace
 
-	bulletPart.AssemblyLinearVelocity = muzzle.LookVector * BULLET_SPEED
+	bulletPart.AssemblyLinearVelocity = dir * BULLET_SPEED
 	pcall(function()
 		bulletPart:SetNetworkOwner(nil)
 	end)
