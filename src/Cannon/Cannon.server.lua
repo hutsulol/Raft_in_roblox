@@ -1,3 +1,5 @@
+local TweenService = game:GetService("TweenService")
+
 local cannon = script.Parent
 
 local function findPartNamed(name)
@@ -76,9 +78,42 @@ local function load()
 	cannon:SetAttribute("Loaded", true)
 end
 
+local RECOIL_OFFSET = Vector3.new(0, -1, 1)
+local RECOIL_OUT_TIME = 0.045
+local RECOIL_RETURN_TIME = 0.09
+
+local restC0 = recoilWeld and recoilWeld.C0
+local recoilTween = nil
+
+local function playRecoil()
+	if not recoilWeld or not restC0 then return end
+	if recoilTween then
+		recoilTween:Cancel()
+	end
+	recoilWeld.C0 = restC0
+	local outTween = TweenService:Create(
+		recoilWeld,
+		TweenInfo.new(RECOIL_OUT_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ C0 = restC0 * CFrame.new(RECOIL_OFFSET) }
+	)
+	recoilTween = outTween
+	outTween.Completed:Connect(function(state)
+		if state ~= Enum.PlaybackState.Completed then return end
+		local backTween = TweenService:Create(
+			recoilWeld,
+			TweenInfo.new(RECOIL_RETURN_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+			{ C0 = restC0 }
+		)
+		recoilTween = backTween
+		backTween:Play()
+	end)
+	outTween:Play()
+end
+
 local function fire()
 	if not isLoaded() then return end
 	cannon:SetAttribute("Loaded", false)
+	playRecoil()
 end
 
 local promptPart = baseplate or main or cannon:FindFirstChildWhichIsA("BasePart", true)
