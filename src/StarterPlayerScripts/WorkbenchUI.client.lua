@@ -99,6 +99,7 @@ local recipes = {
 	{ name = "SmallContainer",   displayName = "Small Container",  icon = "rbxassetid://86632287242518",  costs = {Log = 1},                category = "storage",    description = "A small container for storing items." },
 	{ name = "PlasticContainer", displayName = "Plastic Container", icon = "rbxassetid://98308527317479", costs = {Plastic = 5},            category = "storage",    description = "A large container for storing items." },
 	{ name = "Anchor_part",      displayName = "Anchor",           icon = "rbxassetid://120414328052740", costs = {Log = 1},                category = "structures", description = "Stops the raft from drifting on the current." },
+	{ name = "Cannon",           displayName = "Cannon",           icon = "rbxassetid://0",               costs = {Log = 1},                category = "structures", description = "A craftable cannon. Place it on the raft, then load and fire explosive shots." },
 }
 
 local CATEGORIES = {

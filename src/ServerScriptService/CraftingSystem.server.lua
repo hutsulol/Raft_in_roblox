@@ -45,6 +45,13 @@ local recipes = {
 		costs = {Log = 1},
 		craftType = "placeable",
 	},
+	{
+		name = "Cannon",
+		displayName = "Cannon",
+		icon = "rbxassetid://0",
+		costs = {Log = 1},
+		craftType = "placeable",
+	},
 }
 
 local function findWorkBench()
