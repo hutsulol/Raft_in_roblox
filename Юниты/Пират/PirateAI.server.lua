@@ -112,6 +112,15 @@ local NAV_LOS_MARGIN = 4            -- «вижу цель напрямую»: �
 -- Плавный разворот корпуса.
 local TURN_SPEED_DEGREES = 420      -- скорость доворота, град/сек (меньше = плавнее)
 
+-- ПРЫЖОК через низкие препятствия — КИНЕМАТИЧЕСКИЙ (без Humanoid и без физических
+-- импульсов: тело едет по дуге через CFrame, поэтому сборку не рвёт).
+local JUMP_HEIGHT = 6              -- высота дуги, studs
+local JUMP_DISTANCE = 7            -- на сколько вперёд перепрыгивает, studs
+local JUMP_DURATION = 0.55         -- длительность прыжка, сек
+local JUMP_COOLDOWN = 1.0          -- пауза между прыжками, сек
+local JUMP_CHECK_DISTANCE = 3.5    -- препятствие ближе этого по курсу → прыжок
+local JUMP_CLEAR_HEIGHT = 5        -- занято выше этого → преграда высокая, не прыгаем
+
 --====================================================
 -- COLLISION GROUPS
 --====================================================
@@ -1006,6 +1015,16 @@ else
 	runTrack = walkTrack
 end
 
+-- Анимация прыжка опциональна: объект Animation с именем "Jump" внутри модели.
+-- Нет — прыжок просто без анимации (добавишь позже — заработает сам).
+local jumpTrack = nil
+local jumpAnimation = npc:FindFirstChild("Jump", true)
+if jumpAnimation and jumpAnimation:IsA("Animation") then
+	jumpTrack = animator:LoadAnimation(jumpAnimation)
+	jumpTrack.Looped = false
+	jumpTrack.Priority = Enum.AnimationPriority.Action
+end
+
 idleTrack.Looped = true
 walkTrack.Looped = true
 runTrack.Looped = true
@@ -1086,6 +1105,24 @@ local function playAttack()
 
 	attackTrack:Stop(0)
 	attackTrack:Play(0.05)
+end
+
+local function playJump()
+	if not jumpTrack or currentAnimationState == "Jump" then
+		return
+	end
+
+	currentAnimationState = "Jump"
+
+	idleTrack:Stop(0.05)
+	walkTrack:Stop(0.05)
+
+	if runTrack ~= walkTrack then
+		runTrack:Stop(0.05)
+	end
+
+	jumpTrack:Stop(0)
+	jumpTrack:Play(0.05)
 end
 
 --====================================================
@@ -1553,9 +1590,140 @@ local function hasClearPath(toPos)
 	return true
 end
 
+--====================================================
+-- ПРЫЖОК (кинематический — перепрыгнуть низкое препятствие)
+--====================================================
+
+local isJumping = false
+local jumpStartClock = 0
+local lastJumpClock = -math.huge
+local jumpStartPos = Vector3.zero
+local jumpLandPos = Vector3.zero
+local jumpYaw = 0
+local jumpCanCollideBackup = {}
+
+-- Высота земли под точкой (XZ), либо nil (нет опоры / вода).
+local function groundYAt(position)
+	updateGroundRaycastFilter()
+	local origin = position + Vector3.new(0, 12, 0)
+	local result = workspace:Raycast(origin, Vector3.new(0, -48, 0), groundRaycastParams)
+	if result then
+		return result.Position.Y
+	end
+	return nil
+end
+
+-- На время прыжка выключаем столкновения тела (дуга чистая), на посадке вернём.
+local function setBodyCollision(enabled)
+	if enabled then
+		for collider, wasCollide in pairs(jumpCanCollideBackup) do
+			if collider.Parent then
+				collider.CanCollide = wasCollide
+			end
+		end
+		jumpCanCollideBackup = {}
+	else
+		jumpCanCollideBackup = {}
+		for _, collider in ipairs(colliders) do
+			jumpCanCollideBackup[collider] = collider.CanCollide
+			collider.CanCollide = false
+		end
+	end
+end
+
+-- Низкое препятствие вплотную по курсу к toPos, и за ним есть куда приземлиться?
+local function jumpableObstacleAhead(toPos)
+	local origin = rootCollider.Position
+	local flat = Vector3.new(toPos.X - origin.X, 0, toPos.Z - origin.Z)
+	local dist = flat.Magnitude
+	if dist < 0.5 then
+		return false
+	end
+
+	local dir = flat.Unit
+
+	-- низкий луч по корпусу — преграда впритык по курсу?
+	local lowHit = workspace:Raycast(origin - Vector3.new(0, 1, 0), dir * JUMP_CHECK_DISTANCE, raycastParams)
+	if not lowHit then
+		return false
+	end
+
+	-- это сам игрок/персонаж, а не преграда?
+	local model = lowHit.Instance:FindFirstAncestorWhichIsA("Model")
+	if model and Players:GetPlayerFromCharacter(model) then
+		return false
+	end
+
+	-- высокий луч: выше JUMP_CLEAR_HEIGHT занято → преграда высокая, не прыгаем
+	local highHit = workspace:Raycast(origin + Vector3.new(0, JUMP_CLEAR_HEIGHT, 0), dir * JUMP_CHECK_DISTANCE, raycastParams)
+	if highHit then
+		return false
+	end
+
+	-- есть ли земля в точке приземления (не прыгаем в пропасть/воду)?
+	if not groundYAt(origin + dir * JUMP_DISTANCE) then
+		return false
+	end
+
+	return true, dir
+end
+
+local function endJump()
+	isJumping = false
+	rootCollider.CFrame = CFrame.new(jumpLandPos) * CFrame.Angles(0, jumpYaw, 0)
+	rootCollider.AssemblyLinearVelocity = Vector3.zero
+	rootCollider.AssemblyAngularVelocity = Vector3.zero
+	setBodyCollision(true)
+	alignOrientation.CFrame = CFrame.Angles(0, jumpYaw, 0)
+	desiredYaw = jumpYaw
+end
+
+local function startJump(dir)
+	local startPos = rootCollider.Position
+	local startGroundY = groundYAt(startPos) or (startPos.Y - 3)
+	local rootOffset = startPos.Y - startGroundY
+	local landXZ = startPos + dir * JUMP_DISTANCE
+	local landGroundY = groundYAt(landXZ) or startGroundY
+
+	jumpStartPos = startPos
+	jumpLandPos = Vector3.new(landXZ.X, landGroundY + rootOffset, landXZ.Z)
+	jumpYaw = select(2, rootCollider.CFrame:ToOrientation())
+	isJumping = true
+	jumpStartClock = os.clock()
+	lastJumpClock = os.clock()
+
+	setBodyCollision(false)
+	playJump()
+end
+
+-- Едем по дуге через CFrame (тело как одно целое; коллизии выключены — солверу
+-- нечего «взрывать»). По завершении дуги приземляемся.
+local function updateJump()
+	local t = (os.clock() - jumpStartClock) / JUMP_DURATION
+	if t >= 1 then
+		endJump()
+		return
+	end
+
+	local base = jumpStartPos:Lerp(jumpLandPos, t)
+	local arcY = JUMP_HEIGHT * 4 * t * (1 - t)
+	rootCollider.CFrame = CFrame.new(base.X, base.Y + arcY, base.Z) * CFrame.Angles(0, jumpYaw, 0)
+	rootCollider.AssemblyLinearVelocity = Vector3.zero
+	rootCollider.AssemblyAngularVelocity = Vector3.zero
+end
+
 -- Идти к goal. Видно цель напрямую — идём ровно прямо (без пасфайндинга и
 -- виляния). На пути преграда — обходим её по маршруту PathfindingService.
 local function navigateTo(goal, speed)
+	-- Низкое препятствие вплотную по курсу → перепрыгиваем (а не упираемся).
+	if not isJumping and os.clock() - lastJumpClock >= JUMP_COOLDOWN then
+		local canJump, jumpAt = jumpableObstacleAhead(goal)
+		if canJump then
+			startJump(jumpAt)
+			return
+		end
+	end
+
 	if hasClearPath(goal) then
 		faceTowards(goal)
 		moveTowards(goal, speed)
@@ -1838,6 +2006,12 @@ RunService.Heartbeat:Connect(function(dt)
 
 	if isDead or getHealth() <= 0 then
 		stopMovement()
+		return
+	end
+
+	-- Кинематический прыжок: едем по дуге, физику/стабилизацию пропускаем.
+	if isJumping then
+		updateJump()
 		return
 	end
 
