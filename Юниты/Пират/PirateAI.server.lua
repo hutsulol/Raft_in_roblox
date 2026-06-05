@@ -1163,27 +1163,6 @@ local function isAliveCharacter(character)
 	return humanoid.Health > 0
 end
 
-local function getTargetData(character)
-	if not character then
-		return nil, nil, math.huge
-	end
-
-	if not isAliveCharacter(character) then
-		return nil, nil, math.huge
-	end
-
-	local root = getCharacterRoot(character)
-	local humanoid = getCharacterHumanoid(character)
-
-	if not root or not humanoid then
-		return nil, nil, math.huge
-	end
-
-	local distance = (root.Position - rootCollider.Position).Magnitude
-
-	return root, humanoid, distance
-end
-
 --====================================================
 -- ДВИЖЕНИЕ И АТАКА
 --====================================================
@@ -1216,6 +1195,13 @@ local function getSeparationVector()
 end
 
 local function moveTowards(targetPosition, speed)
+	-- Во время замаха стоим на месте: иначе пират проезжает сквозь игрока и
+	-- «промахивается» мимо. Двигаемся только между ударами.
+	if isAttacking then
+		stopMovement()
+		return
+	end
+
 	local currentPosition = rootCollider.Position
 	local flatTarget = Vector3.new(targetPosition.X, currentPosition.Y, targetPosition.Z)
 	local offset = flatTarget - currentPosition
@@ -1905,47 +1891,57 @@ local function runInvestigate()
 	end
 end
 
-local function runChase(visibleRoot)
+-- Ближайший живой игрок, чьё тело в пределах зазора maxGap от наших коллайдеров.
+local function nearestPlayerInMelee(maxGap)
+	local bestRoot, bestChar, bestGap = nil, nil, math.huge
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		local character = player.Character
+		if character and isAliveCharacter(character) then
+			local root = getCharacterRoot(character)
+			if root then
+				local gap = targetGap(root)
+				if gap <= maxGap and gap < bestGap then
+					bestGap, bestRoot, bestChar = gap, root, character
+				end
+			end
+		end
+	end
+
+	return bestRoot, bestChar
+end
+
+-- Единое боевое поведение: преследование И удар в одном месте, без отдельного
+-- состояния ATTACK. Дальше радиуса удара — бежим к цели; в радиусе — стоим и
+-- бьём (attackTarget сам держит кулдаун и наносит урон). Раньше удар жил в
+-- отдельном состоянии, пират «застревал» между «бежать» и «бить» — забегал в
+-- игрока и почти не атаковал. Теперь решает только дистанция, каждый кадр.
+local function runEngage(visibleRoot)
 	if not visibleRoot then
 		setState(STATE.SEARCH)
 		return
 	end
 
 	lastKnownPosition = visibleRoot.Position
+	faceTowards(visibleRoot.Position)
 
 	if targetGap(visibleRoot) <= CFG.ATTACK_RANGE then
-		faceTowards(visibleRoot.Position)
-		setState(STATE.ATTACK)
+		-- В зоне удара: стоим и бьём.
+		stopMovement()
+		local humanoid = getCharacterHumanoid(visibleRoot.Parent)
+		if humanoid then
+			attackTarget(visibleRoot, humanoid)
+		end
+		if not isAttacking then
+			playIdle()
+		end
+	elseif isAttacking then
+		-- Замах уже идёт — не уезжаем с него.
+		stopMovement()
 	else
+		-- Далеко: бежим к игроку.
 		navigateTo(visibleRoot.Position, CFG.MOVE_SPEED * CFG.RUN_SPEED_MULTIPLIER)
 		playRun()
-	end
-end
-
-local function runAttack()
-	local root, humanoid = getTargetData(chaseTarget)
-
-	if not root or not humanoid then
-		setState(STATE.SEARCH)
-		return
-	end
-
-	faceTowards(root.Position)
-
-	-- Гистерезис: из атаки выходим, только когда цель ушла заметно за радиус,
-	-- иначе пират «дёргается» у границы и не успевает бить. Зазор до коллайдера —
-	-- та же мера, что и вход в атаку.
-	if targetGap(root) > CFG.ATTACK_RANGE + CFG.ATTACK_RANGE_BUFFER then
-		setState(STATE.CHASE)
-		return
-	end
-
-	lastKnownPosition = root.Position
-	stopMovement()
-	attackTarget(root, humanoid)
-
-	if not isAttacking then
-		playIdle()
 	end
 end
 
@@ -2093,6 +2089,19 @@ RunService.Heartbeat:Connect(function(dt)
 		end
 	end
 
+	-- Безусловный рефлекс ближнего боя: если рядом (в зоне удара + буфер) есть
+	-- живой игрок — он наша цель, и мы немедленно в бою. Без подозрения, обзора и
+	-- угла: «возле меня — значит бью». Это и делает атаку надёжной из любого
+	-- состояния (страж/патруль/проверка) — пират не «думает», а сразу реагирует.
+	local meleeRoot, meleeChar = nearestPlayerInMelee(CFG.ATTACK_RANGE + CFG.ATTACK_RANGE_BUFFER)
+	if meleeRoot then
+		chaseTarget = meleeChar
+		if currentState ~= STATE.CHASE and currentState ~= STATE.ATTACK then
+			broadcastAlert() -- на нас напали вплотную — сразу зовём отряд
+			setState(STATE.CHASE)
+		end
+	end
+
 	-- В режиме преследования цель «видна», если есть LOS и она в радиусе
 	-- (без ограничения по FOV — пират активно следит и доворачивается).
 	local chaseVisibleRoot = nil
@@ -2122,10 +2131,8 @@ RunService.Heartbeat:Connect(function(dt)
 		runPatrol()
 	elseif currentState == STATE.INVESTIGATE then
 		runInvestigate()
-	elseif currentState == STATE.CHASE then
-		runChase(chaseVisibleRoot)
-	elseif currentState == STATE.ATTACK then
-		runAttack()
+	elseif currentState == STATE.CHASE or currentState == STATE.ATTACK then
+		runEngage(chaseVisibleRoot)
 	elseif currentState == STATE.SEARCH then
 		runSearch()
 	elseif currentState == STATE.RETURN then
