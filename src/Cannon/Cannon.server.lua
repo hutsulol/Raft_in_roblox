@@ -1,4 +1,5 @@
 local TweenService = game:GetService("TweenService")
+local Debris = game:GetService("Debris")
 
 local cannon = script.Parent
 
@@ -64,6 +65,22 @@ end
 
 local recoilWeld = main and main:FindFirstChild("RecoilWeld")
 
+local function stripWelds(inst)
+	for _, d in inst:GetDescendants() do
+		if d:IsA("WeldConstraint") or d:IsA("Weld") or d:IsA("Motor6D") then
+			d:Destroy()
+		end
+	end
+end
+
+local bulletRoot = cannon:FindFirstChild("Bullet_Cannon")
+local bulletTemplate = nil
+if bulletRoot then
+	bulletTemplate = bulletRoot:Clone()
+	stripWelds(bulletTemplate)
+	bulletRoot:Destroy()
+end
+
 if cannon:GetAttribute("Loaded") == nil then
 	cannon:SetAttribute("Loaded", false)
 end
@@ -110,9 +127,53 @@ local function playRecoil()
 	outTween:Play()
 end
 
+local BULLET_SPEED = 140
+local BULLET_LIFETIME = 8
+local MUZZLE_FORWARD = 2
+
+local function launchProjectile()
+	if not bulletTemplate or not main then return end
+
+	local muzzle = main:GetPivot() * CFrame.new(0, 0, -MUZZLE_FORWARD)
+	local bullet = bulletTemplate:Clone()
+	local bulletPart = bullet:IsA("BasePart") and bullet or bullet:FindFirstChildWhichIsA("BasePart")
+	if not bulletPart then
+		bullet:Destroy()
+		return
+	end
+
+	for _, d in bullet:GetDescendants() do
+		if d:IsA("BasePart") then
+			d.Anchored = false
+		elseif d:IsA("ParticleEmitter") or d:IsA("Fire") or d:IsA("Smoke") or d:IsA("Sparkles") then
+			d.Enabled = true
+		end
+	end
+	bulletPart.Anchored = false
+	bulletPart.CanCollide = true
+	bulletPart.CanTouch = true
+
+	if bullet:IsA("Model") then
+		if not bullet.PrimaryPart then bullet.PrimaryPart = bulletPart end
+		bullet:PivotTo(muzzle)
+	else
+		bullet.CFrame = muzzle
+	end
+
+	bullet.Parent = workspace
+
+	bulletPart.AssemblyLinearVelocity = muzzle.LookVector * BULLET_SPEED
+	pcall(function()
+		bulletPart:SetNetworkOwner(nil)
+	end)
+
+	Debris:AddItem(bullet, BULLET_LIFETIME)
+end
+
 local function fire()
 	if not isLoaded() then return end
 	cannon:SetAttribute("Loaded", false)
+	launchProjectile()
 	playRecoil()
 end
 
