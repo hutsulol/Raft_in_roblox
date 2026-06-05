@@ -157,6 +157,10 @@ local EXPLOSION_RADIUS = 18
 local EXPLOSION_DAMAGE = 300
 local DEFAULT_PART_HP = 100
 local CASCADE_ABOVE_HEIGHT = 8
+local BOUNCE_DAMAGE = 10
+local BOUNCE_VELOCITY_FACTOR = 0.45
+local BOUNCE_DAMAGE_COOLDOWN = 0.2
+local BOUNCE_MIN_SPEED = 15
 
 local function getRaftUnit(part)
 	if not raft or not part:IsDescendantOf(raft) then return nil end
@@ -210,27 +214,7 @@ local function findUnitsAbove(tile)
 	return found
 end
 
-local function applyAreaDamage(position)
-	if not raft or not raft.PrimaryPart then return end
-
-	local r = EXPLOSION_RADIUS
-	local hitUnits = {}
-	collectUnitsInBox(CFrame.new(position), Vector3.new(r * 2, r * 2, r * 2), hitUnits)
-
-	local toDestroy = {}
-	for unit in hitUnits do
-		local part = unitMainPart(unit)
-		if part and (part.Position - position).Magnitude <= r then
-			local hp = unit:GetAttribute("HP") or DEFAULT_PART_HP
-			hp = hp - EXPLOSION_DAMAGE
-			if hp <= 0 then
-				toDestroy[unit] = true
-			else
-				unit:SetAttribute("HP", hp)
-			end
-		end
-	end
-
+local function destroyUnits(toDestroy)
 	local queue = {}
 	for unit in toDestroy do
 		table.insert(queue, unit)
@@ -257,6 +241,46 @@ local function applyAreaDamage(position)
 
 	primary.AssemblyLinearVelocity = linVel
 	primary.AssemblyAngularVelocity = angVel
+end
+
+local function damageUnits(units, damage)
+	local toDestroy = {}
+	for unit in units do
+		local hp = (unit:GetAttribute("HP") or DEFAULT_PART_HP) - damage
+		if hp <= 0 then
+			toDestroy[unit] = true
+		else
+			unit:SetAttribute("HP", hp)
+		end
+	end
+	if next(toDestroy) then
+		destroyUnits(toDestroy)
+	end
+end
+
+local function applyAreaDamage(position)
+	if not raft or not raft.PrimaryPart then return end
+
+	local r = EXPLOSION_RADIUS
+	local hitUnits = {}
+	collectUnitsInBox(CFrame.new(position), Vector3.new(r * 2, r * 2, r * 2), hitUnits)
+
+	local inRange = {}
+	for unit in hitUnits do
+		local part = unitMainPart(unit)
+		if part and (part.Position - position).Magnitude <= r then
+			inRange[unit] = true
+		end
+	end
+
+	damageUnits(inRange, EXPLOSION_DAMAGE)
+end
+
+local function damageHitUnit(hit, damage)
+	if not raft or not raft.PrimaryPart then return end
+	local unit = getRaftUnit(hit)
+	if not unit or containsPrimary(unit) then return end
+	damageUnits({ [unit] = true }, damage)
 end
 
 local function explode(position)
@@ -311,6 +335,7 @@ local function launchProjectile(player)
 	bulletPart.Anchored = false
 	bulletPart.CanCollide = false
 	bulletPart.CanTouch = true
+	bulletPart.CustomPhysicalProperties = PhysicalProperties.new(3, 0.3, 0.55, 1, 1)
 
 	if bullet:IsA("Model") then
 		if not bullet.PrimaryPart then bullet.PrimaryPart = bulletPart end
@@ -327,19 +352,25 @@ local function launchProjectile(player)
 	end)
 
 	local launchClock = os.clock()
-	local exploded = false
-	local touchConn
-	touchConn = bulletPart.Touched:Connect(function(hit)
-		if exploded then return end
+	local spent = false
+	local lastBounceDamage = 0
+	bulletPart.Touched:Connect(function(hit)
 		if os.clock() - launchClock < ARM_TIME then return end
 		if not hit or not hit.Parent then return end
 		if hit:IsDescendantOf(cannon) then return end
 		if hit:IsDescendantOf(bullet) then return end
 		if shooterChar and hit:IsDescendantOf(shooterChar) then return end
-		exploded = true
-		if touchConn then touchConn:Disconnect() end
-		explode(bulletPart.Position)
-		bullet:Destroy()
+
+		if not spent then
+			spent = true
+			bulletPart.CanCollide = true
+			bulletPart.AssemblyLinearVelocity = bulletPart.AssemblyLinearVelocity * BOUNCE_VELOCITY_FACTOR
+			explode(bulletPart.Position)
+		elseif os.clock() - lastBounceDamage >= BOUNCE_DAMAGE_COOLDOWN
+			and bulletPart.AssemblyLinearVelocity.Magnitude > BOUNCE_MIN_SPEED then
+			lastBounceDamage = os.clock()
+			damageHitUnit(hit, BOUNCE_DAMAGE)
+		end
 	end)
 
 	Debris:AddItem(bullet, BULLET_LIFETIME)
