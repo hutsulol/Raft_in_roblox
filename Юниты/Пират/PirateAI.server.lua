@@ -910,11 +910,6 @@ if not alignOrientation then
 	alignOrientation.Parent = rootCollider
 end
 
--- Плавный, ограниченный по скорости поворот через физику (без насильного CFrame).
-alignOrientation.RigidityEnabled = false
-alignOrientation.Responsiveness = 40
-alignOrientation.MaxAngularVelocity = math.rad(TURN_SPEED_DEGREES)
-
 local desiredYaw = 0
 
 local function getYawFacingPosition(targetPosition)
@@ -935,18 +930,22 @@ local function getYawFacingPosition(targetPosition)
 	return yaw
 end
 
--- Состояния только ЗАДАЮТ желаемое направление; сам поворот — плавный, в
--- updateRotation (раз в кадр). Так пират не «дёргается» рывком.
+-- Поворот корпуса напрямую через CFrame (мгновенно). Этот способ стабилен:
+-- в GUARD faceTowards не вызывается, поэтому покоящуюся на земле сборку ничто
+-- НЕ крутит каждый кадр (иначе физический солвер разрывает коллайдеры).
 local function faceTowards(targetPosition)
 	desiredYaw = getYawFacingPosition(targetPosition)
-end
 
--- Поворот выполняет физика (AlignOrientation) — мы лишь задаём целевую
--- ориентацию. НИКАКОГО прямого rootCollider.CFrame каждый кадр: иначе при
--- контакте коллайдеров с землёй сборку «разрывает» физическим солвером
--- (парты разлетаются, NPC зависает).
-local function updateRotation(dt)
 	alignOrientation.CFrame = CFrame.Angles(0, desiredYaw, 0)
+
+	if FORCE_DIRECT_ROTATION then
+		local position = rootCollider.Position
+		local velocity = rootCollider.AssemblyLinearVelocity
+
+		rootCollider.CFrame = CFrame.new(position) * CFrame.Angles(0, desiredYaw, 0)
+		rootCollider.AssemblyLinearVelocity = velocity
+		rootCollider.AssemblyAngularVelocity = Vector3.zero
+	end
 end
 
 --====================================================
@@ -1313,9 +1312,18 @@ local function getEyePosition()
 	return base + Vector3.new(0, EYE_HEIGHT_OFFSET, 0)
 end
 
--- Задать желаемый yaw (поворот доведёт updateRotation плавно).
+-- Жёстко повернуть корпус на заданный yaw (для возврата на пост).
 local function faceYaw(yaw)
 	desiredYaw = yaw
+	alignOrientation.CFrame = CFrame.Angles(0, yaw, 0)
+
+	if FORCE_DIRECT_ROTATION then
+		local position = rootCollider.Position
+		local velocity = rootCollider.AssemblyLinearVelocity
+		rootCollider.CFrame = CFrame.new(position) * CFrame.Angles(0, yaw, 0)
+		rootCollider.AssemblyLinearVelocity = velocity
+		rootCollider.AssemblyAngularVelocity = Vector3.zero
+	end
 end
 
 -- Прямая видимость до персонажа: луч от глаз, стена/препятствие рвут обзор.
@@ -1963,9 +1971,6 @@ RunService.Heartbeat:Connect(function(dt)
 	elseif currentState == STATE.ALERTED then
 		runAlerted()
 	end
-
-	-- Плавный доворот корпуса к выбранному направлению (раз в кадр).
-	updateRotation(dt)
 end)
 
 print(string.format(
