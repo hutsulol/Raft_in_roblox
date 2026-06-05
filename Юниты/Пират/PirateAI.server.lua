@@ -38,6 +38,7 @@ local MOVE_SPEED = 10
 local RUN_SPEED_MULTIPLIER = 1.5
 
 local ATTACK_RANGE = 4.2
+local ATTACK_RANGE_BUFFER = 2    -- гистерезис: из атаки выходим только за этим радиусом
 local ATTACK_COOLDOWN = 1.4
 local ATTACK_DAMAGE = 20
 local ATTACK_HIT_DELAY = 0.35
@@ -1898,7 +1899,9 @@ local function runAttack()
 
 	faceTowards(root.Position)
 
-	if dist > ATTACK_RANGE then
+	-- Гистерезис: из атаки выходим, только когда цель ушла заметно за радиус,
+	-- иначе пират «дёргается» у границы и не успевает бить.
+	if dist > ATTACK_RANGE + ATTACK_RANGE_BUFFER then
 		setState(STATE.CHASE)
 		return
 	end
@@ -2066,6 +2069,12 @@ RunService.Heartbeat:Connect(function(dt)
 			and canSeeCharacter(root) then
 			chaseVisibleRoot = root
 		end
+	end
+
+	-- Есть назначенная цель и мы её ВИДИМ → сразу в бой. Так пираты, поднятые по
+	-- тревоге, реально нападают на игрока, а не топчутся в проверке/готовности.
+	if chaseVisibleRoot and currentState ~= STATE.CHASE and currentState ~= STATE.ATTACK then
+		setState(STATE.CHASE)
 	end
 
 	if currentState == STATE.GUARD then
