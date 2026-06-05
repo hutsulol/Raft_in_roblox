@@ -144,8 +144,8 @@ local MAX_UPWARD_VELOCITY = 2.5
 -- соседа за пол и встаёт на него как на ступеньку); (2) при движении юниты
 -- мягко расходятся, а не занимают одну точку.
 local UNIT_TAG = "RaftMeleeUnit"
-local SEPARATION_RADIUS = 5
-local SEPARATION_STRENGTH = 1.2
+local SEPARATION_RADIUS = 4
+local SEPARATION_STRENGTH = 0.6
 
 local COLLIDER_SETTINGS = {
 	HeadCollider = {
@@ -1201,8 +1201,10 @@ local function moveTowards(targetPosition, speed)
 		return
 	end
 
-	-- К направлению на цель добавляем разведение от соседей.
-	local direction = offset.Unit + getSeparationVector() * SEPARATION_STRENGTH
+	-- К направлению на цель добавляем разведение от соседей, но чем БЛИЖЕ к цели,
+	-- тем слабее — чтобы у игрока пираты сходились на удар, а не расталкивались.
+	local sepScale = math.clamp(offset.Magnitude / 8, 0, 1)
+	local direction = offset.Unit + getSeparationVector() * SEPARATION_STRENGTH * sepScale
 	if direction.Magnitude < 0.05 then
 		direction = offset.Unit
 	else
