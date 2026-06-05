@@ -61,6 +61,11 @@ local CFG = {
 	LEG_GROUND_RAYCAST_HEIGHT = 8,
 	LEG_GROUND_RAYCAST_DEPTH = 16,
 	MAX_GROUND_LIFT_PER_HEARTBEAT = 0.25,
+	-- Авто-шаг: плавный заход на невысокие возвышенности без прыжка.
+	STEP_MAX_HEIGHT = 2.5,           -- макс. высота ступеньки, на которую заходим
+	STEP_MIN_RISE = 0.15,            -- ниже этого подъёма не считаем ступенькой (шум)
+	STEP_PROBE_AHEAD = 1.6,          -- насколько вперёд от тела щупаем ступеньку
+	STEP_LIFT_PER_HEARTBEAT = 0.35,  -- подъём на ступеньку за кадр (чуть быстрее обычного)
 	MAX_UPWARD_VELOCITY = 2.5,
 	UNIT_TAG = "RaftMeleeUnit",
 	SEPARATION_RADIUS = 4,
@@ -803,6 +808,11 @@ pcall(function()
 	rootCollider:SetNetworkOwner(nil)
 end)
 
+-- Горизонтальное направление последней команды движения (для авто-шага). Берём
+-- именно команду, а не AssemblyLinearVelocity: упираясь в край ступеньки, юнит
+-- по факту стоит (солвер гасит скорость), но идти-то он хочет вперёд.
+local moveCommandDir = nil
+
 local groundRaycastParams = RaycastParams.new()
 groundRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
 groundRaycastParams.IgnoreWater = true
@@ -869,14 +879,68 @@ local function getGroundYUnderLegs()
 	return bestGroundY
 end
 
+-- Верх «ступеньки» прямо по курсу движения, на которую можно автоматически
+-- зайти (как игрок переступает невысокий порог). Луч вниз чуть впереди по
+-- направлению движения: если там ровная поверхность ВЫШЕ ног, но не выше
+-- STEP_MAX_HEIGHT — это ступенька, возвращаем её Y. Иначе nil (ровно, спуск или
+-- высокая стена). groundRaycastParams игнорирует игрока и юнитов, так что на них
+-- забраться нельзя — только на геометрию мира.
+-- Нет опоры под ногами (вода/обрыв) — хотя бы гасим резкий подброс вверх.
+local function limitUpwardLaunch()
+	local velocity = rootCollider.AssemblyLinearVelocity
+
+	if velocity.Y <= CFG.MAX_UPWARD_VELOCITY then
+		return
+	end
+
+	rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, CFG.MAX_UPWARD_VELOCITY, velocity.Z)
+end
+
+local function getStepUpGroundY(legBottomY)
+	if not moveCommandDir then
+		return nil -- стоим / не идём целенаправленно — не шагаем
+	end
+
+	updateGroundRaycastFilter()
+
+	local ahead = math.max(rootCollider.Size.X, rootCollider.Size.Z) * 0.5 + CFG.STEP_PROBE_AHEAD
+	local probe = rootCollider.Position + moveCommandDir * ahead
+	local origin = Vector3.new(probe.X, legBottomY + CFG.STEP_MAX_HEIGHT + 0.5, probe.Z)
+	local result = workspace:Raycast(origin, Vector3.new(0, -(CFG.STEP_MAX_HEIGHT + 0.7), 0), groundRaycastParams)
+
+	if not result or result.Normal.Y < 0.5 then
+		return nil -- впереди нет ровной опоры (стена/обрыв)
+	end
+
+	local rise = result.Position.Y - legBottomY
+	if rise > CFG.STEP_MIN_RISE and rise <= CFG.STEP_MAX_HEIGHT then
+		return result.Position.Y
+	end
+
+	return nil
+end
+
 -- Если ноги поднялись выше нормальной высоты больше чем на столько —
 -- считаем это баг-подбросом и жёстко возвращаем NPC к земле.
 
 local function stabilizeOnGround()
 	local legBottomY = getLegBottomY()
+
+	if not legBottomY then
+		limitUpwardLaunch()
+		return
+	end
+
 	local groundY = getGroundYUnderLegs()
 
-	if not legBottomY or not groundY then
+	-- Авто-шаг: если прямо по курсу невысокая ступенька — целимся на её верх,
+	-- чтобы плавно зайти на возвышение, а не упираться в его край.
+	local stepY = getStepUpGroundY(legBottomY)
+	if stepY and (not groundY or stepY > groundY) then
+		groundY = stepY
+	end
+
+	if not groundY then
 		-- Под ногами нет опоры (вода/пропасть) — хотя бы не даём улетать вверх.
 		limitUpwardLaunch()
 		return
@@ -886,8 +950,10 @@ local function stabilizeOnGround()
 	local velocity = rootCollider.AssemblyLinearVelocity
 
 	if legBottomY < targetBottomY then
-		-- Просел под пол — плавно поднимаем.
-		local liftAmount = math.min(targetBottomY - legBottomY, CFG.MAX_GROUND_LIFT_PER_HEARTBEAT)
+		-- Просел под пол или заходим на ступеньку — плавно поднимаем. На ступеньке
+		-- поднимаем чуть быстрее, чтобы шаг был чётким, а не «вползанием».
+		local liftCap = stepY and CFG.STEP_LIFT_PER_HEARTBEAT or CFG.MAX_GROUND_LIFT_PER_HEARTBEAT
+		local liftAmount = math.min(targetBottomY - legBottomY, liftCap)
 		rootCollider.CFrame = rootCollider.CFrame + Vector3.new(0, liftAmount, 0)
 		rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, math.clamp(velocity.Y, 0, CFG.MAX_UPWARD_VELOCITY), velocity.Z)
 	elseif legBottomY > targetBottomY + CFG.MAX_HOVER_ABOVE_GROUND then
@@ -903,16 +969,6 @@ local function stabilizeOnGround()
 			rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, CFG.MAX_UPWARD_VELOCITY, velocity.Z)
 		end
 	end
-end
-
-local function limitUpwardLaunch()
-	local velocity = rootCollider.AssemblyLinearVelocity
-
-	if velocity.Y <= CFG.MAX_UPWARD_VELOCITY then
-		return
-	end
-
-	rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, CFG.MAX_UPWARD_VELOCITY, velocity.Z)
 end
 
 --====================================================
@@ -1171,6 +1227,7 @@ local lastAttackTime = 0
 local isAttacking = false
 
 local function stopMovement()
+	moveCommandDir = nil -- стоим — авто-шаг выключаем
 	local velocity = rootCollider.AssemblyLinearVelocity
 	rootCollider.AssemblyLinearVelocity = Vector3.new(0, velocity.Y, 0)
 end
@@ -1228,6 +1285,9 @@ local function moveTowards(targetPosition, speed)
 		currentYVelocity,
 		direction.Z * speed
 	)
+
+	-- Куда реально идём — для авто-шага (direction уже плоский единичный вектор).
+	moveCommandDir = Vector3.new(direction.X, 0, direction.Z)
 end
 
 local function attackTarget(targetRoot, targetHumanoid)
