@@ -85,6 +85,7 @@ local SQUAD_ALERT_RADIUS = 200   -- на этом радиусе пираты с
 local SQUAD_ENGAGE_RADIUS = 60   -- ближе этого к месту тревоги — идут в бой
 local ALERT_MEMORY = 8           -- сколько помнить крик без обновления, сек
 local SHOUT_INTERVAL = 2         -- как часто перекрикивать, пока идёт бой, сек
+local DEBUG_SQUAD = true         -- печать тревоги в Output для отладки (потом false)
 
 -- НАВИГАЦИЯ (Этап 3: PathfindingService — обход препятствий и воды).
 local AGENT_RADIUS = 2              -- радиус агента ≈ полширины коллайдеров
@@ -1739,11 +1740,16 @@ local stateClock = os.clock()
 -- зависеть от сравнения времени между скриптами.
 local alertedUntil = 0
 local alertPosition = nil
+local alertUserId = nil
 local lastShoutClock = 0
 
 npc:GetAttributeChangedSignal("AlertClock"):Connect(function()
 	alertedUntil = os.clock() + ALERT_MEMORY
 	alertPosition = npc:GetAttribute("AlertPosition")
+	alertUserId = npc:GetAttribute("AlertUserId")
+	if DEBUG_SQUAD then
+		print(string.format("[PirateSquad] %s услышал крик отряда", npc.Name))
+	end
 end)
 
 local function setState(newState)
@@ -1766,23 +1772,34 @@ local function getSquadAlert()
 	return nil
 end
 
--- «Крик»: разослать позицию игрока пиратам отряда в радиусе SQUAD_ALERT_RADIUS.
+-- «Крик»: разослать позицию игрока и его UserId пиратам отряда в радиусе.
 local function broadcastAlert()
 	local pos = lastKnownPosition
 	if not pos then
 		return
 	end
 
+	local player = chaseTarget and Players:GetPlayerFromCharacter(chaseTarget)
+	local userId = (player and player.UserId) or 0
 	local now = os.clock()
+	local count = 0
+
 	for _, other in ipairs(CollectionService:GetTagged(GUARD_TAG)) do
 		if other ~= npc and other.PrimaryPart
 			and flatDistance(rootCollider.Position, other.PrimaryPart.Position) <= SQUAD_ALERT_RADIUS then
 			other:SetAttribute("AlertPosition", pos)
+			other:SetAttribute("AlertUserId", userId)
 			other:SetAttribute("AlertClock", now)
+			count += 1
 		end
 	end
 
 	lastShoutClock = now
+
+	if DEBUG_SQUAD then
+		print(string.format("[PirateSquad] %s КРИК — оповещено пиратов: %d (в радиусе %d)",
+			npc.Name, count, SQUAD_ALERT_RADIUS))
+	end
 end
 
 -- Медленно осматриваемся, стоя на месте.
@@ -2022,6 +2039,13 @@ RunService.Heartbeat:Connect(function(dt)
 	-- Реакция на чужой крик, если сами ещё не в активном бою.
 	local squadAlertPos = getSquadAlert()
 	if squadAlertPos and currentState ~= STATE.CHASE and currentState ~= STATE.ATTACK then
+		-- Знаем, на кого идём (из крика) — берём игрока целью, чтобы атаковать
+		-- его при встрече, а не просто прийти на пустое место.
+		local player = (alertUserId and alertUserId > 0) and Players:GetPlayerByUserId(alertUserId)
+		if player and player.Character and isAliveCharacter(player.Character) then
+			chaseTarget = player.Character
+		end
+
 		if flatDistance(rootCollider.Position, squadAlertPos) <= SQUAD_ENGAGE_RADIUS then
 			lastKnownPosition = squadAlertPos
 			if currentState ~= STATE.INVESTIGATE then
