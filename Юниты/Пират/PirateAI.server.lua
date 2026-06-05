@@ -22,7 +22,7 @@ local CFG = {
 	MODEL_YAW_OFFSET_DEGREES = 180,
 	MOVE_SPEED = 10,
 	RUN_SPEED_MULTIPLIER = 1.5,
-	ATTACK_RANGE = 4.2,
+	ATTACK_RANGE = 4.2, -- зазор до поверхности тела (к нему прибавляется габарит торса)
 	ATTACK_RANGE_BUFFER = 2,
 	ATTACK_COOLDOWN = 1.4,
 	ATTACK_DAMAGE = 20,
@@ -301,6 +301,15 @@ local rootCollider = findColliderPartByName(CFG.ROOT_COLLIDER_NAME)
 if not rootCollider then
 	warn("[PirateUnitAI] Root collider BasePart not found, using first collider:", colliders[1].Name)
 	rootCollider = colliders[1]
+end
+
+-- Радиус «дотягивания» удара. ATTACK_RANGE — это зазор до ПОВЕРХНОСТИ тела, но
+-- расстояние мы меряем от ЦЕНТРА коллайдера торса. У большого пирата центр далеко
+-- от поверхности, поэтому прибавляем половину горизонтального габарита торса —
+-- иначе игрок, стоящий вплотную к боку, оказывается «вне радиуса» (центр-к-центру),
+-- и пират никогда не доходит до атаки (он бьёт редко даже один на один).
+local function attackReach()
+	return CFG.ATTACK_RANGE + math.max(rootCollider.Size.X, rootCollider.Size.Z) * 0.5
 end
 
 local legColliders = {}
@@ -1256,9 +1265,13 @@ local function attackTarget(targetRoot, targetHumanoid)
 			return
 		end
 
-		local distance = (targetRoot.Position - rootCollider.Position).Magnitude
+		-- Считаем по горизонтали (оба на земле) и с учётом габарита тела, тем же
+		-- радиусом, что и вход/выход из атаки — раз удар начался, он должен попасть,
+		-- если игрок не успел отбежать заметно за радиус.
+		local offset = targetRoot.Position - rootCollider.Position
+		local distance = Vector3.new(offset.X, 0, offset.Z).Magnitude
 
-		if distance <= CFG.ATTACK_RANGE + 1 then
+		if distance <= attackReach() + CFG.ATTACK_RANGE_BUFFER then
 			targetHumanoid:TakeDamage(CFG.ATTACK_DAMAGE)
 		end
 	end)
@@ -1352,6 +1365,13 @@ local function updatePerception(dt)
 						gain = CFG.SUSPICION_GAIN_FRONT
 					elseif angle <= CFG.FOV_SIDE_DEGREES then
 						gain = CFG.SUSPICION_GAIN_SIDE
+					end
+
+					-- Вплотную игрока «не заметить» нельзя (он стоит на пирате/бьёт его),
+					-- поэтому в радиусе удара набираем подозрение по максимуму независимо
+					-- от угла — иначе пират не понимает, что цель прямо перед ним.
+					if dist <= attackReach() + CFG.ATTACK_RANGE_BUFFER then
+						gain = CFG.SUSPICION_GAIN_FRONT
 					end
 
 					if gain and canSeeCharacter(root) then
@@ -1887,7 +1907,7 @@ local function runChase(visibleRoot)
 
 	lastKnownPosition = visibleRoot.Position
 
-	if flatDistance(rootCollider.Position, visibleRoot.Position) <= CFG.ATTACK_RANGE then
+	if flatDistance(rootCollider.Position, visibleRoot.Position) <= attackReach() then
 		faceTowards(visibleRoot.Position)
 		setState(STATE.ATTACK)
 	else
@@ -1897,7 +1917,7 @@ local function runChase(visibleRoot)
 end
 
 local function runAttack()
-	local root, humanoid, dist = getTargetData(chaseTarget)
+	local root, humanoid = getTargetData(chaseTarget)
 
 	if not root or not humanoid then
 		setState(STATE.SEARCH)
@@ -1907,8 +1927,9 @@ local function runAttack()
 	faceTowards(root.Position)
 
 	-- Гистерезис: из атаки выходим, только когда цель ушла заметно за радиус,
-	-- иначе пират «дёргается» у границы и не успевает бить.
-	if dist > CFG.ATTACK_RANGE + CFG.ATTACK_RANGE_BUFFER then
+	-- иначе пират «дёргается» у границы и не успевает бить. Меряем по горизонтали
+	-- и с учётом габарита тела (attackReach) — так же, как вход в атаку.
+	if flatDistance(rootCollider.Position, root.Position) > attackReach() + CFG.ATTACK_RANGE_BUFFER then
 		setState(STATE.CHASE)
 		return
 	end
@@ -2071,10 +2092,16 @@ RunService.Heartbeat:Connect(function(dt)
 	local chaseVisibleRoot = nil
 	if chaseTarget then
 		local root = getCharacterRoot(chaseTarget)
-		if root and isAliveCharacter(chaseTarget)
-			and flatDistance(rootCollider.Position, root.Position) <= CFG.SIGHT_RANGE
-			and canSeeCharacter(root) then
-			chaseVisibleRoot = root
+		if root and isAliveCharacter(chaseTarget) then
+			local flat = flatDistance(rootCollider.Position, root.Position)
+			-- Вплотную (в радиусе удара + буфер) цель «видна» ВСЕГДА: на дистанции
+			-- удара LOS/FOV не нужны, иначе большой пират «теряет» игрока у себя под
+			-- боком и срывается в SEARCH вместо удара. Дальше — обычная проверка обзора.
+			if flat <= attackReach() + CFG.ATTACK_RANGE_BUFFER then
+				chaseVisibleRoot = root
+			elseif flat <= CFG.SIGHT_RANGE and canSeeCharacter(root) then
+				chaseVisibleRoot = root
+			end
 		end
 	end
 
