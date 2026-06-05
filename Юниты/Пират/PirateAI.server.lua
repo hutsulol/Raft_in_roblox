@@ -106,8 +106,11 @@ local AGENT_RADIUS = 2              -- радиус агента ≈ полши�
 local AGENT_HEIGHT = 5             -- высота агента ≈ высота пирата
 local PATH_RECOMPUTE_INTERVAL = 0.5 -- макс. период пересчёта пути, сек
 local PATH_GOAL_MOVE_THRESHOLD = 5  -- цель сместилась дальше — пересчитать, studs
-local WAYPOINT_REACH = 2.5          -- радиус «waypoint достигнут», studs
+local WAYPOINT_REACH = 2            -- радиус «waypoint достигнут», studs
 local NAV_LOS_MARGIN = 4            -- «вижу цель напрямую»: не докидывать луч до цели, studs
+
+-- Плавный разворот корпуса.
+local TURN_SPEED_DEGREES = 420      -- скорость доворота, град/сек (меньше = плавнее)
 
 --====================================================
 -- COLLISION GROUPS
@@ -904,6 +907,7 @@ if not alignOrientation then
 end
 
 local desiredYaw = 0
+local currentDt = 1 / 60   -- dt текущего кадра (для плавного поворота)
 
 local function getYawFacingPosition(targetPosition)
 	local currentPosition = rootCollider.Position
@@ -923,16 +927,25 @@ local function getYawFacingPosition(targetPosition)
 	return yaw
 end
 
+-- Поворот к цели — ПЛАВНЫЙ: тем же безопасным прямым CFrame, но малым шагом за
+-- кадр (TURN_SPEED_DEGREES). Вызывается только в активных состояниях (НЕ в GUARD
+-- и не на паузе патруля), поэтому покоящегося юнита это не крутит каждый кадр —
+-- ровно тот случай, что раньше «взрывал» сборку.
 local function faceTowards(targetPosition)
 	desiredYaw = getYawFacingPosition(targetPosition)
 
-	alignOrientation.CFrame = CFrame.Angles(0, desiredYaw, 0)
+	local _, currentYaw = rootCollider.CFrame:ToOrientation()
+	local diff = (desiredYaw - currentYaw + math.pi) % (2 * math.pi) - math.pi
+	local maxStep = math.rad(TURN_SPEED_DEGREES) * currentDt
+	local newYaw = currentYaw + math.clamp(diff, -maxStep, maxStep)
+
+	alignOrientation.CFrame = CFrame.Angles(0, newYaw, 0)
 
 	if FORCE_DIRECT_ROTATION then
 		local position = rootCollider.Position
 		local velocity = rootCollider.AssemblyLinearVelocity
 
-		rootCollider.CFrame = CFrame.new(position) * CFrame.Angles(0, desiredYaw, 0)
+		rootCollider.CFrame = CFrame.new(position) * CFrame.Angles(0, newYaw, 0)
 		rootCollider.AssemblyLinearVelocity = velocity
 		rootCollider.AssemblyAngularVelocity = Vector3.zero
 	end
@@ -1475,7 +1488,7 @@ local AGENT_PARAMS = {
 	AgentHeight = AGENT_HEIGHT,
 	AgentCanJump = false,           -- перелаз препятствий пока выключен
 	AgentCanClimb = false,
-	WaypointSpacing = 4,
+	WaypointSpacing = 2.5,
 	Costs = { Water = math.huge },  -- вода непроходима
 }
 
@@ -1529,7 +1542,7 @@ local function hasClearPath(toPos)
 
 	local dir = flat.Unit
 	local rayVec = dir * (dist - NAV_LOS_MARGIN)
-	local side = Vector3.new(-dir.Z, 0, dir.X) * AGENT_RADIUS
+	local side = Vector3.new(-dir.Z, 0, dir.X) * (AGENT_RADIUS + 1)
 
 	for _, offset in ipairs({ Vector3.zero, side, -side }) do
 		if workspace:Raycast(origin + offset, rayVec, raycastParams) then
@@ -1571,10 +1584,9 @@ local function navigateTo(goal, speed)
 		faceTowards(moveTarget)
 		moveTowards(moveTarget, speed)
 	else
-		-- Маршрут ещё считается → подходим к цели медленно, чтобы не влететь в
-		-- преграду до готовности пути.
-		faceTowards(goal)
-		moveTowards(goal, speed * 0.35)
+		-- Обхода нет (путь ещё считается или не нашёлся) → НЕ тараним преграду и
+		-- НЕ крутимся на месте: просто стоим. Появится путь — пойдём по нему.
+		stopMovement()
 	end
 end
 
@@ -1818,6 +1830,8 @@ end
 playIdle()
 
 RunService.Heartbeat:Connect(function(dt)
+	currentDt = dt
+
 	if not rootCollider.Parent then
 		return
 	end
