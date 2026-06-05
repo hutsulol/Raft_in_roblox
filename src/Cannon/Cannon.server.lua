@@ -132,6 +132,111 @@ local BULLET_SPEED = 140
 local BULLET_LIFETIME = 8
 local MUZZLE_FORWARD = 2
 local BOOM_LIFETIME = 3
+local EXPLOSION_RADIUS = 18
+local EXPLOSION_DAMAGE = 300
+local DEFAULT_PART_HP = 100
+local CASCADE_ABOVE_HEIGHT = 8
+
+local function getRaftUnit(part)
+	if not raft or not part:IsDescendantOf(raft) then return nil end
+	local node = part
+	while node and node.Parent ~= raft do
+		node = node.Parent
+	end
+	if not node or node == raft then return nil end
+	return node
+end
+
+local function unitMainPart(unit)
+	if unit:IsA("BasePart") then return unit end
+	return unit.PrimaryPart or unit:FindFirstChildWhichIsA("BasePart")
+end
+
+local function containsPrimary(unit)
+	local primary = raft.PrimaryPart
+	if not primary then return false end
+	return unit == primary or primary:IsDescendantOf(unit)
+end
+
+local function collectUnitsInBox(boxCF, boxSize, out)
+	local params = OverlapParams.new()
+	params.FilterType = Enum.RaycastFilterType.Include
+	params.FilterDescendantsInstances = { raft }
+	local parts = workspace:GetPartBoundsInBox(boxCF, boxSize, params)
+	for _, p in parts do
+		local unit = getRaftUnit(p)
+		if unit and not containsPrimary(unit) then
+			out[unit] = true
+		end
+	end
+end
+
+local function findUnitsAbove(tile)
+	local part = unitMainPart(tile)
+	if not part then return {} end
+	local pos, size
+	if tile:IsA("Model") then
+		local cf, sz = tile:GetBoundingBox()
+		pos, size = cf.Position, sz
+	else
+		pos, size = part.Position, part.Size
+	end
+	local boxCF = CFrame.new(pos + Vector3.new(0, size.Y / 2 + CASCADE_ABOVE_HEIGHT / 2, 0))
+	local boxSize = Vector3.new(math.max(size.X * 0.9, 1), CASCADE_ABOVE_HEIGHT, math.max(size.Z * 0.9, 1))
+	local found = {}
+	collectUnitsInBox(boxCF, boxSize, found)
+	found[tile] = nil
+	return found
+end
+
+local function applyAreaDamage(position)
+	if not raft or not raft.PrimaryPart then return end
+
+	local r = EXPLOSION_RADIUS
+	local hitUnits = {}
+	collectUnitsInBox(CFrame.new(position), Vector3.new(r * 2, r * 2, r * 2), hitUnits)
+
+	local toDestroy = {}
+	for unit in hitUnits do
+		local part = unitMainPart(unit)
+		if part and (part.Position - position).Magnitude <= r then
+			local hp = unit:GetAttribute("HP") or DEFAULT_PART_HP
+			hp = hp - EXPLOSION_DAMAGE
+			if hp <= 0 then
+				toDestroy[unit] = true
+			else
+				unit:SetAttribute("HP", hp)
+			end
+		end
+	end
+
+	local queue = {}
+	for unit in toDestroy do
+		table.insert(queue, unit)
+	end
+	while #queue > 0 do
+		local unit = table.remove(queue)
+		if unit:GetAttribute("BuildType") == "raft" then
+			for u in findUnitsAbove(unit) do
+				if not toDestroy[u] then
+					toDestroy[u] = true
+					table.insert(queue, u)
+				end
+			end
+		end
+	end
+
+	local primary = raft.PrimaryPart
+	local linVel = primary.AssemblyLinearVelocity
+	local angVel = primary.AssemblyAngularVelocity
+
+	for unit in toDestroy do
+		unit:Destroy()
+	end
+
+	primary.AssemblyLinearVelocity = linVel
+	primary.AssemblyAngularVelocity = angVel
+end
 
 local function explode(position)
 	local boom = ReplicatedStorage:FindFirstChild("Boom")
@@ -158,6 +263,7 @@ local function explode(position)
 		fx.Parent = workspace
 		Debris:AddItem(fx, BOOM_LIFETIME)
 	end
+	applyAreaDamage(position)
 end
 
 local function launchProjectile(player)
