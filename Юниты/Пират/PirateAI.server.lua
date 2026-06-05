@@ -896,6 +896,14 @@ local function limitUpwardLaunch()
 	rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, CFG.MAX_UPWARD_VELOCITY, velocity.Z)
 end
 
+-- Верх «ступеньки» прямо по курсу движения, на которую можно автоматически
+-- зайти. Чтобы НЕ лезть на стены (любая стена с плоским верхом ≤ STEP_MAX_HEIGHT
+-- иначе засчитывалась как ступенька), требуем три условия — как в Jump.obstacleAhead:
+--   1) На уровне щиколотки впереди ЕСТЬ блокер (иначе это просто пол, не уступ).
+--   2) На уровне «выше ступеньки» впереди НЕТ блокера. Если есть — это полноценная
+--      стена, идти/лезть нельзя (выше неё разберётся обычный прыжок).
+--   3) За блокером есть ровная опора в нужном диапазоне высот.
+-- groundRaycastParams игнорирует игроков и других юнитов → залезть на них нельзя.
 local function getStepUpGroundY(legBottomY)
 	if not moveCommandDir then
 		return nil -- стоим / не идём целенаправленно — не шагаем
@@ -903,13 +911,29 @@ local function getStepUpGroundY(legBottomY)
 
 	updateGroundRaycastFilter()
 
+	local origin = rootCollider.Position
 	local ahead = math.max(rootCollider.Size.X, rootCollider.Size.Z) * 0.5 + CFG.STEP_PROBE_AHEAD
-	local probe = rootCollider.Position + moveCommandDir * ahead
-	local origin = Vector3.new(probe.X, legBottomY + CFG.STEP_MAX_HEIGHT + 0.5, probe.Z)
-	local result = workspace:Raycast(origin, Vector3.new(0, -(CFG.STEP_MAX_HEIGHT + 0.7), 0), groundRaycastParams)
+	local rayVec = moveCommandDir * ahead
+
+	-- (1) Низкий блокер: что-то стоит прямо по курсу чуть выше ног.
+	local lowStart = Vector3.new(origin.X, legBottomY + 0.3, origin.Z)
+	if not workspace:Raycast(lowStart, rayVec, groundRaycastParams) then
+		return nil -- путь у ног свободен → впереди не уступ, а просто пол/спуск
+	end
+
+	-- (2) Высокий блокер: если ВЫШЕ ступеньки тоже упёрлись — это стена, не лезем.
+	local highStart = Vector3.new(origin.X, legBottomY + CFG.STEP_MAX_HEIGHT + 0.2, origin.Z)
+	if workspace:Raycast(highStart, rayVec, groundRaycastParams) then
+		return nil
+	end
+
+	-- (3) Высота опоры за блокером.
+	local probe = origin + rayVec
+	local downOrigin = Vector3.new(probe.X, legBottomY + CFG.STEP_MAX_HEIGHT + 0.5, probe.Z)
+	local result = workspace:Raycast(downOrigin, Vector3.new(0, -(CFG.STEP_MAX_HEIGHT + 0.7), 0), groundRaycastParams)
 
 	if not result or result.Normal.Y < 0.5 then
-		return nil -- впереди нет ровной опоры (стена/обрыв)
+		return nil -- за блокером пусто (обрыв) или склон → не ступенька
 	end
 
 	local rise = result.Position.Y - legBottomY
