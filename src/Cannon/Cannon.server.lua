@@ -1,5 +1,6 @@
 local TweenService = game:GetService("TweenService")
 local Debris = game:GetService("Debris")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
 local cannon = script.Parent
 
@@ -130,10 +131,39 @@ end
 local BULLET_SPEED = 140
 local BULLET_LIFETIME = 8
 local MUZZLE_FORWARD = 2
+local BOOM_LIFETIME = 3
 
-local function launchProjectile()
+local function explode(position)
+	local boom = ReplicatedStorage:FindFirstChild("Boom")
+	if boom then
+		local fx = boom:Clone()
+		for _, d in fx:GetDescendants() do
+			if d:IsA("BasePart") then
+				d.Anchored = true
+				d.CanCollide = false
+			elseif d:IsA("ParticleEmitter") or d:IsA("Fire") or d:IsA("Smoke") or d:IsA("Sparkles") then
+				d.Enabled = true
+			end
+		end
+		if fx:IsA("BasePart") then
+			fx.Anchored = true
+			fx.CanCollide = false
+			fx.CFrame = CFrame.new(position)
+		elseif fx:IsA("Model") then
+			if not fx.PrimaryPart then
+				fx.PrimaryPart = fx:FindFirstChildWhichIsA("BasePart")
+			end
+			fx:PivotTo(CFrame.new(position))
+		end
+		fx.Parent = workspace
+		Debris:AddItem(fx, BOOM_LIFETIME)
+	end
+end
+
+local function launchProjectile(player)
 	if not bulletTemplate or not main then return end
 
+	local shooterChar = player and player.Character
 	local muzzle = main:GetPivot() * CFrame.new(0, 0, -MUZZLE_FORWARD)
 	local bullet = bulletTemplate:Clone()
 	local bulletPart = bullet:IsA("BasePart") and bullet or bullet:FindFirstChildWhichIsA("BasePart")
@@ -167,13 +197,27 @@ local function launchProjectile()
 		bulletPart:SetNetworkOwner(nil)
 	end)
 
+	local exploded = false
+	local touchConn
+	touchConn = bulletPart.Touched:Connect(function(hit)
+		if exploded then return end
+		if not hit or not hit.Parent then return end
+		if hit:IsDescendantOf(cannon) then return end
+		if hit:IsDescendantOf(bullet) then return end
+		if shooterChar and hit:IsDescendantOf(shooterChar) then return end
+		exploded = true
+		if touchConn then touchConn:Disconnect() end
+		explode(bulletPart.Position)
+		bullet:Destroy()
+	end)
+
 	Debris:AddItem(bullet, BULLET_LIFETIME)
 end
 
-local function fire()
+local function fire(player)
 	if not isLoaded() then return end
 	cannon:SetAttribute("Loaded", false)
-	launchProjectile()
+	launchProjectile(player)
 	playRecoil()
 end
 
@@ -191,9 +235,9 @@ if promptPart and not promptPart:FindFirstChild("CannonPrompt") then
 	prompt.ActionText = isLoaded() and "Fire" or "Load"
 	prompt.Parent = promptPart
 
-	prompt.Triggered:Connect(function()
+	prompt.Triggered:Connect(function(player)
 		if isLoaded() then
-			fire()
+			fire(player)
 		else
 			load()
 		end
