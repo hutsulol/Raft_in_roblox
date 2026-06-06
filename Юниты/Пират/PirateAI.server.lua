@@ -63,10 +63,11 @@ local CFG = {
 	MAX_GROUND_LIFT_PER_HEARTBEAT = 0.25,
 	-- Авто-шаг: плавный заход на невысокие возвышенности без прыжка.
 	STEP_ENABLED = true,             -- выключатель авто-шага (для диагностики: false → совсем не шагает)
-	STEP_MAX_HEIGHT = 2.5,           -- макс. высота ступеньки, на которую заходим
+	STEP_MAX_HEIGHT = 2.2,           -- макс. высота ступеньки (держим ниже MAX_HOVER_ABOVE_GROUND, чтобы заход не цеплял анти-подброс)
 	STEP_MIN_RISE = 0.15,            -- ниже этого подъёма не считаем ступенькой (шум)
 	STEP_PROBE_AHEAD = 1.6,          -- насколько вперёд от тела щупаем ступеньку
-	STEP_LIFT_PER_HEARTBEAT = 0.35,  -- подъём на ступеньку за кадр (чуть быстрее обычного)
+	STEP_CLIMB_SPEED = 14,           -- макс. вертикальная скорость захода на ступеньку, studs/сек
+	STEP_CLIMB_MIN = 5,              -- мин. скорость подъёма (преодолеть гравитацию/трение)
 	STEP_FORWARD_CLEARANCE = 1.8,    -- опора должна тянуться вперёд хотя бы на столько (иначе это тонкий гребень стены, не пол)
 	STEP_CONTINUITY_TOL = 0.7,       -- на сколько за краем поверхность может просесть и ещё считаться сплошной
 	MAX_UPWARD_VELOCITY = 2.5,
@@ -816,6 +817,10 @@ end)
 -- по факту стоит (солвер гасит скорость), но идти-то он хочет вперёд.
 local moveCommandDir = nil
 
+-- Идёт ли сейчас заход на ступеньку. Пока true — поднимаемся вертикальной
+-- скоростью, а moveTowards не срезает вертикальную скорость своим лимитом.
+local stepClimbActive = false
+
 local groundRaycastParams = RaycastParams.new()
 groundRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
 groundRaycastParams.IgnoreWater = true
@@ -974,12 +979,21 @@ local function stabilizeOnGround()
 
 	local groundY = getGroundYUnderLegs()
 
-	-- Авто-шаг: если прямо по курсу невысокая ступенька — целимся на её верх,
-	-- чтобы плавно зайти на возвышение, а не упираться в его край.
+	-- Авто-шаг: впереди по курсу низкий уступ → поднимаемся на него ВЕРТИКАЛЬНОЙ
+	-- СКОРОСТЬЮ, а не телепортом CFrame. Раньше CFrame загонял тело в геометрию, и
+	-- солвер выталкивал его вниз сквозь пол. Скорость движок резолвит по
+	-- столкновениям: тело едет вверх вдоль грани и сквозь пол не проваливается.
 	local stepY = getStepUpGroundY(legBottomY)
-	if stepY and (not groundY or stepY > groundY) then
-		groundY = stepY
+	if stepY and (not groundY or stepY > groundY + 0.05) and legBottomY < stepY + CFG.LEG_GROUND_PADDING then
+		local need = stepY + CFG.LEG_GROUND_PADDING - legBottomY
+		local climb = math.clamp(need * 25, CFG.STEP_CLIMB_MIN, CFG.STEP_CLIMB_SPEED)
+		local velocity = rootCollider.AssemblyLinearVelocity
+		rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, climb, velocity.Z)
+		stepClimbActive = true
+		return -- во время подъёма обычные снапы (особенно вниз) пропускаем
 	end
+
+	stepClimbActive = false
 
 	if not groundY then
 		-- Под ногами нет опоры (вода/пропасть) — хотя бы не даём улетать вверх.
@@ -991,10 +1005,8 @@ local function stabilizeOnGround()
 	local velocity = rootCollider.AssemblyLinearVelocity
 
 	if legBottomY < targetBottomY then
-		-- Просел под пол или заходим на ступеньку — плавно поднимаем. На ступеньке
-		-- поднимаем чуть быстрее, чтобы шаг был чётким, а не «вползанием».
-		local liftCap = stepY and CFG.STEP_LIFT_PER_HEARTBEAT or CFG.MAX_GROUND_LIFT_PER_HEARTBEAT
-		local liftAmount = math.min(targetBottomY - legBottomY, liftCap)
+		-- Просел под пол — плавно поднимаем (мелкий безопасный CFrame-доводчик).
+		local liftAmount = math.min(targetBottomY - legBottomY, CFG.MAX_GROUND_LIFT_PER_HEARTBEAT)
 		rootCollider.CFrame = rootCollider.CFrame + Vector3.new(0, liftAmount, 0)
 		rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, math.clamp(velocity.Y, 0, CFG.MAX_UPWARD_VELOCITY), velocity.Z)
 	elseif legBottomY > targetBottomY + CFG.MAX_HOVER_ABOVE_GROUND then
@@ -1319,7 +1331,10 @@ local function moveTowards(targetPosition, speed)
 		direction = direction.Unit
 	end
 
-	local currentYVelocity = math.min(rootCollider.AssemblyLinearVelocity.Y, CFG.MAX_UPWARD_VELOCITY)
+	-- Во время захода на ступеньку вертикальную скорость НЕ срезаем (её задаёт
+	-- stabilizeOnGround для подъёма); в норме держим лимит против подброса.
+	local yVel = rootCollider.AssemblyLinearVelocity.Y
+	local currentYVelocity = stepClimbActive and yVel or math.min(yVel, CFG.MAX_UPWARD_VELOCITY)
 
 	rootCollider.AssemblyLinearVelocity = Vector3.new(
 		direction.X * speed,
@@ -1795,8 +1810,9 @@ end
 -- Идти к goal. Видно цель напрямую — идём ровно прямо (без пасфайндинга и
 -- виляния). На пути преграда — обходим её по маршруту PathfindingService.
 local function navigateTo(goal, speed)
-	-- Низкое препятствие вплотную по курсу → перепрыгиваем (а не упираемся).
-	if not Jump.active and os.clock() - Jump.lastClock >= Jump.COOLDOWN then
+	-- Низкое препятствие вплотную по курсу → перепрыгиваем (а не упираемся). Но
+	-- пока идёт заход на ступеньку (авто-шаг) — не прыгаем, чтобы не перебивать его.
+	if not Jump.active and not stepClimbActive and os.clock() - Jump.lastClock >= Jump.COOLDOWN then
 		local canJump, jumpAt = Jump.obstacleAhead(goal)
 		if canJump then
 			Jump.start(jumpAt)
