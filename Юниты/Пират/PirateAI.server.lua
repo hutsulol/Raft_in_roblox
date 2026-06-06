@@ -72,8 +72,9 @@ local CFG = {
 	STEP_TOP_MIN_NORMAL_Y = 0.93,    -- верх ступеньки должен быть ПЛОСКИМ (Normal.Y ≥ этого); отсекает скаты крыш/рампы/склоны
 	STEP_CONTINUITY_TOL = 0.7,       -- на сколько за краем поверхность может просесть и ещё считаться сплошной
 	RECOVER_DROP = 16,               -- если тело провалилось ниже последней валидной точки на земле на столько — вернуть назад
-	-- Вода: пират сухопутный — в глубокую воду не заходит, тормозит у кромки.
-	WATER_STOP_DEPTH = 2.5,          -- глубина (поверхность−дно), с которой считаем воду непроходимой (по пояс+)
+	-- Вода: пират сухопутный — тормозит у кромки, в воду по сути не заходит.
+	WATER_STOP_DEPTH = 0.8,          -- вода глубже этого ВПЕРЕДИ → стоп (стоим у самой кромки, едва мочим ноги)
+	WATER_ESCAPE_DEPTH = 1.6,        -- если САМ оказался в воде глубже этого → выбираемся на сушу
 	WATER_PROBE_AHEAD = 1.8,         -- насколько вперёд проверяем воду, чтобы остановиться ДО входа
 	MAX_UPWARD_VELOCITY = 2.5,
 	UNIT_TAG = "RaftMeleeUnit",
@@ -830,6 +831,9 @@ local stepClimbActive = false
 -- если он провалится сквозь геометрию (тонкий пол/баг физики).
 local lastGroundedPos = nil
 
+-- Последняя позиция на СУШЕ (не в воде) — сюда выбираемся, если попали в воду.
+local lastDryPos = nil
+
 local groundRaycastParams = RaycastParams.new()
 groundRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
 groundRaycastParams.IgnoreWater = true
@@ -858,6 +862,23 @@ local function updateGroundRaycastFilter()
 
 	groundRaycastParams.FilterDescendantsInstances = filterList
 	waterProbeParams.FilterDescendantsInstances = filterList
+end
+
+-- Глубина воды в точке (XZ) >= minDepth? Воду ловим по материалу Terrain (Water),
+-- глубину = поверхность−дно (дно ищем, игнорируя воду). refY — высота, с которой
+-- стреляем луч (обычно текущая Y тела).
+local function deepWaterAt(point, refY, minDepth)
+	updateGroundRaycastFilter()
+
+	local top = Vector3.new(point.X, refY + 6, point.Z)
+	local water = workspace:Raycast(top, Vector3.new(0, -40, 0), waterProbeParams)
+	if not water or water.Material ~= Enum.Material.Water then
+		return false -- тут не вода (или вода далеко вниз)
+	end
+
+	local seabed = workspace:Raycast(top, Vector3.new(0, -80, 0), groundRaycastParams)
+	local seabedY = seabed and seabed.Position.Y or (water.Position.Y - 100)
+	return (water.Position.Y - seabedY) >= minDepth
 end
 
 local function getLegBottomY()
@@ -1054,9 +1075,13 @@ local function stabilizeOnGround()
 	end
 
 	-- Запоминаем последнюю позицию, где стоим у самой земли (не подброшены) —
-	-- сюда вернёмся, если провалимся сквозь геометрию.
+	-- сюда вернёмся, если провалимся сквозь геометрию. Если при этом мы на СУШЕ —
+	-- запоминаем и как точку выхода из воды.
 	if legBottomY <= targetBottomY + CFG.MAX_HOVER_ABOVE_GROUND then
 		lastGroundedPos = rootCollider.Position
+		if not deepWaterAt(rootCollider.Position, rootCollider.Position.Y, CFG.WATER_ESCAPE_DEPTH) then
+			lastDryPos = rootCollider.Position
+		end
 	end
 end
 
@@ -1340,30 +1365,14 @@ local function getSeparationVector()
 	return push
 end
 
--- true, если прямо по курсу ГЛУБОКАЯ вода (по пояс и глубже). Пират сухопутный —
--- туда не идёт, тормозит у кромки. Воду ловим по материалу Terrain (Water);
--- глубину считаем как поверхность−дно, мелководье пройти можно.
+-- Вода прямо по курсу глубже WATER_STOP_DEPTH? Пират сухопутный — туда не идёт.
 local function deepWaterAhead(dir)
-	updateGroundRaycastFilter()
-
 	local origin = rootCollider.Position
 	local ahead = math.max(rootCollider.Size.X, rootCollider.Size.Z) * 0.5 + CFG.WATER_PROBE_AHEAD
-	local point = origin + dir * ahead
-	local top = Vector3.new(point.X, origin.Y + 6, point.Z)
-
-	-- Поверхность воды в точке впереди (воду НЕ игнорируем).
-	local water = workspace:Raycast(top, Vector3.new(0, -40, 0), waterProbeParams)
-	if not water or water.Material ~= Enum.Material.Water then
-		return false -- впереди не вода (или вода далеко вниз — мелкая лужа у ног нас не держит)
-	end
-
-	-- Глубина = поверхность воды − дно (дно ищем, игнорируя воду).
-	local seabed = workspace:Raycast(top, Vector3.new(0, -80, 0), groundRaycastParams)
-	local seabedY = seabed and seabed.Position.Y or (water.Position.Y - 100)
-	return (water.Position.Y - seabedY) >= CFG.WATER_STOP_DEPTH
+	return deepWaterAt(origin + dir * ahead, origin.Y, CFG.WATER_STOP_DEPTH)
 end
 
-local function moveTowards(targetPosition, speed)
+local function moveTowards(targetPosition, speed, ignoreWater)
 	-- Во время замаха стоим на месте: иначе пират проезжает сквозь игрока и
 	-- «промахивается» мимо. Двигаемся только между ударами.
 	if isAttacking then
@@ -1391,7 +1400,8 @@ local function moveTowards(targetPosition, speed)
 	end
 
 	-- Сухопутный страж: впереди глубокая вода → стоп у кромки, в воду не лезем.
-	if deepWaterAhead(direction) then
+	-- (ignoreWater=true только при выходе ИЗ воды на сушу — тогда не блокируем.)
+	if not ignoreWater and deepWaterAhead(direction) then
 		stopMovement()
 		return
 	end
@@ -2305,6 +2315,16 @@ RunService.Heartbeat:Connect(function(dt)
 	-- тревоге, реально нападают на игрока, а не топчутся в проверке/готовности.
 	if chaseVisibleRoot and currentState ~= STATE.CHASE and currentState ~= STATE.ATTACK then
 		setState(STATE.CHASE)
+	end
+
+	-- Выход из воды: если пирата всё же занесло в глубокую воду (нокбэк/край),
+	-- он не плавает — бросает всё и выбирается на последнюю сушу (ignoreWater,
+	-- чтобы свой же водяной стоп не запер его на месте). Это поверх любого состояния.
+	if lastDryPos and deepWaterAt(rootCollider.Position, rootCollider.Position.Y, CFG.WATER_ESCAPE_DEPTH) then
+		faceTowards(lastDryPos)
+		moveTowards(lastDryPos, CFG.MOVE_SPEED * CFG.RUN_SPEED_MULTIPLIER, true)
+		playWalk()
+		return
 	end
 
 	if currentState == STATE.GUARD then
