@@ -72,10 +72,10 @@ local CFG = {
 	STEP_TOP_MIN_NORMAL_Y = 0.93,    -- верх ступеньки должен быть ПЛОСКИМ (Normal.Y ≥ этого); отсекает скаты крыш/рампы/склоны
 	STEP_CONTINUITY_TOL = 0.7,       -- на сколько за краем поверхность может просесть и ещё считаться сплошной
 	RECOVER_DROP = 16,               -- если тело провалилось ниже последней валидной точки на земле на столько — вернуть назад
-	-- Вода: пират сухопутный — тормозит у кромки, в воду по сути не заходит.
-	WATER_STOP_DEPTH = 0.8,          -- вода глубже этого ВПЕРЕДИ → стоп (стоим у самой кромки, едва мочим ноги)
-	WATER_ESCAPE_DEPTH = 1.6,        -- если САМ оказался в воде глубже этого → выбираемся на сушу
-	WATER_PROBE_AHEAD = 1.8,         -- насколько вперёд проверяем воду, чтобы остановиться ДО входа
+	-- Вода: пират сухопутный, но воды не боится панически — может зайти на мелководье.
+	WATER_STOP_DEPTH = 2.2,          -- вода глубже этого ВПЕРЕДИ → не идём (можно зайти ~по бедро)
+	WATER_ESCAPE_DEPTH = 3.0,        -- если САМ оказался в воде глубже этого (нокбэк/обрыв) → выбираемся на сушу
+	WATER_PROBE_AHEAD = 1.5,         -- насколько вперёд проверяем воду
 	MAX_UPWARD_VELOCITY = 2.5,
 	UNIT_TAG = "RaftMeleeUnit",
 	SEPARATION_RADIUS = 4,
@@ -2341,6 +2341,16 @@ RunService.Heartbeat:Connect(function(dt)
 		runReturn()
 	elseif currentState == STATE.ALERTED then
 		runAlerted()
+	end
+
+	-- Анти-«бег на месте»: если по факту стоим (уперлись в воду/преграду и
+	-- stopMovement обнулил скорость), показываем Idle вместо анимации бега.
+	if not isAttacking and not stepClimbActive
+		and (currentAnimationState == "Run" or currentAnimationState == "Walk") then
+		local v = rootCollider.AssemblyLinearVelocity
+		if Vector3.new(v.X, 0, v.Z).Magnitude < 0.6 then
+			playIdle()
+		end
 	end
 end)
 
