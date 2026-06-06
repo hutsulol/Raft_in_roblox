@@ -69,6 +69,7 @@ local CFG = {
 	STEP_CLIMB_SPEED = 14,           -- макс. вертикальная скорость захода на ступеньку, studs/сек
 	STEP_CLIMB_MIN = 5,              -- мин. скорость подъёма (преодолеть гравитацию/трение)
 	STEP_FORWARD_CLEARANCE = 1.8,    -- опора должна тянуться вперёд хотя бы на столько (иначе это тонкий гребень стены, не пол)
+	STEP_TOP_MIN_NORMAL_Y = 0.93,    -- верх ступеньки должен быть ПЛОСКИМ (Normal.Y ≥ этого); отсекает скаты крыш/рампы/склоны
 	STEP_CONTINUITY_TOL = 0.7,       -- на сколько за краем поверхность может просесть и ещё считаться сплошной
 	MAX_UPWARD_VELOCITY = 2.5,
 	UNIT_TAG = "RaftMeleeUnit",
@@ -909,9 +910,11 @@ end
 --   1) На уровне щиколотки впереди ЕСТЬ блокер (иначе это просто пол, не уступ).
 --   2) На уровне «выше ступеньки» впереди НЕТ блокера. Если есть — это высокая
 --      стена, лезть нельзя (выше неё разберётся обычный прыжок).
---   3) За блокером есть ровная опора в нужном диапазоне высот.
---   4) Опора ПРОДОЛЖАЕТСЯ вперёд (это пол, а не тонкий гребень стены/перил —
---      иначе пират забирался на стену и проваливался по ту сторону).
+--   3) За блокером есть ПЛОСКАЯ опора (Normal.Y высокий) в нужном диапазоне высот.
+--      Плоскость отсекает СКАТЫ КРЫШ/рампы/склоны — иначе пират лез вверх по скату
+--      крыши как по микро-ступенькам, переваливал конёк и падал под карту.
+--   4) Опора ПРОДОЛЖАЕТСЯ вперёд и тоже плоская (это пол, а не тонкий гребень
+--      стены/перил — иначе пират забирался на стену и проваливался по ту сторону).
 -- groundRaycastParams игнорирует игроков и других юнитов → залезть на них нельзя.
 local function getStepUpGroundY(legBottomY)
 	if not CFG.STEP_ENABLED or not moveCommandDir then
@@ -941,8 +944,8 @@ local function getStepUpGroundY(legBottomY)
 	local downOrigin = Vector3.new(probe.X, legBottomY + CFG.STEP_MAX_HEIGHT + 0.5, probe.Z)
 	local result = workspace:Raycast(downOrigin, Vector3.new(0, -(CFG.STEP_MAX_HEIGHT + 0.7), 0), groundRaycastParams)
 
-	if not result or result.Normal.Y < 0.5 then
-		return nil -- за блокером пусто (обрыв) или склон → не ступенька
+	if not result or result.Normal.Y < CFG.STEP_TOP_MIN_NORMAL_Y then
+		return nil -- за блокером нет ПЛОСКОЙ опоры (склон/крыша/рампа/обрыв) → не ступенька
 	end
 
 	local stepY = result.Position.Y
@@ -959,8 +962,10 @@ local function getStepUpGroundY(legBottomY)
 	local far = origin + moveCommandDir * (ahead + CFG.STEP_FORWARD_CLEARANCE)
 	local farResult = workspace:Raycast(Vector3.new(far.X, stepY + 1, far.Z), Vector3.new(0, -2.5, 0), groundRaycastParams)
 
-	if not farResult or farResult.Position.Y < stepY - CFG.STEP_CONTINUITY_TOL then
-		return nil -- за краем нет сплошной опоры → это гребень стены, не заходим
+	if not farResult
+		or farResult.Normal.Y < CFG.STEP_TOP_MIN_NORMAL_Y
+		or farResult.Position.Y < stepY - CFG.STEP_CONTINUITY_TOL then
+		return nil -- за краем нет сплошной ПЛОСКОЙ опоры (обрыв/гребень/скат) → не заходим
 	end
 
 	return stepY
