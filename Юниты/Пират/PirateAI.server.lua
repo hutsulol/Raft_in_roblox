@@ -72,14 +72,8 @@ local CFG = {
 	STEP_TOP_MIN_NORMAL_Y = 0.93,    -- верх ступеньки должен быть ПЛОСКИМ (Normal.Y ≥ этого); отсекает скаты крыш/рампы/склоны
 	STEP_CONTINUITY_TOL = 0.7,       -- на сколько за краем поверхность может просесть и ещё считаться сплошной
 	RECOVER_DROP = 16,               -- если тело провалилось ниже последней валидной точки на земле на столько — вернуть назад
-	-- Вода: пират умеет нырять и плыть (анимации Dive + Swimming).
-	SWIM_TRIGGER_DEPTH = 2.0,        -- вода глубже этого ВПЕРЕДИ по курсу к цели → ныряем и плывём
-	SWIM_EXIT_DEPTH = 1.6,           -- доплыли до мели мельче этого → выходим на сушу
-	SWIM_SPEED = 12,                 -- скорость плавания (и разбега-входа в нырке)
-	SWIM_BODY_OFFSET = -1.4,         -- насколько центр тела ниже поверхности воды (плывёт ПО воде, частично погружён)
-	SWIM_PITCH_DEGREES = 90,         -- наклон корпуса вперёд при плавании (поза «на животе»)
-	WATER_PROBE_AHEAD = 1.5,         -- как далеко вперёд щупаем воду
-	DIVE_ENTER_TIME = 1.25,          -- в анимации Dive на этой секунде пират входит в воду → Swimming
+	-- Вода: плавания нет, но можно зайти в неё, а в воде — прыгать вперёд.
+	WATER_WADE_DEPTH = 0.8,          -- ноги глубже этого под поверхностью → считаем, что в воде → прыгаем
 	MAX_UPWARD_VELOCITY = 2.5,
 	UNIT_TAG = "RaftMeleeUnit",
 	SEPARATION_RADIUS = 4,
@@ -157,18 +151,6 @@ local Jump = {
 	offsets = {},
 	assemblyParts = {},
 	track = nil,
-}
-
--- Плавание: пират ныряет (анимация Dive: разбег → вход в воду на DIVE_ENTER_TIME),
--- плывёт к цели у поверхности (Swimming), на мели выходит на сушу.
-local Swim = {
-	active = false,   -- в водном режиме (ныряем или плывём)
-	diving = false,   -- проигрывается нырок (разбег + вход)
-	startClock = 0,
-	lastDir = Vector3.zero,
-	yaw = 0,          -- yaw тела до наклона (чтобы выйти из позы без гимбал-лока)
-	track = nil,      -- Swimming
-	diveTrack = nil,  -- Dive
 }
 
 --====================================================
@@ -877,23 +859,6 @@ local function updateGroundRaycastFilter()
 	waterProbeParams.FilterDescendantsInstances = filterList
 end
 
--- Глубина воды в точке (XZ) >= minDepth? Воду ловим по материалу Terrain (Water),
--- глубину = поверхность−дно (дно ищем, игнорируя воду). refY — высота, с которой
--- стреляем луч (обычно текущая Y тела).
-local function deepWaterAt(point, refY, minDepth)
-	updateGroundRaycastFilter()
-
-	local top = Vector3.new(point.X, refY + 6, point.Z)
-	local water = workspace:Raycast(top, Vector3.new(0, -40, 0), waterProbeParams)
-	if not water or water.Material ~= Enum.Material.Water then
-		return false -- тут не вода (или вода далеко вниз)
-	end
-
-	local seabed = workspace:Raycast(top, Vector3.new(0, -80, 0), groundRaycastParams)
-	local seabedY = seabed and seabed.Position.Y or (water.Position.Y - 100)
-	return (water.Position.Y - seabedY) >= minDepth
-end
-
 local function getLegBottomY()
 	local bottomY = math.huge
 
@@ -1032,8 +997,7 @@ local function stabilizeOnGround()
 
 	-- Аварийный возврат: тело оказалось НАМНОГО ниже последней валидной точки на
 	-- земле → провалилось сквозь геометрию. Возвращаем на ту точку и гасим скорость.
-	-- В водном режиме не трогаем (ныряем/плывём — низкое положение это норма).
-	if not Swim.active and lastGroundedPos and rootCollider.Position.Y < lastGroundedPos.Y - CFG.RECOVER_DROP then
+	if lastGroundedPos and rootCollider.Position.Y < lastGroundedPos.Y - CFG.RECOVER_DROP then
 		local yaw = select(2, rootCollider.CFrame:ToOrientation())
 		rootCollider.CFrame = CFrame.new(lastGroundedPos + Vector3.new(0, 0.5, 0)) * CFrame.Angles(0, yaw, 0)
 		rootCollider.AssemblyLinearVelocity = Vector3.zero
@@ -1231,23 +1195,6 @@ do
 	end
 end
 
--- Анимации воды (опциональны): объекты Animation "Dive" (нырок) и "Swimming".
-do
-	local diveAnim = npc:FindFirstChild("Dive", true)
-	if diveAnim and diveAnim:IsA("Animation") then
-		Swim.diveTrack = animator:LoadAnimation(diveAnim)
-		Swim.diveTrack.Looped = false
-		Swim.diveTrack.Priority = Enum.AnimationPriority.Action
-	end
-
-	local swimAnim = npc:FindFirstChild("Swimming", true)
-	if swimAnim and swimAnim:IsA("Animation") then
-		Swim.track = animator:LoadAnimation(swimAnim)
-		Swim.track.Looped = true
-		Swim.track.Priority = Enum.AnimationPriority.Movement
-	end
-end
-
 idleTrack.Looped = true
 walkTrack.Looped = true
 runTrack.Looped = true
@@ -1392,13 +1339,6 @@ local function getSeparationVector()
 	return push
 end
 
--- Глубокая вода прямо по курсу (повод нырять и плыть)?
-local function deepWaterAhead(dir)
-	local origin = rootCollider.Position
-	local ahead = math.max(rootCollider.Size.X, rootCollider.Size.Z) * 0.5 + CFG.WATER_PROBE_AHEAD
-	return deepWaterAt(origin + dir * ahead, origin.Y, CFG.SWIM_TRIGGER_DEPTH)
-end
-
 local function moveTowards(targetPosition, speed)
 	-- Во время замаха стоим на месте: иначе пират проезжает сквозь игрока и
 	-- «промахивается» мимо. Двигаемся только между ударами.
@@ -1439,210 +1379,6 @@ local function moveTowards(targetPosition, speed)
 
 	-- Куда реально идём — для авто-шага (direction уже плоский единичный вектор).
 	moveCommandDir = Vector3.new(direction.X, 0, direction.Z)
-end
-
---====================================================
--- ПЛАВАНИЕ (нырок + плавание + выход на берег)
---====================================================
-
-function Swim.playDive()
-	currentAnimationState = "Dive"
-	idleTrack:Stop(0.1)
-	walkTrack:Stop(0.1)
-	if runTrack ~= walkTrack then runTrack:Stop(0.1) end
-	attackTrack:Stop(0.1)
-	if Swim.track then Swim.track:Stop(0.1) end
-	if Swim.diveTrack then
-		Swim.diveTrack:Stop(0)
-		Swim.diveTrack:Play(0.1)
-	end
-end
-
-function Swim.playSwim()
-	if currentAnimationState == "Swim" then
-		return
-	end
-	currentAnimationState = "Swim"
-	idleTrack:Stop(0.2)
-	walkTrack:Stop(0.2)
-	if runTrack ~= walkTrack then runTrack:Stop(0.2) end
-	attackTrack:Stop(0.1)
-	if Swim.diveTrack then Swim.diveTrack:Stop(0.2) end
-	if Swim.track and not Swim.track.IsPlaying then
-		Swim.track:Play(0.2)
-	end
-end
-
--- Высота поверхности воды в точке (или nil, если там не вода).
-function Swim.surfaceY(pos)
-	updateGroundRaycastFilter()
-	local hit = workspace:Raycast(pos + Vector3.new(0, 12, 0), Vector3.new(0, -40, 0), waterProbeParams)
-	if hit and hit.Material == Enum.Material.Water then
-		return hit.Position.Y
-	end
-	return nil
-end
-
--- Прямой путь к цели уходит в глубокую воду → пора нырять.
-function Swim.shouldEnter(goal)
-	local pos = rootCollider.Position
-	local flat = Vector3.new(goal.X - pos.X, 0, goal.Z - pos.Z)
-	if flat.Magnitude < 0.5 then
-		return false
-	end
-	return deepWaterAhead(flat.Unit)
-end
-
--- Наклоняем корпус вперёд для позы «на животе». Сам поворот к цели уже сделан
--- faceTowards (yaw), мы добавляем pitch поверх. Каждый кадр перезаписываем — это
--- ок, faceTowards в следующем кадре снова поставит yaw-only, мы снова добавим pitch.
-function Swim.applySwimPose()
-	-- yaw читаем СЕЙЧАС (faceTowards только что записал yaw-only CFrame), пока он
-	-- ещё чистый. Сохраняем в Swim.yaw, чтобы потом resetUpright не страдал от
-	-- гимбал-лока при pitch=±90°.
-	local _, yaw = rootCollider.CFrame:ToOrientation()
-	Swim.yaw = yaw
-	local pitchRad = math.rad(CFG.SWIM_PITCH_DEGREES)
-	local pose = CFrame.Angles(0, yaw, 0) * CFrame.Angles(pitchRad, 0, 0)
-	local pos = rootCollider.Position
-	local velocity = rootCollider.AssemblyLinearVelocity
-	rootCollider.CFrame = CFrame.new(pos) * pose
-	rootCollider.AssemblyLinearVelocity = velocity
-	rootCollider.AssemblyAngularVelocity = Vector3.zero
-	alignOrientation.CFrame = pose
-end
-
--- Сброс пишет «прямо стоя» (без pitch), чтобы выходная анимация и приземление
--- не оказались уложенными набок.
-function Swim.resetUpright()
-	local yaw = Swim.yaw
-	local pose = CFrame.Angles(0, yaw, 0)
-	local pos = rootCollider.Position
-	local velocity = rootCollider.AssemblyLinearVelocity
-	rootCollider.CFrame = CFrame.new(pos) * pose
-	rootCollider.AssemblyLinearVelocity = velocity
-	rootCollider.AssemblyAngularVelocity = Vector3.zero
-	alignOrientation.CFrame = pose
-	desiredYaw = yaw
-end
-
--- Ищем ближайшую сушу для выпрыга. Веером (±60° от Swim.lastDir) бьём лучи вниз;
--- берём точку, где есть твёрдая опора (Normal.Y высокий) И эта опора ВЫШЕ поверхности
--- воды (значит это берег, а не подводное дно). Возвращаем готовую точку посадки
--- (X, Y корня в позе стоя, Z) или nil, если берега вокруг нет.
-function Swim.findShoreLanding()
-	if Swim.lastDir.Magnitude < 0.1 then
-		return nil
-	end
-
-	updateGroundRaycastFilter()
-	local pos = rootCollider.Position
-	local legBottomY = getLegBottomY() or (pos.Y - 2)
-	local standHeight = pos.Y - legBottomY -- смещение корня над «стопами» = высоте стоя
-	local baseAngle = math.atan2(Swim.lastDir.X, Swim.lastDir.Z)
-	local bestPos, bestDist = nil, math.huge
-
-	-- Сначала пытаемся вперёд, потом расширяемся в стороны.
-	for _, deg in ipairs({ 0, -20, 20, -45, 45, -70, 70 }) do
-		local rad = baseAngle + math.rad(deg)
-		local dir = Vector3.new(math.sin(rad), 0, math.cos(rad))
-		-- На разных дистанциях вдоль направления.
-		for dist = 3, Jump.DISTANCE * 1.5, 1.5 do
-			local probeXZ = pos + dir * dist
-			local rayTop = Vector3.new(probeXZ.X, pos.Y + 10, probeXZ.Z)
-			local hit = workspace:Raycast(rayTop, Vector3.new(0, -24, 0), groundRaycastParams)
-			if hit and hit.Normal.Y >= 0.7 then
-				local waterY = Swim.surfaceY(probeXZ)
-				-- Берег = твёрдый пол НА уровне воды или выше (а не подводное дно).
-				if not waterY or hit.Position.Y >= waterY - 0.3 then
-					if dist < bestDist then
-						bestDist = dist
-						bestPos = Vector3.new(probeXZ.X, hit.Position.Y + standHeight, probeXZ.Z)
-					end
-					break -- в этом направлении уже нашли берег, ищем в других направлениях
-				end
-			end
-		end
-		if bestPos then
-			return bestPos -- предпочитаем направление, перебранное раньше (ближе к курсу)
-		end
-	end
-
-	return bestPos
-end
-
--- Выход из воды: ищем сушу и ВЫПРЫГИВАЕМ на неё кинематическим прыжком. Если суши
--- рядом нет — просто выходим из водного режима, дальше наземная навигация попробует
--- сама (на следующем кадре цикл найдёт берег вокруг). Раньше пират просто отключал
--- swim-режим и пытался дойти — у него ноги были в воде, авто-шаг не срабатывал, он
--- «плыл в землю». Теперь выпрыг гарантирует попадание на сушу.
-function Swim.exit()
-	if not Swim.active then
-		return
-	end
-	Swim.active = false
-	Swim.diving = false
-
-	-- Возвращаем корпус в вертикальное положение, иначе Jump запомнит «лежачую»
-	-- позу и приземление окажется боком.
-	Swim.resetUpright()
-
-	local landing = Swim.findShoreLanding()
-	if landing and not Jump.active and os.clock() - Jump.lastClock >= Jump.COOLDOWN then
-		Jump.start(Swim.lastDir, landing)
-	end
-end
-
--- Водное движение к цели: нырок (разбег+вход) → плавание у поверхности → выход.
-function Swim.moveToward(goal)
-	local pos = rootCollider.Position
-	local flat = Vector3.new(goal.X - pos.X, 0, goal.Z - pos.Z)
-	local dir = flat.Magnitude > 0.1 and flat.Unit or Swim.lastDir
-	if dir.Magnitude < 0.1 then
-		dir = Vector3.new(0, 0, -1)
-	end
-	Swim.lastDir = dir
-
-	if not Swim.active then
-		Swim.active = true
-		Swim.diving = true
-		Swim.startClock = os.clock()
-		Swim.yaw = select(2, rootCollider.CFrame:ToOrientation()) -- стартовый yaw на случай раннего exit
-		Swim.playDive()
-	end
-
-	faceTowards(goal)
-
-	-- Нырок: разбег и вход в воду. Едем вперёд, пока не наступит момент входа.
-	if Swim.diving then
-		local v = rootCollider.AssemblyLinearVelocity
-		rootCollider.AssemblyLinearVelocity = Vector3.new(dir.X * CFG.SWIM_SPEED, v.Y, dir.Z * CFG.SWIM_SPEED)
-		if os.clock() - Swim.startClock >= CFG.DIVE_ENTER_TIME then
-			Swim.diving = false
-			Swim.playSwim()
-		end
-		return
-	end
-
-	-- Доплыли до мели/суши → выходим на берег прыжком (см. Swim.exit).
-	if not deepWaterAt(pos, pos.Y, CFG.SWIM_EXIT_DEPTH) then
-		Swim.exit()
-		return
-	end
-
-	Swim.playSwim()
-
-	-- Поза «на животе»: тело лежит горизонтально по курсу плавания.
-	Swim.applySwimPose()
-
-	-- Держимся у поверхности (плавно подтягиваем Y к ней) и плывём к цели.
-	local yVel = rootCollider.AssemblyLinearVelocity.Y
-	local surface = Swim.surfaceY(pos)
-	if surface then
-		local targetY = surface + CFG.SWIM_BODY_OFFSET
-		yVel = math.clamp((targetY - pos.Y) * 6, -CFG.SWIM_SPEED, CFG.SWIM_SPEED)
-	end
-	rootCollider.AssemblyLinearVelocity = Vector3.new(dir.X * CFG.SWIM_SPEED, yVel, dir.Z * CFG.SWIM_SPEED)
 end
 
 local function attackTarget(targetRoot, targetHumanoid)
@@ -2066,22 +1802,19 @@ function Jump.finish()
 	desiredYaw = Jump.yaw
 end
 
-function Jump.start(dir, landOverride)
+function Jump.start(dir)
 	local startPos = rootCollider.Position
 	Jump.startPos = startPos
 
-	if landOverride then
-		-- Явная цель приземления (используется при выходе из воды на берег: с
-		-- плавучей позы Jump.groundYAt уходит на дно, и автоприземление улетает
-		-- слишком высоко — даём готовую точку посадки).
-		Jump.landPos = landOverride
-	else
-		local startGroundY = Jump.groundYAt(startPos) or (startPos.Y - 3)
-		local rootOffset = startPos.Y - startGroundY
-		local landXZ = startPos + dir * Jump.DISTANCE
-		local landGroundY = Jump.groundYAt(landXZ) or startGroundY
-		Jump.landPos = Vector3.new(landXZ.X, landGroundY + rootOffset, landXZ.Z)
-	end
+	-- Смещение «центр корня над опорой стоя» берём из геометрии тела (legBottom
+	-- относительно корня), а не из (startPos.Y − groundY). Так корректно работает
+	-- и из воды: иначе при плавучем старте Jump.groundYAt уходит на дно, rootOffset
+	-- получается огромным и пират улетает высоко над берегом.
+	local legBottom = getLegBottomY() or (startPos.Y - 2)
+	local standHeight = startPos.Y - legBottom
+	local landXZ = startPos + dir * Jump.DISTANCE
+	local landGroundY = Jump.groundYAt(landXZ) or (startPos.Y - standHeight)
+	Jump.landPos = Vector3.new(landXZ.X, landGroundY + standHeight, landXZ.Z)
 
 	-- Запоминаем смещения ВСЕХ партов относительно корня (yaw-only поза корня).
 	Jump.yaw = select(2, rootCollider.CFrame:ToOrientation())
@@ -2113,16 +1846,37 @@ function Jump.update()
 	Jump.moveAssemblyTo(CFrame.new(base.X, base.Y + arcY, base.Z) * CFrame.Angles(0, Jump.yaw, 0))
 end
 
+-- Высота поверхности воды в точке (или nil, если там не вода).
+local function waterSurfaceY(pos)
+	updateGroundRaycastFilter()
+	local hit = workspace:Raycast(pos + Vector3.new(0, 12, 0), Vector3.new(0, -40, 0), waterProbeParams)
+	if hit and hit.Material == Enum.Material.Water then
+		return hit.Position.Y
+	end
+	return nil
+end
+
+-- В воде ли пират (ноги/корпус под поверхностью воды на WATER_WADE_DEPTH или глубже).
+local function isInWater()
+	local surface = waterSurfaceY(rootCollider.Position)
+	if not surface then
+		return false
+	end
+	local legBottom = getLegBottomY() or rootCollider.Position.Y
+	return surface - legBottom >= CFG.WATER_WADE_DEPTH
+end
+
 -- Идти к goal. Видно цель напрямую — идём ровно прямо (без пасфайндинга и
 -- виляния). На пути преграда — обходим её по маршруту PathfindingService.
 local function navigateTo(goal, speed)
-	-- Вода: уже плывём, либо ПРЯМОЙ путь к цели уходит в глубокую воду → ныряем и
-	-- плывём к цели (на мели выходим на берег). Требуем прямую видимость до цели,
-	-- чтобы при сплошной преграде всё же обходить её по суше (пасфайндингом), а не
-	-- нырять в стену. Сухопутную навигацию при этом пропускаем.
-	if Swim.active or (Swim.shouldEnter(goal) and hasClearPath(goal)) then
-		Swim.moveToward(goal)
-		return
+	-- В воде: вместо ходьбы прыгаем по курсу — короткими дугами скачем через
+	-- воду или выскакиваем на берег. Анимаций нырка/плавания нет, обычный прыжок.
+	if not Jump.active and os.clock() - Jump.lastClock >= Jump.COOLDOWN and isInWater() then
+		local flat = Vector3.new(goal.X - rootCollider.Position.X, 0, goal.Z - rootCollider.Position.Z)
+		if flat.Magnitude > 0.5 then
+			Jump.start(flat.Unit)
+			return
+		end
 	end
 
 	-- Низкое препятствие вплотную по курсу → перепрыгиваем (а не упираемся). Но
@@ -2449,13 +2203,6 @@ RunService.Heartbeat:Connect(function(dt)
 		return
 	end
 
-	-- Если плыли, но уже не в глубокой воде (доплыли/выбросило) — выходим на берег.
-	-- Гейт по Swim.active, чтобы на суше лишних лучей по воде не пускать.
-	if Swim.active and not Swim.diving
-		and not deepWaterAt(rootCollider.Position, rootCollider.Position.Y, CFG.SWIM_EXIT_DEPTH) then
-		Swim.exit()
-	end
-
 	-- Кинематический прыжок: едем по дуге, физику/стабилизацию пропускаем.
 	if Jump.active then
 		Jump.update()
@@ -2468,12 +2215,7 @@ RunService.Heartbeat:Connect(function(dt)
 		end
 	end)
 
-	-- Плавание само управляет высотой тела (держит у поверхности), поэтому
-	-- наземную стабилизацию/авто-шаг пока плывём — пропускаем. На нырке (разбег по
-	-- суше) стабилизация ещё нужна.
-	if not (Swim.active and not Swim.diving) then
-		stabilizeOnGround()
-	end
+	stabilizeOnGround()
 
 	local visibleRoot, visibleChar = updatePerception(dt)
 
