@@ -71,6 +71,7 @@ local CFG = {
 	STEP_FORWARD_CLEARANCE = 1.8,    -- опора должна тянуться вперёд хотя бы на столько (иначе это тонкий гребень стены, не пол)
 	STEP_TOP_MIN_NORMAL_Y = 0.93,    -- верх ступеньки должен быть ПЛОСКИМ (Normal.Y ≥ этого); отсекает скаты крыш/рампы/склоны
 	STEP_CONTINUITY_TOL = 0.7,       -- на сколько за краем поверхность может просесть и ещё считаться сплошной
+	RECOVER_DROP = 16,               -- если тело провалилось ниже последней валидной точки на земле на столько — вернуть назад
 	MAX_UPWARD_VELOCITY = 2.5,
 	UNIT_TAG = "RaftMeleeUnit",
 	SEPARATION_RADIUS = 4,
@@ -822,6 +823,10 @@ local moveCommandDir = nil
 -- скоростью, а moveTowards не срезает вертикальную скорость своим лимитом.
 local stepClimbActive = false
 
+-- Последняя позиция, где пират нормально стоял на земле — для аварийного возврата,
+-- если он провалится сквозь геометрию (тонкий пол/баг физики).
+local lastGroundedPos = nil
+
 local groundRaycastParams = RaycastParams.new()
 groundRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
 groundRaycastParams.IgnoreWater = true
@@ -982,6 +987,17 @@ local function stabilizeOnGround()
 		return
 	end
 
+	-- Аварийный возврат: тело оказалось НАМНОГО ниже последней валидной точки на
+	-- земле → провалилось сквозь геометрию. Возвращаем на ту точку и гасим скорость.
+	if lastGroundedPos and rootCollider.Position.Y < lastGroundedPos.Y - CFG.RECOVER_DROP then
+		local yaw = select(2, rootCollider.CFrame:ToOrientation())
+		rootCollider.CFrame = CFrame.new(lastGroundedPos + Vector3.new(0, 0.5, 0)) * CFrame.Angles(0, yaw, 0)
+		rootCollider.AssemblyLinearVelocity = Vector3.zero
+		rootCollider.AssemblyAngularVelocity = Vector3.zero
+		stepClimbActive = false
+		return
+	end
+
 	local groundY = getGroundYUnderLegs()
 
 	-- Авто-шаг: впереди по курсу низкий уступ → поднимаемся на него ВЕРТИКАЛЬНОЙ
@@ -1026,6 +1042,12 @@ local function stabilizeOnGround()
 		if velocity.Y > CFG.MAX_UPWARD_VELOCITY then
 			rootCollider.AssemblyLinearVelocity = Vector3.new(velocity.X, CFG.MAX_UPWARD_VELOCITY, velocity.Z)
 		end
+	end
+
+	-- Запоминаем последнюю позицию, где стоим у самой земли (не подброшены) —
+	-- сюда вернёмся, если провалимся сквозь геометрию.
+	if legBottomY <= targetBottomY + CFG.MAX_HOVER_ABOVE_GROUND then
+		lastGroundedPos = rootCollider.Position
 	end
 end
 
