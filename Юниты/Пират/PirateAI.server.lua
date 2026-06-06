@@ -72,10 +72,13 @@ local CFG = {
 	STEP_TOP_MIN_NORMAL_Y = 0.93,    -- верх ступеньки должен быть ПЛОСКИМ (Normal.Y ≥ этого); отсекает скаты крыш/рампы/склоны
 	STEP_CONTINUITY_TOL = 0.7,       -- на сколько за краем поверхность может просесть и ещё считаться сплошной
 	RECOVER_DROP = 16,               -- если тело провалилось ниже последней валидной точки на земле на столько — вернуть назад
-	-- Вода: пират сухопутный, но воды не боится панически — может зайти на мелководье.
-	WATER_STOP_DEPTH = 2.2,          -- вода глубже этого ВПЕРЕДИ → не идём (можно зайти ~по бедро)
-	WATER_ESCAPE_DEPTH = 3.0,        -- если САМ оказался в воде глубже этого (нокбэк/обрыв) → выбираемся на сушу
-	WATER_PROBE_AHEAD = 1.5,         -- насколько вперёд проверяем воду
+	-- Вода: пират умеет нырять и плыть (анимации Dive + Swimming).
+	SWIM_TRIGGER_DEPTH = 2.0,        -- вода глубже этого ВПЕРЕДИ по курсу к цели → ныряем и плывём
+	SWIM_EXIT_DEPTH = 1.6,           -- доплыли до мели мельче этого → выходим на сушу
+	SWIM_SPEED = 12,                 -- скорость плавания (и разбега-входа в нырке)
+	SWIM_BODY_OFFSET = -0.4,         -- насколько центр тела ниже поверхности воды при плавании
+	WATER_PROBE_AHEAD = 1.5,         -- как далеко вперёд щупаем воду
+	DIVE_ENTER_TIME = 1.25,          -- в анимации Dive на этой секунде пират входит в воду → Swimming
 	MAX_UPWARD_VELOCITY = 2.5,
 	UNIT_TAG = "RaftMeleeUnit",
 	SEPARATION_RADIUS = 4,
@@ -153,6 +156,17 @@ local Jump = {
 	offsets = {},
 	assemblyParts = {},
 	track = nil,
+}
+
+-- Плавание: пират ныряет (анимация Dive: разбег → вход в воду на DIVE_ENTER_TIME),
+-- плывёт к цели у поверхности (Swimming), на мели выходит на сушу.
+local Swim = {
+	active = false,   -- в водном режиме (ныряем или плывём)
+	diving = false,   -- проигрывается нырок (разбег + вход)
+	startClock = 0,
+	lastDir = Vector3.zero,
+	track = nil,      -- Swimming
+	diveTrack = nil,  -- Dive
 }
 
 --====================================================
@@ -831,9 +845,6 @@ local stepClimbActive = false
 -- если он провалится сквозь геометрию (тонкий пол/баг физики).
 local lastGroundedPos = nil
 
--- Последняя позиция на СУШЕ (не в воде) — сюда выбираемся, если попали в воду.
-local lastDryPos = nil
-
 local groundRaycastParams = RaycastParams.new()
 groundRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
 groundRaycastParams.IgnoreWater = true
@@ -1019,7 +1030,8 @@ local function stabilizeOnGround()
 
 	-- Аварийный возврат: тело оказалось НАМНОГО ниже последней валидной точки на
 	-- земле → провалилось сквозь геометрию. Возвращаем на ту точку и гасим скорость.
-	if lastGroundedPos and rootCollider.Position.Y < lastGroundedPos.Y - CFG.RECOVER_DROP then
+	-- В водном режиме не трогаем (ныряем/плывём — низкое положение это норма).
+	if not Swim.active and lastGroundedPos and rootCollider.Position.Y < lastGroundedPos.Y - CFG.RECOVER_DROP then
 		local yaw = select(2, rootCollider.CFrame:ToOrientation())
 		rootCollider.CFrame = CFrame.new(lastGroundedPos + Vector3.new(0, 0.5, 0)) * CFrame.Angles(0, yaw, 0)
 		rootCollider.AssemblyLinearVelocity = Vector3.zero
@@ -1075,13 +1087,9 @@ local function stabilizeOnGround()
 	end
 
 	-- Запоминаем последнюю позицию, где стоим у самой земли (не подброшены) —
-	-- сюда вернёмся, если провалимся сквозь геометрию. Если при этом мы на СУШЕ —
-	-- запоминаем и как точку выхода из воды.
+	-- сюда вернёмся, если провалимся сквозь геометрию.
 	if legBottomY <= targetBottomY + CFG.MAX_HOVER_ABOVE_GROUND then
 		lastGroundedPos = rootCollider.Position
-		if not deepWaterAt(rootCollider.Position, rootCollider.Position.Y, CFG.WATER_ESCAPE_DEPTH) then
-			lastDryPos = rootCollider.Position
-		end
 	end
 end
 
@@ -1218,6 +1226,23 @@ do
 		Jump.track = animator:LoadAnimation(jumpAnim)
 		Jump.track.Looped = false
 		Jump.track.Priority = Enum.AnimationPriority.Action
+	end
+end
+
+-- Анимации воды (опциональны): объекты Animation "Dive" (нырок) и "Swimming".
+do
+	local diveAnim = npc:FindFirstChild("Dive", true)
+	if diveAnim and diveAnim:IsA("Animation") then
+		Swim.diveTrack = animator:LoadAnimation(diveAnim)
+		Swim.diveTrack.Looped = false
+		Swim.diveTrack.Priority = Enum.AnimationPriority.Action
+	end
+
+	local swimAnim = npc:FindFirstChild("Swimming", true)
+	if swimAnim and swimAnim:IsA("Animation") then
+		Swim.track = animator:LoadAnimation(swimAnim)
+		Swim.track.Looped = true
+		Swim.track.Priority = Enum.AnimationPriority.Movement
 	end
 end
 
@@ -1365,14 +1390,14 @@ local function getSeparationVector()
 	return push
 end
 
--- Вода прямо по курсу глубже WATER_STOP_DEPTH? Пират сухопутный — туда не идёт.
+-- Глубокая вода прямо по курсу (повод нырять и плыть)?
 local function deepWaterAhead(dir)
 	local origin = rootCollider.Position
 	local ahead = math.max(rootCollider.Size.X, rootCollider.Size.Z) * 0.5 + CFG.WATER_PROBE_AHEAD
-	return deepWaterAt(origin + dir * ahead, origin.Y, CFG.WATER_STOP_DEPTH)
+	return deepWaterAt(origin + dir * ahead, origin.Y, CFG.SWIM_TRIGGER_DEPTH)
 end
 
-local function moveTowards(targetPosition, speed, ignoreWater)
+local function moveTowards(targetPosition, speed)
 	-- Во время замаха стоим на месте: иначе пират проезжает сквозь игрока и
 	-- «промахивается» мимо. Двигаемся только между ударами.
 	if isAttacking then
@@ -1399,13 +1424,6 @@ local function moveTowards(targetPosition, speed, ignoreWater)
 		direction = direction.Unit
 	end
 
-	-- Сухопутный страж: впереди глубокая вода → стоп у кромки, в воду не лезем.
-	-- (ignoreWater=true только при выходе ИЗ воды на сушу — тогда не блокируем.)
-	if not ignoreWater and deepWaterAhead(direction) then
-		stopMovement()
-		return
-	end
-
 	-- Во время захода на ступеньку вертикальную скорость НЕ срезаем (её задаёт
 	-- stabilizeOnGround для подъёма); в норме держим лимит против подброса.
 	local yVel = rootCollider.AssemblyLinearVelocity.Y
@@ -1419,6 +1437,122 @@ local function moveTowards(targetPosition, speed, ignoreWater)
 
 	-- Куда реально идём — для авто-шага (direction уже плоский единичный вектор).
 	moveCommandDir = Vector3.new(direction.X, 0, direction.Z)
+end
+
+--====================================================
+-- ПЛАВАНИЕ (нырок + плавание + выход на берег)
+--====================================================
+
+function Swim.playDive()
+	currentAnimationState = "Dive"
+	idleTrack:Stop(0.1)
+	walkTrack:Stop(0.1)
+	if runTrack ~= walkTrack then runTrack:Stop(0.1) end
+	attackTrack:Stop(0.1)
+	if Swim.track then Swim.track:Stop(0.1) end
+	if Swim.diveTrack then
+		Swim.diveTrack:Stop(0)
+		Swim.diveTrack:Play(0.1)
+	end
+end
+
+function Swim.playSwim()
+	if currentAnimationState == "Swim" then
+		return
+	end
+	currentAnimationState = "Swim"
+	idleTrack:Stop(0.2)
+	walkTrack:Stop(0.2)
+	if runTrack ~= walkTrack then runTrack:Stop(0.2) end
+	attackTrack:Stop(0.1)
+	if Swim.diveTrack then Swim.diveTrack:Stop(0.2) end
+	if Swim.track and not Swim.track.IsPlaying then
+		Swim.track:Play(0.2)
+	end
+end
+
+-- Высота поверхности воды в точке (или nil, если там не вода).
+function Swim.surfaceY(pos)
+	updateGroundRaycastFilter()
+	local hit = workspace:Raycast(pos + Vector3.new(0, 12, 0), Vector3.new(0, -40, 0), waterProbeParams)
+	if hit and hit.Material == Enum.Material.Water then
+		return hit.Position.Y
+	end
+	return nil
+end
+
+-- Прямой путь к цели уходит в глубокую воду → пора нырять.
+function Swim.shouldEnter(goal)
+	local pos = rootCollider.Position
+	local flat = Vector3.new(goal.X - pos.X, 0, goal.Z - pos.Z)
+	if flat.Magnitude < 0.5 then
+		return false
+	end
+	return deepWaterAhead(flat.Unit)
+end
+
+-- Выход из воды: доплыли до мели → выходим из водного режима. Дальше обычная
+-- наземная навигация сама доводит на берег (стабилизация ставит на дно у мели,
+-- авто-шаг/прыжок заводит на уступ берега). Анимацию прыжка проигрываем для
+-- «выхода на поверхность».
+function Swim.exit(dir)
+	if not Swim.active then
+		return
+	end
+	Swim.active = false
+	Swim.diving = false
+
+	if Jump.track and Jump.playAnim then
+		Jump.playAnim()
+	end
+end
+
+-- Водное движение к цели: нырок (разбег+вход) → плавание у поверхности → выход.
+function Swim.moveToward(goal)
+	local pos = rootCollider.Position
+	local flat = Vector3.new(goal.X - pos.X, 0, goal.Z - pos.Z)
+	local dir = flat.Magnitude > 0.1 and flat.Unit or Swim.lastDir
+	if dir.Magnitude < 0.1 then
+		dir = Vector3.new(0, 0, -1)
+	end
+	Swim.lastDir = dir
+
+	if not Swim.active then
+		Swim.active = true
+		Swim.diving = true
+		Swim.startClock = os.clock()
+		Swim.playDive()
+	end
+
+	faceTowards(goal)
+
+	-- Нырок: разбег и вход в воду. Едем вперёд, пока не наступит момент входа.
+	if Swim.diving then
+		local v = rootCollider.AssemblyLinearVelocity
+		rootCollider.AssemblyLinearVelocity = Vector3.new(dir.X * CFG.SWIM_SPEED, v.Y, dir.Z * CFG.SWIM_SPEED)
+		if os.clock() - Swim.startClock >= CFG.DIVE_ENTER_TIME then
+			Swim.diving = false
+			Swim.playSwim()
+		end
+		return
+	end
+
+	-- Доплыли до мели/суши → выходим на берег.
+	if not deepWaterAt(pos, pos.Y, CFG.SWIM_EXIT_DEPTH) then
+		Swim.exit(dir)
+		return
+	end
+
+	Swim.playSwim()
+
+	-- Держимся у поверхности (плавно подтягиваем Y к ней) и плывём к цели.
+	local yVel = rootCollider.AssemblyLinearVelocity.Y
+	local surface = Swim.surfaceY(pos)
+	if surface then
+		local targetY = surface + CFG.SWIM_BODY_OFFSET
+		yVel = math.clamp((targetY - pos.Y) * 6, -CFG.SWIM_SPEED, CFG.SWIM_SPEED)
+	end
+	rootCollider.AssemblyLinearVelocity = Vector3.new(dir.X * CFG.SWIM_SPEED, yVel, dir.Z * CFG.SWIM_SPEED)
 end
 
 local function attackTarget(targetRoot, targetHumanoid)
@@ -1885,6 +2019,15 @@ end
 -- Идти к goal. Видно цель напрямую — идём ровно прямо (без пасфайндинга и
 -- виляния). На пути преграда — обходим её по маршруту PathfindingService.
 local function navigateTo(goal, speed)
+	-- Вода: уже плывём, либо ПРЯМОЙ путь к цели уходит в глубокую воду → ныряем и
+	-- плывём к цели (на мели выходим на берег). Требуем прямую видимость до цели,
+	-- чтобы при сплошной преграде всё же обходить её по суше (пасфайндингом), а не
+	-- нырять в стену. Сухопутную навигацию при этом пропускаем.
+	if Swim.active or (Swim.shouldEnter(goal) and hasClearPath(goal)) then
+		Swim.moveToward(goal)
+		return
+	end
+
 	-- Низкое препятствие вплотную по курсу → перепрыгиваем (а не упираемся). Но
 	-- пока идёт заход на ступеньку (авто-шаг) — не прыгаем, чтобы не перебивать его.
 	if not Jump.active and not stepClimbActive and os.clock() - Jump.lastClock >= Jump.COOLDOWN then
@@ -2209,6 +2352,13 @@ RunService.Heartbeat:Connect(function(dt)
 		return
 	end
 
+	-- Если плыли, но уже не в глубокой воде (доплыли/выбросило) — выходим на берег.
+	-- Гейт по Swim.active, чтобы на суше лишних лучей по воде не пускать.
+	if Swim.active and not Swim.diving
+		and not deepWaterAt(rootCollider.Position, rootCollider.Position.Y, CFG.SWIM_EXIT_DEPTH) then
+		Swim.exit(Swim.lastDir)
+	end
+
 	-- Кинематический прыжок: едем по дуге, физику/стабилизацию пропускаем.
 	if Jump.active then
 		Jump.update()
@@ -2221,7 +2371,12 @@ RunService.Heartbeat:Connect(function(dt)
 		end
 	end)
 
-	stabilizeOnGround()
+	-- Плавание само управляет высотой тела (держит у поверхности), поэтому
+	-- наземную стабилизацию/авто-шаг пока плывём — пропускаем. На нырке (разбег по
+	-- суше) стабилизация ещё нужна.
+	if not (Swim.active and not Swim.diving) then
+		stabilizeOnGround()
+	end
 
 	local visibleRoot, visibleChar = updatePerception(dt)
 
@@ -2315,16 +2470,6 @@ RunService.Heartbeat:Connect(function(dt)
 	-- тревоге, реально нападают на игрока, а не топчутся в проверке/готовности.
 	if chaseVisibleRoot and currentState ~= STATE.CHASE and currentState ~= STATE.ATTACK then
 		setState(STATE.CHASE)
-	end
-
-	-- Выход из воды: если пирата всё же занесло в глубокую воду (нокбэк/край),
-	-- он не плавает — бросает всё и выбирается на последнюю сушу (ignoreWater,
-	-- чтобы свой же водяной стоп не запер его на месте). Это поверх любого состояния.
-	if lastDryPos and deepWaterAt(rootCollider.Position, rootCollider.Position.Y, CFG.WATER_ESCAPE_DEPTH) then
-		faceTowards(lastDryPos)
-		moveTowards(lastDryPos, CFG.MOVE_SPEED * CFG.RUN_SPEED_MULTIPLIER, true)
-		playWalk()
-		return
 	end
 
 	if currentState == STATE.GUARD then
