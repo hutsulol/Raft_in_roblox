@@ -72,6 +72,9 @@ local CFG = {
 	STEP_TOP_MIN_NORMAL_Y = 0.93,    -- верх ступеньки должен быть ПЛОСКИМ (Normal.Y ≥ этого); отсекает скаты крыш/рампы/склоны
 	STEP_CONTINUITY_TOL = 0.7,       -- на сколько за краем поверхность может просесть и ещё считаться сплошной
 	RECOVER_DROP = 16,               -- если тело провалилось ниже последней валидной точки на земле на столько — вернуть назад
+	-- Вода: пират сухопутный — в глубокую воду не заходит, тормозит у кромки.
+	WATER_STOP_DEPTH = 2.5,          -- глубина (поверхность−дно), с которой считаем воду непроходимой (по пояс+)
+	WATER_PROBE_AHEAD = 1.8,         -- насколько вперёд проверяем воду, чтобы остановиться ДО входа
 	MAX_UPWARD_VELOCITY = 2.5,
 	UNIT_TAG = "RaftMeleeUnit",
 	SEPARATION_RADIUS = 4,
@@ -831,6 +834,11 @@ local groundRaycastParams = RaycastParams.new()
 groundRaycastParams.FilterType = Enum.RaycastFilterType.Exclude
 groundRaycastParams.IgnoreWater = true
 
+-- Тот же фильтр, но воду НЕ игнорируем — чтобы ловить кромку воды (материал Water).
+local waterProbeParams = RaycastParams.new()
+waterProbeParams.FilterType = Enum.RaycastFilterType.Exclude
+waterProbeParams.IgnoreWater = false
+
 local function updateGroundRaycastFilter()
 	local filterList = { npc }
 
@@ -849,6 +857,7 @@ local function updateGroundRaycastFilter()
 	end
 
 	groundRaycastParams.FilterDescendantsInstances = filterList
+	waterProbeParams.FilterDescendantsInstances = filterList
 end
 
 local function getLegBottomY()
@@ -1331,6 +1340,29 @@ local function getSeparationVector()
 	return push
 end
 
+-- true, если прямо по курсу ГЛУБОКАЯ вода (по пояс и глубже). Пират сухопутный —
+-- туда не идёт, тормозит у кромки. Воду ловим по материалу Terrain (Water);
+-- глубину считаем как поверхность−дно, мелководье пройти можно.
+local function deepWaterAhead(dir)
+	updateGroundRaycastFilter()
+
+	local origin = rootCollider.Position
+	local ahead = math.max(rootCollider.Size.X, rootCollider.Size.Z) * 0.5 + CFG.WATER_PROBE_AHEAD
+	local point = origin + dir * ahead
+	local top = Vector3.new(point.X, origin.Y + 6, point.Z)
+
+	-- Поверхность воды в точке впереди (воду НЕ игнорируем).
+	local water = workspace:Raycast(top, Vector3.new(0, -40, 0), waterProbeParams)
+	if not water or water.Material ~= Enum.Material.Water then
+		return false -- впереди не вода (или вода далеко вниз — мелкая лужа у ног нас не держит)
+	end
+
+	-- Глубина = поверхность воды − дно (дно ищем, игнорируя воду).
+	local seabed = workspace:Raycast(top, Vector3.new(0, -80, 0), groundRaycastParams)
+	local seabedY = seabed and seabed.Position.Y or (water.Position.Y - 100)
+	return (water.Position.Y - seabedY) >= CFG.WATER_STOP_DEPTH
+end
+
 local function moveTowards(targetPosition, speed)
 	-- Во время замаха стоим на месте: иначе пират проезжает сквозь игрока и
 	-- «промахивается» мимо. Двигаемся только между ударами.
@@ -1356,6 +1388,12 @@ local function moveTowards(targetPosition, speed)
 		direction = offset.Unit
 	else
 		direction = direction.Unit
+	end
+
+	-- Сухопутный страж: впереди глубокая вода → стоп у кромки, в воду не лезем.
+	if deepWaterAhead(direction) then
+		stopMovement()
+		return
 	end
 
 	-- Во время захода на ступеньку вертикальную скорость НЕ срезаем (её задаёт
