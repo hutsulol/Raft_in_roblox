@@ -62,6 +62,7 @@ local CFG = {
 	LEG_GROUND_RAYCAST_DEPTH = 16,
 	MAX_GROUND_LIFT_PER_HEARTBEAT = 0.25,
 	-- Авто-шаг: плавный заход на невысокие возвышенности без прыжка.
+	STEP_ENABLED = true,             -- выключатель авто-шага (для диагностики: false → совсем не шагает)
 	STEP_MAX_HEIGHT = 2.5,           -- макс. высота ступеньки, на которую заходим
 	STEP_MIN_RISE = 0.15,            -- ниже этого подъёма не считаем ступенькой (шум)
 	STEP_PROBE_AHEAD = 1.6,          -- насколько вперёд от тела щупаем ступеньку
@@ -908,8 +909,8 @@ end
 --      иначе пират забирался на стену и проваливался по ту сторону).
 -- groundRaycastParams игнорирует игроков и других юнитов → залезть на них нельзя.
 local function getStepUpGroundY(legBottomY)
-	if not moveCommandDir then
-		return nil -- стоим / не идём целенаправленно — не шагаем
+	if not CFG.STEP_ENABLED or not moveCommandDir then
+		return nil -- авто-шаг выключен / стоим — не шагаем
 	end
 
 	updateGroundRaycastFilter()
