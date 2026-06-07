@@ -17,7 +17,8 @@ local CFG = {
 	ATTACK_ANIMATION_NAME = "Attack",
 	ROOT_COLLIDER_NAME = "TorsoCollider",
 	UNIT_MAX_HEALTH = 15,
-	DESTROY_ON_DEATH = false,
+	DESTROY_ON_DEATH = true,
+	DEATH_DESTROY_DELAY = 0.6, -- через сколько секунд после смерти убрать тело
 	DEBUG_VISIBLE = false,
 	MODEL_YAW_OFFSET_DEGREES = 180,
 	MOVE_SPEED = 10,
@@ -400,7 +401,7 @@ local function onDeath()
 	diedEvent:Fire()
 
 	if CFG.DESTROY_ON_DEATH then
-		task.delay(3, function()
+		task.delay(CFG.DEATH_DESTROY_DELAY, function()
 			if npc.Parent then
 				npc:Destroy()
 			end
