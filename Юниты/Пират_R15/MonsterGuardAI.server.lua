@@ -98,6 +98,7 @@ local Data = {
 	CurrentNodeIndex = 1,
 	AutoRecompute = true,
 	LastJumpCheck = 0,
+	LastSwimHop = 0,
 	LastAttack = 0,
 
 	-- Слежка
@@ -484,13 +485,6 @@ function Monster:IsSwimming()
 end
 
 function Monster:JumpCheck()
-	-- В воде прыгаем настойчиво — иначе Humanoid сам на плот/берег из воды не лезет.
-	if Monster:IsSwimming() then
-		Self.Humanoid.Jump = true
-		Data.LastJumpCheck = tick()
-		return
-	end
-
 	local myCFrame = Monster:GetCFrame()
 	local goal = Data.GoalPos
 	if not goal then return end
@@ -623,10 +617,12 @@ function Monster:Update(dt)
 	Monster:ReactToSquad()
 	local visible = Monster:UpdatePerception(dt)
 
-	-- В воде каждый кадр жмём прыжок — так Humanoid выскакивает на плот/берег
-	-- (сам он из воды на уступ не залезает). Направление даёт MoveTo ниже.
-	if Monster:IsSwimming() then
+	-- В воде ПЕРИОДИЧЕСКИ подпрыгиваем (не каждый кадр — иначе ломается плавание),
+	-- чтобы выбраться на плот/берег у края. Сам по воде никуда не «идёт»: горизонталь
+	-- даёт только MoveTo при погоне/проверке места. В покое — просто прыжки у края.
+	if Monster:IsSwimming() and tick() - Data.LastSwimHop > 0.5 then
 		Self.Humanoid.Jump = true
+		Data.LastSwimHop = tick()
 	end
 
 	-- 100%: захвачена цель — погоня и удар (как в Basic Monster).
@@ -662,11 +658,10 @@ function Monster:Update(dt)
 		return
 	end
 
-	-- Спокойно. Если упал в воду — плывём на пост (на сушу) и выпрыгиваем; иначе
-	-- осматриваемся.
-	if Monster:IsSwimming() then
-		Monster:NavigateTo(Settings.SpawnPoint.Value, Data.BaseWalkSpeed, false)
-	else
+	-- Спокойно: осматриваемся и забываем. (По воде специально не плаваем — он
+	-- сухопутный; если оказался в воде у плота, на него он выберется прыжком при
+	-- движении к цели/месту, см. JumpCheck.)
+	if not Monster:IsSwimming() then
 		Monster:IdleScan()
 	end
 	if not visible then
