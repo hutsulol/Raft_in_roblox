@@ -14,8 +14,11 @@
   (`ComputeSmoothPathAsync` удалён из Roblox → `CreatePath`/`ComputeAsync`); цель
   ищется по `HumanoidRootPart` (работает и с R15). Требует ту же обвязку, что и
   Basic Monster: `Configurations`, `Mind`, `Respawn`, `Died`, `Respawned`.
-  - Слежка: монстр не агрится мгновенно — копит подозрение по FOV+LOS, на 100%
-    берёт игрока целью (`Mind.CurrentTargetHumanoid`) и кричит отряду.
+  - Слежка: монстр не агрится мгновенно — копит подозрение по FOV+LOS. На **50%**
+    идёт **ПРОВЕРИТЬ** место, где заметил движение (`Investigate`, медленный шаг,
+    обход препятствий пасфайндингом); на **100%** берёт игрока целью
+    (`Mind.CurrentTargetHumanoid`) и кричит отряду. По дороге к месту тревога
+    держится (`InvestigateTimeout`), на месте — осматривается и забывает.
   - Зов: соседям с тегом `PirateGuard` ставит того же игрока целью (атрибуты
     `AlertClock`/`AlertPosition`/`AlertUserId`).
   - Все новые настройки — в таблице `Info` (секции «СЛЕЖКА» и «ЗОВ НА ПОМОЩЬ»).

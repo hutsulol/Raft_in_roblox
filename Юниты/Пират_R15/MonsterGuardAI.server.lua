@@ -68,9 +68,12 @@ local Info = {
 	SuspicionGainFront = 90,
 	SuspicionGainSide  = 35,
 	SuspicionDecay     = 25,
-	SuspicionInvestigate = 50,  -- порог для жёлтой полосы
+	SuspicionInvestigate = 50,  -- порог: идём ПРОВЕРИТЬ место (жёлтая полоса)
 	SuspicionAlert       = 100, -- порог захвата цели + крика
 	PointBlankRange    = 8,     -- ближе — замечает мгновенно, в любом угле
+	InvestigateReach   = 4,     -- считаем, что «дошли до места»
+	InvestigateTimeout = 12,    -- сколько держим тревогу по дороге к месту, если не видим
+	InvestigateSpeed   = 10,    -- скорость шага к подозрительному месту
 
 	-- ── ЗОВ НА ПОМОЩЬ (отряд) ──────────────────────────────────────────
 	GuardTag        = "PirateGuard",
@@ -100,6 +103,8 @@ local Data = {
 	-- Слежка
 	Suspicion = 0,
 	LastKnownPos = nil,
+	InvestigateDeadline = 0,
+	GoalPos = nil,
 	NextScanClock = 0,
 	ScanYaw = nil,
 
@@ -108,6 +113,8 @@ local Data = {
 	AlertPos = nil,
 	AlertUserId = nil,
 	LastShout = 0,
+
+	BaseWalkSpeed = 16,
 
 	BaseMonster = Self:Clone(),
 	AttackTrack = nil,
@@ -246,12 +253,13 @@ local function isHostilePlayer(player)
 end
 
 -- Зрение: копит подозрение по FOV + LOS; на 100% берёт игрока целью и кричит.
+-- Возвращает true, если кого-то видно в этот кадр (спад подозрения решает Update).
 function Monster:UpdatePerception(dt)
 	-- Уже есть цель — слежку не трогаем, погоня сама ведёт.
 	if Monster:TargetIsValid() then
 		Data.Suspicion = 100
 		Monster:UpdateSuspicionBar()
-		return
+		return true
 	end
 
 	local lookDir = Monster:GetLookDirection()
@@ -293,10 +301,9 @@ function Monster:UpdatePerception(dt)
 	end
 
 	if bestRoot then
+		-- Видим — запоминаем место и продлеваем «память» по дороге к нему.
 		Data.LastKnownPos = bestRoot.Position
-	else
-		-- Никого не видно — забываем.
-		Data.Suspicion = math.max(0, Data.Suspicion - Info.SuspicionDecay * dt)
+		Data.InvestigateDeadline = os.clock() + Info.InvestigateTimeout
 	end
 
 	-- Захват цели на 100%.
@@ -306,6 +313,7 @@ function Monster:UpdatePerception(dt)
 	end
 
 	Monster:UpdateSuspicionBar()
+	return bestRoot ~= nil
 end
 
 -- Лёгкий осмотр по сторонам, пока нет цели (чтобы замечать и сбоку/сзади).
@@ -388,26 +396,33 @@ end
 -- ПАСФАЙНДИНГ (модернизирован: CreatePath / ComputeAsync)
 --====================================================
 
-function Monster:HasClearLineOfSight()
+-- Фильтр луча: исключаем себя и (если есть) персонажа текущей цели, чтобы цель
+-- сама не «загораживала» обзор/не считалась преградой для прыжка.
+local function losFilter()
+	local t = Mind.CurrentTargetHumanoid.Value
+	if t and t.Parent then
+		return { Self, t.Parent }
+	end
+	return { Self }
+end
+
+function Monster:HasClearLineOfSightTo(goalPos)
 	local myPos = Monster:GetCFrame().Position
-	local targetPos = Monster:GetTargetPosition()
-	if not targetPos then return false end
-	sightParams.FilterDescendantsInstances = { Self, Mind.CurrentTargetHumanoid.Value.Parent }
-	local result = workspace:Raycast(myPos, targetPos - myPos, sightParams)
+	sightParams.FilterDescendantsInstances = losFilter()
+	local result = workspace:Raycast(myPos, goalPos - myPos, sightParams)
 	return result == nil
 end
 
-function Monster:RecomputePath()
+-- Считаем маршрут к ПРОИЗВОЛЬНОЙ точке (игрок ИЛИ подозрительное место). Прямая
+-- видимость → идём прямо; иначе обходим по PathfindingService.
+function Monster:RecomputePathTo(goalPos)
 	if Data.Recomputing then return end
-	if not (Monster:IsAlive() and Monster:TargetIsValid()) then return end
+	if not Monster:IsAlive() then return end
 
 	local myPos = Monster:GetCFrame().Position
-	local targetPos = Monster:GetTargetPosition()
-	if not targetPos then return end
-
-	if Monster:HasClearLineOfSight() then
+	if Monster:HasClearLineOfSightTo(goalPos) then
 		Data.AutoRecompute = true
-		Data.PathCoords = { myPos, targetPos }
+		Data.PathCoords = { myPos, goalPos }
 		Data.LastRecomputePath = tick()
 		Data.CurrentNode = nil
 		Data.CurrentNodeIndex = 2
@@ -423,7 +438,7 @@ function Monster:RecomputePath()
 			AgentCanJump = Info.AgentCanJump,
 		})
 		local ok = pcall(function()
-			path:ComputeAsync(Monster:GetCFrame().Position, Monster:GetTargetPosition() or targetPos)
+			path:ComputeAsync(Monster:GetCFrame().Position, goalPos)
 		end)
 		if ok and path.Status == Enum.PathStatus.Success then
 			local coords = {}
@@ -435,7 +450,7 @@ function Monster:RecomputePath()
 			Data.CurrentNodeIndex = 1
 		else
 			-- Не нашли путь — идём напрямую.
-			Data.PathCoords = { Monster:GetCFrame().Position, Monster:GetTargetPosition() or targetPos }
+			Data.PathCoords = { Monster:GetCFrame().Position, goalPos }
 			Data.CurrentNode = nil
 			Data.CurrentNodeIndex = 2
 		end
@@ -444,10 +459,16 @@ function Monster:RecomputePath()
 	end)
 end
 
-function Monster:TryRecomputePath()
-	if Data.AutoRecompute or tick() - Data.LastRecomputePath > 1 / Info.RecomputePathFrequency then
-		Monster:RecomputePath()
+-- Идти к точке: ставит скорость, при необходимости пересчитывает путь и едет по
+-- нему. doAttack=true — бьём цель в радиусе (только в погоне).
+function Monster:NavigateTo(goalPos, speed, doAttack)
+	Self.Humanoid.WalkSpeed = speed
+	local goalMoved = Data.GoalPos and (Data.GoalPos - goalPos).Magnitude > 5
+	Data.GoalPos = goalPos
+	if Data.AutoRecompute or goalMoved or tick() - Data.LastRecomputePath > 1 / Info.RecomputePathFrequency then
+		Monster:RecomputePathTo(goalPos)
 	end
+	Monster:TravelPath(doAttack)
 end
 
 --====================================================
@@ -460,16 +481,16 @@ jumpParams.IgnoreWater = true
 
 function Monster:JumpCheck()
 	local myCFrame = Monster:GetCFrame()
-	local targetPos = Monster:GetTargetPosition()
-	if not targetPos then return end
+	local goal = Data.GoalPos
+	if not goal then return end
 
-	local checkVector = (targetPos - myCFrame.Position)
+	local checkVector = (goal - myCFrame.Position)
 	if checkVector.Magnitude < 0.1 then return end
 	checkVector = checkVector.Unit * 2
 
-	jumpParams.FilterDescendantsInstances = { Self }
+	jumpParams.FilterDescendantsInstances = losFilter()
 	local low = workspace:Raycast(myCFrame.Position + Vector3.new(0, -2.4, 0), checkVector, jumpParams)
-	if low and not low.Instance:IsDescendantOf(Mind.CurrentTargetHumanoid.Value.Parent) then
+	if low then
 		local high = workspace:Raycast(myCFrame.Position + Vector3.new(0, -2.3, 0), checkVector, jumpParams)
 		if high and high.Instance == low.Instance then
 			if ((high.Position - low.Position) * Vector3.new(1, 0, 1)).Magnitude < 0.05 then
@@ -511,7 +532,7 @@ function Monster:TryAttack()
 	end
 end
 
-function Monster:TravelPath()
+function Monster:TravelPath(doAttack)
 	if #Data.PathCoords == 0 then return end
 	local myPosition = Monster:GetCFrame().Position
 	local skipCurrentNode = Data.CurrentNode ~= nil and (Data.CurrentNode - myPosition).Magnitude < 3
@@ -536,9 +557,11 @@ function Monster:TravelPath()
 		Data.CurrentNodeIndex = closestIndex
 		Self.Humanoid:MoveTo(closest)
 
-		if Monster:IsAlive() and Monster:TargetIsValid() then
-			Monster:TryJumpCheck()
-			Monster:TryAttack()
+		if Monster:IsAlive() then
+			Monster:TryJumpCheck() -- прыгаем через мелкие преграды и в погоне, и при проверке места
+			if doAttack and Monster:TargetIsValid() then
+				Monster:TryAttack()
+			end
 		end
 
 		if closestIndex == #Data.PathCoords then
@@ -580,20 +603,52 @@ function Monster:ReevaluateTarget()
 	end
 end
 
+local function decaySuspicion(dt)
+	Data.Suspicion = math.max(0, Data.Suspicion - Info.SuspicionDecay * dt)
+end
+
 function Monster:Update(dt)
 	Monster:ReevaluateTarget()
 	Monster:ReactToSquad()
-	Monster:UpdatePerception(dt)
+	local visible = Monster:UpdatePerception(dt)
 
+	-- 100%: захвачена цель — погоня и удар (как в Basic Monster).
 	if Monster:TargetIsValid() then
-		-- В бою периодически перекрикиваем (обновляя позицию игрока отряду).
 		if os.clock() - Data.LastShout >= Info.ShoutInterval then
-			Monster:BroadcastAlert()
+			Monster:BroadcastAlert() -- перекрикиваем, обновляя позицию игрока отряду
 		end
-		Monster:TryRecomputePath()
-		Monster:TravelPath()
-	else
-		Monster:IdleScan()
+		Monster:NavigateTo(Monster:GetTargetPosition(), Data.BaseWalkSpeed, true)
+		return
+	end
+
+	-- 50..99%: цель не захвачена, но видели подозрительное — идём ПРОВЕРИТЬ место.
+	if Data.Suspicion >= Info.SuspicionInvestigate and Data.LastKnownPos then
+		local myP = Monster:GetCFrame().Position
+		local flat = Vector3.new(Data.LastKnownPos.X - myP.X, 0, Data.LastKnownPos.Z - myP.Z)
+		if flat.Magnitude > Info.InvestigateReach then
+			-- В пути к месту. Память держим, пока не истёк таймаут с последнего «вижу»
+			-- (иначе, если место недостижимо, в конце концов отпускаем).
+			Monster:NavigateTo(Data.LastKnownPos, Info.InvestigateSpeed, false)
+			if not visible and os.clock() >= Data.InvestigateDeadline then
+				decaySuspicion(dt)
+			end
+		else
+			-- Дошли до места — осматриваемся и начинаем забывать.
+			Monster:IdleScan()
+			if not visible then
+				decaySuspicion(dt)
+			end
+			if Data.Suspicion < Info.SuspicionInvestigate * 0.5 then
+				Data.LastKnownPos = nil
+			end
+		end
+		return
+	end
+
+	-- Спокойно: осматриваемся и забываем.
+	Monster:IdleScan()
+	if not visible then
+		decaySuspicion(dt)
 	end
 end
 
@@ -635,9 +690,9 @@ end
 
 function Monster:Initialize()
 	Mind.CurrentTargetHumanoid.Changed:Connect(function(humanoid)
-		if humanoid ~= nil then
-			assert(humanoid:IsA("Humanoid"), "Monster target must be a humanoid")
-			Monster:RecomputePath()
+		if humanoid ~= nil and humanoid:IsA("Humanoid") then
+			local tp = Monster:GetTargetPosition()
+			if tp then Monster:RecomputePathTo(tp) end
 		end
 	end)
 
@@ -648,6 +703,9 @@ function Monster:Initialize()
 	if Settings.AutoDetectSpawnPoint.Value then
 		Settings.SpawnPoint.Value = Monster:GetCFrame().Position
 	end
+
+	-- Запоминаем «боевую» скорость рига (для проверки места идём медленнее).
+	Data.BaseWalkSpeed = (Self.Humanoid.WalkSpeed and Self.Humanoid.WalkSpeed > 0) and Self.Humanoid.WalkSpeed or 16
 
 	CollectionService:AddTag(Self, Info.GuardTag)
 	if not Self.PrimaryPart then
