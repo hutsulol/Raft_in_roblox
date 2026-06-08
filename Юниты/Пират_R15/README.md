@@ -6,7 +6,25 @@
 
 ## Файлы
 
-- `PirateGuardAI.server.lua` — серверный скрипт «мозга» сторожа.
+Две версии «мозга» под Humanoid — выбери одну:
+
+- **`MonsterGuardAI.server.lua`** — твой **Basic Monster** (ArceusInator), в который
+  встроены СЛЕЖКА (зрение/подозрение) и ЗОВ НА ПОМОЩЬ (отряд). Сохранены движение,
+  погоня, прыжки и атака Basic Monster'а; пасфайндинг модернизирован
+  (`ComputeSmoothPathAsync` удалён из Roblox → `CreatePath`/`ComputeAsync`); цель
+  ищется по `HumanoidRootPart` (работает и с R15). Требует ту же обвязку, что и
+  Basic Monster: `Configurations`, `Mind`, `Respawn`, `Died`, `Respawned`.
+  - Слежка: монстр не агрится мгновенно — копит подозрение по FOV+LOS, на 100%
+    берёт игрока целью (`Mind.CurrentTargetHumanoid`) и кричит отряду.
+  - Зов: соседям с тегом `PirateGuard` ставит того же игрока целью (атрибуты
+    `AlertClock`/`AlertPosition`/`AlertUserId`).
+  - Все новые настройки — в таблице `Info` (секции «СЛЕЖКА» и «ЗОВ НА ПОМОЩЬ»).
+
+- `PirateGuardAI.server.lua` — самостоятельный сторож с нуля под Humanoid (FSM
+  Guard/Patrol/Investigate/Chase/Search/Return/Alerted, патруль по `PatrolPoints`).
+  Не требует `Configurations`/`Mind`, все настройки в `CFG`.
+
+Ниже описана версия `PirateGuardAI`. Логика слежки и отряда в обеих одинаковая.
 
 ## Как вставить в Roblox Studio
 
