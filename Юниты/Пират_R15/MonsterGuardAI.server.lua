@@ -479,7 +479,18 @@ local jumpParams = RaycastParams.new()
 jumpParams.FilterType = Enum.RaycastFilterType.Exclude
 jumpParams.IgnoreWater = true
 
+function Monster:IsSwimming()
+	return Self.Humanoid:GetState() == Enum.HumanoidStateType.Swimming
+end
+
 function Monster:JumpCheck()
+	-- В воде прыгаем настойчиво — иначе Humanoid сам на плот/берег из воды не лезет.
+	if Monster:IsSwimming() then
+		Self.Humanoid.Jump = true
+		Data.LastJumpCheck = tick()
+		return
+	end
+
 	local myCFrame = Monster:GetCFrame()
 	local goal = Data.GoalPos
 	if not goal then return end
@@ -612,6 +623,12 @@ function Monster:Update(dt)
 	Monster:ReactToSquad()
 	local visible = Monster:UpdatePerception(dt)
 
+	-- В воде каждый кадр жмём прыжок — так Humanoid выскакивает на плот/берег
+	-- (сам он из воды на уступ не залезает). Направление даёт MoveTo ниже.
+	if Monster:IsSwimming() then
+		Self.Humanoid.Jump = true
+	end
+
 	-- 100%: захвачена цель — погоня и удар (как в Basic Monster).
 	if Monster:TargetIsValid() then
 		if os.clock() - Data.LastShout >= Info.ShoutInterval then
@@ -645,8 +662,13 @@ function Monster:Update(dt)
 		return
 	end
 
-	-- Спокойно: осматриваемся и забываем.
-	Monster:IdleScan()
+	-- Спокойно. Если упал в воду — плывём на пост (на сушу) и выпрыгиваем; иначе
+	-- осматриваемся.
+	if Monster:IsSwimming() then
+		Monster:NavigateTo(Settings.SpawnPoint.Value, Data.BaseWalkSpeed, false)
+	else
+		Monster:IdleScan()
+	end
 	if not visible then
 		decaySuspicion(dt)
 	end
