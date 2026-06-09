@@ -377,6 +377,69 @@ local function playSound(sounds, name)
 	end
 end
 
+-- Билборд статуса над головой рабочего (показываем во время отдыха). TextLabel с
+-- AutoLocalize=true — Roblox сам переводит текст под локаль игрока (как обычный
+-- TextLabel). Создаём на сервере, реплицируется и локализуется у каждого клиента.
+local function createStatusGui(worker)
+	local head = worker:FindFirstChild("Head") or worker:FindFirstChild("HumanoidRootPart")
+	if not head then return nil end
+
+	local gui = Instance.new("BillboardGui")
+	gui.Name = "WorkerStatus"
+	gui.Size = UDim2.fromOffset(130, 54)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, 3.2, 0)
+	gui.AlwaysOnTop = true
+	gui.MaxDistance = 80
+	gui.Enabled = false
+	gui.Adornee = head
+	gui.Parent = head
+
+	local status = Instance.new("TextLabel")
+	status.Name = "Status"
+	status.BackgroundTransparency = 1
+	status.Size = UDim2.new(1, 0, 0.55, 0)
+	status.Font = Enum.Font.GothamBold
+	status.TextScaled = true
+	status.TextColor3 = Color3.fromRGB(255, 255, 255)
+	status.TextStrokeTransparency = 0.4
+	status.AutoLocalize = true
+	status.Text = "\u{1F634} Отдыхает"
+	status.Parent = gui
+
+	local timer = Instance.new("TextLabel")
+	timer.Name = "Timer"
+	timer.BackgroundTransparency = 1
+	timer.Position = UDim2.new(0, 0, 0.55, 0)
+	timer.Size = UDim2.new(1, 0, 0.45, 0)
+	timer.Font = Enum.Font.GothamMedium
+	timer.TextScaled = true
+	timer.TextColor3 = Color3.fromRGB(220, 230, 245)
+	timer.TextStrokeTransparency = 0.5
+	timer.AutoLocalize = true
+	timer.Text = ""
+	timer.Parent = gui
+
+	return { gui = gui, status = status, timer = timer }
+end
+
+-- Отдых с показом статуса и обратным отсчётом (секунды). Прерывается, если рабочего
+-- удалили / он умер.
+local function restWithStatus(statusGui, worker, humanoid, duration)
+	if statusGui then
+		statusGui.status.Text = "\u{1F634} Отдыхает"
+		statusGui.gui.Enabled = true
+	end
+	local left = math.ceil(duration)
+	while left > 0 and worker.Parent and humanoid.Health > 0 do
+		if statusGui then
+			statusGui.timer.Text = string.format("%d сек", left)
+		end
+		task.wait(1)
+		left -= 1
+	end
+	if statusGui then statusGui.gui.Enabled = false end
+end
+
 -- Дойти до точки. anim — какую анимацию ходьбы играть ("Walk"/"Run"). reach — на
 -- сколько близко считать «дошёл» (для Trigger меньше, чтобы встал на него).
 local function walkTo(worker, humanoid, hrp, anims, pos, speed, anim, reach)
@@ -594,6 +657,7 @@ local function runWorker(board, env, worker, slot)
 	worker:PivotTo(CFrame.new(env.spawnPos + Vector3.new(0, 3, 0)))
 	-- Управление физикой — на сервере (иначе клиент-владелец дерётся с MoveTo).
 	pcall(function() hrp:SetNetworkOwner(nil) end)
+	local statusGui = createStatusGui(worker)
 
 	task.spawn(function()
 		while worker.Parent and humanoid.Health > 0 and board:GetAttribute("Built") do
@@ -618,17 +682,17 @@ local function runWorker(board, env, worker, slot)
 				end
 			end
 
-			-- 3) на свободное место Sit (внутри Palm) — доходим и отдыхаем
+			-- 3) на свободное место Sit (внутри Palm) — доходим, садимся, отдыхаем
 			local sit = claimSit(env.sits)
 			if sit then
 				walkTo(worker, humanoid, hrp, anims, sit.Position, walkSpeed(board), moveAnim)
 				humanoid.WalkSpeed = 0
 				anims.play("Sitting", true)
-				task.wait(restTime(board))
+				restWithStatus(statusGui, worker, humanoid, restTime(board))
 				sitOccupied[sit] = nil
 			else
 				anims.play("Idle", true)
-				task.wait(restTime(board))
+				restWithStatus(statusGui, worker, humanoid, restTime(board))
 			end
 		end
 		if worker.Parent then worker:Destroy() end
