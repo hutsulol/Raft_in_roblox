@@ -314,20 +314,28 @@ local function loadAnims(worker, humanoid)
 	return state
 end
 
--- Дойти до точки (простой MoveTo, без пасфайндинга — для v1). Возвращает true, если дошёл.
+-- Дойти до точки (простой MoveTo, без пасфайндинга — для v1). Возвращает true, если
+-- дошёл ИЛИ упёрся в цель (дерево/склад). Опрос каждые 0.25с, переиздаём MoveTo.
 local function walkTo(worker, humanoid, hrp, anims, pos, speed)
 	humanoid.WalkSpeed = speed
 	anims.play("Walk", true)
+	humanoid:MoveTo(pos)
 	local start = os.clock()
+	local lastPos, lastMove = hrp.Position, os.clock()
 	while worker.Parent and humanoid.Health > 0 do
 		if flatDist(hrp.Position, pos) <= CFG.REACH then
 			return true
 		end
+		if (hrp.Position - lastPos).Magnitude > 0.4 then
+			lastPos, lastMove = hrp.Position, os.clock()
+		elseif os.clock() - lastMove > 1.5 then
+			return true -- ~1.5с не двигаемся → упёрлись в цель (дерево/склад)
+		end
 		if os.clock() - start > 25 then
-			return false -- застрял — выходим, чтобы не зависнуть
+			return false
 		end
 		humanoid:MoveTo(pos)
-		humanoid.MoveToFinished:Wait()
+		task.wait(0.25)
 	end
 	return false
 end
@@ -447,6 +455,23 @@ local function payCost(player, cat)
 	end
 end
 
+-- Поднять риг к движению: снять якоря (иначе MoveTo НЕ двигает — рабочий стоит),
+-- сбросить PlatformStand/Sit, включить состояния ходьбы.
+local function prepRig(worker, humanoid)
+	for _, d in ipairs(worker:GetDescendants()) do
+		if d:IsA("BasePart") then
+			d.Anchored = false
+		end
+	end
+	humanoid.PlatformStand = false
+	humanoid.Sit = false
+	pcall(function()
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.Running, true)
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.RunningNoPhysics, true)
+		humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, true)
+	end)
+end
+
 -- FSM одного рабочего.
 local function runWorker(board, env, worker)
 	local humanoid = worker:FindFirstChildOfClass("Humanoid")
@@ -454,8 +479,11 @@ local function runWorker(board, env, worker)
 	if not humanoid or not hrp then worker:Destroy() return end
 	local anims = loadAnims(worker, humanoid)
 
-	hrp.CFrame = CFrame.new(env.spawnPos + Vector3.new(0, 3, 0))
+	prepRig(worker, humanoid)
 	worker.Parent = env.folder
+	worker:PivotTo(CFrame.new(env.spawnPos + Vector3.new(0, 3, 0)))
+	-- Управление физикой — на сервере (иначе клиент-владелец дерётся с MoveTo).
+	pcall(function() hrp:SetNetworkOwner(nil) end)
 
 	task.spawn(function()
 		while worker.Parent and humanoid.Health > 0 and board:GetAttribute("Built") do
@@ -510,12 +538,30 @@ local function syncWorkers(board, env)
 	end
 end
 
+-- Ближайший к fromPos объект (Model/BasePart) с именем name во всём Workspace.
+local function nearestNamed(name, fromPos)
+	local best, bestD = nil, math.huge
+	for _, m in ipairs(workspace:GetDescendants()) do
+		if (m:IsA("Model") or m:IsA("BasePart")) and m.Name == name then
+			local p = partPosition(m)
+			if p then
+				local d = (p - fromPos).Magnitude
+				if d < bestD then best, bestD = m, d end
+			end
+		end
+	end
+	return best
+end
+
 local function buildEnv(board)
 	local part = findDeep(board, CFG.BOARD_PART) or board
-	local spawnPart = findDeep(board, CFG.SPAWN_NAME) or findDeep(workspace, CFG.SPAWN_NAME)
-	local tree = findDeep(workspace, CFG.TREE_NAME)
-	local storage = findDeep(workspace, CFG.STORAGE_NAME)
-	local trigger = storage and (findDeep(storage, CFG.STORAGE_TRIGGER) or storage)
+	local boardPos = partPosition(part) or partPosition(board) or Vector3.zero
+
+	-- точка спавна, дерево, склад — ближайшие к ЭТОМУ борду (на случай нескольких).
+	local spawnPart = findDeep(board, CFG.SPAWN_NAME) or nearestNamed(CFG.SPAWN_NAME, boardPos)
+	local tree      = nearestNamed(CFG.TREE_NAME, boardPos)
+	local storage   = nearestNamed(CFG.STORAGE_NAME, boardPos)
+	local trigger   = storage and (findDeep(storage, CFG.STORAGE_TRIGGER) or storage)
 
 	local sits = {}
 	if tree then
@@ -533,11 +579,20 @@ local function buildEnv(board)
 		folder.Parent = workspace
 	end
 
+	warn(string.format(
+		"[TreeFarm] окружение фермы: spawn=%s tree=%s(%s) storage=%s sits=%d",
+		spawnPart and "OK" or "НЕТ('" .. CFG.SPAWN_NAME .. "')",
+		tree and "OK" or "НЕТ('" .. CFG.TREE_NAME .. "')",
+		tree and tree.Name or "-",
+		storage and "OK" or "НЕТ('" .. CFG.STORAGE_NAME .. "')",
+		#sits
+	))
+
 	return {
 		folder = folder,
-		spawnPos = partPosition(spawnPart) or partPosition(part) or Vector3.new(0, 5, 0),
-		choppos = partPosition(tree) or Vector3.new(0, 5, 0),
-		storagepos = partPosition(trigger) or Vector3.new(0, 5, 0),
+		spawnPos = partPosition(spawnPart) or boardPos + Vector3.new(0, 0, 6),
+		choppos = partPosition(tree) or boardPos,
+		storagepos = partPosition(trigger) or boardPos,
 		storage = storage,
 		sits = sits,
 		workers = {},
