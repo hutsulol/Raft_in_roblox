@@ -153,17 +153,32 @@ fbText.TextStrokeTransparency = 0
 fbText.ZIndex = 3
 fbText.Parent = fallback
 
--- Предзагрузка + диагностика. Если не загрузилось — включаем запасную ленту; если позже
--- картинка всё-таки подгрузится (поправил ID), запасную прячем.
+-- Предзагрузка с ретраями и точным статусом. PreloadAsync ждёт завершения загрузки и
+-- через колбэк сообщает Enum.AssetFetchStatus: Success (ок), Failure (неверный тип ID /
+-- приватный ассет / модерация), TimedOut (слишком долго — тяжёлый ассет). Ретраим на
+-- случай медленной закачки; если так и не загрузилось — включаем запасную ленту.
 task.spawn(function()
 	local ContentProvider = game:GetService("ContentProvider")
-	pcall(function() ContentProvider:PreloadAsync({ banner }) end)
-	if not banner.IsLoaded then
-		warn("[IslandCleared] баннер НЕ загрузился: " .. BANNER_IMAGE ..
-			" — это ID Decal'а, либо ассет не одобрен/нет доступа у игры. Нужен ID типа Image " ..
-			"(свойство Texture у Decal'а, или Asset Manager → Images → Copy ID). Пока показываю запасную ленту.")
-		fallback.Visible = true
+	local status
+	for attempt = 1, 4 do
+		pcall(function()
+			ContentProvider:PreloadAsync({ banner }, function(_, st)
+				status = st
+			end)
+		end)
+		if banner.IsLoaded then
+			fallback.Visible = false
+			print("[IslandCleared] баннер загружен (попытка " .. attempt .. "): " .. BANNER_IMAGE)
+			return
+		end
+		print("[IslandCleared] баннер ещё не загружен (попытка " .. attempt ..
+			", статус " .. tostring(status) .. "), пробую ещё…")
+		task.wait(2)
 	end
+	fallback.Visible = true
+	warn("[IslandCleared] баннер НЕ загрузился, статус=" .. tostring(status) .. ": " .. BANNER_IMAGE ..
+		" — Failure ⇒ это НЕ из-за размера: неверный тип ID (Decal вместо Image), приватный ассет " ..
+		"или ещё на модерации. TimedOut ⇒ действительно долго грузится. Пока показываю запасную ленту.")
 end)
 banner:GetPropertyChangedSignal("IsLoaded"):Connect(function()
 	if banner.IsLoaded then
