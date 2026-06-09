@@ -266,35 +266,54 @@ end
 -- ЧАСТИЦЫ (UI-искры вокруг баннера)
 --====================================================
 
-local SPARKLE_CHARS = { "✨", "⭐", "💥" }
+local SPARKLE_CHARS = { "✦", "✧", "★" }              -- НЕ эмодзи — глифы слушаются TextColor3
+local SPARKLE_COLOR = Color3.fromRGB(255, 226, 138)  -- золото под баннер
+local SPARKLE_GLOW  = Color3.fromRGB(255, 150, 35)   -- тёплая обводка-свечение
 
-local function spawnSparkles()
-	local cx, cy = 0.5, 0.12 -- около баннера (его центр ~0.1)
-	for _ = 1, 14 do
-		local s = Instance.new("TextLabel")
-		s.BackgroundTransparency = 1
-		s.Text = SPARKLE_CHARS[math.random(1, #SPARKLE_CHARS)]
-		s.TextScaled = true
-		s.TextColor3 = Color3.fromRGB(255, 210, 90)
-		s.AnchorPoint = Vector2.new(0.5, 0.5)
-		s.Position = UDim2.fromScale(cx, cy)
-		s.Size = UDim2.fromOffset(0, 0)
-		s.ZIndex = 6
-		s.Parent = gui
+-- Одна искра: «вспыхивает» и гаснет (твинкл) в случайной точке ПО ВСЕЙ площади
+-- баннера, ЗА ним (ZIndex 2 < баннер 3), золотая — чтобы не перекрывать картинку.
+local function spawnOneSparkle()
+	local s = Instance.new("TextLabel")
+	s.BackgroundTransparency = 1
+	s.Text = SPARKLE_CHARS[math.random(1, #SPARKLE_CHARS)]
+	s.Font = Enum.Font.GothamBold
+	s.TextScaled = true
+	s.TextColor3 = SPARKLE_COLOR
+	s.TextStrokeColor3 = SPARKLE_GLOW
+	s.TextStrokeTransparency = 0.25
+	s.TextTransparency = 1
+	s.AnchorPoint = Vector2.new(0.5, 0.5)
+	-- распределяем по всей площади баннера (чуть шире его рамки), центр баннера ~ (0.5, 0.1)
+	s.Position = UDim2.fromScale(0.5 + (math.random() - 0.5) * 0.66, 0.10 + (math.random() - 0.5) * 0.30)
+	s.Size = UDim2.fromOffset(0, 0)
+	s.Rotation = math.random(-25, 25)
+	s.ZIndex = 2
+	s.Parent = gui
 
-		local dx = (math.random() - 0.5) * 0.5  -- разлёт по ширине баннера
-		local dy = (math.random() - 0.5) * 0.22 -- по высоте
-		local sz = math.random(26, 46)
-		local dest = UDim2.fromScale(cx + dx, cy + dy)
+	local sz = math.random(14, 32)
+	-- вспышка: быстро проявиться с ростом…
+	TweenService:Create(s,
+		TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Size = UDim2.fromOffset(sz, sz), TextTransparency = 0 }):Play()
+	-- …затем мягко погаснуть, слегка разрастаясь (как затухающая искра)
+	task.delay(0.18, function()
+		local fade = TweenService:Create(s,
+			TweenInfo.new(0.42, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
+			{ TextTransparency = 1, TextStrokeTransparency = 1,
+				Size = UDim2.fromOffset(sz * 1.5, sz * 1.5), Rotation = s.Rotation + math.random(-40, 40) })
+		fade:Play()
+		fade.Completed:Once(function() s:Destroy() end)
+	end)
+end
 
-		TweenService:Create(s, TweenInfo.new(0.12), { Size = UDim2.fromOffset(sz, sz) }):Play()
-		local fly = TweenService:Create(
-			s,
-			TweenInfo.new(0.6, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
-			{ Position = dest, TextTransparency = 1, Rotation = math.random(-90, 90) }
-		)
-		fly:Play()
-		fly.Completed:Once(function() s:Destroy() end)
+-- Искры идут ВОЛНАМИ, пока виден баннер (а не один залп в центре).
+local function runSparkles(duration)
+	local t0 = os.clock()
+	while os.clock() - t0 < duration do
+		for _ = 1, math.random(2, 4) do
+			spawnOneSparkle()
+		end
+		task.wait(math.random(9, 16) / 100)
 	end
 end
 
@@ -343,17 +362,6 @@ local function playIslandCleared()
 	overlay.TextTransparency = 1
 	overlay.Rotation = -5
 
-	-- ДИАГНОСТИКА геометрии (можно убрать позже): печатает реальный размер/позицию
-	-- баннера через пару кадров — видно, не нулевой ли он и на экране ли.
-	task.spawn(function()
-		task.wait(0.1)
-		print(string.format(
-			"[IslandCleared] banner size=%s pos=%s vis=%s imgTransp=%.2f fallbackVis=%s guiEnabled=%s",
-			tostring(banner.AbsoluteSize), tostring(banner.AbsolutePosition),
-			tostring(banner.Visible), banner.ImageTransparency, tostring(fallback.Visible),
-			tostring(gui.Enabled)))
-	end)
-
 	-- 1) затемнение 1 → 0.7 за 0.2с
 	TweenService:Create(dim, TweenInfo.new(0.2), { BackgroundTransparency = 0.7 }):Play()
 
@@ -382,8 +390,11 @@ local function playIslandCleared()
 	-- 6) звук достижения (вместе с влётом)
 	playSound(SOUND_BANNER)
 
-	-- 4) искры на подлёте баннера
-	task.delay(0.18, spawnSparkles)
+	-- 4) искры волнами по всей площади баннера, пока он виден
+	task.spawn(function()
+		task.wait(0.12)
+		runSparkles(BANNER_HOLD - 0.3)
+	end)
 
 	-- 5) текст проявляется отдельно через 0.1с (если включён оверлей)
 	if SHOW_OVERLAY_TEXT then
