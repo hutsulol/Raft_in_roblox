@@ -47,10 +47,14 @@ local CFG = {
 	CHOP_RADIUS_PAD = 1.2,       -- стоят вплотную к стволу (топор достаёт), не далеко
 
 	-- Склад.
-	STORAGE_NAME    = "Storage_Palm",
-	STORAGE_TRIGGER = "Triger",   -- парт, к которому рабочий несёт бревно
-	STORAGE_SLOTS   = 12,
-	STORAGE_TAG     = "TreeFarmStorage",
+	STORAGE_NAME     = "Storage_Palm",
+	STORAGE_BUILDING = "Storage",  -- видимый парт здания (на нём промпт E — перед складом)
+	STORAGE_TRIGGER  = "Triger",   -- запасной парт-якорь
+	STORAGE_SLOTS    = 12,
+
+	-- Кокосы: при рубке есть шанс добыть ещё и кокос (нужен для апгрейда отдыха).
+	COCONUT_RESOURCE = "Coconut",
+	COCONUT_CHANCE   = 0.3,        -- шанс кокоса за цикл рубки (0..1)
 
 	-- Рабочий (R6 Humanoid). Шаблон ищем в ServerStorage/ReplicatedStorage/Workspace.
 	WORKER_TEMPLATE = "Villager_Axe",
@@ -166,14 +170,15 @@ local function addToStorage(storage, item, amount)
 	return amount
 end
 
--- Найти стабильный парт-«якорь» склада (Triger). Все данные/промпт держим на нём,
--- а НЕ на модели — модель может переключать пустой/полный вид, и тогда теряются
--- слоты/промпт. Тег НЕ вешаем (он мог конфликтовать) — помечаем атрибутом.
+-- Парт-«якорь» склада: ВИДИМОЕ здание (Storage), чтобы кнопка E была ПЕРЕД складом,
+-- а не у Triger вдалеке. Данные/промпт держим на нём (помечаем атрибутом, без тега).
 local function storageAnchor(storageModel)
-	local t = findDeep(storageModel, CFG.STORAGE_TRIGGER)
-	if t and t:IsA("BasePart") then return t end
+	local b = findDeep(storageModel, CFG.STORAGE_BUILDING)
+	if b and b:IsA("BasePart") then return b end
 	if storageModel:IsA("BasePart") then return storageModel end
-	return storageModel.PrimaryPart or storageModel:FindFirstChildWhichIsA("BasePart", true)
+	return storageModel.PrimaryPart
+		or findDeep(storageModel, CFG.STORAGE_TRIGGER)
+		or storageModel:FindFirstChildWhichIsA("BasePart", true)
 end
 
 local function setupStorage(storageModel)
@@ -183,10 +188,11 @@ local function setupStorage(storageModel)
 		return
 	end
 
-	-- Если включён StreamingEnabled, склад при первом подходе «доезжает» (мигает) —
-	-- держим его всегда загруженным.
+	-- Анти-«призрак»: при StreamingEnabled/LOD склад при подходе «доезжает» и мигает
+	-- упрощённой моделью. Держим его всегда загруженным и без LOD-подмены.
 	if storageModel:IsA("Model") then
 		pcall(function() storageModel.ModelStreamingMode = Enum.ModelStreamingMode.Persistent end)
+		pcall(function() storageModel.LevelOfDetail = Enum.ModelLevelOfDetail.Disabled end)
 	end
 
 	anchor:SetAttribute("IsTreeFarmStorage", true)
@@ -458,6 +464,26 @@ local function setShown(gui, shown)
 	end
 end
 
+-- Сделать кнопку «погашенной» (прозрачной) при MAX: фон + текст + картинки внутри.
+local function setFaded(gui, faded)
+	if not gui then return end
+	local t = faded and 0.65 or 0
+	if gui:IsA("GuiObject") then
+		gui.BackgroundTransparency = faded and 0.7 or 0
+		gui.Active = not faded
+		if gui:IsA("GuiButton") then gui.AutoButtonColor = not faded end
+	end
+	for _, d in ipairs(gui:GetDescendants()) do
+		if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
+			d.TextTransparency = t
+		elseif d:IsA("ImageLabel") or d:IsA("ImageButton") then
+			d.ImageTransparency = t
+		end
+	end
+	if gui:IsA("TextButton") or gui:IsA("TextLabel") then gui.TextTransparency = t end
+	if gui:IsA("ImageButton") or gui:IsA("ImageLabel") then gui.ImageTransparency = t end
+end
+
 -- Перерисовать GUI борда по состоянию (сервер авторитетен).
 local function renderBoard(board)
 	local part = findDeep(board, CFG.BOARD_PART) or board
@@ -473,6 +499,7 @@ local function renderBoard(board)
 			local catFrame = findDeep(frame, info.frame)
 			if catFrame then
 				local lv = board:GetAttribute(info.attr) or 1
+				local maxed = lv >= info.max
 				local levelLbl  = findDeep(catFrame, "Level")
 				local priceLbl  = findDeep(catFrame, "Price")
 				local statusLbl = findDeep(catFrame, "Current_Status")
@@ -484,9 +511,11 @@ local function renderBoard(board)
 				end
 				if priceLbl and priceLbl:IsA("TextLabel") then
 					local c = CFG.COST[cat]
-					local maxed = lv >= info.max
 					priceLbl.Text = maxed and "MAX" or string.format("Цена: %d %s", c.amount, c.item)
 				end
+				-- На MAX — кнопки прозрачные/некликабельные.
+				setFaded(findDeep(catFrame, "Buy"), maxed)
+				setFaded(findDeep(catFrame, "Max"), maxed)
 			end
 		end
 	end
@@ -588,6 +617,10 @@ local function runWorker(board, env, worker, slot)
 			anims.playOnce("Drop")
 			if env.storage and env.storage:IsDescendantOf(workspace) then
 				addToStorage(env.storage, CFG.DEPOSIT_RESOURCE, 1)
+				-- шанс добыть ещё и кокос
+				if math.random() < CFG.COCONUT_CHANCE then
+					addToStorage(env.storage, CFG.COCONUT_RESOURCE, 1)
+				end
 			end
 
 			-- 3) на свободное место Sit (внутри Palm) — доходим и отдыхаем
