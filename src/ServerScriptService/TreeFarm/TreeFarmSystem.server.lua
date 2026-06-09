@@ -70,8 +70,10 @@ local CFG = {
 	CHOP_BASE = 60, CHOP_STEP = 5,  CHOP_MIN = 10,  -- время рубки: 60 → 55 → … (мин 10)
 	REST_BASE = 30, REST_STEP = 2.5, REST_MIN = 5,  -- время отдыха: 30 → … (мин 5)
 	WALK_BASE = 10, WALK_STEP = 0.6, WALK_MAX = 22, -- скорость ходьбы растёт от Speed-апгрейда
+	RUN_SPEED_LEVEL = 10, -- выше этого уровня Speed — анимация бега (Run) вместо Walk
 	DROP_TIME = 1.2,   -- длительность анимации выкладки
 	REACH = 4.5,       -- считаем «дошёл», если ближе этого (по горизонтали)
+	DEPOSIT_REACH = 2, -- к Trigger подходим ближе, чтобы встать на него
 
 	-- Цена апгрейдов: {item=имя ресурса/валюты, amount=сколько, currency="inventory"|"villagers"}.
 	-- ПОДГОНИ под свою экономику. На картинке: Speed=5 брёвен, Workers=5 «пиратов»(?),
@@ -375,16 +377,17 @@ local function playSound(sounds, name)
 	end
 end
 
--- Дойти до точки (простой MoveTo, без пасфайндинга — для v1). Возвращает true, если
--- дошёл ИЛИ упёрся в цель (дерево/склад). Опрос каждые 0.25с, переиздаём MoveTo.
-local function walkTo(worker, humanoid, hrp, anims, pos, speed)
+-- Дойти до точки. anim — какую анимацию ходьбы играть ("Walk"/"Run"). reach — на
+-- сколько близко считать «дошёл» (для Trigger меньше, чтобы встал на него).
+local function walkTo(worker, humanoid, hrp, anims, pos, speed, anim, reach)
+	reach = reach or CFG.REACH
 	humanoid.WalkSpeed = speed
-	anims.play("Walk", true)
+	anims.play(anim or "Walk", true)
 	humanoid:MoveTo(pos)
 	local start = os.clock()
 	local lastPos, lastMove = hrp.Position, os.clock()
 	while worker.Parent and humanoid.Health > 0 do
-		if flatDist(hrp.Position, pos) <= CFG.REACH then
+		if flatDist(hrp.Position, pos) <= reach then
 			return true
 		end
 		if (hrp.Position - lastPos).Magnitude > 0.4 then
@@ -396,7 +399,7 @@ local function walkTo(worker, humanoid, hrp, anims, pos, speed)
 			return false
 		end
 		humanoid:MoveTo(pos)
-		task.wait(0.25)
+		task.wait(0.2)
 	end
 	return false
 end
@@ -464,24 +467,11 @@ local function setShown(gui, shown)
 	end
 end
 
--- Сделать кнопку «погашенной» (прозрачной) при MAX: фон + текст + картинки внутри.
+-- На MAX кнопку полностью прячем (её вообще не должно быть видно).
 local function setFaded(gui, faded)
-	if not gui then return end
-	local t = faded and 0.65 or 0
-	if gui:IsA("GuiObject") then
-		gui.BackgroundTransparency = faded and 0.7 or 0
-		gui.Active = not faded
-		if gui:IsA("GuiButton") then gui.AutoButtonColor = not faded end
+	if gui and gui:IsA("GuiObject") then
+		gui.Visible = not faded
 	end
-	for _, d in ipairs(gui:GetDescendants()) do
-		if d:IsA("TextLabel") or d:IsA("TextButton") or d:IsA("TextBox") then
-			d.TextTransparency = t
-		elseif d:IsA("ImageLabel") or d:IsA("ImageButton") then
-			d.ImageTransparency = t
-		end
-	end
-	if gui:IsA("TextButton") or gui:IsA("TextLabel") then gui.TextTransparency = t end
-	if gui:IsA("ImageButton") or gui:IsA("ImageLabel") then gui.ImageTransparency = t end
 end
 
 -- Перерисовать GUI борда по состоянию (сервер авторитетен).
@@ -607,12 +597,17 @@ local function runWorker(board, env, worker, slot)
 
 	task.spawn(function()
 		while worker.Parent and humanoid.Health > 0 and board:GetAttribute("Built") do
+			-- Анимация ходьбы: бег, если скорость прокачана выше RUN_SPEED_LEVEL.
+			local moveAnim = ((board:GetAttribute("SpeedLevel") or 1) > CFG.RUN_SPEED_LEVEL) and "Run" or "Walk"
+
 			-- 1) к СВОЕЙ стороне дерева, лицом к стволу, рубим (звук удара на взмах)
-			walkTo(worker, humanoid, hrp, anims, chopPosForSlot(env, slot), walkSpeed(board))
+			walkTo(worker, humanoid, hrp, anims, chopPosForSlot(env, slot), walkSpeed(board), moveAnim)
 			chopFor(anims, sounds, worker, humanoid, hrp, env.treeCenter, chopTime(board))
 
-			-- 2) к складу, выкладываем 1 бревно (звук putting)
-			walkTo(worker, humanoid, hrp, anims, env.storagepos, walkSpeed(board))
+			-- 2) встаём НА парт Trigger (малый reach), лицом к складу, кладём бревно
+			walkTo(worker, humanoid, hrp, anims, env.depositpos, walkSpeed(board), moveAnim, CFG.DEPOSIT_REACH)
+			humanoid.WalkSpeed = 0
+			faceFlat(humanoid, hrp, env.facepos)
 			playSound(sounds, "putting")
 			anims.playOnce("Drop")
 			if env.storage and env.storage:IsDescendantOf(workspace) then
@@ -626,7 +621,7 @@ local function runWorker(board, env, worker, slot)
 			-- 3) на свободное место Sit (внутри Palm) — доходим и отдыхаем
 			local sit = claimSit(env.sits)
 			if sit then
-				walkTo(worker, humanoid, hrp, anims, sit.Position, walkSpeed(board))
+				walkTo(worker, humanoid, hrp, anims, sit.Position, walkSpeed(board), moveAnim)
 				humanoid.WalkSpeed = 0
 				anims.play("Sitting", true)
 				task.wait(restTime(board))
@@ -699,8 +694,8 @@ local function buildEnv(board)
 	-- (если внутри дерева — внутри дерева; иначе отдельную модель Palm).
 	local palm      = (tree and findDeep(tree, CFG.PALM_NAME)) or nearestNamed(CFG.PALM_NAME, boardPos) or tree
 	local storageModel = nearestNamed(CFG.STORAGE_NAME, boardPos)
-	local storage   = storageModel and storageAnchor(storageModel) -- стабильный парт Triger
-	local trigger   = storage
+	local storage   = storageModel and storageAnchor(storageModel)  -- здание (контейнер + промпт)
+	local trigerPart = storageModel and findDeep(storageModel, CFG.STORAGE_TRIGGER) -- куда ВСТАЁТ рабочий
 
 	-- Места отдыха Sit — все парты с именем Sit внутри модели ДЕРЕВА (рядом с Palm).
 	local sits = {}
@@ -735,7 +730,8 @@ local function buildEnv(board)
 		spawnPos = partPosition(spawnPart) or boardPos + Vector3.new(0, 0, 6),
 		treeCenter = treeCenter,
 		treeRadius = treeRadius,
-		storagepos = partPosition(trigger) or boardPos,
+		depositpos = partPosition(trigerPart) or partPosition(storage) or boardPos, -- встаём на Trigger
+		facepos = partPosition(storage) or partPosition(trigerPart) or boardPos,     -- лицом к зданию склада
 		storage = storage,
 		sits = sits,
 		workers = {},
