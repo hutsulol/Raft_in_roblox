@@ -25,7 +25,6 @@ local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local ServerStorage      = game:GetService("ServerStorage")
 local CollectionService  = game:GetService("CollectionService")
 local RunService         = game:GetService("RunService")
-local StarterPlayer      = game:GetService("StarterPlayer")
 
 --====================================================
 -- КОНФИГ
@@ -60,8 +59,7 @@ local CFG = {
 	-- Эффект щепок при ударе топором (Part с ParticleEmitter в ReplicatedStorage).
 	AXE_EFFECT_NAME    = "Axe_Effect",
 	AXE_EFFECT_EMIT    = 14,   -- частиц за удар (burst); можно переопределить атрибутом EmitCount на парте
-	AXE_EFFECT_FORWARD = 1.6,  -- studs вперёд от рабочего к стволу — точка контакта
-	AXE_EFFECT_HEIGHT  = 1.0,  -- высота точки удара над корнем рабочего (HRP)
+	AXE_EFFECT_HEIGHT  = 1.0,  -- высота точки удара над корнем рабочего (HRP); X/Z берём на поверхности ствола
 
 	-- Рабочий (R6 Humanoid). Шаблон ищем в ServerStorage/ReplicatedStorage/Workspace.
 	WORKER_TEMPLATE = "Villager_Axe",
@@ -76,14 +74,12 @@ local CFG = {
 
 	CHOP_BASE = 60, CHOP_STEP = 5,  CHOP_MIN = 10,  -- время рубки: 60 → 55 → … (мин 10)
 	REST_BASE = 30, REST_STEP = 2.5, REST_MIN = 5,  -- время отдыха: 30 → … (мин 5)
-	-- Скорость движения = КАК У ИГРОКА: ходьба ×1, бег ×1.5. База — фактическая
-	-- скорость игрока (живой игрок → StarterPlayer.CharacterWalkSpeed → фолбэк).
-	-- Прокачка Speed НЕ ускоряет ходьбу (только сокращает рубку); выше RUN_SPEED_LEVEL
-	-- рабочий переходит на бег (×1.5).
-	WORKER_WALK_MULT = 1.0,
-	WORKER_RUN_MULT  = 1.5,
-	PLAYER_SPEED_FALLBACK = 16,
-	RUN_SPEED_LEVEL = 10, -- выше этого уровня Speed — бег (Run, ×1.5) вместо ходьбы
+	-- Скорость передвижения рабочих (studs/сек). Прокачка Speed НЕ ускоряет ходьбу —
+	-- она только сокращает время рубки. Бег включается, когда Speed прокачан выше
+	-- RUN_SPEED_LEVEL. Игрок по умолчанию ходит на 16 — тут заметно медленнее.
+	WORKER_WALK_SPEED = 6,
+	WORKER_RUN_SPEED  = 9,
+	RUN_SPEED_LEVEL = 10, -- выше этого уровня Speed — бег (Run) вместо ходьбы
 	DROP_TIME = 1.2,   -- длительность анимации выкладки
 	REACH = 4.5,       -- считаем «дошёл», если ближе этого (по горизонтали)
 	DEPOSIT_REACH = 2, -- к Trigger подходим ближе, чтобы встать на него
@@ -356,19 +352,29 @@ end
 -- реплицироваться на клиентов, поэтому :Emit() надёжно виден (нет гонки «создал-и-сразу
 -- -Emit» и нет мусора клонов на каждый удар). Возвращаем burst(): ставим эффект в точку
 -- контакта (перед рабочим, на высоте удара) и выбрасываем частицы.
-local function createAxeEffect(worker, hrp)
+local function createAxeEffect(worker, hrp, env)
 	if not axeEffectTemplate then return nil end
 	local fx = axeEffectTemplate:Clone()
-	-- .Position (а не CFrame) — сохраняем ориентацию эмиттера как в ReplicatedStorage.
-	fx.Position = (hrp.CFrame * CFrame.new(0, CFG.AXE_EFFECT_HEIGHT, -CFG.AXE_EFFECT_FORWARD)).Position
-	fx.Parent = worker
 	local emitters = {}
 	for _, pe in ipairs(fx:GetDescendants()) do
 		if pe:IsA("ParticleEmitter") then table.insert(emitters, pe) end
 	end
+	-- Точка контакта — на ПОВЕРХНОСТИ ствола со стороны рабочего (а не «перед рабочим»),
+	-- поэтому эффект не зависает в воздухе, даже если рабочий бьёт издалека.
+	local function impactPos()
+		local hp = hrp.Position
+		local c = env.treeCenter
+		local toWorker = Vector3.new(hp.X - c.X, 0, hp.Z - c.Z)
+		local dir = (toWorker.Magnitude > 0.001) and toWorker.Unit or hrp.CFrame.LookVector
+		local surfR = math.max(0, env.treeRadius - CFG.CHOP_RADIUS_PAD) -- радиус самого ствола
+		return Vector3.new(c.X, hp.Y + CFG.AXE_EFFECT_HEIGHT, c.Z) + dir * surfR
+	end
+	-- .Position (а не CFrame) — сохраняем ориентацию эмиттера как в ReplicatedStorage.
+	fx.Position = impactPos()
+	fx.Parent = worker
 	return function()
 		if not (fx.Parent and hrp.Parent) then return end
-		fx.Position = (hrp.CFrame * CFrame.new(0, CFG.AXE_EFFECT_HEIGHT, -CFG.AXE_EFFECT_FORWARD)).Position
+		fx.Position = impactPos()
 		for _, pe in ipairs(emitters) do
 			pe:Emit(axeEffectEmit)
 		end
@@ -555,26 +561,14 @@ local function restTime(board)
 	local lv = board:GetAttribute("RestLevel") or 1
 	return math.max(CFG.REST_MIN, CFG.REST_BASE - (lv - 1) * CFG.REST_STEP)
 end
--- Базовая скорость «как у игрока»: берём фактическую скорость живого игрока, иначе
--- StarterPlayer.CharacterWalkSpeed, иначе фолбэк.
-local function playerBaseSpeed()
-	for _, p in ipairs(Players:GetPlayers()) do
-		local h = p.Character and p.Character:FindFirstChildOfClass("Humanoid")
-		if h and h.WalkSpeed > 0 then return h.WalkSpeed end
-	end
-	local s = StarterPlayer and StarterPlayer.CharacterWalkSpeed
-	if type(s) == "number" and s > 0 then return s end
-	return CFG.PLAYER_SPEED_FALLBACK
-end
 -- Бежит ли рабочий (Speed прокачан выше RUN_SPEED_LEVEL).
 local function isRunning(board)
 	return (board:GetAttribute("SpeedLevel") or 1) > CFG.RUN_SPEED_LEVEL
 end
--- Скорость передвижения: ходьба = скорость игрока ×1, бег = ×1.5. От уровня Speed
--- сама ходьба НЕ ускоряется (это только сокращает время рубки).
+-- Скорость передвижения (studs/сек): ходьба или бег. От уровня Speed сама ходьба НЕ
+-- ускоряется — это только сокращает время рубки.
 local function walkSpeed(board)
-	local mult = isRunning(board) and CFG.WORKER_RUN_MULT or CFG.WORKER_WALK_MULT
-	return playerBaseSpeed() * mult
+	return isRunning(board) and CFG.WORKER_RUN_SPEED or CFG.WORKER_WALK_SPEED
 end
 local function workerCount(board)
 	return board:GetAttribute("WorkersLevel") or 1
@@ -745,7 +739,7 @@ local function runWorker(board, env, worker, slot)
 	-- Управление физикой — на сервере (иначе клиент-владелец дерётся с MoveTo).
 	pcall(function() hrp:SetNetworkOwner(nil) end)
 	local statusGui = createStatusGui(worker)
-	local axeBurst = createAxeEffect(worker, hrp)
+	local axeBurst = createAxeEffect(worker, hrp, env)
 
 	task.spawn(function()
 		while worker.Parent and humanoid.Health > 0 and board:GetAttribute("Built") do
