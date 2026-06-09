@@ -41,9 +41,9 @@ local CFG = {
 	SPAWN_NAME   = "Spawnpoint_Work", -- точка появления рабочего (в борде ИЛИ в Workspace)
 
 	-- Дерево, которое рубят, и места отдыха.
-	TREE_NAME    = "palm_solo",  -- модель дерева (внешняя обёртка) для рубки
-	PALM_NAME    = "Palm",       -- ствол + внутри него парты Sit (места отдыха)
-	SIT_NAME     = "Sit",        -- парты-места отдыха (внутри Palm), берём все с таким именем
+	TREE_NAME    = "Palm_Solo",  -- модель дерева (внешняя обёртка); внутри Palm + парты Sit
+	PALM_NAME    = "Palm",       -- ствол (точка рубки + габарит); парты Sit лежат РЯДОМ с ним в Palm_Solo
+	SIT_NAME     = "Sit",        -- парты-места отдыха (внутри модели дерева)
 	CHOP_RADIUS_PAD = 2.5,       -- на сколько отступить от ствола, стоя на рубке
 
 	-- Склад.
@@ -166,39 +166,53 @@ local function addToStorage(storage, item, amount)
 	return amount
 end
 
-local function setupStorage(storage)
-	storage:SetAttribute("SlotCount", CFG.STORAGE_SLOTS)
-	for i = 1, CFG.STORAGE_SLOTS do
-		if storage:GetAttribute("Slot" .. i .. "_Name") == nil then
-			storage:SetAttribute("Slot" .. i .. "_Name", "")
-			storage:SetAttribute("Slot" .. i .. "_Count", 0)
+-- Найти стабильный парт-«якорь» склада (Triger). Все данные/промпт держим на нём,
+-- а НЕ на модели — модель может переключать пустой/полный вид, и тогда теряются
+-- слоты/промпт. Тег НЕ вешаем (он мог конфликтовать) — помечаем атрибутом.
+local function storageAnchor(storageModel)
+	local t = findDeep(storageModel, CFG.STORAGE_TRIGGER)
+	if t and t:IsA("BasePart") then return t end
+	if storageModel:IsA("BasePart") then return storageModel end
+	return storageModel.PrimaryPart or storageModel:FindFirstChildWhichIsA("BasePart", true)
+end
+
+local function setupStorage(storageModel)
+	local anchor = storageAnchor(storageModel)
+	if not (anchor and anchor:IsA("BasePart")) then
+		warn("[TreeFarm] склад: не нашёл парт-якорь (Triger) в " .. storageModel:GetFullName())
+		return
+	end
+
+	anchor:SetAttribute("IsTreeFarmStorage", true)
+	if anchor:GetAttribute("SlotCount") == nil then
+		anchor:SetAttribute("SlotCount", CFG.STORAGE_SLOTS)
+	end
+	for i = 1, (anchor:GetAttribute("SlotCount") or CFG.STORAGE_SLOTS) do
+		if anchor:GetAttribute("Slot" .. i .. "_Name") == nil then
+			anchor:SetAttribute("Slot" .. i .. "_Name", "")
+			anchor:SetAttribute("Slot" .. i .. "_Count", 0)
 		end
 	end
-	CollectionService:AddTag(storage, CFG.STORAGE_TAG)
 
-	-- ProximityPrompt → открыть как сундук.
-	local part = storage.PrimaryPart
-		or findDeep(storage, CFG.STORAGE_TRIGGER)
-		or storage:FindFirstChildWhichIsA("BasePart", true)
-	if part and part:IsA("BasePart") and not part:FindFirstChildOfClass("ProximityPrompt") then
+	if not anchor:FindFirstChildOfClass("ProximityPrompt") then
 		local prompt = Instance.new("ProximityPrompt")
 		prompt.ActionText = "Открыть"
 		prompt.ObjectText = "Склад"
 		prompt.KeyboardKeyCode = Enum.KeyCode.E
 		prompt.HoldDuration = 0.2
-		prompt.MaxActivationDistance = 12
+		prompt.MaxActivationDistance = 14
 		prompt.RequiresLineOfSight = false
-		prompt.Parent = part
+		prompt.Parent = anchor
 		prompt.Triggered:Connect(function(player)
-			OpenContainer:FireClient(player, storage)
+			OpenContainer:FireClient(player, anchor)
 		end)
 	end
 end
 
 -- Обработчик переноса предметов склад↔инвентарь (только для НАШИХ складов).
 ContainerAction.OnServerEvent:Connect(function(player, action, container, slot, item, count, kind)
-	if typeof(container) ~= "Instance" or not container:IsDescendantOf(workspace) then return end
-	if not CollectionService:HasTag(container, CFG.STORAGE_TAG) then return end
+	if typeof(container) ~= "Instance" then return end
+	if not container:GetAttribute("IsTreeFarmStorage") then return end
 
 	if action == "take" then
 		local i = slot
@@ -525,7 +539,7 @@ local function runWorker(board, env, worker, slot)
 			-- 2) к складу, выкладываем 1 бревно
 			walkTo(worker, humanoid, hrp, anims, env.storagepos, walkSpeed(board))
 			anims.playOnce("Drop")
-			if env.storage then
+			if env.storage and env.storage:IsDescendantOf(workspace) then
 				addToStorage(env.storage, CFG.DEPOSIT_RESOURCE, 1)
 			end
 
@@ -604,13 +618,15 @@ local function buildEnv(board)
 	-- Ствол Palm: и точка рубки, и контейнер мест Sit. Берём ближайший к борду
 	-- (если внутри дерева — внутри дерева; иначе отдельную модель Palm).
 	local palm      = (tree and findDeep(tree, CFG.PALM_NAME)) or nearestNamed(CFG.PALM_NAME, boardPos) or tree
-	local storage   = nearestNamed(CFG.STORAGE_NAME, boardPos)
-	local trigger   = storage and (findDeep(storage, CFG.STORAGE_TRIGGER) or storage)
+	local storageModel = nearestNamed(CFG.STORAGE_NAME, boardPos)
+	local storage   = storageModel and storageAnchor(storageModel) -- стабильный парт Triger
+	local trigger   = storage
 
-	-- Места отдыха Sit — все парты с именем Sit внутри Palm.
+	-- Места отдыха Sit — все парты с именем Sit внутри модели ДЕРЕВА (рядом с Palm).
 	local sits = {}
-	if palm then
-		for _, d in ipairs(palm:GetDescendants()) do
+	local sitRoot = tree or palm
+	if sitRoot then
+		for _, d in ipairs(sitRoot:GetDescendants()) do
 			if d:IsA("BasePart") and d.Name == CFG.SIT_NAME then
 				table.insert(sits, d)
 			end
