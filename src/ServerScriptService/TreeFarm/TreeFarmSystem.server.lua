@@ -549,12 +549,19 @@ end
 --====================================================
 
 TreeFarmAction.OnServerEvent:Connect(function(player, action, board, cat, buyMax)
-	if typeof(board) ~= "Instance" or not boards[board] then return end
+	if typeof(board) ~= "Instance" or not boards[board] then
+		warn(string.format("[TreeFarm] действие '%s' от %s — борд не зарегистрирован (%s)",
+			tostring(action), player.Name, tostring(board)))
+		return
+	end
 	local data = boards[board]
 
 	if action == "build" then
+		print(string.format("[TreeFarm] build от %s | жителей=%s | уже построено=%s",
+			player.Name, tostring(_G.GetVillagers and _G.GetVillagers(player)), tostring(board:GetAttribute("Built"))))
 		if board:GetAttribute("Built") then return end
 		if not (_G.SpendVillagers and _G.SpendVillagers(player, CFG.BUILD_COST_VILLAGERS)) then
+			warn("[TreeFarm] постройка: не хватило жителей у " .. player.Name)
 			return -- не хватило жителей
 		end
 		board:SetAttribute("Built", true)
@@ -596,6 +603,8 @@ local function setupBoard(board)
 	board:SetAttribute("SpeedLevel", board:GetAttribute("SpeedLevel") or 1)
 	board:SetAttribute("WorkersLevel", board:GetAttribute("WorkersLevel") or 1)
 	board:SetAttribute("RestLevel", board:GetAttribute("RestLevel") or 1)
+	-- Тег нужен клиенту, чтобы надёжно (без гонки загрузки) найти борд и навесить кнопки.
+	CollectionService:AddTag(board, "TreeFarmBoard")
 	renderBoard(board)
 	-- если уже было построено (после рестарта сервера) — поднять рабочих
 	if board:GetAttribute("Built") then
