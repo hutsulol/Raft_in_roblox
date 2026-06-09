@@ -25,6 +25,7 @@ local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 local ServerStorage      = game:GetService("ServerStorage")
 local CollectionService  = game:GetService("CollectionService")
 local RunService         = game:GetService("RunService")
+local Debris             = game:GetService("Debris")
 
 --====================================================
 -- КОНФИГ
@@ -55,6 +56,12 @@ local CFG = {
 	-- Кокосы: при рубке есть шанс добыть ещё и кокос (нужен для апгрейда отдыха).
 	COCONUT_RESOURCE = "Coconut",
 	COCONUT_CHANCE   = 0.3,        -- шанс кокоса за цикл рубки (0..1)
+
+	-- Эффект щепок при ударе топором (Part с ParticleEmitter в ReplicatedStorage).
+	AXE_EFFECT_NAME    = "Axe_Effect",
+	AXE_EFFECT_EMIT    = 14,   -- частиц за удар (burst); можно переопределить атрибутом EmitCount на парте
+	AXE_EFFECT_FORWARD = 1.6,  -- studs вперёд от рабочего к стволу — точка контакта
+	AXE_EFFECT_HEIGHT  = 1.0,  -- высота точки удара над корнем рабочего (HRP)
 
 	-- Рабочий (R6 Humanoid). Шаблон ищем в ServerStorage/ReplicatedStorage/Workspace.
 	WORKER_TEMPLATE = "Villager_Axe",
@@ -312,6 +319,50 @@ do
 			t:Destroy()
 		end
 	end
+end
+
+-- Эффект щепок при ударе: Part c ParticleEmitter из ReplicatedStorage. Готовим шаблон
+-- ОДИН раз: гасим эмиттеры (бьём одиночным burst'ом через :Emit) и считаем время жизни
+-- частиц, чтобы потом авто-удалить парт через Debris (без ручных task.delay на каждый).
+local axeEffectTemplate, axeEffectTTL, axeEffectEmit
+do
+	local src = ReplicatedStorage:FindFirstChild(CFG.AXE_EFFECT_NAME)
+		or ServerStorage:FindFirstChild(CFG.AXE_EFFECT_NAME)
+	if src and src:IsA("BasePart") then
+		axeEffectTemplate = src:Clone()
+		axeEffectTemplate.Anchored = true
+		axeEffectTemplate.CanCollide = false
+		axeEffectTemplate.CanQuery = false
+		axeEffectTemplate.CanTouch = false
+		axeEffectEmit = src:GetAttribute("EmitCount") or CFG.AXE_EFFECT_EMIT
+		axeEffectTTL = 0.5
+		for _, pe in ipairs(axeEffectTemplate:GetDescendants()) do
+			if pe:IsA("ParticleEmitter") then
+				pe.Enabled = false
+				axeEffectTTL = math.max(axeEffectTTL, pe.Lifetime.Max)
+			end
+		end
+		axeEffectTTL += 0.25 -- запас, чтобы частицы дожили до удаления парта
+	end
+end
+
+-- Одиночный всплеск щепок в точке position, ориентированный «наружу» (faceDir).
+-- Клонируем подготовленный шаблон, выбрасываем burst и отдаём на авто-очистку Debris.
+local function burstEffect(position, faceDir, parent)
+	if not axeEffectTemplate then return end
+	local fx = axeEffectTemplate:Clone()
+	if faceDir and faceDir.Magnitude > 0.001 then
+		fx.CFrame = CFrame.lookAt(position, position + faceDir)
+	else
+		fx.CFrame = CFrame.new(position)
+	end
+	fx.Parent = parent or workspace
+	for _, pe in ipairs(fx:GetDescendants()) do
+		if pe:IsA("ParticleEmitter") then
+			pe:Emit(axeEffectEmit)
+		end
+	end
+	Debris:AddItem(fx, axeEffectTTL)
 end
 
 local function loadAnims(worker, humanoid)
@@ -639,6 +690,12 @@ local function chopFor(anims, sounds, worker, humanoid, hrp, center, duration, s
 			if worker.Parent and humanoid.Health > 0 then
 				playSound(sounds, sfx)
 				if shake then shake() end
+				-- щепки летят из точки контакта топора со стволом (наружу — к рабочему)
+				local hp = hrp.Position
+				local toTree = Vector3.new(center.X - hp.X, 0, center.Z - hp.Z)
+				local dir = (toTree.Magnitude > 0.001) and toTree.Unit or hrp.CFrame.LookVector
+				local impactPos = hp + dir * CFG.AXE_EFFECT_FORWARD + Vector3.new(0, CFG.AXE_EFFECT_HEIGHT, 0)
+				burstEffect(impactPos, -dir, worker.Parent)
 			end
 		end)
 		anims.playOnce(seq[i].anim)
