@@ -44,7 +44,7 @@ local CFG = {
 	TREE_NAME    = "Palm_Solo",  -- модель дерева (внешняя обёртка); внутри Palm + парты Sit
 	PALM_NAME    = "Palm",       -- ствол (точка рубки + габарит); парты Sit лежат РЯДОМ с ним в Palm_Solo
 	SIT_NAME     = "Sit",        -- парты-места отдыха (внутри модели дерева)
-	CHOP_RADIUS_PAD = 2.5,       -- на сколько отступить от ствола, стоя на рубке
+	CHOP_RADIUS_PAD = 1.2,       -- стоят вплотную к стволу (топор достаёт), не далеко
 
 	-- Склад.
 	STORAGE_NAME    = "Storage_Palm",
@@ -181,6 +181,12 @@ local function setupStorage(storageModel)
 	if not (anchor and anchor:IsA("BasePart")) then
 		warn("[TreeFarm] склад: не нашёл парт-якорь (Triger) в " .. storageModel:GetFullName())
 		return
+	end
+
+	-- Если включён StreamingEnabled, склад при первом подходе «доезжает» (мигает) —
+	-- держим его всегда загруженным.
+	if storageModel:IsA("Model") then
+		pcall(function() storageModel.ModelStreamingMode = Enum.ModelStreamingMode.Persistent end)
 	end
 
 	anchor:SetAttribute("IsTreeFarmStorage", true)
@@ -499,13 +505,24 @@ local function prepRig(worker, humanoid)
 	end)
 end
 
--- Рубка: чередуем взмахи Axe_1, Axe_1, Axe_2 по кругу в течение duration секунд.
-local function chopFor(anims, worker, humanoid, duration)
+-- Развернуть корпус лицом к точке (по горизонтали). Рабочий стоит на месте, поэтому
+-- сначала гасим цель движения (MoveTo в себя), чтобы AutoRotate не крутил наружу.
+local function faceFlat(humanoid, hrp, target)
+	humanoid:MoveTo(hrp.Position)
+	local flat = Vector3.new(target.X, hrp.Position.Y, target.Z)
+	if (flat - hrp.Position).Magnitude > 0.1 then
+		hrp.CFrame = CFrame.lookAt(hrp.Position, flat)
+	end
+end
+
+-- Рубка: смотрим на ствол и чередуем взмахи Axe_1, Axe_1, Axe_2 в течение duration.
+local function chopFor(anims, worker, humanoid, hrp, center, duration)
 	humanoid.WalkSpeed = 0
 	local seq = { "Axe_1", "Axe_1", "Axe_2" }
 	local start = os.clock()
 	local i = 1
 	while worker.Parent and humanoid.Health > 0 and os.clock() - start < duration do
+		faceFlat(humanoid, hrp, center) -- держим лицом к стволу
 		anims.playOnce(seq[i])
 		i = i % #seq + 1
 	end
@@ -532,9 +549,9 @@ local function runWorker(board, env, worker, slot)
 
 	task.spawn(function()
 		while worker.Parent and humanoid.Health > 0 and board:GetAttribute("Built") do
-			-- 1) к СВОЕЙ стороне дерева и рубим (чередуя взмахи)
+			-- 1) к СВОЕЙ стороне дерева, лицом к стволу, рубим (чередуя взмахи)
 			walkTo(worker, humanoid, hrp, anims, chopPosForSlot(env, slot), walkSpeed(board))
-			chopFor(anims, worker, humanoid, chopTime(board))
+			chopFor(anims, worker, humanoid, hrp, env.treeCenter, chopTime(board))
 
 			-- 2) к складу, выкладываем 1 бревно
 			walkTo(worker, humanoid, hrp, anims, env.storagepos, walkSpeed(board))
