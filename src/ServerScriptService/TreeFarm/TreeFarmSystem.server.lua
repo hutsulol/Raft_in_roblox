@@ -41,8 +41,10 @@ local CFG = {
 	SPAWN_NAME   = "Spawnpoint_Work", -- точка появления рабочего (в борде ИЛИ в Workspace)
 
 	-- Дерево, которое рубят, и места отдыха.
-	TREE_NAME    = "palm_solo",  -- модель дерева для рубки
-	SIT_NAME     = "Sit",        -- парты-места отдыха (внутри дерева), берём все с таким именем
+	TREE_NAME    = "palm_solo",  -- модель дерева (внешняя обёртка) для рубки
+	PALM_NAME    = "Palm",       -- ствол + внутри него парты Sit (места отдыха)
+	SIT_NAME     = "Sit",        -- парты-места отдыха (внутри Palm), берём все с таким именем
+	CHOP_RADIUS_PAD = 2.5,       -- на сколько отступить от ствола, стоя на рубке
 
 	-- Склад.
 	STORAGE_NAME    = "Storage_Palm",
@@ -311,6 +313,17 @@ local function loadAnims(worker, humanoid)
 			t:Play(0.15)
 		end
 	end
+	-- Проиграть анимацию ОДИН раз и подождать её длину (для чередования взмахов).
+	function state.playOnce(name)
+		local t = tracks[name]
+		if not t then task.wait(0.5); return end
+		if state.current then state.current:Stop(0.05); state.current = nil end
+		t.Looped = false
+		t:Play(0.05)
+		local len = t.Length
+		if len <= 0 then len = 0.6 end -- ещё не загрузилась — запасная длина
+		task.wait(len)
+	end
 	return state
 end
 
@@ -472,8 +485,26 @@ local function prepRig(worker, humanoid)
 	end)
 end
 
--- FSM одного рабочего.
-local function runWorker(board, env, worker)
+-- Рубка: чередуем взмахи Axe_1, Axe_1, Axe_2 по кругу в течение duration секунд.
+local function chopFor(anims, worker, humanoid, duration)
+	humanoid.WalkSpeed = 0
+	local seq = { "Axe_1", "Axe_1", "Axe_2" }
+	local start = os.clock()
+	local i = 1
+	while worker.Parent and humanoid.Health > 0 and os.clock() - start < duration do
+		anims.playOnce(seq[i])
+		i = i % #seq + 1
+	end
+end
+
+-- Точка рубки для конкретного рабочего — со СВОЕЙ стороны дерева (по углу slot).
+local function chopPosForSlot(env, slot)
+	local angle = (slot - 1) * (2 * math.pi / math.max(1, CFG.WORKERS_MAX))
+	return env.treeCenter + Vector3.new(math.cos(angle), 0, math.sin(angle)) * env.treeRadius
+end
+
+-- FSM одного рабочего. slot (1..N) задаёт сторону дерева, с которой он рубит.
+local function runWorker(board, env, worker, slot)
 	local humanoid = worker:FindFirstChildOfClass("Humanoid")
 	local hrp = worker:FindFirstChild("HumanoidRootPart")
 	if not humanoid or not hrp then worker:Destroy() return end
@@ -487,21 +518,18 @@ local function runWorker(board, env, worker)
 
 	task.spawn(function()
 		while worker.Parent and humanoid.Health > 0 and board:GetAttribute("Built") do
-			-- 1) к дереву и рубим
-			walkTo(worker, humanoid, hrp, anims, env.choppos, walkSpeed(board))
-			anims.play("Axe_1", true)
-			task.wait(chopTime(board))
-			-- +1 бревно несём (счётчик не нужен — кладём 1 за цикл)
+			-- 1) к СВОЕЙ стороне дерева и рубим (чередуя взмахи)
+			walkTo(worker, humanoid, hrp, anims, chopPosForSlot(env, slot), walkSpeed(board))
+			chopFor(anims, worker, humanoid, chopTime(board))
 
-			-- 2) к складу, выкладываем
+			-- 2) к складу, выкладываем 1 бревно
 			walkTo(worker, humanoid, hrp, anims, env.storagepos, walkSpeed(board))
-			anims.play("Drop", false)
-			task.wait(CFG.DROP_TIME)
+			anims.playOnce("Drop")
 			if env.storage then
 				addToStorage(env.storage, CFG.DEPOSIT_RESOURCE, 1)
 			end
 
-			-- 3) на отдых (случайное свободное место)
+			-- 3) на свободное место Sit (внутри Palm) — доходим и отдыхаем
 			local sit = claimSit(env.sits)
 			if sit then
 				walkTo(worker, humanoid, hrp, anims, sit.Position, walkSpeed(board))
@@ -522,8 +550,10 @@ local function spawnWorker(board, env)
 	if not workerTemplate then return end
 	local w = workerTemplate:Clone()
 	w.Name = "Villager"
+	env.spawnCount = (env.spawnCount or 0) + 1
+	local slot = (env.spawnCount - 1) % math.max(1, CFG.WORKERS_MAX) + 1
 	table.insert(env.workers, w)
-	runWorker(board, env, w)
+	runWorker(board, env, w, slot)
 end
 
 -- Привести число рабочих к WorkersLevel.
@@ -553,6 +583,17 @@ local function nearestNamed(name, fromPos)
 	return best
 end
 
+-- Горизонтальный «радиус» объекта (по X/Z), чтобы стоять у ствола, а не в нём.
+local function objectRadius(inst)
+	if inst and inst:IsA("BasePart") then
+		return math.max(inst.Size.X, inst.Size.Z) * 0.5
+	elseif inst and inst:IsA("Model") then
+		local ok, size = pcall(function() return inst:GetExtentsSize() end)
+		if ok then return math.max(size.X, size.Z) * 0.5 end
+	end
+	return 1.5
+end
+
 local function buildEnv(board)
 	local part = findDeep(board, CFG.BOARD_PART) or board
 	local boardPos = partPosition(part) or partPosition(board) or Vector3.zero
@@ -560,12 +601,16 @@ local function buildEnv(board)
 	-- точка спавна, дерево, склад — ближайшие к ЭТОМУ борду (на случай нескольких).
 	local spawnPart = findDeep(board, CFG.SPAWN_NAME) or nearestNamed(CFG.SPAWN_NAME, boardPos)
 	local tree      = nearestNamed(CFG.TREE_NAME, boardPos)
+	-- Ствол Palm: и точка рубки, и контейнер мест Sit. Берём ближайший к борду
+	-- (если внутри дерева — внутри дерева; иначе отдельную модель Palm).
+	local palm      = (tree and findDeep(tree, CFG.PALM_NAME)) or nearestNamed(CFG.PALM_NAME, boardPos) or tree
 	local storage   = nearestNamed(CFG.STORAGE_NAME, boardPos)
 	local trigger   = storage and (findDeep(storage, CFG.STORAGE_TRIGGER) or storage)
 
+	-- Места отдыха Sit — все парты с именем Sit внутри Palm.
 	local sits = {}
-	if tree then
-		for _, d in ipairs(tree:GetDescendants()) do
+	if palm then
+		for _, d in ipairs(palm:GetDescendants()) do
 			if d:IsA("BasePart") and d.Name == CFG.SIT_NAME then
 				table.insert(sits, d)
 			end
@@ -579,23 +624,26 @@ local function buildEnv(board)
 		folder.Parent = workspace
 	end
 
+	local treeCenter = partPosition(palm) or partPosition(tree) or boardPos
+	local treeRadius = objectRadius(palm) + CFG.CHOP_RADIUS_PAD
+
 	warn(string.format(
-		"[TreeFarm] окружение фермы: spawn=%s tree=%s(%s) storage=%s sits=%d",
-		spawnPart and "OK" or "НЕТ('" .. CFG.SPAWN_NAME .. "')",
-		tree and "OK" or "НЕТ('" .. CFG.TREE_NAME .. "')",
-		tree and tree.Name or "-",
-		storage and "OK" or "НЕТ('" .. CFG.STORAGE_NAME .. "')",
-		#sits
+		"[TreeFarm] окружение: spawn=%s tree=%s palm=%s storage=%s sits=%d r=%.1f",
+		spawnPart and "OK" or "НЕТ", tree and tree.Name or "НЕТ",
+		palm and "OK" or "НЕТ('" .. CFG.PALM_NAME .. "')",
+		storage and "OK" or "НЕТ", #sits, treeRadius
 	))
 
 	return {
 		folder = folder,
 		spawnPos = partPosition(spawnPart) or boardPos + Vector3.new(0, 0, 6),
-		choppos = partPosition(tree) or boardPos,
+		treeCenter = treeCenter,
+		treeRadius = treeRadius,
 		storagepos = partPosition(trigger) or boardPos,
 		storage = storage,
 		sits = sits,
 		workers = {},
+		spawnCount = 0,
 	}
 end
 
