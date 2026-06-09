@@ -103,15 +103,10 @@ banner.Image = BANNER_IMAGE
 banner.ScaleType = Enum.ScaleType.Fit
 banner.AnchorPoint = Vector2.new(0.5, 0.5)
 banner.Position = UDim2.new(0.5, 0, -0.2, 0) -- старт над экраном
-banner.Size = UDim2.new(0.5, 0, 0, 0)        -- ширина 50% экрана; высота — по AspectRatio
+banner.Size = UDim2.fromScale(0.55, 0.22)    -- рамка; ScaleType.Fit впишет картинку без искажений
 banner.ZIndex = 3
 banner.Visible = false
 banner.Parent = gui
-
-local bannerAspect = Instance.new("UIAspectRatioConstraint")
-bannerAspect.AspectRatio = BANNER_ASPECT
-bannerAspect.DominantAxis = Enum.DominantAxis.Width
-bannerAspect.Parent = banner
 
 -- Запасная лента: если картинка не загрузилась (неверный ID/Decal/модерация/нет доступа),
 -- показываем стилизованную золотую ленту с текстом — анимация всё равно выглядит как надо.
@@ -347,6 +342,17 @@ local function playIslandCleared()
 	overlay.Visible = SHOW_OVERLAY_TEXT
 	overlay.TextTransparency = 1
 	overlay.Rotation = -5
+
+	-- ДИАГНОСТИКА геометрии (можно убрать позже): печатает реальный размер/позицию
+	-- баннера через пару кадров — видно, не нулевой ли он и на экране ли.
+	task.spawn(function()
+		task.wait(0.1)
+		print(string.format(
+			"[IslandCleared] banner size=%s pos=%s vis=%s imgTransp=%.2f fallbackVis=%s guiEnabled=%s",
+			tostring(banner.AbsoluteSize), tostring(banner.AbsolutePosition),
+			tostring(banner.Visible), banner.ImageTransparency, tostring(fallback.Visible),
+			tostring(gui.Enabled)))
+	end)
 
 	-- 1) затемнение 1 → 0.7 за 0.2с
 	TweenService:Create(dim, TweenInfo.new(0.2), { BackgroundTransparency = 0.7 }):Play()
