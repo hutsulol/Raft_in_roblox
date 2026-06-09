@@ -25,7 +25,7 @@ local playerGui = player:WaitForChild("PlayerGui")
 -- КОНФИГ
 --====================================================
 
-local BANNER_IMAGE  = "rbxassetid://116342589590502"
+local BANNER_IMAGE  = "rbxassetid://117019798405949"
 local BANNER_ASPECT = 1009 / 271   -- пропорции картинки (ширина/высота); Fit подстрахует
 
 -- Звуки ищем по имени где угодно внутри SoundService.
@@ -153,36 +153,26 @@ fbText.TextStrokeTransparency = 0
 fbText.ZIndex = 3
 fbText.Parent = fallback
 
--- Предзагрузка с ретраями и точным статусом. PreloadAsync ждёт завершения загрузки и
--- через колбэк сообщает Enum.AssetFetchStatus: Success (ок), Failure (неверный тип ID /
--- приватный ассет / модерация), TimedOut (слишком долго — тяжёлый ассет). Ретраим на
--- случай медленной закачки; если так и не загрузилось — включаем запасную ленту.
+-- Грузим картинку и СУДИМ ПО СТАТУСУ загрузки (Enum.AssetFetchStatus), а НЕ по
+-- banner.IsLoaded: у ещё не отрисованного (Visible=false) ImageLabel IsLoaded может
+-- быть false даже когда ассет успешно скачан. Success ⇒ картинка валидна — прячем
+-- запасную; иначе показываем запасную ленту.
 task.spawn(function()
 	local ContentProvider = game:GetService("ContentProvider")
-	local status
-	for attempt = 1, 4 do
-		pcall(function()
-			ContentProvider:PreloadAsync({ banner }, function(_, st)
-				status = st
-			end)
+	local status = Enum.AssetFetchStatus.None
+	pcall(function()
+		ContentProvider:PreloadAsync({ banner }, function(_, st)
+			status = st
 		end)
-		if banner.IsLoaded then
-			fallback.Visible = false
-			print("[IslandCleared] баннер загружен (попытка " .. attempt .. "): " .. BANNER_IMAGE)
-			return
-		end
-		print("[IslandCleared] баннер ещё не загружен (попытка " .. attempt ..
-			", статус " .. tostring(status) .. "), пробую ещё…")
-		task.wait(2)
-	end
-	fallback.Visible = true
-	warn("[IslandCleared] баннер НЕ загрузился, статус=" .. tostring(status) .. ": " .. BANNER_IMAGE ..
-		" — Failure ⇒ это НЕ из-за размера: неверный тип ID (Decal вместо Image), приватный ассет " ..
-		"или ещё на модерации. TimedOut ⇒ действительно долго грузится. Пока показываю запасную ленту.")
-end)
-banner:GetPropertyChangedSignal("IsLoaded"):Connect(function()
-	if banner.IsLoaded then
+	end)
+	if status == Enum.AssetFetchStatus.Success then
 		fallback.Visible = false
+		print("[IslandCleared] баннер OK: " .. BANNER_IMAGE)
+	else
+		fallback.Visible = true
+		warn("[IslandCleared] баннер не загрузился, статус=" .. tostring(status) .. ": " .. BANNER_IMAGE ..
+			" — Failure ⇒ неверный тип ID (Decal вместо Image)/приватный/модерация; TimedOut ⇒ слишком " ..
+			"долго грузится. Показываю запасную ленту.")
 	end
 end)
 
