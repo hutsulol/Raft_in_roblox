@@ -113,14 +113,61 @@ bannerAspect.AspectRatio = BANNER_ASPECT
 bannerAspect.DominantAxis = Enum.DominantAxis.Width
 bannerAspect.Parent = banner
 
--- Предзагрузка + диагностика: если картинка не загрузилась — почти всегда ID указывает
--- на Decal, а не на Image, либо ассет не одобрен/не принадлежит игре.
+-- Запасная лента: если картинка не загрузилась (неверный ID/Decal/модерация/нет доступа),
+-- показываем стилизованную золотую ленту с текстом — анимация всё равно выглядит как надо.
+local fallback = Instance.new("Frame")
+fallback.Name = "Fallback"
+fallback.Size = UDim2.fromScale(1, 1)
+fallback.BackgroundColor3 = Color3.fromRGB(245, 176, 38)
+fallback.BorderSizePixel = 0
+fallback.Visible = false
+fallback.ZIndex = 2
+fallback.Parent = banner
+
+local fbCorner = Instance.new("UICorner")
+fbCorner.CornerRadius = UDim.new(0, 16)
+fbCorner.Parent = fallback
+
+local fbGrad = Instance.new("UIGradient")
+fbGrad.Color = ColorSequence.new(Color3.fromRGB(255, 214, 92), Color3.fromRGB(231, 150, 28))
+fbGrad.Rotation = 90
+fbGrad.Parent = fallback
+
+local fbStroke = Instance.new("UIStroke")
+fbStroke.Color = Color3.fromRGB(120, 70, 10)
+fbStroke.Thickness = 3
+fbStroke.Parent = fallback
+
+local fbText = Instance.new("TextLabel")
+fbText.Name = "Text"
+fbText.BackgroundTransparency = 1
+fbText.AnchorPoint = Vector2.new(0.5, 0.5)
+fbText.Position = UDim2.fromScale(0.5, 0.5)
+fbText.Size = UDim2.fromScale(0.9, 0.55)
+fbText.Font = Enum.Font.FredokaOne
+fbText.Text = OVERLAY_TEXT
+fbText.TextScaled = true
+fbText.TextColor3 = Color3.fromRGB(255, 255, 255)
+fbText.TextStrokeColor3 = Color3.fromRGB(120, 60, 10)
+fbText.TextStrokeTransparency = 0
+fbText.ZIndex = 3
+fbText.Parent = fallback
+
+-- Предзагрузка + диагностика. Если не загрузилось — включаем запасную ленту; если позже
+-- картинка всё-таки подгрузится (поправил ID), запасную прячем.
 task.spawn(function()
 	local ContentProvider = game:GetService("ContentProvider")
 	pcall(function() ContentProvider:PreloadAsync({ banner }) end)
 	if not banner.IsLoaded then
 		warn("[IslandCleared] баннер НЕ загрузился: " .. BANNER_IMAGE ..
-			" — проверь, что это ID картинки (Image/Texture), а не Decal, и что ассет одобрен и доступен игре.")
+			" — это ID Decal'а, либо ассет не одобрен/нет доступа у игры. Нужен ID типа Image " ..
+			"(свойство Texture у Decal'а, или Asset Manager → Images → Copy ID). Пока показываю запасную ленту.")
+		fallback.Visible = true
+	end
+end)
+banner:GetPropertyChangedSignal("IsLoaded"):Connect(function()
+	if banner.IsLoaded then
+		fallback.Visible = false
 	end
 end)
 
