@@ -347,6 +347,28 @@ local function loadAnims(worker, humanoid)
 	return state
 end
 
+-- Звуки рабочего (tree_hit_1 / tree_hit_2 / putting). Переселяем их на корпус (HRP),
+-- чтобы звук был 3D — от самого рабочего, а не глобально.
+local function loadSounds(worker, hrp)
+	local sounds = {}
+	for _, name in ipairs({ "tree_hit_1", "tree_hit_2", "putting" }) do
+		local s = worker:FindFirstChild(name, true)
+		if s and s:IsA("Sound") then
+			s.Parent = hrp
+			sounds[name] = s
+		end
+	end
+	return sounds
+end
+
+local function playSound(sounds, name)
+	local s = sounds[name]
+	if s then
+		s.TimePosition = 0
+		s:Play()
+	end
+end
+
 -- Дойти до точки (простой MoveTo, без пасфайндинга — для v1). Возвращает true, если
 -- дошёл ИЛИ упёрся в цель (дерево/склад). Опрос каждые 0.25с, переиздаём MoveTo.
 local function walkTo(worker, humanoid, hrp, anims, pos, speed)
@@ -515,15 +537,21 @@ local function faceFlat(humanoid, hrp, target)
 	end
 end
 
--- Рубка: смотрим на ствол и чередуем взмахи Axe_1, Axe_1, Axe_2 в течение duration.
-local function chopFor(anims, worker, humanoid, hrp, center, duration)
+-- Рубка: лицом к стволу, чередуем взмахи Axe_1, Axe_1, Axe_2 + звук удара на каждый
+-- взмах (Axe_1 → tree_hit_1, Axe_2 → tree_hit_2).
+local function chopFor(anims, sounds, worker, humanoid, hrp, center, duration)
 	humanoid.WalkSpeed = 0
-	local seq = { "Axe_1", "Axe_1", "Axe_2" }
+	local seq = {
+		{ anim = "Axe_1", sfx = "tree_hit_1" },
+		{ anim = "Axe_1", sfx = "tree_hit_1" },
+		{ anim = "Axe_2", sfx = "tree_hit_2" },
+	}
 	local start = os.clock()
 	local i = 1
 	while worker.Parent and humanoid.Health > 0 and os.clock() - start < duration do
 		faceFlat(humanoid, hrp, center) -- держим лицом к стволу
-		anims.playOnce(seq[i])
+		playSound(sounds, seq[i].sfx)
+		anims.playOnce(seq[i].anim)
 		i = i % #seq + 1
 	end
 end
@@ -540,6 +568,7 @@ local function runWorker(board, env, worker, slot)
 	local hrp = worker:FindFirstChild("HumanoidRootPart")
 	if not humanoid or not hrp then worker:Destroy() return end
 	local anims = loadAnims(worker, humanoid)
+	local sounds = loadSounds(worker, hrp)
 
 	prepRig(worker, humanoid)
 	worker.Parent = env.folder
@@ -549,12 +578,13 @@ local function runWorker(board, env, worker, slot)
 
 	task.spawn(function()
 		while worker.Parent and humanoid.Health > 0 and board:GetAttribute("Built") do
-			-- 1) к СВОЕЙ стороне дерева, лицом к стволу, рубим (чередуя взмахи)
+			-- 1) к СВОЕЙ стороне дерева, лицом к стволу, рубим (звук удара на взмах)
 			walkTo(worker, humanoid, hrp, anims, chopPosForSlot(env, slot), walkSpeed(board))
-			chopFor(anims, worker, humanoid, hrp, env.treeCenter, chopTime(board))
+			chopFor(anims, sounds, worker, humanoid, hrp, env.treeCenter, chopTime(board))
 
-			-- 2) к складу, выкладываем 1 бревно
+			-- 2) к складу, выкладываем 1 бревно (звук putting)
 			walkTo(worker, humanoid, hrp, anims, env.storagepos, walkSpeed(board))
+			playSound(sounds, "putting")
 			anims.playOnce("Drop")
 			if env.storage and env.storage:IsDescendantOf(workspace) then
 				addToStorage(env.storage, CFG.DEPOSIT_RESOURCE, 1)
