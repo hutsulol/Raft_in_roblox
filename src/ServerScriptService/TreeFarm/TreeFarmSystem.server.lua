@@ -387,7 +387,7 @@ local function createStatusGui(worker)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "WorkerStatus"
 	gui.Size = UDim2.fromOffset(130, 54)
-	gui.StudsOffsetWorldSpace = Vector3.new(0, 3.2, 0)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, 2.5, 0)
 	gui.AlwaysOnTop = true
 	gui.MaxDistance = 80
 	gui.Enabled = false
@@ -621,7 +621,7 @@ end
 
 -- Рубка: лицом к стволу, чередуем взмахи Axe_1, Axe_1, Axe_2 + звук удара на каждый
 -- взмах (Axe_1 → tree_hit_1, Axe_2 → tree_hit_2).
-local function chopFor(anims, sounds, worker, humanoid, hrp, center, duration)
+local function chopFor(anims, sounds, worker, humanoid, hrp, center, duration, shake)
 	humanoid.WalkSpeed = 0
 	local seq = {
 		{ anim = "Axe_1", sfx = "tree_hit_1" },
@@ -632,7 +632,15 @@ local function chopFor(anims, sounds, worker, humanoid, hrp, center, duration)
 	local i = 1
 	while worker.Parent and humanoid.Health > 0 and os.clock() - start < duration do
 		faceFlat(humanoid, hrp, center) -- держим лицом к стволу
-		playSound(sounds, seq[i].sfx)
+		-- Удар приходится не в начале взмаха, а ~0.11с спустя — в момент контакта
+		-- топора. Тогда же звук удара и одиночная тряска дерева (всё синхронно).
+		local sfx = seq[i].sfx
+		task.delay(0.11, function()
+			if worker.Parent and humanoid.Health > 0 then
+				playSound(sounds, sfx)
+				if shake then shake() end
+			end
+		end)
 		anims.playOnce(seq[i].anim)
 		i = i % #seq + 1
 	end
@@ -666,7 +674,7 @@ local function runWorker(board, env, worker, slot)
 
 			-- 1) к СВОЕЙ стороне дерева, лицом к стволу, рубим (звук удара на взмах)
 			walkTo(worker, humanoid, hrp, anims, chopPosForSlot(env, slot), walkSpeed(board), moveAnim)
-			chopFor(anims, sounds, worker, humanoid, hrp, env.treeCenter, chopTime(board))
+			chopFor(anims, sounds, worker, humanoid, hrp, env.treeCenter, chopTime(board), env.treeShake)
 
 			-- 2) встаём НА парт Trigger (малый reach), лицом к складу, кладём бревно
 			walkTo(worker, humanoid, hrp, anims, env.depositpos, walkSpeed(board), moveAnim, CFG.DEPOSIT_REACH)
@@ -747,6 +755,63 @@ local function objectRadius(inst)
 	return 1.5
 end
 
+-- Контроллер тряски дерева: при ударе вся модель дерева КРОМЕ партов Sit слегка
+-- качается (одиночно) вокруг основания ствола и точно возвращается на место.
+-- Возвращает функцию shake() — её зовём В МОМЕНТ удара (через ~0.11с после начала
+-- взмаха), а не в начале. Парты дерева анкорятся (статичный декор), поэтому двигаем
+-- их CFrame; busy-флаг не даёт нескольким рабочим перетягивать тряску.
+local function makeTreeShaker(tree)
+	if not tree then return nil end
+	local parts = {}
+	local list = tree:IsA("Model") and tree:GetDescendants() or { tree }
+	for _, d in ipairs(list) do
+		if d:IsA("BasePart") and d.Name ~= CFG.SIT_NAME then
+			table.insert(parts, { part = d, cf = d.CFrame })
+		end
+	end
+	if #parts == 0 then return nil end
+
+	-- Точка опоры — низ модели (основание ствола): крона качается сильнее низа.
+	local pivotPos
+	if tree:IsA("Model") then
+		local ok, bbCF, bbSize = pcall(function()
+			local c, s = tree:GetBoundingBox()
+			return c, s
+		end)
+		if ok and bbCF and bbSize then
+			pivotPos = bbCF.Position - Vector3.new(0, bbSize.Y * 0.5, 0)
+		end
+	end
+	pivotPos = pivotPos or parts[1].part.Position
+	local pivotCF  = CFrame.new(pivotPos)
+	local invPivot = pivotCF:Inverse()
+
+	local busy = false
+	return function()
+		if busy then return end
+		busy = true
+		task.spawn(function()
+			-- наклон в случайную горизонтальную сторону на маленький угол, туда-обратно
+			local theta = math.random() * math.pi * 2
+			local axis  = Vector3.new(math.cos(theta), 0, math.sin(theta))
+			local DUR, PEAK = 0.22, math.rad(2)
+			local t = 0
+			while t < DUR do
+				t += RunService.Heartbeat:Wait()
+				local f = math.min(t / DUR, 1)
+				local m = pivotCF * CFrame.fromAxisAngle(axis, PEAK * math.sin(f * math.pi)) * invPivot
+				for _, e in ipairs(parts) do
+					if e.part.Parent then e.part.CFrame = m * e.cf end
+				end
+			end
+			for _, e in ipairs(parts) do
+				if e.part.Parent then e.part.CFrame = e.cf end
+			end
+			busy = false
+		end)
+	end
+end
+
 local function buildEnv(board)
 	local part = findDeep(board, CFG.BOARD_PART) or board
 	local boardPos = partPosition(part) or partPosition(board) or Vector3.zero
@@ -794,6 +859,7 @@ local function buildEnv(board)
 		spawnPos = partPosition(spawnPart) or boardPos + Vector3.new(0, 0, 6),
 		treeCenter = treeCenter,
 		treeRadius = treeRadius,
+		treeShake = makeTreeShaker(tree), -- тряска дерева при ударе (кроме партов Sit)
 		depositpos = partPosition(trigerPart) or partPosition(storage) or boardPos, -- встаём на Trigger
 		facepos = partPosition(storage) or partPosition(trigerPart) or boardPos,     -- лицом к зданию склада
 		storage = storage,
