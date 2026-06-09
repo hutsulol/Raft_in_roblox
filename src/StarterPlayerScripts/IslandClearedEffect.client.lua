@@ -38,18 +38,17 @@ local SOUND_CARD   = "Level Complete"       -- при появлении кар�
 local SHOW_OVERLAY_TEXT = false
 local OVERLAY_TEXT      = "ОСТРОВ ЗАЧИЩЕН!"
 
--- Карточка-сводка сверху-справа (шаг 7).
-local CARD_TITLE   = "Остров зачищен!"
+-- Сводка наград сверху-справа (шаг 7): ТРИ отдельных тоста, появляются вместе.
 local CARD_LINES   = {
 	"🏴 Пиратский лагерь уничтожен",
 	"👥 Освобождено жителей: +5",
 	"📍 Доступна телепортация на остров",
 }
-local CARD_DELAY   = 1.0  -- через сколько после баннера показать карточку
-local CARD_DISPLAY = 5.0  -- сколько карточка висит до ухода
+local CARD_DELAY   = 5.0  -- через сколько после старта показать сводку (не «почти сразу»)
+local CARD_DISPLAY = 5.0  -- сколько сводка висит до ухода
 
--- Сколько баннер держится перед уходом.
-local BANNER_HOLD  = 3.0
+-- Сколько баннер держится перед уходом (до появления сводки).
+local BANNER_HOLD  = 4.5
 
 -- Тема карточки — как у уведомлений квестов (синяя панель), акцент золотой под баннер.
 local COLOR_PANEL      = Color3.fromRGB(10, 25, 55)
@@ -114,10 +113,16 @@ bannerAspect.AspectRatio = BANNER_ASPECT
 bannerAspect.DominantAxis = Enum.DominantAxis.Width
 bannerAspect.Parent = banner
 
-local bannerCap = Instance.new("UISizeConstraint")
-bannerCap.MinSize = Vector2.new(280, 0)
-bannerCap.MaxSize = Vector2.new(960, math.huge)
-bannerCap.Parent = banner
+-- Предзагрузка + диагностика: если картинка не загрузилась — почти всегда ID указывает
+-- на Decal, а не на Image, либо ассет не одобрен/не принадлежит игре.
+task.spawn(function()
+	local ContentProvider = game:GetService("ContentProvider")
+	pcall(function() ContentProvider:PreloadAsync({ banner }) end)
+	if not banner.IsLoaded then
+		warn("[IslandCleared] баннер НЕ загрузился: " .. BANNER_IMAGE ..
+			" — проверь, что это ID картинки (Image/Texture), а не Decal, и что ассет одобрен и доступен игре.")
+	end
+end)
 
 -- UIScale — отдельный «удар» масштаба, не трогая позицию.
 local bannerScale = Instance.new("UIScale")
@@ -143,71 +148,71 @@ overlay.ZIndex = 4
 overlay.Visible = false
 overlay.Parent = banner
 
--- 7) карточка-сводка сверху-справа
-local card = Instance.new("Frame")
-card.Name = "RewardCard"
-card.AnchorPoint = Vector2.new(1, 0)
-card.Position = UDim2.new(1, 380, 0, 16) -- старт за правым краем
-card.Size = UDim2.new(0, 320, 0, 0)
-card.AutomaticSize = Enum.AutomaticSize.Y
-card.BackgroundColor3 = COLOR_PANEL
-card.BackgroundTransparency = 0.08
-card.BorderSizePixel = 0
-card.ZIndex = 10
-card.Visible = false
-card.Parent = gui
+-- 7) сводка наград сверху-справа — ТРИ отдельных тоста в стопке. Двигаем общий
+-- контейнер, поэтому все три «выезжают» в одно время (как пачка квестов).
+local notif = Instance.new("Frame")
+notif.Name = "RewardToasts"
+notif.AnchorPoint = Vector2.new(1, 0)
+notif.Position = UDim2.new(1, 380, 0, 16) -- старт за правым краем
+notif.Size = UDim2.new(0, 330, 0, 0)
+notif.AutomaticSize = Enum.AutomaticSize.Y
+notif.BackgroundTransparency = 1
+notif.ZIndex = 10
+notif.Visible = false
+notif.Parent = gui
 
-local cardCorner = Instance.new("UICorner")
-cardCorner.CornerRadius = UDim.new(0, 10)
-cardCorner.Parent = card
+local notifList = Instance.new("UIListLayout")
+notifList.SortOrder = Enum.SortOrder.LayoutOrder
+notifList.Padding = UDim.new(0, 8)
+notifList.HorizontalAlignment = Enum.HorizontalAlignment.Right
+notifList.Parent = notif
 
-local cardStroke = Instance.new("UIStroke")
-cardStroke.Color = COLOR_PANEL_EDGE
-cardStroke.Thickness = 1.5
-cardStroke.Parent = card
+-- Один тост = одна строка-награда (отдельная карточка в стиле уведомлений квестов).
+local function buildToast(text, order)
+	local panel = Instance.new("Frame")
+	panel.Name = "Toast" .. order
+	panel.Size = UDim2.new(1, 0, 0, 0)
+	panel.AutomaticSize = Enum.AutomaticSize.Y
+	panel.BackgroundColor3 = COLOR_PANEL
+	panel.BackgroundTransparency = 0.08
+	panel.BorderSizePixel = 0
+	panel.LayoutOrder = order
+	panel.ZIndex = 11
+	panel.Parent = notif
 
-local cardPad = Instance.new("UIPadding")
-cardPad.PaddingTop    = UDim.new(0, 10)
-cardPad.PaddingBottom = UDim.new(0, 10)
-cardPad.PaddingLeft   = UDim.new(0, 12)
-cardPad.PaddingRight  = UDim.new(0, 12)
-cardPad.Parent = card
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = panel
 
-local cardList = Instance.new("UIListLayout")
-cardList.SortOrder = Enum.SortOrder.LayoutOrder
-cardList.Padding = UDim.new(0, 5)
-cardList.Parent = card
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = COLOR_PANEL_EDGE
+	stroke.Thickness = 1.5
+	stroke.Parent = panel
 
-local cardTitle = Instance.new("TextLabel")
-cardTitle.Name = "CardTitle"
-cardTitle.BackgroundTransparency = 1
-cardTitle.Size = UDim2.new(1, 0, 0, 0)
-cardTitle.AutomaticSize = Enum.AutomaticSize.Y
-cardTitle.Font = FONT_TITLE
-cardTitle.TextSize = 17
-cardTitle.TextColor3 = COLOR_ACCENT
-cardTitle.Text = "✅ " .. CARD_TITLE
-cardTitle.TextXAlignment = Enum.TextXAlignment.Left
-cardTitle.TextWrapped = true
-cardTitle.LayoutOrder = 1
-cardTitle.ZIndex = 11
-cardTitle.Parent = card
+	local pad = Instance.new("UIPadding")
+	pad.PaddingTop    = UDim.new(0, 8)
+	pad.PaddingBottom = UDim.new(0, 8)
+	pad.PaddingLeft   = UDim.new(0, 12)
+	pad.PaddingRight  = UDim.new(0, 12)
+	pad.Parent = panel
+
+	local lbl = Instance.new("TextLabel")
+	lbl.Name = "Text"
+	lbl.BackgroundTransparency = 1
+	lbl.Size = UDim2.new(1, 0, 0, 0)
+	lbl.AutomaticSize = Enum.AutomaticSize.Y
+	lbl.Font = FONT_BODY
+	lbl.TextSize = 16
+	lbl.TextColor3 = COLOR_TEXT
+	lbl.Text = text
+	lbl.TextXAlignment = Enum.TextXAlignment.Left
+	lbl.TextWrapped = true
+	lbl.ZIndex = 12
+	lbl.Parent = panel
+end
 
 for i, line in ipairs(CARD_LINES) do
-	local row = Instance.new("TextLabel")
-	row.Name = "Line" .. i
-	row.BackgroundTransparency = 1
-	row.Size = UDim2.new(1, 0, 0, 0)
-	row.AutomaticSize = Enum.AutomaticSize.Y
-	row.Font = FONT_BODY
-	row.TextSize = 15
-	row.TextColor3 = COLOR_TEXT
-	row.Text = line
-	row.TextXAlignment = Enum.TextXAlignment.Left
-	row.TextWrapped = true
-	row.LayoutOrder = i + 1
-	row.ZIndex = 11
-	row.Parent = card
+	buildToast(line, i)
 end
 
 --====================================================
@@ -252,25 +257,26 @@ end
 
 local playing = false
 
--- Карточка-сводка: въезжает справа, висит, уезжает. По завершении снимает флаг.
-local function showCard()
-	card.Position = UDim2.new(1, 380, 0, 16)
-	card.Visible = true
+-- Сводка наград: вся стопка из трёх тостов въезжает справа в одно время, висит,
+-- уезжает. По завершении снимает флаг.
+local function showToasts()
+	notif.Position = UDim2.new(1, 380, 0, 16)
+	notif.Visible = true
 	TweenService:Create(
-		card,
-		TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		notif,
+		TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
 		{ Position = UDim2.new(1, -16, 0, 16) }
 	):Play()
 
 	task.delay(CARD_DISPLAY, function()
 		local out = TweenService:Create(
-			card,
+			notif,
 			TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
 			{ Position = UDim2.new(1, 380, 0, 16) }
 		)
 		out:Play()
 		out.Completed:Once(function()
-			card.Visible = false
+			notif.Visible = false
 			playing = false
 		end)
 	end)
@@ -332,9 +338,9 @@ local function playIslandCleared()
 		end)
 	end
 
-	-- 7) карточка-сводка + её звук (через ~1с)
+	-- 7) сводка наград (три тоста в одно время) + её звук (через CARD_DELAY)
 	task.delay(CARD_DELAY, function()
-		showCard()
+		showToasts()
 		playSound(SOUND_CARD)
 	end)
 
