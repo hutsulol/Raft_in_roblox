@@ -359,16 +359,35 @@ local COLORS = {
 -- Пустой слот — заливка 35% прозрачности (по споке); занятый — 0.
 local SLOT_EMPTY_TRANSPARENCY = 0.35
 
--- Базовая отделка слота: песочный градиент (SlotGrad), скругление 12, рамка 3 и
--- скрытый слой диагональных полос (LockStripes) для заблокированного состояния.
+-- Две палитры слотов: СЕТКА ИНВЕНТАРЯ — синяя (под панель «Океан»), ХОТБАР —
+-- песочная спека с прозрачностью (лёгкий вид «без подложки», не выделяется).
+local SLOT_STYLE_GRID = {
+	top = Color3.fromHex("BCE0F9"),
+	bottom = Color3.fromHex("A9D6F7"),
+	frame = Color3.fromHex("1C4F8F"),
+	emptyFrame = Color3.fromHex("1C4F8F"),
+	filledT = 0,    -- занятый — плотный
+	emptyT = 0.35,  -- пустой — 35%
+}
+local SLOT_STYLE_HOTBAR = {
+	top = COLORS.slotTop,           -- FBD9A4
+	bottom = COLORS.slotBottom,     -- F2C57E
+	frame = COLORS.slotFrame,       -- B5762B
+	emptyFrame = COLORS.slotEmptyFrame, -- 7A4310
+	filledT = 0.25, -- лёгкая прозрачность даже у занятых (бар не выделяется)
+	emptyT = 0.5,
+}
+
+-- Базовая отделка слота под палитру pal: градиент (SlotGrad), скругление 12,
+-- рамка 3 и скрытый слой диагональных полос (LockStripes) для заблокированного.
 -- Полосы — тёмный слой с UIGradient 45°, где прозрачность чередуется 0/1.
-local function styleSlotBase(slot)
+local function styleSlotBase(slot, pal)
 	slot.BackgroundColor3 = Color3.new(1, 1, 1) -- белый под градиент (он умножается)
 	slot.BorderSizePixel = 0
 
 	local grad = Instance.new("UIGradient")
 	grad.Name = "SlotGrad"
-	grad.Color = ColorSequence.new(COLORS.slotTop, COLORS.slotBottom)
+	grad.Color = ColorSequence.new(pal.top, pal.bottom)
 	grad.Rotation = 90
 	grad.Parent = slot
 
@@ -377,7 +396,7 @@ local function styleSlotBase(slot)
 	corner.Parent = slot
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = COLORS.slotEmptyFrame
+	stroke.Color = pal.emptyFrame
 	stroke.Thickness = 3
 	stroke.Transparency = 0.5
 	stroke.Parent = slot
@@ -412,9 +431,10 @@ local function styleSlotBase(slot)
 	sg.Parent = stripes
 end
 
--- Применить состояние слота по споке: locked → тёмный с полосами; selected →
--- золотая рамка; иначе занятый/пустой (плотный/35% + своя рамка).
-local function applySlotState(slot, hasItem, selected, locked)
+-- Применить состояние слота по споке (в палитре pal): locked → тёмный с полосами;
+-- selected → золотая рамка; иначе занятый/пустой (свои прозрачность и рамка).
+local function applySlotState(slot, hasItem, selected, locked, pal)
+	pal = pal or SLOT_STYLE_GRID
 	local stroke = slot:FindFirstChildWhichIsA("UIStroke")
 	local grad = slot:FindFirstChild("SlotGrad")
 	local stripes = slot:FindFirstChild("LockStripes")
@@ -432,7 +452,7 @@ local function applySlotState(slot, hasItem, selected, locked)
 	end
 	if grad then grad.Enabled = true end
 	slot.BackgroundColor3 = Color3.new(1, 1, 1)
-	slot.BackgroundTransparency = hasItem and 0 or SLOT_EMPTY_TRANSPARENCY
+	slot.BackgroundTransparency = hasItem and pal.filledT or pal.emptyT
 	if stripes then stripes.Visible = false end
 	if stroke then
 		if selected then
@@ -440,11 +460,11 @@ local function applySlotState(slot, hasItem, selected, locked)
 			stroke.Thickness = 4
 			stroke.Transparency = 0
 		elseif hasItem then
-			stroke.Color = COLORS.slotFrame
+			stroke.Color = pal.frame
 			stroke.Thickness = 3
 			stroke.Transparency = 0
 		else
-			stroke.Color = COLORS.slotEmptyFrame
+			stroke.Color = pal.emptyFrame
 			stroke.Thickness = 3
 			stroke.Transparency = 0.5
 		end
@@ -559,7 +579,7 @@ local function applyUnlockedSlots()
 		local locked    = globalIdx > unlockedSlots
 		if rec.button then
 			-- hasItem уточнит ближайший renderAllSlots
-			applySlotState(rec.button, false, false, locked)
+			applySlotState(rec.button, false, false, locked, SLOT_STYLE_GRID)
 			rec.button.AutoButtonColor = false
 			rec.button.Active          = not locked
 		end
@@ -1421,7 +1441,7 @@ function renderAllSlots()
 							end
 						end
 					end
-					applySlotState(slot, data ~= nil, selected, false)
+					applySlotState(slot, data ~= nil, selected, false, SLOT_STYLE_HOTBAR)
 					-- мягкое свечение за выбранным слотом
 					local glow = bar:FindFirstChild("HotbarGlow_" .. i)
 					if glow then
@@ -1441,8 +1461,8 @@ function renderAllSlots()
 				if slot then
 					local globalIdx = HOTBAR_SLOTS + i
 					renderSlot(slot, slotData[globalIdx])
-					-- стиль по споке: заблокирован/пустой/занятый
-					applySlotState(slot, slotData[globalIdx] ~= nil, false, isSlotLocked(globalIdx))
+					-- стиль по споке: заблокирован/пустой/занятый (синяя палитра сетки)
+					applySlotState(slot, slotData[globalIdx] ~= nil, false, isSlotLocked(globalIdx), SLOT_STYLE_GRID)
 				end
 			end
 		end
@@ -2470,11 +2490,11 @@ local function buildHotbar()
 		slot.Name = "HotbarSlot_" .. i
 		slot.Size = UDim2.new(0, SLOT_SIZE, 0, SLOT_SIZE)
 		slot.Position = UDim2.new(0, SLOT_PAD + (i - 1) * (SLOT_SIZE + SLOT_PAD), 0, SLOT_PAD)
-		slot.BackgroundTransparency = SLOT_EMPTY_TRANSPARENCY
+		slot.BackgroundTransparency = SLOT_STYLE_HOTBAR.emptyT
 		slot.Text = ""
 		slot.AutoButtonColor = false
 		slot.Parent = bar
-		styleSlotBase(slot)
+		styleSlotBase(slot, SLOT_STYLE_HOTBAR)
 
 		local slotIndex = i
 
@@ -2712,11 +2732,11 @@ local function buildUI()
 		slot.Name = "Slot_" .. i
 		slot.Size = UDim2.new(0, SLOT_SIZE, 0, SLOT_SIZE)
 		slot.Position = UDim2.new(0, SLOT_PAD + col * (SLOT_SIZE + SLOT_PAD), 0, SLOT_PAD + row * (SLOT_SIZE + SLOT_PAD))
-		slot.BackgroundTransparency = SLOT_EMPTY_TRANSPARENCY
+		slot.BackgroundTransparency = SLOT_STYLE_GRID.emptyT
 		slot.Text = ""
 		slot.AutoButtonColor = false
 		slot.Parent = gridFrame
-		styleSlotBase(slot)
+		styleSlotBase(slot, SLOT_STYLE_GRID)
 
 		gridSlotVisuals[i] = { button = slot }
 
