@@ -374,15 +374,32 @@ local function createAxeEffect(worker, hrp, env)
 	for _, pe in ipairs(fx:GetDescendants()) do
 		if pe:IsA("ParticleEmitter") then table.insert(emitters, pe) end
 	end
-	-- Точка контакта — на ПОВЕРХНОСТИ ствола со стороны рабочего (а не «перед рабочим»),
-	-- поэтому эффект не зависает в воздухе, даже если рабочий бьёт издалека.
+	-- Точка контакта — РЕЙКАСТОМ от рабочего к стволу: эффект ложится на реальную
+	-- поверхность пальмы (наклонный ствол по bounding-box давал точку в воздухе или
+	-- в самом НПС). Запасной путь — по радиусу ствола, если луч вдруг не попал.
+	local rayParams
+	if env.palmInst then
+		rayParams = RaycastParams.new()
+		rayParams.FilterType = Enum.RaycastFilterType.Include
+		rayParams.FilterDescendantsInstances = { env.palmInst }
+	end
 	local function impactPos()
 		local hp = hrp.Position
 		local c = env.treeCenter
+		local origin = Vector3.new(hp.X, hp.Y + CFG.AXE_EFFECT_HEIGHT, hp.Z)
+		if rayParams then
+			local toTree = Vector3.new(c.X - origin.X, 0, c.Z - origin.Z)
+			if toTree.Magnitude > 0.001 then
+				local hit = workspace:Raycast(origin, toTree.Unit * (toTree.Magnitude + 4), rayParams)
+				if hit then
+					return hit.Position - toTree.Unit * 0.1 -- чуть наружу от поверхности
+				end
+			end
+		end
 		local toWorker = Vector3.new(hp.X - c.X, 0, hp.Z - c.Z)
 		local dir = (toWorker.Magnitude > 0.001) and toWorker.Unit or hrp.CFrame.LookVector
 		local surfR = math.max(0, env.treeRadius - CFG.CHOP_RADIUS_PAD) -- радиус самого ствола
-		return Vector3.new(c.X, hp.Y + CFG.AXE_EFFECT_HEIGHT, c.Z) + dir * surfR
+		return Vector3.new(c.X, origin.Y, c.Z) + dir * surfR
 	end
 	-- .Position (а не CFrame) — сохраняем ориентацию эмиттера как в ReplicatedStorage.
 	fx.Position = impactPos()
@@ -962,6 +979,7 @@ local function buildEnv(board)
 		treeCenter = treeCenter,
 		treeRadius = treeRadius,
 		treeShake = makeTreeShaker(tree), -- тряска дерева при ударе (кроме партов Sit)
+		palmInst = palm,                  -- геометрия ствола (рейкаст точки удара)
 		depositpos = partPosition(trigerPart) or partPosition(storage) or boardPos, -- встаём на Trigger
 		facepos = partPosition(storage) or partPosition(trigerPart) or boardPos,     -- лицом к зданию склада
 		storage = storage,
