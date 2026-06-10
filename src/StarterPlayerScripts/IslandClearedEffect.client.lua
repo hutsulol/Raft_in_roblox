@@ -715,6 +715,11 @@ local hiddenBuildings = {} -- [model] = { scale = родной Scale, conn = ...
 
 local function hideBuilding(m)
 	if hiddenBuildings[m] then return end
+	-- вложенные тёзки (Model внутри Model с тем же именем): прячем только ВНЕШНЮЮ,
+	-- иначе двойной ScaleTo даст неверный масштаб после роста
+	for hidden in pairs(hiddenBuildings) do
+		if m:IsDescendantOf(hidden) then return end
+	end
 	local entry = { scale = m:GetScale() }
 	-- промпт склада сервер добавляет позже — выключаем и те, что появятся
 	entry.conn = m.DescendantAdded:Connect(function(d)

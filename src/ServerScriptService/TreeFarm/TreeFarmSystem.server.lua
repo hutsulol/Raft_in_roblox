@@ -309,19 +309,34 @@ end)
 -- РАБОЧИЙ (Villager_Axe) — анимации, движение, FSM
 --====================================================
 
+-- Шаблон рабочего берём лениво и с защитой: Archivable=false у модели заставляет
+-- Clone() ТИХО вернуть nil (классическая причина «рабочий не спавнится») — чиним и
+-- говорим об этом. Если шаблон не взялся при старте — пробуем снова при спавне.
 local workerTemplate = nil
-do
+local function getWorkerTemplate()
+	if workerTemplate then return workerTemplate end
 	local t = ServerStorage:FindFirstChild(CFG.WORKER_TEMPLATE, true)
 		or ReplicatedStorage:FindFirstChild(CFG.WORKER_TEMPLATE, true)
 		or workspace:FindFirstChild(CFG.WORKER_TEMPLATE, true)
-	if t then
-		workerTemplate = t:Clone()
-		-- Если оригинал стоял в Workspace «для вида» — убираем, рабочие появятся при постройке.
-		if t:IsDescendantOf(workspace) then
-			t:Destroy()
-		end
+	if not t then
+		warn("[TreeFarm] шаблон рабочего '" .. CFG.WORKER_TEMPLATE .. "' не найден (ServerStorage/ReplicatedStorage/Workspace)")
+		return nil
 	end
+	if not t.Archivable then
+		t.Archivable = true
+		warn("[TreeFarm] у шаблона '" .. CFG.WORKER_TEMPLATE .. "' был Archivable=false (Clone() возвращал nil) — включил")
+	end
+	workerTemplate = t:Clone()
+	-- Если оригинал стоял в Workspace «для вида» — убираем, рабочие появятся при постройке.
+	if t:IsDescendantOf(workspace) then
+		t:Destroy()
+	end
+	if not workerTemplate then
+		warn("[TreeFarm] Clone() шаблона рабочего не удался")
+	end
+	return workerTemplate
 end
+getWorkerTemplate()
 
 -- Эффект щепок при ударе: Part c ParticleEmitter из ReplicatedStorage. Готовим шаблон
 -- ОДИН раз: гасим эмиттеры (бьём одиночным burst'ом через :Emit) и берём число частиц.
@@ -729,7 +744,11 @@ end
 local function runWorker(board, env, worker, slot)
 	local humanoid = worker:FindFirstChildOfClass("Humanoid")
 	local hrp = worker:FindFirstChild("HumanoidRootPart")
-	if not humanoid or not hrp then worker:Destroy() return end
+	if not humanoid or not hrp then
+		warn("[TreeFarm] у рабочего нет " .. (humanoid and "HumanoidRootPart" or "Humanoid") .. " — удаляю")
+		worker:Destroy()
+		return
+	end
 	local anims = loadAnims(worker, humanoid)
 	local sounds = loadSounds(worker, hrp)
 
@@ -782,12 +801,21 @@ local function runWorker(board, env, worker, slot)
 end
 
 local function spawnWorker(board, env)
-	if not workerTemplate then return end
-	local w = workerTemplate:Clone()
+	local tpl = getWorkerTemplate()
+	if not tpl then
+		warn("[TreeFarm] спавн рабочего ОТМЕНЁН: нет шаблона '" .. CFG.WORKER_TEMPLATE .. "'")
+		return
+	end
+	local w = tpl:Clone()
+	if not w then
+		warn("[TreeFarm] спавн рабочего ОТМЕНЁН: Clone() вернул nil (проверь Archivable у '" .. CFG.WORKER_TEMPLATE .. "')")
+		return
+	end
 	w.Name = "Villager"
 	env.spawnCount = (env.spawnCount or 0) + 1
 	local slot = (env.spawnCount - 1) % math.max(1, CFG.WORKERS_MAX) + 1
 	table.insert(env.workers, w)
+	print(string.format("[TreeFarm] рабочий заспавнен (слот %d, всего %d)", slot, #env.workers))
 	runWorker(board, env, w, slot)
 end
 
