@@ -1240,7 +1240,7 @@ local function ensureScreenGui()
 	screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "WorkbenchGui"
 	screenGui.ResetOnSpawn = false
-	screenGui.IgnoreGuiInset = false
+	screenGui.IgnoreGuiInset = true -- центр по всему экрану (без выреза топбара)
 	screenGui.DisplayOrder = SCREENGUI_DISPLAY_ORDER
 	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
 	screenGui.Enabled = false

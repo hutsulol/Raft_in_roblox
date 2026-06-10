@@ -2558,6 +2558,7 @@ local function buildHotbar()
 	hotbarGui = Instance.new("ScreenGui")
 	hotbarGui.Name = "HotbarGui"
 	hotbarGui.ResetOnSpawn = false
+	hotbarGui.IgnoreGuiInset = true -- единая система координат с инвентарём
 	hotbarGui.DisplayOrder = 5
 	hotbarGui.Parent = playerGui
 	attachResponsiveScale(hotbarGui)
@@ -2728,6 +2729,7 @@ local function buildUI()
 	screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "InventoryGui"
 	screenGui.ResetOnSpawn = false
+	screenGui.IgnoreGuiInset = true -- центрируем по всему экрану, а не под топбаром
 	screenGui.DisplayOrder = 10
 	screenGui.Parent = playerGui
 	attachResponsiveScale(screenGui)

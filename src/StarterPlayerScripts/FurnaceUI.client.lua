@@ -330,6 +330,7 @@ local function buildUI()
 	screenGui = Instance.new("ScreenGui")
 	screenGui.Name = "FurnaceGui"
 	screenGui.ResetOnSpawn = false
+	screenGui.IgnoreGuiInset = true -- центр по всему экрану (без выреза топбара)
 	screenGui.DisplayOrder = 60
 	screenGui.Parent = playerGui
 
