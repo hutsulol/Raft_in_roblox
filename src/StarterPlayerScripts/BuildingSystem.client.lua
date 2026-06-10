@@ -648,15 +648,19 @@ end
 
 -- ===================== UI =====================
 
-local CAT_SIZE = 50
-local CAT_PAD = 4
-local ITEM_SIZE = 60
-local ITEM_PAD = 6
-local PANEL_BG = Color3.fromRGB(139, 109, 63)
-local PANEL_DARK = Color3.fromRGB(105, 80, 45)
-local PANEL_SELECTED = Color3.fromRGB(170, 135, 75)
-local PANEL_ITEM_BG = Color3.fromRGB(160, 128, 68)
-local PANEL_ITEM_SEL = Color3.fromRGB(195, 160, 90)
+local CAT_W, CAT_H, CAT_PAD = 96, 40, 6      -- вкладки Floors/Walls
+local CARD_W, CARD_H, CARD_PAD = 112, 150, 8 -- карточки блоков
+
+-- Палитра «Океан» из редизайна (как инвентарь/крафт).
+local UI_PANEL_TOP  = Color3.fromHex("54A7EC")
+local UI_PANEL_BOT  = Color3.fromHex("3A7FD0")
+local UI_FRAME      = Color3.fromHex("1C4F8F")
+local UI_SLOT       = Color3.fromHex("A9D6F7")
+local UI_GOLD_TOP   = Color3.fromHex("FFD95A")
+local UI_GOLD       = Color3.fromHex("F5B73C")
+local UI_GOLD_FRAME = Color3.fromHex("B07A14")
+local UI_PRICE_OK   = Color3.fromHex("4CD964")
+local UI_PRICE_NO   = Color3.fromHex("FF6B5A")
 
 local function buildUI()
 	if buildingUI then buildingUI:Destroy() end
@@ -674,65 +678,48 @@ local function buildUI()
 
 	local cat = categories[selectedCategory]
 
+	-- Вкладки категорий (Floors/Walls): активная — золотая, остальные — синие.
 	local catCount = #categories
-	local catPanelH = catCount * (CAT_SIZE + CAT_PAD) + CAT_PAD
+	local catPanelH = catCount * (CAT_H + CAT_PAD) - CAT_PAD
 	local catPanel = Instance.new("Frame")
 	catPanel.Name = "CategoryPanel"
-	catPanel.Size = UDim2.new(0, CAT_SIZE + CAT_PAD * 2, 0, catPanelH)
-	catPanel.Position = UDim2.new(0, 10, 0.5, -catPanelH / 2)
-	catPanel.BackgroundColor3 = PANEL_BG
-	catPanel.BorderSizePixel = 0
+	catPanel.Size = UDim2.new(0, CAT_W, 0, catPanelH)
+	catPanel.Position = UDim2.new(0, 12, 0.5, -catPanelH / 2)
+	catPanel.BackgroundTransparency = 1
 	catPanel.Parent = buildingUI
-
-	local catCorner = Instance.new("UICorner")
-	catCorner.CornerRadius = UDim.new(0, 8)
-	catCorner.Parent = catPanel
-
-	local catStroke = Instance.new("UIStroke")
-	catStroke.Color = PANEL_DARK
-	catStroke.Thickness = 2
-	catStroke.Parent = catPanel
 
 	for i, catData in categories do
 		local isActive = (i == selectedCategory)
 
 		local catBtn = Instance.new("TextButton")
 		catBtn.Name = "Cat_" .. catData.name
-		catBtn.Size = UDim2.new(0, CAT_SIZE, 0, CAT_SIZE)
-		catBtn.Position = UDim2.new(0, CAT_PAD, 0, CAT_PAD + (i - 1) * (CAT_SIZE + CAT_PAD))
-		catBtn.BackgroundColor3 = isActive and PANEL_SELECTED or PANEL_DARK
+		catBtn.Size = UDim2.new(1, 0, 0, CAT_H)
+		catBtn.Position = UDim2.new(0, 0, 0, (i - 1) * (CAT_H + CAT_PAD))
+		catBtn.BackgroundColor3 = Color3.new(1, 1, 1) -- белый под градиент
 		catBtn.BorderSizePixel = 0
-		catBtn.Text = ""
+		catBtn.Text = catData.name
+		catBtn.TextColor3 = Color3.new(1, 1, 1)
+		catBtn.Font = Enum.Font.GothamBlack
+		catBtn.TextSize = 16
+		catBtn.TextStrokeColor3 = Color3.new(0, 0, 0)
+		catBtn.TextStrokeTransparency = 0.6
 		catBtn.AutoButtonColor = false
 		catBtn.Parent = catPanel
 
+		local catGrad = Instance.new("UIGradient")
+		catGrad.Rotation = 90
+		catGrad.Color = isActive and ColorSequence.new(UI_GOLD_TOP, UI_GOLD)
+			or ColorSequence.new(UI_PANEL_TOP, UI_PANEL_BOT)
+		catGrad.Parent = catBtn
+
 		local btnCorner = Instance.new("UICorner")
-		btnCorner.CornerRadius = UDim.new(0, 6)
+		btnCorner.CornerRadius = UDim.new(0, 12)
 		btnCorner.Parent = catBtn
 
-		if isActive then
-			local selStroke = Instance.new("UIStroke")
-			selStroke.Color = Color3.fromRGB(255, 220, 100)
-			selStroke.Thickness = 2
-			selStroke.Parent = catBtn
-		end
-
-		local catIcon = Instance.new("ImageLabel")
-		catIcon.Size = UDim2.new(0.6, 0, 0.6, 0)
-		catIcon.Position = UDim2.new(0.2, 0, 0.05, 0)
-		catIcon.BackgroundTransparency = 1
-		catIcon.Image = catData.icon
-		catIcon.Parent = catBtn
-
-		local catLabel = Instance.new("TextLabel")
-		catLabel.Size = UDim2.new(1, 0, 0.35, 0)
-		catLabel.Position = UDim2.new(0, 0, 0.65, 0)
-		catLabel.BackgroundTransparency = 1
-		catLabel.Text = catData.name
-		catLabel.TextColor3 = Color3.new(1, 1, 1)
-		catLabel.TextScaled = true
-		catLabel.Font = Enum.Font.GothamBold
-		catLabel.Parent = catBtn
+		local btnStroke = Instance.new("UIStroke")
+		btnStroke.Color = isActive and UI_GOLD_FRAME or UI_FRAME
+		btnStroke.Thickness = 3
+		btnStroke.Parent = catBtn
 
 		catBtn.MouseButton1Click:Connect(function()
 			if selectedCategory == i then return end
@@ -744,68 +731,119 @@ local function buildUI()
 		end)
 	end
 
+	-- Карточки блоков: иконо-бокс + пилюля цены + имя; выбранная — золотая рамка.
 	local items = cat.items
 	local itemCount = #items
-	local itemPanelW = itemCount * (ITEM_SIZE + ITEM_PAD) + ITEM_PAD
-	local itemPanelH = ITEM_SIZE + ITEM_PAD * 2 + 20
+	local itemPanelW = itemCount * (CARD_W + CARD_PAD) - CARD_PAD
 
 	local itemPanel = Instance.new("Frame")
 	itemPanel.Name = "ItemPanel"
-	itemPanel.Size = UDim2.new(0, itemPanelW, 0, itemPanelH)
-	itemPanel.Position = UDim2.new(0, 10 + CAT_SIZE + CAT_PAD * 2 + 6, 0.5, -itemPanelH / 2)
-	itemPanel.BackgroundColor3 = PANEL_BG
-	itemPanel.BorderSizePixel = 0
+	itemPanel.Size = UDim2.new(0, itemPanelW, 0, CARD_H)
+	itemPanel.Position = UDim2.new(0, 12 + CAT_W + 14, 0.5, -CARD_H / 2)
+	itemPanel.BackgroundTransparency = 1
 	itemPanel.Parent = buildingUI
-
-	local itemCorner = Instance.new("UICorner")
-	itemCorner.CornerRadius = UDim.new(0, 8)
-	itemCorner.Parent = itemPanel
-
-	local itemStroke = Instance.new("UIStroke")
-	itemStroke.Color = PANEL_DARK
-	itemStroke.Thickness = 2
-	itemStroke.Parent = itemPanel
 
 	for i, item in items do
 		local isActive = (selectedItem and selectedItem.id == item.id)
+		local canAffordItem = (inventory[item.costType] or 0) >= item.cost
 
 		local itemBtn = Instance.new("TextButton")
 		itemBtn.Name = "Item_" .. item.id
-		itemBtn.Size = UDim2.new(0, ITEM_SIZE, 0, ITEM_SIZE)
-		itemBtn.Position = UDim2.new(0, ITEM_PAD + (i - 1) * (ITEM_SIZE + ITEM_PAD), 0, ITEM_PAD)
-		itemBtn.BackgroundColor3 = isActive and PANEL_ITEM_SEL or PANEL_ITEM_BG
+		itemBtn.Size = UDim2.new(0, CARD_W, 0, CARD_H)
+		itemBtn.Position = UDim2.new(0, (i - 1) * (CARD_W + CARD_PAD), 0, 0)
+		itemBtn.BackgroundColor3 = Color3.new(1, 1, 1) -- белый под градиент
 		itemBtn.BorderSizePixel = 0
 		itemBtn.Text = ""
 		itemBtn.AutoButtonColor = false
 		itemBtn.Parent = itemPanel
 
-		local iBtnCorner = Instance.new("UICorner")
-		iBtnCorner.CornerRadius = UDim.new(0, 6)
-		iBtnCorner.Parent = itemBtn
+		local cardGrad = Instance.new("UIGradient")
+		cardGrad.Rotation = 90
+		cardGrad.Color = ColorSequence.new(UI_PANEL_TOP, UI_PANEL_BOT)
+		cardGrad.Parent = itemBtn
 
-		if isActive then
-			local iSelStroke = Instance.new("UIStroke")
-			iSelStroke.Color = Color3.fromRGB(255, 220, 100)
-			iSelStroke.Thickness = 2
-			iSelStroke.Parent = itemBtn
-		end
+		local cardCorner = Instance.new("UICorner")
+		cardCorner.CornerRadius = UDim.new(0, 14)
+		cardCorner.Parent = itemBtn
+
+		local cardStroke = Instance.new("UIStroke")
+		cardStroke.Color = isActive and UI_GOLD or UI_FRAME
+		cardStroke.Thickness = isActive and 4 or 3
+		cardStroke.Parent = itemBtn
+
+		-- иконка блока в светлом слот-боксе
+		local boxSize = CARD_W - 28
+		local iconBox = Instance.new("Frame")
+		iconBox.Size = UDim2.new(0, boxSize, 0, boxSize)
+		iconBox.Position = UDim2.new(0.5, -boxSize / 2, 0, 10)
+		iconBox.BackgroundColor3 = UI_SLOT
+		iconBox.BorderSizePixel = 0
+		iconBox.Parent = itemBtn
+
+		local iconBoxCorner = Instance.new("UICorner")
+		iconBoxCorner.CornerRadius = UDim.new(0, 10)
+		iconBoxCorner.Parent = iconBox
+
+		local iconBoxStroke = Instance.new("UIStroke")
+		iconBoxStroke.Color = UI_FRAME
+		iconBoxStroke.Thickness = 2
+		iconBoxStroke.Parent = iconBox
 
 		local itemIcon = Instance.new("ImageLabel")
-		itemIcon.Size = UDim2.new(0.7, 0, 0.7, 0)
-		itemIcon.Position = UDim2.new(0.15, 0, 0.02, 0)
+		itemIcon.AnchorPoint = Vector2.new(0.5, 0.5)
+		itemIcon.Size = UDim2.new(0.82, 0, 0.82, 0)
+		itemIcon.Position = UDim2.new(0.5, 0, 0.5, 0)
 		itemIcon.BackgroundTransparency = 1
 		itemIcon.Image = item.icon
-		itemIcon.Parent = itemBtn
+		itemIcon.ScaleType = Enum.ScaleType.Fit
+		itemIcon.Parent = iconBox
 
-		local costLbl = Instance.new("TextLabel")
-		costLbl.Size = UDim2.new(1, 0, 0.28, 0)
-		costLbl.Position = UDim2.new(0, 0, 0.72, 0)
-		costLbl.BackgroundTransparency = 1
-		costLbl.Text = item.cost .. " " .. item.costType
-		costLbl.TextColor3 = Color3.fromRGB(255, 220, 100)
-		costLbl.TextScaled = true
-		costLbl.Font = Enum.Font.Gotham
-		costLbl.Parent = itemBtn
+		-- пилюля цены: зелёная если хватает, красная если нет
+		local pill = Instance.new("Frame")
+		pill.Name = "CostPill"
+		pill.AnchorPoint = Vector2.new(0.5, 0)
+		pill.Position = UDim2.new(0.5, 0, 0, 10 + boxSize + 5)
+		pill.Size = UDim2.new(0, 0, 0, 20)
+		pill.AutomaticSize = Enum.AutomaticSize.X
+		pill.BackgroundColor3 = canAffordItem and UI_PRICE_OK or UI_PRICE_NO
+		pill.BorderSizePixel = 0
+		pill.Parent = itemBtn
+
+		local pillCorner = Instance.new("UICorner")
+		pillCorner.CornerRadius = UDim.new(1, 0)
+		pillCorner.Parent = pill
+
+		local pillPad = Instance.new("UIPadding")
+		pillPad.PaddingLeft = UDim.new(0, 9)
+		pillPad.PaddingRight = UDim.new(0, 9)
+		pillPad.Parent = pill
+
+		local pillText = Instance.new("TextLabel")
+		pillText.AutomaticSize = Enum.AutomaticSize.X
+		pillText.Size = UDim2.new(0, 0, 1, 0)
+		pillText.BackgroundTransparency = 1
+		pillText.Text = item.cost .. " " .. item.costType
+		pillText.TextColor3 = Color3.new(1, 1, 1)
+		pillText.Font = Enum.Font.GothamBold
+		pillText.TextSize = 12
+		pillText.TextStrokeColor3 = Color3.new(0, 0, 0)
+		pillText.TextStrokeTransparency = 0.7
+		pillText.Parent = pill
+
+		-- имя блока внизу карточки
+		local nameLbl = Instance.new("TextLabel")
+		nameLbl.Size = UDim2.new(1, -8, 0, 18)
+		nameLbl.Position = UDim2.new(0, 4, 1, -24)
+		nameLbl.BackgroundTransparency = 1
+		nameLbl.Text = item.name
+		nameLbl.TextColor3 = Color3.new(1, 1, 1)
+		nameLbl.Font = Enum.Font.GothamBlack
+		nameLbl.TextSize = 13
+		nameLbl.TextStrokeColor3 = Color3.new(0, 0, 0)
+		nameLbl.TextStrokeTransparency = 0.6
+		nameLbl.TextXAlignment = Enum.TextXAlignment.Center
+		nameLbl.TextTruncate = Enum.TextTruncate.AtEnd
+		nameLbl.Parent = itemBtn
 
 		itemBtn.MouseButton1Click:Connect(function()
 			selectedItem = item
@@ -815,29 +853,37 @@ local function buildUI()
 		end)
 	end
 
-	if selectedItem then
-		local nameLbl = Instance.new("TextLabel")
-		nameLbl.Size = UDim2.new(1, -ITEM_PAD * 2, 0, 18)
-		nameLbl.Position = UDim2.new(0, ITEM_PAD, 1, -20)
-		nameLbl.BackgroundTransparency = 1
-		nameLbl.Text = selectedItem.name
-		nameLbl.TextColor3 = Color3.new(1, 1, 1)
-		nameLbl.TextScaled = true
-		nameLbl.Font = Enum.Font.GothamBold
-		nameLbl.TextXAlignment = Enum.TextXAlignment.Left
-		nameLbl.Parent = itemPanel
-	end
-
-	local hint = Instance.new("TextLabel")
-	hint.Size = UDim2.new(0, 250, 0, 18)
-	hint.Position = UDim2.new(0, 10, 0.5, catPanelH / 2 + 8)
-	hint.BackgroundTransparency = 1
-	hint.Text = "Click to place | Unequip Hammer to exit"
-	hint.TextColor3 = Color3.fromRGB(200, 200, 200)
-	hint.TextScaled = true
-	hint.Font = Enum.Font.Gotham
-	hint.TextXAlignment = Enum.TextXAlignment.Left
+	-- Подсказка — тёмная пилюля в левом нижнем углу (как в прототипе).
+	local hint = Instance.new("Frame")
+	hint.Name = "BuildHint"
+	hint.AnchorPoint = Vector2.new(0, 1)
+	hint.Position = UDim2.new(0, 12, 1, -12)
+	hint.AutomaticSize = Enum.AutomaticSize.XY
+	hint.BackgroundColor3 = Color3.fromRGB(20, 24, 30)
+	hint.BackgroundTransparency = 0.25
+	hint.BorderSizePixel = 0
 	hint.Parent = buildingUI
+
+	local hintCorner = Instance.new("UICorner")
+	hintCorner.CornerRadius = UDim.new(1, 0)
+	hintCorner.Parent = hint
+
+	local hintPad = Instance.new("UIPadding")
+	hintPad.PaddingLeft = UDim.new(0, 12)
+	hintPad.PaddingRight = UDim.new(0, 12)
+	hintPad.PaddingTop = UDim.new(0, 6)
+	hintPad.PaddingBottom = UDim.new(0, 6)
+	hintPad.Parent = hint
+
+	local hintText = Instance.new("TextLabel")
+	hintText.AutomaticSize = Enum.AutomaticSize.XY
+	hintText.Size = UDim2.new(0, 0, 0, 0)
+	hintText.BackgroundTransparency = 1
+	hintText.Text = "Click to place  ·  Unequip Hammer to exit"
+	hintText.TextColor3 = Color3.fromRGB(235, 240, 245)
+	hintText.Font = Enum.Font.GothamBold
+	hintText.TextSize = 14
+	hintText.Parent = hint
 end
 
 -- ===================== Build Mode =====================
