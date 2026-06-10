@@ -81,10 +81,10 @@ local function pushCard(opts)
 	pad.PaddingBottom = UDim.new(0, 8)
 	pad.Parent = card
 
-	-- иконо-бокс слева (чуть светлее верхнего тона карточки)
+	-- иконо-бокс слева — точный светлый slot-тон палитры
 	UITheme.iconBox({
 		icon = opts.icon or DEFAULT_ICON[nType] or "ℹ️",
-		fill = Color3.fromHex(colors.top):Lerp(Color3.new(1, 1, 1), 0.25),
+		fill = Color3.fromHex(colors.slot or colors.top),
 		stroke = Color3.fromHex(colors.frame),
 		corner = 10,
 		size = UDim2.fromOffset(CARD_HEIGHT - 16, CARD_HEIGHT - 16),

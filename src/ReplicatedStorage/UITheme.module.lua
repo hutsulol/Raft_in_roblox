@@ -36,13 +36,13 @@ UITheme.Accent  = { top = hex("FFD95A"), bottom = hex("F5B73C"), frame = hex("B0
 UITheme.PriceOk = hex("4CD964")
 UITheme.PriceNo = hex("FF6B5A")
 
--- Цвета карточек уведомлений по типу.
+-- Цвета карточек уведомлений по типу (slot — светлый тон иконо-бокса из палитры).
 UITheme.Notif = {
-	info    = { top = "54A7EC", bottom = "3A7FD0", frame = "1C4F8F" }, -- синий
-	unlock  = { top = "9B6CE0", bottom = "7A48C8", frame = "4A2580" }, -- фиолетовый
-	success = { top = "66C25E", bottom = "3F9E3F", frame = "1E5C24" }, -- зелёный
-	reward  = { top = "FFD95A", bottom = "F5B73C", frame = "B07A14" }, -- золото
-	warn    = { top = "FF8A5A", bottom = "E2542F", frame = "8A2A12" }, -- красный
+	info    = { top = "54A7EC", bottom = "3A7FD0", frame = "1C4F8F", slot = "A9D6F7" }, -- синий
+	unlock  = { top = "9B6CE0", bottom = "7A48C8", frame = "4A2580", slot = "D7C2F5" }, -- фиолетовый
+	success = { top = "66C25E", bottom = "3F9E3F", frame = "1E5C24", slot = "BCE8A8" }, -- зелёный
+	reward  = { top = "FFD95A", bottom = "F5B73C", frame = "B07A14", slot = "FBD9A4" }, -- золото
+	warn    = { top = "FF8A5A", bottom = "E2542F", frame = "8A2A12", slot = "FBD9A4" }, -- красный
 }
 
 UITheme.PANEL_CORNER, UITheme.PANEL_STROKE = 18, 4
@@ -134,11 +134,13 @@ end
 --====================================================
 
 -- Панель/карточка: градиент темы (или color), UICorner 18, UIStroke 4 рамкой.
+-- ВАЖНО: UIGradient УМНОЖАЕТСЯ на BackgroundColor3 — под градиентом фон строго
+-- белый, иначе хексы перемножаются сами с собой и темнеют (не совпадают со спекой).
 function UITheme.panel(opts)
 	opts = opts or {}
 	local top, bottom, frameCol = pickColors(opts)
 	local f = Instance.new("Frame")
-	f.BackgroundColor3 = bottom
+	f.BackgroundColor3 = Color3.new(1, 1, 1)
 	f.BorderSizePixel = 0
 	gradient(f, top, bottom)
 	corner(f, opts.corner or UITheme.PANEL_CORNER)
@@ -174,7 +176,7 @@ function UITheme.button(opts)
 	local top, bottom, frameCol = pickColors(opts)
 	local b = Instance.new("TextButton")
 	b.AutoButtonColor = false
-	b.BackgroundColor3 = bottom
+	b.BackgroundColor3 = Color3.new(1, 1, 1) -- белый под градиент (см. panel)
 	b.BorderSizePixel = 0
 	b.Text = opts.text or ""
 	b.Font = opts.font or UITheme.FONT_TITLE
@@ -210,9 +212,12 @@ end
 -- Перекрасить кнопку в новые цвета (для вкладок: активная=accent, иначе тема).
 function UITheme.recolor(button, opts)
 	local top, bottom, frameCol = pickColors(opts)
-	button.BackgroundColor3 = bottom
 	local g = button:FindFirstChildWhichIsA("UIGradient")
-	if g then g.Color = ColorSequence.new(top, bottom) end
+	if g then
+		g.Color = ColorSequence.new(top, bottom) -- фон остаётся белым (см. panel)
+	else
+		button.BackgroundColor3 = bottom
+	end
 	local s = button:FindFirstChildWhichIsA("UIStroke")
 	if s then s.Color = frameCol end
 end

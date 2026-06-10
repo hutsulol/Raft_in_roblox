@@ -875,8 +875,9 @@ _G.PlayIslandClearedCutscene = playCutscene
 
 local btn = Instance.new("TextButton")
 btn.Name = "IslandClearedTestBtn"
-btn.AnchorPoint = Vector2.new(1, 0.5)
-btn.Position = UDim2.new(1, -10, 0.5, 0)
+-- ниже центра, чтобы не перекрывать стопку уведомлений (она по центру правого края)
+btn.AnchorPoint = Vector2.new(1, 1)
+btn.Position = UDim2.new(1, -10, 1, -140)
 btn.Size = UDim2.fromOffset(54, 54)
 btn.BackgroundColor3 = Color3.fromRGB(245, 175, 40)
 btn.AutoButtonColor = true
