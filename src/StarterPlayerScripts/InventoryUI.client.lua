@@ -370,10 +370,10 @@ local SLOT_STYLE_GRID = {
 	emptyT = 0.35,  -- пустой — 35%
 }
 local SLOT_STYLE_HOTBAR = {
-	top = COLORS.slotTop,           -- FBD9A4
-	bottom = COLORS.slotBottom,     -- F2C57E
-	frame = COLORS.slotFrame,       -- B5762B
-	emptyFrame = COLORS.slotEmptyFrame, -- 7A4310
+	top = Color3.fromHex("BCE0F9"),    -- голубой, как сетка инвентаря
+	bottom = Color3.fromHex("A9D6F7"),
+	frame = Color3.fromHex("1C4F8F"),
+	emptyFrame = Color3.fromHex("1C4F8F"),
 	filledT = 0.25, -- лёгкая прозрачность даже у занятых (бар не выделяется)
 	emptyT = 0.5,
 }
