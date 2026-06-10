@@ -500,8 +500,8 @@ local function findNearestModel(name, origin)
 end
 
 -- Рост модели с ~0 до target за seconds. Model.Scale нельзя твинить — каждый кадр
--- зовём ScaleTo с easing-прогрессом (GROW_STYLE).
-local function growModel(model, target, seconds)
+-- зовём ScaleTo с easing-прогрессом (GROW_STYLE). onDone — по завершении.
+local function growModel(model, target, seconds, onDone)
 	local t0 = os.clock()
 	local conn
 	conn = RunService.RenderStepped:Connect(function()
@@ -512,8 +512,59 @@ local function growModel(model, target, seconds)
 		if a >= 1 then
 			conn:Disconnect()
 			model:ScaleTo(target)
+			if onDone then onDone() end
 		end
 	end)
+end
+
+--====================================================
+-- СКРЫТИЕ ПОСТРОЕК ДО КАТСЦЕНЫ
+--====================================================
+-- Постройки из GROW_MODELS спрятаны С САМОГО СТАРТА (масштаб ~0, промпты выключены) —
+-- на острове их «нет», пока катсцена не вырастит. Реестр хранит родной Scale; после
+-- роста revealBuilding включает функционал (промпт «Открыть» и т.п.).
+local hiddenBuildings = {} -- [model] = { scale = родной Scale, conn = ... }
+
+local function hideBuilding(m)
+	if hiddenBuildings[m] then return end
+	local entry = { scale = m:GetScale() }
+	-- промпт склада сервер добавляет позже — выключаем и те, что появятся
+	entry.conn = m.DescendantAdded:Connect(function(d)
+		if d:IsA("ProximityPrompt") then d.Enabled = false end
+	end)
+	for _, d in ipairs(m:GetDescendants()) do
+		if d:IsA("ProximityPrompt") then d.Enabled = false end
+	end
+	hiddenBuildings[m] = entry
+	m:ScaleTo(0.001)
+end
+
+local function revealBuilding(m)
+	local e = hiddenBuildings[m]
+	if not e then return end
+	hiddenBuildings[m] = nil
+	if e.conn then e.conn:Disconnect() end
+	for _, d in ipairs(m:GetDescendants()) do
+		if d:IsA("ProximityPrompt") then d.Enabled = true end
+	end
+end
+
+-- Прячем все существующие и появляющиеся позже (новые острова). Небольшая задержка —
+-- чтобы модель успела дореплицироваться целиком до масштабирования.
+do
+	local names = {}
+	for _, n in pairs(GROW_MODELS) do names[n] = true end
+	local function tryHide(d)
+		if d:IsA("Model") and names[d.Name] then
+			task.delay(0.3, function()
+				if d.Parent then hideBuilding(d) end
+			end)
+		end
+	end
+	for _, d in ipairs(workspace:GetDescendants()) do
+		tryHide(d)
+	end
+	workspace.DescendantAdded:Connect(tryHide)
 end
 
 -- Кадр idx: start = из Camera_idx_Frame, finish = из Camera_idx_idx_Frame (если есть);
@@ -566,15 +617,15 @@ local function playCutscene()
 		frames[i] = shot
 	end
 
-	-- «Вырастающие» постройки: ближайшие к острову катсцены. Запоминаем их родной
-	-- Scale и прячем (≈0) — появятся ростом каждая в своём кадре.
+	-- «Вырастающие» постройки: ближайшие к острову катсцены. Они уже спрятаны со
+	-- старта (реестр хранит родной Scale) — каждая вырастет в своём кадре.
 	local origin = framePos(cs:FindFirstChild("Camera_1_Frame")) or Vector3.zero
 	local grows = {}
 	for shotIdx, modelName in pairs(GROW_MODELS) do
 		local m = findNearestModel(modelName, origin)
 		if m then
-			grows[shotIdx] = { model = m, scale = m:GetScale() }
-			m:ScaleTo(0.001)
+			hideBuilding(m) -- no-op, если уже спрятана; иначе спрячет и запомнит Scale
+			grows[shotIdx] = { model = m, scale = hiddenBuildings[m].scale }
 		else
 			warn("[IslandCleared] катсцена: не нашёл модель '" .. modelName .. "' для кадра " .. shotIdx)
 		end
@@ -609,7 +660,9 @@ local function playCutscene()
 			local g = grows[i]
 			if not g then return end
 			task.delay(GROW_DELAY, function()
-				growModel(g.model, g.scale, (CUTSCENE_HOLDS[i] or 3) * GROW_PORTION)
+				growModel(g.model, g.scale, (CUTSCENE_HOLDS[i] or 3) * GROW_PORTION, function()
+					revealBuilding(g.model) -- рост закончен — включаем функционал (промпты)
+				end)
 			end)
 		end
 
@@ -641,9 +694,10 @@ local function playCutscene()
 		twOut:Play()
 		twOut.Completed:Wait()
 
-		-- подстраховка: все «вырастающие» модели точно в родном масштабе
+		-- подстраховка: все «вырастающие» модели точно в родном масштабе и работают
 		for _, g in pairs(grows) do
 			if g.model.Parent then g.model:ScaleTo(g.scale) end
+			revealBuilding(g.model)
 		end
 
 		cam.CameraType = Enum.CameraType.Custom -- конец — управление игроку

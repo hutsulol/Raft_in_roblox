@@ -996,6 +996,10 @@ end)
 local function setupBoard(board)
 	if boards[board] then return end
 	boards[board] = { workers = {}, env = nil }
+	-- Полная репликация без стриминга/LOD: клиент прячет борд до катсцены «зачистки»
+	-- и масштабирует целиком — частично подгруженная модель ломала бы скрытие.
+	pcall(function() board.ModelStreamingMode = Enum.ModelStreamingMode.Persistent end)
+	pcall(function() board.LevelOfDetail = Enum.ModelLevelOfDetail.Disabled end)
 	if board:GetAttribute("Built") == nil then
 		board:SetAttribute("Built", false)
 	end
