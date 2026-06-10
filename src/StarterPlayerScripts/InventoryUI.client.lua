@@ -1918,6 +1918,8 @@ local function closeCategoryOverlay()
 				if tab:IsA("TextButton") then
 					tab.BackgroundColor3 = COLORS.craftItemBg
 					tab.TextColor3 = COLORS.titleText
+					local s = tab:FindFirstChildWhichIsA("UIStroke")
+					if s then s.Color = COLORS.panelBorder end -- снять золотую рамку активной
 				end
 			end
 		end
@@ -1940,57 +1942,56 @@ local function openCategoryOverlay(cat)
 	categoryOverlay.Name = "CategoryOverlay"
 	categoryOverlay.Size = centerPanel.Size
 	categoryOverlay.Position = centerPanel.Position
-	categoryOverlay.BackgroundColor3 = COLORS.panelBg
+	categoryOverlay.BackgroundColor3 = Color3.new(1, 1, 1) -- белый под градиент
 	categoryOverlay.BorderSizePixel = 0
 	categoryOverlay.ZIndex = 15
 	categoryOverlay.Parent = screenGui
 
+	local overlayGradient = Instance.new("UIGradient")
+	overlayGradient.Color = ColorSequence.new(COLORS.panelTop, COLORS.panelBg)
+	overlayGradient.Rotation = 90
+	overlayGradient.Parent = categoryOverlay
+
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
+	corner.CornerRadius = UDim.new(0, 18)
 	corner.Parent = categoryOverlay
 
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = COLORS.panelBorder
-	stroke.Thickness = 3
+	stroke.Thickness = 4
 	stroke.Parent = categoryOverlay
 
 	local backBtn = Instance.new("TextButton")
-	backBtn.Size = UDim2.new(0, 60, 0, 28)
-	backBtn.Position = UDim2.new(0, 10, 0, 8)
-	backBtn.BackgroundColor3 = COLORS.craftItemBg
+	backBtn.Size = UDim2.new(0, 72, 0, 30)
+	backBtn.Position = UDim2.new(0, 12, 0, 9)
+	backBtn.BackgroundColor3 = COLORS.panelBorder
 	backBtn.Text = "< Back"
 	backBtn.TextColor3 = COLORS.titleText
-	backBtn.Font = Enum.Font.GothamBold
+	backBtn.Font = Enum.Font.GothamBlack
 	backBtn.TextSize = 13
 	backBtn.BorderSizePixel = 0
 	backBtn.ZIndex = 16
 	backBtn.Parent = categoryOverlay
 
 	local backCorner = Instance.new("UICorner")
-	backCorner.CornerRadius = UDim.new(0, 6)
+	backCorner.CornerRadius = UDim.new(0, 10)
 	backCorner.Parent = backBtn
 
 	backBtn.MouseButton1Click:Connect(closeCategoryOverlay)
 
 	local title = Instance.new("TextLabel")
-	title.Size = UDim2.new(1, -90, 0, 30)
-	title.Position = UDim2.new(0, 80, 0, 8)
+	title.Size = UDim2.new(1, -110, 0, 30)
+	title.Position = UDim2.new(0, 96, 0, 9)
 	title.BackgroundTransparency = 1
 	title.Text = cat
 	title.TextColor3 = COLORS.titleText
-	title.Font = Enum.Font.GothamMedium
+	title.Font = Enum.Font.GothamBlack
 	title.TextSize = 22
+	title.TextStrokeColor3 = Color3.new(0, 0, 0)
+	title.TextStrokeTransparency = 0.6
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.ZIndex = 16
 	title.Parent = categoryOverlay
-
-	local sep = Instance.new("Frame")
-	sep.Size = UDim2.new(1, -30, 0, 2)
-	sep.Position = UDim2.new(0, 15, 0, 42)
-	sep.BackgroundColor3 = COLORS.separator
-	sep.BorderSizePixel = 0
-	sep.ZIndex = 16
-	sep.Parent = categoryOverlay
 
 	local craftList = Instance.new("ScrollingFrame")
 	craftList.Name = "CraftList"
@@ -2028,35 +2029,40 @@ local function openDetailOverlay(recipe)
 	detailOverlay.Name = "DetailOverlay"
 	detailOverlay.Size = centerPanel.Size
 	detailOverlay.Position = centerPanel.Position
-	detailOverlay.BackgroundColor3 = COLORS.panelBg
+	detailOverlay.BackgroundColor3 = Color3.new(1, 1, 1) -- белый под градиент
 	detailOverlay.BorderSizePixel = 0
 	detailOverlay.ZIndex = 20
 	detailOverlay.Parent = screenGui
 
+	local detailGradient = Instance.new("UIGradient")
+	detailGradient.Color = ColorSequence.new(COLORS.panelTop, COLORS.panelBg)
+	detailGradient.Rotation = 90
+	detailGradient.Parent = detailOverlay
+
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
+	corner.CornerRadius = UDim.new(0, 18)
 	corner.Parent = detailOverlay
 
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = COLORS.panelBorder
-	stroke.Thickness = 3
+	stroke.Thickness = 4
 	stroke.Parent = detailOverlay
 
 	-- Back button
 	local backBtn = Instance.new("TextButton")
-	backBtn.Size = UDim2.new(0, 80, 0, 36)
+	backBtn.Size = UDim2.new(0, 84, 0, 34)
 	backBtn.Position = UDim2.new(0, 12, 0, 10)
-	backBtn.BackgroundColor3 = COLORS.craftItemBg
+	backBtn.BackgroundColor3 = COLORS.panelBorder
 	backBtn.Text = "< Back"
 	backBtn.TextColor3 = COLORS.titleText
-	backBtn.Font = Enum.Font.GothamBold
-	backBtn.TextSize = 18
+	backBtn.Font = Enum.Font.GothamBlack
+	backBtn.TextSize = 16
 	backBtn.BorderSizePixel = 0
 	backBtn.ZIndex = 21
 	backBtn.Parent = detailOverlay
 
 	local backCorner = Instance.new("UICorner")
-	backCorner.CornerRadius = UDim.new(0, 6)
+	backCorner.CornerRadius = UDim.new(0, 10)
 	backCorner.Parent = backBtn
 
 	backBtn.MouseButton1Click:Connect(closeDetailOverlay)
@@ -2068,20 +2074,13 @@ local function openDetailOverlay(recipe)
 	itemTitle.BackgroundTransparency = 1
 	itemTitle.Text = recipe.displayName or recipe.name
 	itemTitle.TextColor3 = COLORS.titleText
-	itemTitle.Font = Enum.Font.GothamBold
-	itemTitle.TextSize = 32
+	itemTitle.Font = Enum.Font.GothamBlack
+	itemTitle.TextSize = 30
+	itemTitle.TextStrokeColor3 = Color3.new(0, 0, 0)
+	itemTitle.TextStrokeTransparency = 0.6
 	itemTitle.TextXAlignment = Enum.TextXAlignment.Left
 	itemTitle.ZIndex = 21
 	itemTitle.Parent = detailOverlay
-
-	-- Separator
-	local sep = Instance.new("Frame")
-	sep.Size = UDim2.new(1, -24, 0, 2)
-	sep.Position = UDim2.new(0, 12, 0, 104)
-	sep.BackgroundColor3 = COLORS.separator
-	sep.BorderSizePixel = 0
-	sep.ZIndex = 21
-	sep.Parent = detailOverlay
 
 	-- Icon — enlarged so the crafted item is clearly legible.
 	local iconFrame = Instance.new("ImageLabel")
@@ -2193,23 +2192,31 @@ local function openDetailOverlay(recipe)
 		matRow:SetAttribute("ItemAmount", amount)
 	end
 
-	-- Craft button at bottom
+	-- Craft button at bottom — зелёная по прототипу (серая, если не хватает)
 	local craftBtn = Instance.new("TextButton")
 	craftBtn.Name = "DetailCraftButton"
 	craftBtn.Size = UDim2.new(1, -34, 0, 54)
 	craftBtn.Position = UDim2.new(0, 17, 1, -68)
-	craftBtn.BackgroundColor3 = canAfford(recipe) and COLORS.affordable or Color3.fromRGB(120, 120, 120)
+	craftBtn.BackgroundColor3 = canAfford(recipe) and COLORS.affordable or Color3.fromRGB(150, 160, 175)
 	craftBtn.Text = "Craft " .. (recipe.displayName or recipe.name)
 	craftBtn.TextColor3 = Color3.new(1, 1, 1)
-	craftBtn.Font = Enum.Font.GothamBold
-	craftBtn.TextSize = 24
+	craftBtn.Font = Enum.Font.GothamBlack
+	craftBtn.TextSize = 22
+	craftBtn.TextStrokeColor3 = Color3.new(0, 0, 0)
+	craftBtn.TextStrokeTransparency = 0.6
 	craftBtn.BorderSizePixel = 0
 	craftBtn.ZIndex = 21
 	craftBtn.Parent = detailOverlay
 
 	local craftCorner = Instance.new("UICorner")
-	craftCorner.CornerRadius = UDim.new(0, 8)
+	craftCorner.CornerRadius = UDim.new(0, 12)
 	craftCorner.Parent = craftBtn
+
+	local craftBtnStroke = Instance.new("UIStroke")
+	craftBtnStroke.Name = "CraftStroke"
+	craftBtnStroke.Color = canAfford(recipe) and Color3.fromHex("1E5C24") or Color3.fromRGB(100, 110, 122)
+	craftBtnStroke.Thickness = 3
+	craftBtnStroke.Parent = craftBtn
 
 	craftBtn.MouseButton1Click:Connect(function()
 		if canAfford(recipe) then
@@ -2237,10 +2244,11 @@ function rebuildCraftList()
 		if recipe.category == selectedCategory then
 			idx = idx + 1
 
+			-- Строка рецепта по прототипу: [иконо-бокс] Имя + пилюля цены, справа Craft.
 			local btn = Instance.new("TextButton")
 			btn.Name = "Recipe_" .. recipe.name
 			btn.Size = UDim2.new(1, 0, 0, 90)
-			btn.BackgroundColor3 = COLORS.craftItemBg
+			btn.BackgroundColor3 = COLORS.craftItemHover
 			btn.Text = ""
 			btn.BorderSizePixel = 0
 			btn.LayoutOrder = idx
@@ -2250,26 +2258,52 @@ function rebuildCraftList()
 			btn:SetAttribute("RecipeName", recipe.name)
 
 			local btnCorner = Instance.new("UICorner")
-			btnCorner.CornerRadius = UDim.new(0, 6)
+			btnCorner.CornerRadius = UDim.new(0, 12)
 			btnCorner.Parent = btn
 
+			local btnStroke = Instance.new("UIStroke")
+			btnStroke.Color = COLORS.panelBorder
+			btnStroke.Thickness = 2
+			btnStroke.Parent = btn
+
+			-- иконка в светлом слот-боксе
+			local iconBox = Instance.new("Frame")
+			iconBox.Size = UDim2.new(0, 64, 0, 64)
+			iconBox.Position = UDim2.new(0, 12, 0.5, -32)
+			iconBox.BackgroundColor3 = Color3.fromHex("A9D6F7")
+			iconBox.BorderSizePixel = 0
+			iconBox.ZIndex = 18
+			iconBox.Parent = btn
+
+			local iconBoxCorner = Instance.new("UICorner")
+			iconBoxCorner.CornerRadius = UDim.new(0, 10)
+			iconBoxCorner.Parent = iconBox
+
+			local iconBoxStroke = Instance.new("UIStroke")
+			iconBoxStroke.Color = COLORS.panelBorder
+			iconBoxStroke.Thickness = 2
+			iconBoxStroke.Parent = iconBox
+
 			local icon = Instance.new("ImageLabel")
-			icon.Size = UDim2.new(0, 64, 0, 64)
-			icon.Position = UDim2.new(0, 12, 0.5, -32)
+			icon.AnchorPoint = Vector2.new(0.5, 0.5)
+			icon.Size = UDim2.new(0.8, 0, 0.8, 0)
+			icon.Position = UDim2.new(0.5, 0, 0.5, 0)
 			icon.BackgroundTransparency = 1
 			icon.Image = recipe.icon or ""
 			icon.ScaleType = Enum.ScaleType.Fit
-			icon.ZIndex = 18
-			icon.Parent = btn
+			icon.ZIndex = 19
+			icon.Parent = iconBox
 
 			local nameLabel = Instance.new("TextLabel")
-			nameLabel.Size = UDim2.new(1, -96, 0, 26)
-			nameLabel.Position = UDim2.new(0, 86, 0, 14)
+			nameLabel.Size = UDim2.new(1, -220, 0, 26)
+			nameLabel.Position = UDim2.new(0, 90, 0, 16)
 			nameLabel.BackgroundTransparency = 1
 			nameLabel.Text = recipe.displayName or recipe.name
 			nameLabel.TextColor3 = COLORS.titleText
-			nameLabel.Font = Enum.Font.Gotham
+			nameLabel.Font = Enum.Font.GothamBlack
 			nameLabel.TextSize = 18
+			nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+			nameLabel.TextStrokeTransparency = 0.6
 			nameLabel.TextXAlignment = Enum.TextXAlignment.Left
 			nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
 			nameLabel.ZIndex = 18
@@ -2280,24 +2314,77 @@ function rebuildCraftList()
 				costText = amount .. " " .. item
 			end
 
-			local costLabel = Instance.new("TextLabel")
-			costLabel.Name = "CostLabel"
-			costLabel.Size = UDim2.new(1, -96, 0, 22)
-			costLabel.Position = UDim2.new(0, 86, 0, 48)
-			costLabel.BackgroundTransparency = 1
-			costLabel.Text = costText
-			costLabel.TextColor3 = canAfford(recipe) and COLORS.affordable or COLORS.notAffordable
-			costLabel.Font = Enum.Font.Gotham
-			costLabel.TextSize = 15
-			costLabel.TextXAlignment = Enum.TextXAlignment.Left
-			costLabel.ZIndex = 18
-			costLabel.Parent = btn
+			-- пилюля цены: зелёная если хватает, красная если нет
+			local pill = Instance.new("Frame")
+			pill.Name = "CostPill"
+			pill.Position = UDim2.new(0, 90, 0, 48)
+			pill.Size = UDim2.new(0, 0, 0, 24)
+			pill.AutomaticSize = Enum.AutomaticSize.X
+			pill.BackgroundColor3 = canAfford(recipe) and COLORS.affordable or COLORS.notAffordable
+			pill.BorderSizePixel = 0
+			pill.ZIndex = 18
+			pill.Parent = btn
+
+			local pillCorner = Instance.new("UICorner")
+			pillCorner.CornerRadius = UDim.new(1, 0)
+			pillCorner.Parent = pill
+
+			local pillPad = Instance.new("UIPadding")
+			pillPad.PaddingLeft = UDim.new(0, 10)
+			pillPad.PaddingRight = UDim.new(0, 10)
+			pillPad.Parent = pill
+
+			local pillText = Instance.new("TextLabel")
+			pillText.AutomaticSize = Enum.AutomaticSize.X
+			pillText.Size = UDim2.new(0, 0, 1, 0)
+			pillText.BackgroundTransparency = 1
+			pillText.Text = costText
+			pillText.TextColor3 = Color3.new(1, 1, 1)
+			pillText.Font = Enum.Font.GothamBold
+			pillText.TextSize = 13
+			pillText.TextStrokeColor3 = Color3.new(0, 0, 0)
+			pillText.TextStrokeTransparency = 0.7
+			pillText.ZIndex = 19
+			pillText.Parent = pill
+
+			-- кнопка Craft в строке: зелёная/серая по доступности
+			local rowCraft = Instance.new("TextButton")
+			rowCraft.Name = "RowCraftBtn"
+			rowCraft.AnchorPoint = Vector2.new(1, 0.5)
+			rowCraft.Position = UDim2.new(1, -14, 0.5, 0)
+			rowCraft.Size = UDim2.new(0, 96, 0, 44)
+			rowCraft.BackgroundColor3 = canAfford(recipe) and COLORS.affordable or Color3.fromRGB(150, 160, 175)
+			rowCraft.Text = "Craft"
+			rowCraft.TextColor3 = Color3.new(1, 1, 1)
+			rowCraft.Font = Enum.Font.GothamBlack
+			rowCraft.TextSize = 18
+			rowCraft.TextStrokeColor3 = Color3.new(0, 0, 0)
+			rowCraft.TextStrokeTransparency = 0.6
+			rowCraft.BorderSizePixel = 0
+			rowCraft.AutoButtonColor = true
+			rowCraft.ZIndex = 19
+			rowCraft.Parent = btn
+
+			local rowCraftCorner = Instance.new("UICorner")
+			rowCraftCorner.CornerRadius = UDim.new(0, 12)
+			rowCraftCorner.Parent = rowCraft
+
+			local rowCraftStroke = Instance.new("UIStroke")
+			rowCraftStroke.Color = Color3.fromHex("1E5C24")
+			rowCraftStroke.Thickness = 3
+			rowCraftStroke.Parent = rowCraft
+
+			rowCraft.MouseButton1Click:Connect(function()
+				if canAfford(recipe) then
+					inventoryCraftEvent:FireServer("craft", recipe.name)
+				end
+			end)
 
 			btn.MouseEnter:Connect(function()
-				btn.BackgroundColor3 = COLORS.craftItemHover
+				btn.BackgroundColor3 = Color3.fromHex("5C9FE8")
 			end)
 			btn.MouseLeave:Connect(function()
-				btn.BackgroundColor3 = COLORS.craftItemBg
+				btn.BackgroundColor3 = COLORS.craftItemHover
 			end)
 			btn.MouseButton1Click:Connect(function()
 				openDetailOverlay(recipe)
@@ -2337,7 +2424,7 @@ end
 local function updateCraftPanel()
 	if not screenGui then return end
 
-	-- Update cost colors in the list
+	-- Обновить пилюли цены и кнопки Craft в списке (зелёные/красные/серые)
 	local craftList = screenGui:FindFirstChild("CraftList", true)
 	if craftList then
 		for _, btn in craftList:GetChildren() do
@@ -2345,9 +2432,18 @@ local function updateCraftPanel()
 				local rName = btn:GetAttribute("RecipeName")
 				for _, r in recipes do
 					if r.name == rName then
-						local costLabel = btn:FindFirstChild("CostLabel")
-						if costLabel then
-							costLabel.TextColor3 = canAfford(r) and COLORS.affordable or COLORS.notAffordable
+						local ok = canAfford(r)
+						local pill = btn:FindFirstChild("CostPill")
+						if pill then
+							pill.BackgroundColor3 = ok and COLORS.affordable or COLORS.notAffordable
+						end
+						local rowCraft = btn:FindFirstChild("RowCraftBtn")
+						if rowCraft then
+							rowCraft.BackgroundColor3 = ok and COLORS.affordable or Color3.fromRGB(150, 160, 175)
+							local s = rowCraft:FindFirstChildWhichIsA("UIStroke")
+							if s then
+								s.Color = ok and Color3.fromHex("1E5C24") or Color3.fromRGB(100, 110, 122)
+							end
 						end
 					end
 				end
@@ -2359,7 +2455,12 @@ local function updateCraftPanel()
 	if detailOverlay and selectedRecipe then
 		local craftBtn = detailOverlay:FindFirstChild("DetailCraftButton")
 		if craftBtn then
-			craftBtn.BackgroundColor3 = canAfford(selectedRecipe) and COLORS.affordable or Color3.fromRGB(120, 120, 120)
+			local ok = canAfford(selectedRecipe)
+			craftBtn.BackgroundColor3 = ok and COLORS.affordable or Color3.fromRGB(150, 160, 175)
+			local s = craftBtn:FindFirstChild("CraftStroke")
+			if s then
+				s.Color = ok and Color3.fromHex("1E5C24") or Color3.fromRGB(100, 110, 122)
+			end
 		end
 
 		-- Refresh the "Log: have / need" material rows so a just-
