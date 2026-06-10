@@ -1,11 +1,8 @@
 -- IslandClearedEffect.client.lua
 -- Анимация награды «ОСТРОВ ЗАЧИЩЕН!»:
---   1) лёгкое затемнение мира;
---   2) золотой баннер «впрыгивает» сверху (Back/Out) с эффектом удара (scale-punch);
---   3) искры-частицы разлетаются вокруг баннера;
---   4) звук достижения (achievement_complete);
---   5) через ~1с — карточка-сводка наград сверху-справа (как выполненный квест)
---      со своим звуком (Level Complete).
+--   1) золотой баннер «впрыгивает» сверху (Back/Out) с эффектом удара (scale-punch);
+--   2) искры-частицы разлетаются вокруг баннера; фоном — музыка (Music) с фейдами;
+--   3) сводка наград сверху-справа (как выполненный квест) со звуком Level Complete.
 --
 -- Триггера в игре пока нет: внизу на правом крае добавлена небольшая ТЕСТ-кнопка,
 -- по нажатию которой проигрывается вся анимация.
@@ -30,7 +27,6 @@ local BANNER_IMAGE  = "rbxassetid://117019798405949"
 local BANNER_ASPECT = 1009 / 271   -- пропорции картинки (ширина/высота); Fit подстрахует
 
 -- Звуки ищем по имени где угодно внутри SoundService.
-local SOUND_BANNER = "achievement_complete" -- при влёте баннера
 local SOUND_CARD   = "Level Complete"       -- при появлении карточки-сводки
 
 -- Текст-оверлей поверх баннера (шаг 5). У присланного ассета текст УЖЕ впечатан в
@@ -125,18 +121,7 @@ gui.IgnoreGuiInset = true
 gui.DisplayOrder = 50
 gui.Parent = playerGui
 
--- 1) затемнение мира
-local dim = Instance.new("Frame")
-dim.Name = "Dim"
-dim.BackgroundColor3 = Color3.new(0, 0, 0)
-dim.BackgroundTransparency = 1
-dim.BorderSizePixel = 0
-dim.Size = UDim2.fromScale(1, 1)
-dim.ZIndex = 1
-dim.Visible = false
-dim.Parent = gui
-
--- 2) баннер
+-- баннер
 local banner = Instance.new("ImageLabel")
 banner.Name = "Banner"
 banner.BackgroundTransparency = 1
@@ -394,8 +379,6 @@ local function playIslandCleared()
 	playing = true
 
 	-- сброс в стартовое состояние
-	dim.BackgroundTransparency = 1
-	dim.Visible = true
 	banner.Position = UDim2.new(0.5, 0, -0.2, 0)
 	bannerScale.Scale = 0.8
 	banner.Visible = true
@@ -403,17 +386,14 @@ local function playIslandCleared()
 	overlay.TextTransparency = 1
 	overlay.Rotation = -5
 
-	-- 1) затемнение 1 → 0.7 за 0.2с
-	TweenService:Create(dim, TweenInfo.new(0.2), { BackgroundTransparency = 0.7 }):Play()
-
-	-- 2) влёт баннера сверху (Back/Out 0.5с)
+	-- 1) влёт баннера сверху (Back/Out 0.5с)
 	TweenService:Create(
 		banner,
 		TweenInfo.new(0.5, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
 		{ Position = UDim2.new(0.5, 0, 0.1, 0) }
 	):Play()
 
-	-- 3) удар масштаба 0.8 → 1.1 → 1
+	-- 2) удар масштаба 0.8 → 1.1 → 1
 	local punch = TweenService:Create(
 		bannerScale,
 		TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
@@ -428,16 +408,13 @@ local function playIslandCleared()
 		):Play()
 	end)
 
-	-- 6) звук достижения (вместе с влётом)
-	playSound(SOUND_BANNER)
-
-	-- 4) искры волнами по всей площади баннера, пока он виден
+	-- 3) искры волнами по всей площади баннера, пока он виден
 	task.spawn(function()
 		task.wait(0.12)
 		runSparkles(BANNER_HOLD - 0.3)
 	end)
 
-	-- 5) текст проявляется отдельно через 0.1с (если включён оверлей)
+	-- 4) текст проявляется отдельно через 0.1с (если включён оверлей)
 	if SHOW_OVERLAY_TEXT then
 		task.delay(0.1, function()
 			TweenService:Create(
@@ -448,23 +425,21 @@ local function playIslandCleared()
 		end)
 	end
 
-	-- 7) сводка наград (три тоста в одно время) + её звук (через CARD_DELAY)
+	-- 5) сводка наград (три тоста в одно время) + её звук (через CARD_DELAY)
 	task.delay(CARD_DELAY, function()
 		showToasts()
 		playSound(SOUND_CARD)
 	end)
 
-	-- уход баннера вверх + снятие затемнения
+	-- уход баннера вверх
 	task.delay(BANNER_HOLD, function()
-		TweenService:Create(
+		local up = TweenService:Create(
 			banner,
 			TweenInfo.new(0.4, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
 			{ Position = UDim2.new(0.5, 0, -0.25, 0) }
-		):Play()
-		local fade = TweenService:Create(dim, TweenInfo.new(0.4), { BackgroundTransparency = 1 })
-		fade:Play()
-		fade.Completed:Once(function()
-			dim.Visible = false
+		)
+		up:Play()
+		up.Completed:Once(function()
 			banner.Visible = false
 			overlay.Visible = false
 		end)
