@@ -50,7 +50,7 @@ local oreSlot, fuelSlot, outputSlot, arrowFill, statusLabel, fuelCountLabel
 local invGrid
 
 -- ─── Colors ───
-local SLOT_BG = Color3.fromHex("2F6CB8")
+local SLOT_BG = Color3.fromHex("A9D6F7")
 local SLOT_FILLED = Color3.fromHex("3F9E3F")
 local SLOT_OUTPUT = Color3.fromHex("B07A14")
 local PANEL_BG = Color3.fromHex("3A7FD0")
@@ -135,17 +135,17 @@ local function rebuildInventory()
 	for i, stack in stacks do
 		local btn = Instance.new("TextButton")
 		btn.Size = UDim2.new(0, 64, 0, 64)
-		btn.BackgroundColor3 = Color3.fromHex("2F6CB8")
+		btn.BackgroundColor3 = Color3.fromHex("A9D6F7")
 		btn.BorderSizePixel = 0
 		btn.Text = ""
 		btn.AutoButtonColor = true
 		btn.LayoutOrder = i
 		btn.Parent = invGrid
 
-		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
+		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 12)
 		local s = Instance.new("UIStroke")
 		s.Color = Color3.fromHex("1C4F8F")
-		s.Thickness = 1
+		s.Thickness = 2
 		s.Parent = btn
 
 		-- Button is 64 tall with a 14px count label at the bottom (y=48-62),
@@ -164,7 +164,9 @@ local function rebuildInventory()
 		countLbl.Position = UDim2.new(0, 2, 1, -16)
 		countLbl.BackgroundTransparency = 1
 		countLbl.Text = tostring(stack.count)
-		countLbl.TextColor3 = Color3.fromRGB(220, 220, 220)
+		countLbl.TextColor3 = Color3.new(1, 1, 1)
+		countLbl.TextStrokeColor3 = Color3.new(0, 0, 0)
+		countLbl.TextStrokeTransparency = 0.3
 		countLbl.TextScaled = true
 		countLbl.Font = Enum.Font.GothamBold
 		countLbl.Parent = btn
