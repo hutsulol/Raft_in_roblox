@@ -290,6 +290,7 @@ local function pushToast(title, body, duration)
 		lbl.TextXAlignment = Enum.TextXAlignment.Left
 		lbl.TextWrapped = true
 		lbl.LayoutOrder = order
+		lbl.ZIndex = 12 -- ВЫШЕ фона панели (11): при глобальном ZIndex текст иначе уходит под фон
 		lbl.Parent = panel
 	end
 	if title and title ~= "" then addLine(title, FONT_TITLE, 16, COLOR_ACCENT, 1) end
