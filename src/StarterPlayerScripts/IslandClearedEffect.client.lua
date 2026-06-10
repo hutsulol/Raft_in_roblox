@@ -292,43 +292,57 @@ end
 -- ЧАСТИЦЫ (UI-искры вокруг баннера)
 --====================================================
 
-local SPARKLE_CHARS = { "✦", "✧", "★" }              -- НЕ эмодзи — глифы слушаются TextColor3
-local SPARKLE_COLOR = Color3.fromRGB(255, 226, 138)  -- золото под баннер
-local SPARKLE_GLOW  = Color3.fromRGB(255, 150, 35)   -- тёплая обводка-свечение
+local SPARKLE_COLOR = Color3.fromRGB(255, 222, 120)  -- золото под баннер
 
 -- Одна искра: «вспыхивает» и гаснет (твинкл) в случайной точке ПО ВСЕЙ площади
--- баннера, ЗА ним (ZIndex 2 < баннер 3), золотая — чтобы не перекрывать картинку.
+-- баннера, ЗА ним (ZIndex 2 < баннер 3). Рисуем ФРЕЙМАМИ (крестик из двух полосок) —
+-- никаких шрифтовых глифов: часть символов шрифт не поддерживал (рисовал прямоугольники).
 local function spawnOneSparkle()
-	local s = Instance.new("TextLabel")
+	local s = Instance.new("Frame")
 	s.BackgroundTransparency = 1
-	s.Text = SPARKLE_CHARS[math.random(1, #SPARKLE_CHARS)]
-	s.Font = Enum.Font.GothamBold
-	s.TextScaled = true
-	s.TextColor3 = SPARKLE_COLOR
-	s.TextStrokeColor3 = SPARKLE_GLOW
-	s.TextStrokeTransparency = 0.25
-	s.TextTransparency = 1
 	s.AnchorPoint = Vector2.new(0.5, 0.5)
 	-- распределяем по всей площади баннера (чуть шире его рамки), центр баннера ~ (0.5, 0.1)
 	s.Position = UDim2.fromScale(0.5 + (math.random() - 0.5) * 0.66, 0.10 + (math.random() - 0.5) * 0.30)
 	s.Size = UDim2.fromOffset(0, 0)
-	s.Rotation = math.random(-25, 25)
+	s.Rotation = math.random(0, 90)
 	s.ZIndex = 2
 	s.Parent = gui
+
+	-- две скруглённые полоски крест-накрест = четырёхлучевая искра
+	local bars = {}
+	for _, barSize in ipairs({ UDim2.fromScale(0.24, 1), UDim2.fromScale(1, 0.24) }) do
+		local bar = Instance.new("Frame")
+		bar.AnchorPoint = Vector2.new(0.5, 0.5)
+		bar.Position = UDim2.fromScale(0.5, 0.5)
+		bar.Size = barSize
+		bar.BackgroundColor3 = SPARKLE_COLOR
+		bar.BackgroundTransparency = 1
+		bar.BorderSizePixel = 0
+		bar.ZIndex = 2
+		bar.Parent = s
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(1, 0)
+		corner.Parent = bar
+		table.insert(bars, bar)
+	end
 
 	local sz = math.random(14, 32)
 	-- вспышка: быстро проявиться с ростом…
 	TweenService:Create(s,
 		TweenInfo.new(0.16, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-		{ Size = UDim2.fromOffset(sz, sz), TextTransparency = 0 }):Play()
+		{ Size = UDim2.fromOffset(sz, sz) }):Play()
+	for _, bar in ipairs(bars) do
+		TweenService:Create(bar, TweenInfo.new(0.16), { BackgroundTransparency = 0 }):Play()
+	end
 	-- …затем мягко погаснуть, слегка разрастаясь (как затухающая искра)
 	task.delay(0.18, function()
-		local fade = TweenService:Create(s,
+		TweenService:Create(s,
 			TweenInfo.new(0.42, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-			{ TextTransparency = 1, TextStrokeTransparency = 1,
-				Size = UDim2.fromOffset(sz * 1.5, sz * 1.5), Rotation = s.Rotation + math.random(-40, 40) })
-		fade:Play()
-		fade.Completed:Once(function() s:Destroy() end)
+			{ Size = UDim2.fromOffset(sz * 1.5, sz * 1.5), Rotation = s.Rotation + math.random(-40, 40) }):Play()
+		for _, bar in ipairs(bars) do
+			TweenService:Create(bar, TweenInfo.new(0.42), { BackgroundTransparency = 1 }):Play()
+		end
+		task.delay(0.45, function() s:Destroy() end)
 	end)
 end
 
@@ -487,6 +501,14 @@ local FREED_REACH      = 3    -- на сколько близко к тригг�
 local FREED_FADE_TIME  = 0.6  -- растворение по достижении триггера
 local FREED_TIMEOUT    = 20   -- страховка, если житель застрял
 
+-- Флаг лагеря: на FLAG_DELAY-й секунде 1-го кадра парт Color в модели Flag плавно
+-- перекрашивается из чёрного в Navy blue — «лагерь сменил владельца».
+local FLAG_MODEL = "Flag"
+local FLAG_PART  = "Color"
+local FLAG_DELAY = 2    -- секунда 1-го кадра
+local FLAG_TIME  = 1.2  -- длительность перехода цвета
+local FLAG_COLOR = BrickColor.new("Navy blue").Color
+
 local function framePos(inst)
 	if not inst then return nil end
 	if inst:IsA("BasePart") then return inst.Position end
@@ -547,10 +569,25 @@ end
 -- Клон клиентский: Animate-скрипты внутри не работают, поэтому ходьбу играем сами
 -- (общая анимация FREED_WALK_ANIM).
 local function runFreedVillager(template, spawnPart, trigger)
+	-- Archivable=false — классическая причина «модель не спавнится»: Clone() тихо
+	-- возвращает nil. Чиним сами и говорим об этом.
+	if not template.Archivable then
+		template.Archivable = true
+		warn("[IslandCleared] жители: у '" .. template.Name .. "' был Archivable=false — включил")
+	end
 	local npc = template:Clone()
+	if not npc then
+		warn("[IslandCleared] жители: Clone() не удался для '" .. template.Name .. "'")
+		return
+	end
 	local humanoid = npc:FindFirstChildOfClass("Humanoid")
-	local hrp = npc:FindFirstChild("HumanoidRootPart") or npc.PrimaryPart
+	local hrp = (humanoid and humanoid.RootPart)
+		or npc:FindFirstChild("HumanoidRootPart", true)
+		or npc.PrimaryPart
+		or npc:FindFirstChildWhichIsA("BasePart", true)
 	if not (humanoid and hrp) then
+		warn("[IslandCleared] жители: у модели '" .. template.Name .. "' нет " ..
+			(humanoid and "корневого парта" or "Humanoid") .. " — пропускаю")
 		npc:Destroy()
 		return
 	end
@@ -601,6 +638,17 @@ local function runFreedVillager(template, spawnPart, trigger)
 	npc:Destroy()
 end
 
+-- Шаблон жителя в ReplicatedStorage: ищем именно MODEL с таким именем (на случай
+-- тёзок другого типа, из-за которых FindFirstChild находил «не то»).
+local function findTemplateModel(name)
+	local direct = ReplicatedStorage:FindFirstChild(name)
+	if direct and direct:IsA("Model") then return direct end
+	for _, d in ipairs(ReplicatedStorage:GetDescendants()) do
+		if d:IsA("Model") and d.Name == name then return d end
+	end
+	return nil
+end
+
 -- Спавн всех освобождённых жителей (зовём при приходе камеры в кадр 1).
 local function spawnFreedVillagers(origin)
 	local trigger = findNearestPart(FREED_TRIGGER, origin)
@@ -609,16 +657,34 @@ local function spawnFreedVillagers(origin)
 		return
 	end
 	for _, info in ipairs(FREED_VILLAGERS) do
-		local template = ReplicatedStorage:FindFirstChild(info.model, true)
+		local template = findTemplateModel(info.model)
 		local spawnPart = findNearestPart(info.spawn, origin)
-		if template and template:IsA("Model") and spawnPart then
+		if template and spawnPart then
 			task.spawn(runFreedVillager, template, spawnPart, trigger)
 		else
 			warn(string.format("[IslandCleared] жители: %s — модель %s, спавн '%s' %s",
-				info.model, template and "OK" or "НЕТ в ReplicatedStorage",
+				info.model, template and "OK" or "НЕТ (Model) в ReplicatedStorage",
 				info.spawn, spawnPart and "OK" or "НЕ найден"))
 		end
 	end
+end
+
+-- Плавная перекраска флага лагеря (парт Color в модели Flag) в цвет нового владельца.
+local function recolorFlag(origin)
+	local flag = findNearestModel(FLAG_MODEL, origin)
+	local part = flag and findNearestPart(FLAG_PART, origin)
+	-- предпочитаем парт ИМЕННО внутри модели Flag
+	if flag then
+		local inFlag = flag:FindFirstChild(FLAG_PART, true)
+		if inFlag and inFlag:IsA("BasePart") then part = inFlag end
+	end
+	if not (part and part:IsA("BasePart")) then
+		warn("[IslandCleared] флаг: не нашёл парт '" .. FLAG_PART .. "' (модель '" .. FLAG_MODEL .. "')")
+		return
+	end
+	TweenService:Create(part,
+		TweenInfo.new(FLAG_TIME, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Color = FLAG_COLOR }):Play()
 end
 
 -- Рост модели с ~0 до target за seconds. Model.Scale нельзя твинить — каждый кадр
@@ -792,6 +858,7 @@ local function playCutscene(onComplete)
 		twIn:Play()
 		twIn.Completed:Wait()
 		spawnFreedVillagers(origin) -- освобождённые жители выходят из палатки (кадр 1)
+		task.delay(FLAG_DELAY, recolorFlag, origin) -- флаг: чёрный → Navy blue (2-я сек)
 		startGrow(1)
 		holdShot(cam, frames[1], CUTSCENE_HOLDS[1] or 5)
 
