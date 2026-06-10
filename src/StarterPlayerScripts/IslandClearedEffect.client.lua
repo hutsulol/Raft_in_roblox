@@ -471,6 +471,22 @@ local GROW_DELAY   = 0.2  -- старт роста после прихода к�
 local GROW_PORTION = 0.5  -- доля выдержки кадра на рост (половина)
 local GROW_STYLE   = Enum.EasingStyle.Back -- в конце чуть перерастает и «садится»
 
+-- «Освобождённые жители»: в 1-м кадре появляются в палатке (каждый на своём
+-- спавн-парте), сразу идут к парту Walk_Trigger и там растворяются — эффект
+-- «игрок освободил людей». Модели — в ReplicatedStorage; клоны клиентские
+-- (чистая кинематографика, на сервер не влияют).
+local FREED_VILLAGERS = {
+	{ model = "Villager",       spawn = "Men_Spawn"   },
+	{ model = "Kid",            spawn = "Kid_Spawn"   },
+	{ model = "Women_Villager", spawn = "Women_Spawn" },
+}
+local FREED_TRIGGER    = "Walk_Trigger"
+local FREED_WALK_ANIM  = "rbxassetid://97110432876752" -- общая ходьба (в моделях своей нет)
+local FREED_WALK_SPEED = 8    -- скорость хода жителей
+local FREED_REACH      = 3    -- на сколько близко к триггеру = «дошёл»
+local FREED_FADE_TIME  = 0.6  -- растворение по достижении триггера
+local FREED_TIMEOUT    = 20   -- страховка, если житель застрял
+
 local function framePos(inst)
 	if not inst then return nil end
 	if inst:IsA("BasePart") then return inst.Position end
@@ -513,6 +529,96 @@ local function findNearestModel(name, origin)
 		end
 	end
 	return best
+end
+
+-- Ближайший к origin ПАРТ с именем name (спавн-точки жителей, Walk_Trigger).
+local function findNearestPart(name, origin)
+	local best, bestD
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d:IsA("BasePart") and d.Name == name then
+			local dist = (d.Position - origin).Magnitude
+			if not bestD or dist < bestD then best, bestD = d, dist end
+		end
+	end
+	return best
+end
+
+-- Один освобождённый житель: клон → на спавн-парт → идёт к триггеру → растворяется.
+-- Клон клиентский: Animate-скрипты внутри не работают, поэтому ходьбу играем сами
+-- (общая анимация FREED_WALK_ANIM).
+local function runFreedVillager(template, spawnPart, trigger)
+	local npc = template:Clone()
+	local humanoid = npc:FindFirstChildOfClass("Humanoid")
+	local hrp = npc:FindFirstChild("HumanoidRootPart") or npc.PrimaryPart
+	if not (humanoid and hrp) then
+		npc:Destroy()
+		return
+	end
+	for _, d in ipairs(npc:GetDescendants()) do
+		if d:IsA("BasePart") then d.Anchored = false end
+	end
+	pcall(function() humanoid.DisplayDistanceType = Enum.HumanoidDisplayDistanceType.None end)
+
+	local target = trigger.Position
+	npc:PivotTo(CFrame.lookAt(
+		spawnPart.Position + Vector3.new(0, 3, 0),
+		Vector3.new(target.X, spawnPart.Position.Y + 3, target.Z)
+	))
+	npc.Parent = workspace
+
+	local animator = humanoid:FindFirstChildOfClass("Animator")
+	if not animator then
+		animator = Instance.new("Animator")
+		animator.Parent = humanoid
+	end
+	local anim = Instance.new("Animation")
+	anim.AnimationId = FREED_WALK_ANIM
+	local ok, track = pcall(function() return animator:LoadAnimation(anim) end)
+	if ok and track then
+		track.Looped = true
+		track:Play()
+	end
+
+	humanoid.WalkSpeed = FREED_WALK_SPEED
+	local t0 = os.clock()
+	while npc.Parent and humanoid.Health > 0 do
+		local flat = Vector3.new(hrp.Position.X - target.X, 0, hrp.Position.Z - target.Z)
+		if flat.Magnitude <= FREED_REACH then break end
+		if os.clock() - t0 > FREED_TIMEOUT then break end
+		humanoid:MoveTo(target)
+		task.wait(0.2)
+	end
+
+	-- дошёл до триггера — растворяется (камера к этому моменту уже на другом кадре)
+	for _, d in ipairs(npc:GetDescendants()) do
+		if d:IsA("BasePart") or d:IsA("Decal") then
+			TweenService:Create(d, TweenInfo.new(FREED_FADE_TIME), { Transparency = 1 }):Play()
+		elseif d:IsA("BillboardGui") then
+			d.Enabled = false
+		end
+	end
+	task.wait(FREED_FADE_TIME + 0.1)
+	npc:Destroy()
+end
+
+-- Спавн всех освобождённых жителей (зовём при приходе камеры в кадр 1).
+local function spawnFreedVillagers(origin)
+	local trigger = findNearestPart(FREED_TRIGGER, origin)
+	if not trigger then
+		warn("[IslandCleared] жители: не нашёл парт '" .. FREED_TRIGGER .. "'")
+		return
+	end
+	for _, info in ipairs(FREED_VILLAGERS) do
+		local template = ReplicatedStorage:FindFirstChild(info.model, true)
+		local spawnPart = findNearestPart(info.spawn, origin)
+		if template and template:IsA("Model") and spawnPart then
+			task.spawn(runFreedVillager, template, spawnPart, trigger)
+		else
+			warn(string.format("[IslandCleared] жители: %s — модель %s, спавн '%s' %s",
+				info.model, template and "OK" or "НЕТ в ReplicatedStorage",
+				info.spawn, spawnPart and "OK" or "НЕ найден"))
+		end
+	end
 end
 
 -- Рост модели с ~0 до target за seconds. Model.Scale нельзя твинить — каждый кадр
@@ -685,6 +791,7 @@ local function playCutscene(onComplete)
 
 		twIn:Play()
 		twIn.Completed:Wait()
+		spawnFreedVillagers(origin) -- освобождённые жители выходят из палатки (кадр 1)
 		startGrow(1)
 		holdShot(cam, frames[1], CUTSCENE_HOLDS[1] or 5)
 
