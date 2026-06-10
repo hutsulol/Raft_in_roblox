@@ -35,24 +35,19 @@ local SOUND_CARD   = "Level Complete"       -- при появлении кар�
 local SHOW_OVERLAY_TEXT = false
 local OVERLAY_TEXT      = "ОСТРОВ ЗАЧИЩЕН!"
 
--- Уведомления сверху-справа появляются по ходу катсцены (по кадрам), стопкой.
-local NOTIF_VILLAGERS      = "👥 Освобождено жителей: +5" -- кадр 1 (+5 к валюте)
-local NOTIF_MONOLITH_TITLE = "🗿 Древний монолит"          -- кадр 2
-local NOTIF_MONOLITH_BODY  = "Открыто новое: Лесорубы"
-local NOTIF_TELEPORT       = "📍 Доступна телепортация на остров" -- конец анимации
-local NOTIF_DURATION       = 6   -- сколько висит один тост
+-- Уведомления по ходу катсцены показывает НОВЫЙ NotificationCenter (_G.Notify,
+-- стиль редизайна: иконобокс + тайтл + боди, цвет по типу). Тут только содержимое.
+local NOTIF_DURATION  = 6
+local NOTIF_VILLAGERS = { type = "info",    icon = "👥", title = "Жителей: +5",
+	body = "Освобождённые жители присоединились к лагерю", duration = NOTIF_DURATION }
+local NOTIF_MONOLITH  = { type = "unlock",  icon = "🗿", title = "Древний монолит",
+	body = "Открыто новое: Лесорубы", duration = NOTIF_DURATION }
+local NOTIF_TELEPORT  = { type = "success", icon = "🎯", title = "Остров исследован!",
+	body = "Теперь на остров можно телепортироваться", duration = NOTIF_DURATION }
 local ISLAND_REWARD_VILLAGERS = 5 -- сколько жителей реально начислить
 
 -- Сколько баннер держится перед уходом (до появления сводки).
 local BANNER_HOLD  = 4.5
-
--- Тема карточки — как у уведомлений квестов (синяя панель), акцент золотой под баннер.
-local COLOR_PANEL      = Color3.fromRGB(10, 25, 55)
-local COLOR_PANEL_EDGE = Color3.fromRGB(80, 180, 255)
-local COLOR_ACCENT     = Color3.fromRGB(255, 209, 102)
-local COLOR_TEXT       = Color3.fromRGB(220, 240, 255)
-local FONT_TITLE       = Enum.Font.GothamBold
-local FONT_BODY        = Enum.Font.Gotham
 
 --====================================================
 -- ЗВУК
@@ -220,95 +215,20 @@ overlay.ZIndex = 4
 overlay.Visible = false
 overlay.Parent = banner
 
--- Уведомления-тосты сверху-справа (ниже счётчика «Жители»): появляются по одному в
--- разные моменты катсцены и накапливаются стопкой. Каждый «вспыхивает» (pop + fade
--- через CanvasGroup) и сам исчезает через duration.
-local notif = Instance.new("Frame")
-notif.Name = "RewardToasts"
-notif.AnchorPoint = Vector2.new(1, 0)
-notif.Position = UDim2.new(1, -16, 0, 64) -- ниже HUD «Жители»
-notif.Size = UDim2.new(0, 330, 1, -80)
-notif.BackgroundTransparency = 1
-notif.ZIndex = 10
-notif.Parent = gui
-
-local notifList = Instance.new("UIListLayout")
-notifList.SortOrder = Enum.SortOrder.LayoutOrder
-notifList.Padding = UDim.new(0, 8)
-notifList.HorizontalAlignment = Enum.HorizontalAlignment.Right
-notifList.VerticalAlignment = Enum.VerticalAlignment.Top
-notifList.Parent = notif
-
-local notifOrder = 0
-
--- Показать тост: title (акцент, опц.) + body. Появляется поверх стопки, гаснет сам.
-local function pushToast(title, body, duration)
+-- Уведомления показывает НОВЫЙ NotificationCenter (карточки редизайна). Тут — тонкая
+-- обёртка: звук + _G.Notify (ждём его, если NotificationCenter ещё не загрузился).
+local function notify(opts)
 	playSound(SOUND_CARD) -- чим уведомления (Level Complete из SoundService)
-	notifOrder += 1
-	local panel = Instance.new("CanvasGroup") -- GroupTransparency гасит всё разом
-	panel.Name = "Toast"
-	panel.Size = UDim2.new(1, 0, 0, 0)
-	panel.AutomaticSize = Enum.AutomaticSize.Y
-	panel.BackgroundColor3 = COLOR_PANEL
-	panel.BackgroundTransparency = 0.08
-	panel.BorderSizePixel = 0
-	panel.GroupTransparency = 1
-	panel.LayoutOrder = notifOrder
-	panel.ZIndex = 11
-	panel.Parent = notif
-
-	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 10)
-	corner.Parent = panel
-
-	local stroke = Instance.new("UIStroke")
-	stroke.Color = COLOR_PANEL_EDGE
-	stroke.Thickness = 1.5
-	stroke.Parent = panel
-
-	local pad = Instance.new("UIPadding")
-	pad.PaddingTop    = UDim.new(0, 8)
-	pad.PaddingBottom = UDim.new(0, 8)
-	pad.PaddingLeft   = UDim.new(0, 12)
-	pad.PaddingRight  = UDim.new(0, 12)
-	pad.Parent = panel
-
-	local list = Instance.new("UIListLayout")
-	list.SortOrder = Enum.SortOrder.LayoutOrder
-	list.Padding = UDim.new(0, 2)
-	list.Parent = panel
-
-	local function addLine(text, font, size, color, order)
-		local lbl = Instance.new("TextLabel")
-		lbl.BackgroundTransparency = 1
-		lbl.Size = UDim2.new(1, 0, 0, 0)
-		lbl.AutomaticSize = Enum.AutomaticSize.Y
-		lbl.Font = font
-		lbl.TextSize = size
-		lbl.TextColor3 = color
-		lbl.Text = text
-		lbl.TextXAlignment = Enum.TextXAlignment.Left
-		lbl.TextWrapped = true
-		lbl.LayoutOrder = order
-		lbl.ZIndex = 12 -- ВЫШЕ фона панели (11): при глобальном ZIndex текст иначе уходит под фон
-		lbl.Parent = panel
-	end
-	if title and title ~= "" then addLine(title, FONT_TITLE, 16, COLOR_ACCENT, 1) end
-	if body  and body  ~= "" then addLine(body,  FONT_BODY,  15, COLOR_TEXT,   2) end
-
-	local scale = Instance.new("UIScale")
-	scale.Scale = 0.85
-	scale.Parent = panel
-
-	TweenService:Create(panel, TweenInfo.new(0.3), { GroupTransparency = 0 }):Play()
-	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-		{ Scale = 1 }):Play()
-
-	task.delay(duration or NOTIF_DURATION, function()
-		if not panel.Parent then return end
-		local out = TweenService:Create(panel, TweenInfo.new(0.3), { GroupTransparency = 1 })
-		out:Play()
-		out.Completed:Once(function() if panel.Parent then panel:Destroy() end end)
+	task.spawn(function()
+		local t0 = os.clock()
+		while not _G.Notify and os.clock() - t0 < 5 do
+			task.wait(0.1)
+		end
+		if _G.Notify then
+			_G.Notify(opts)
+		else
+			warn("[IslandCleared] _G.Notify не найден — NotificationCenter.client.lua не загрузился")
+		end
 	end)
 end
 
@@ -327,9 +247,9 @@ local function grantVillagers()
 end
 
 -- Готовые уведомления по событиям катсцены.
-local function notifyVillagers() pushToast(nil, NOTIF_VILLAGERS, NOTIF_DURATION); grantVillagers() end
-local function notifyMonolith() pushToast(NOTIF_MONOLITH_TITLE, NOTIF_MONOLITH_BODY, NOTIF_DURATION) end
-local function notifyTeleport() pushToast(nil, NOTIF_TELEPORT, NOTIF_DURATION) end
+local function notifyVillagers() notify(NOTIF_VILLAGERS); grantVillagers() end
+local function notifyMonolith() notify(NOTIF_MONOLITH) end
+local function notifyTeleport() notify(NOTIF_TELEPORT) end
 
 --====================================================
 -- ЧАСТИЦЫ (UI-искры вокруг баннера)
