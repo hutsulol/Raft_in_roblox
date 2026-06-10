@@ -397,16 +397,18 @@ local function styleSlotBase(slot)
 
 	local sg = Instance.new("UIGradient")
 	sg.Rotation = 45
+	-- 4 тёмных полосы через прозрачные промежутки. ЛИМИТ NumberSequence — 20
+	-- keypoints (21 валил NumberSequence.new ошибкой, обрывая сборку слотов).
 	local keypoints = {}
-	for k = 0, 4 do -- 5 тёмных полос через прозрачные промежутки
-		local a = k * 0.2
+	for k = 0, 3 do
+		local a = k * 0.25
 		table.insert(keypoints, NumberSequenceKeypoint.new(a, 1))
-		table.insert(keypoints, NumberSequenceKeypoint.new(math.min(a + 0.099, 1), 1))
-		table.insert(keypoints, NumberSequenceKeypoint.new(math.min(a + 0.1, 1), 0))
-		table.insert(keypoints, NumberSequenceKeypoint.new(math.min(a + 0.199, 1), 0))
+		table.insert(keypoints, NumberSequenceKeypoint.new(a + 0.124, 1))
+		table.insert(keypoints, NumberSequenceKeypoint.new(a + 0.125, 0))
+		table.insert(keypoints, NumberSequenceKeypoint.new(a + 0.249, 0))
 	end
 	table.insert(keypoints, NumberSequenceKeypoint.new(1, 0))
-	sg.Transparency = NumberSequence.new(keypoints)
+	sg.Transparency = NumberSequence.new(keypoints) -- 17 точек
 	sg.Parent = stripes
 end
 
