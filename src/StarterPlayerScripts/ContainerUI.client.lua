@@ -26,15 +26,18 @@ local openContainer = ReplicatedStorage:WaitForChild("OpenContainer")
 -- helper runs.
 local CONTAINER_SLOTS = 6
 
+-- Палитра «Океан» из редизайна (как инвентарь).
 local INV_COLORS = {
-	panelBg = Color3.fromRGB(139, 109, 63),
-	panelBorder = Color3.fromRGB(100, 75, 40),
-	slotBg = Color3.fromRGB(182, 148, 101),
-	slotBorder = Color3.fromRGB(100, 75, 40),
-	separator = Color3.fromRGB(100, 75, 40),
-	titleText = Color3.fromRGB(255, 250, 240),
-	lightText = Color3.fromRGB(255, 250, 240),
-	closeBg = Color3.fromRGB(170, 45, 45),
+	panelTop = Color3.fromHex("54A7EC"),
+	panelBg = Color3.fromHex("3A7FD0"),
+	panelBorder = Color3.fromHex("1C4F8F"),
+	slotTop = Color3.fromHex("BCE0F9"),
+	slotBg = Color3.fromHex("A9D6F7"),
+	slotBorder = Color3.fromHex("1C4F8F"),
+	separator = Color3.fromHex("1C4F8F"),
+	titleText = Color3.fromRGB(255, 255, 255),
+	lightText = Color3.fromRGB(255, 255, 255),
+	closeBg = Color3.fromHex("FF6B5A"),
 }
 
 local activeGui = nil
@@ -184,9 +187,14 @@ local function openContainerUI(container)
 	local panel = Instance.new("Frame")
 	panel.Name = "Panel"
 	panel.Size = UDim2.fromOffset(panelW, panelH)
-	panel.BackgroundColor3 = INV_COLORS.panelBg
+	panel.BackgroundColor3 = Color3.new(1, 1, 1) -- белый под градиент (он умножается)
 	panel.BorderSizePixel = 0
 	panel.Parent = gui
+
+	local panelGrad = Instance.new("UIGradient")
+	panelGrad.Rotation = 90
+	panelGrad.Color = ColorSequence.new(INV_COLORS.panelTop, INV_COLORS.panelBg)
+	panelGrad.Parent = panel
 
 	local GAP = 8
 	local function currentUIScale()
@@ -220,10 +228,10 @@ local function openContainerUI(container)
 		table.insert(conns, ownScale:GetPropertyChangedSignal("Scale"):Connect(repositionPanel))
 	end
 
-	Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 10)
+	Instance.new("UICorner", panel).CornerRadius = UDim.new(0, 18)
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = INV_COLORS.panelBorder
-	stroke.Thickness = 3
+	stroke.Thickness = 4
 	stroke.Parent = panel
 
 	local title = Instance.new("TextLabel")
@@ -232,8 +240,10 @@ local function openContainerUI(container)
 	title.BackgroundTransparency = 1
 	title.TextColor3 = INV_COLORS.titleText
 	title.Text = "Container"
-	title.Font = Enum.Font.GothamBold
+	title.Font = Enum.Font.GothamBlack
 	title.TextSize = 22
+	title.TextStrokeColor3 = Color3.new(0, 0, 0)
+	title.TextStrokeTransparency = 0.6
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = panel
 
@@ -245,16 +255,20 @@ local function openContainerUI(container)
 	sep.Parent = panel
 
 	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.fromOffset(28, 28)
-	closeBtn.Position = UDim2.new(1, -32, 0, 6)
+	closeBtn.Size = UDim2.fromOffset(30, 30)
+	closeBtn.Position = UDim2.new(1, -36, 0, 8)
 	closeBtn.BackgroundColor3 = INV_COLORS.closeBg
 	closeBtn.TextColor3 = Color3.new(1, 1, 1)
-	closeBtn.Text = "X"
-	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.Text = "✕"
+	closeBtn.Font = Enum.Font.GothamBlack
 	closeBtn.TextSize = 16
 	closeBtn.BorderSizePixel = 0
 	closeBtn.Parent = panel
-	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 6)
+	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 10)
+	local closeStroke = Instance.new("UIStroke")
+	closeStroke.Color = Color3.fromHex("8A2A12")
+	closeStroke.Thickness = 3
+	closeStroke.Parent = closeBtn
 	closeBtn.MouseButton1Click:Connect(function()
 		closeContainer()
 		if _G.CloseInventory then _G.CloseInventory() end
@@ -287,18 +301,23 @@ local function openContainerUI(container)
 		btn.Name = "Slot" .. i
 		btn.Size = UDim2.fromOffset(SLOT_SIZE, SLOT_SIZE)
 		btn.Position = UDim2.new(0, x, 0, y)
-		btn.BackgroundColor3 = INV_COLORS.slotBg
-		btn.BackgroundTransparency = 0.05
+		btn.BackgroundColor3 = Color3.new(1, 1, 1) -- белый под градиент
+		btn.BackgroundTransparency = 0.1
 		btn.BorderSizePixel = 0
 		btn.AutoButtonColor = false
 		btn.Text = ""
 		btn.Active = true
 		btn.Parent = panel
 
-		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 5)
+		local slotGrad = Instance.new("UIGradient")
+		slotGrad.Rotation = 90
+		slotGrad.Color = ColorSequence.new(INV_COLORS.slotTop, INV_COLORS.slotBg)
+		slotGrad.Parent = btn
+
+		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 12)
 		local bs = Instance.new("UIStroke")
 		bs.Color = INV_COLORS.slotBorder
-		bs.Thickness = 1.5
+		bs.Thickness = 3
 		bs.Parent = btn
 
 		local iconLbl = Instance.new("ImageLabel")
@@ -343,11 +362,11 @@ local function openContainerUI(container)
 	tooltipLabel.Name = "Label"
 	tooltipLabel.AutomaticSize = Enum.AutomaticSize.XY
 	tooltipLabel.Size = UDim2.new(0, 0, 0, 0)
-	tooltipLabel.BackgroundColor3 = Color3.fromRGB(30, 22, 10)
-	tooltipLabel.BackgroundTransparency = 0.1
+	tooltipLabel.BackgroundColor3 = INV_COLORS.panelBorder
+	tooltipLabel.BackgroundTransparency = 0.05
 	tooltipLabel.BorderSizePixel = 0
-	tooltipLabel.TextColor3 = Color3.fromRGB(255, 245, 220)
-	tooltipLabel.Font = Enum.Font.GothamMedium
+	tooltipLabel.TextColor3 = Color3.new(1, 1, 1)
+	tooltipLabel.Font = Enum.Font.GothamBold
 	tooltipLabel.TextSize = 14
 	tooltipLabel.Text = ""
 	tooltipLabel.Parent = tooltipGui
@@ -357,10 +376,10 @@ local function openContainerUI(container)
 	pad.PaddingLeft = UDim.new(0, 8)
 	pad.PaddingRight = UDim.new(0, 8)
 	pad.Parent = tooltipLabel
-	Instance.new("UICorner", tooltipLabel).CornerRadius = UDim.new(0, 4)
+	Instance.new("UICorner", tooltipLabel).CornerRadius = UDim.new(0, 8)
 	local tstroke = Instance.new("UIStroke")
-	tstroke.Color = Color3.fromRGB(120, 90, 50)
-	tstroke.Thickness = 1
+	tstroke.Color = Color3.fromHex("0F2C52")
+	tstroke.Thickness = 2
 	tstroke.Parent = tooltipLabel
 
 	local function updateTooltipPos(mousePos)

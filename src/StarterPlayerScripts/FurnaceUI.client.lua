@@ -50,13 +50,13 @@ local oreSlot, fuelSlot, outputSlot, arrowFill, statusLabel, fuelCountLabel
 local invGrid
 
 -- ─── Colors ───
-local SLOT_BG = Color3.fromRGB(60, 60, 65)
-local SLOT_FILLED = Color3.fromRGB(70, 105, 70)
-local SLOT_OUTPUT = Color3.fromRGB(120, 100, 50)
-local PANEL_BG = Color3.fromRGB(45, 45, 50)
-local ARROW_BG = Color3.fromRGB(80, 80, 85)
+local SLOT_BG = Color3.fromHex("2F6CB8")
+local SLOT_FILLED = Color3.fromHex("3F9E3F")
+local SLOT_OUTPUT = Color3.fromHex("B07A14")
+local PANEL_BG = Color3.fromHex("3A7FD0")
+local ARROW_BG = Color3.fromHex("1C4F8F")
 local ARROW_FILL_COLOR = Color3.fromRGB(220, 140, 40)
-local INV_BG = Color3.fromRGB(55, 55, 60)
+local INV_BG = Color3.fromHex("2F6CB8")
 
 local function closeUI()
 	if screenGui then screenGui:Destroy(); screenGui = nil end
@@ -135,7 +135,7 @@ local function rebuildInventory()
 	for i, stack in stacks do
 		local btn = Instance.new("TextButton")
 		btn.Size = UDim2.new(0, 64, 0, 64)
-		btn.BackgroundColor3 = Color3.fromRGB(70, 70, 75)
+		btn.BackgroundColor3 = Color3.fromHex("2F6CB8")
 		btn.BorderSizePixel = 0
 		btn.Text = ""
 		btn.AutoButtonColor = true
@@ -144,7 +144,7 @@ local function rebuildInventory()
 
 		Instance.new("UICorner", btn).CornerRadius = UDim.new(0, 6)
 		local s = Instance.new("UIStroke")
-		s.Color = Color3.fromRGB(100, 100, 110)
+		s.Color = Color3.fromHex("1C4F8F")
 		s.Thickness = 1
 		s.Parent = btn
 
@@ -292,7 +292,7 @@ local function createSlot(parent, pos, size)
 
 	Instance.new("UICorner", slot).CornerRadius = UDim.new(0, 8)
 	local s = Instance.new("UIStroke")
-	s.Color = Color3.fromRGB(90, 90, 100)
+	s.Color = Color3.fromHex("1C4F8F")
 	s.Thickness = 2
 	s.Parent = slot
 
@@ -316,7 +316,7 @@ local function createSlot(parent, pos, size)
 	label.BackgroundTransparency = 1
 	label.Text = ""
 	label.Visible = false
-	label.TextColor3 = Color3.fromRGB(180, 180, 180)
+	label.TextColor3 = Color3.fromRGB(222, 236, 250)
 	label.TextScaled = true
 	label.Font = Enum.Font.Gotham
 	label.Parent = slot
@@ -339,17 +339,17 @@ local function buildUI()
 	main.BorderSizePixel = 0
 	main.Parent = screenGui
 	Instance.new("UICorner", main).CornerRadius = UDim.new(0, 12)
-	local ms = Instance.new("UIStroke"); ms.Color = Color3.fromRGB(80, 80, 90); ms.Thickness = 2; ms.Parent = main
+	local ms = Instance.new("UIStroke"); ms.Color = Color3.fromHex("1C4F8F"); ms.Thickness = 4; ms.Parent = main
 
 	-- Title bar
 	local titleBar = Instance.new("Frame")
 	titleBar.Size = UDim2.new(1, 0, 0, 42)
-	titleBar.BackgroundColor3 = Color3.fromRGB(35, 35, 40)
+	titleBar.BackgroundColor3 = Color3.fromHex("1C4F8F")
 	titleBar.BorderSizePixel = 0
 	titleBar.Parent = main
 	Instance.new("UICorner", titleBar).CornerRadius = UDim.new(0, 12)
 	local fix = Instance.new("Frame"); fix.Size = UDim2.new(1, 0, 0, 12); fix.Position = UDim2.new(0, 0, 1, -12)
-	fix.BackgroundColor3 = Color3.fromRGB(35, 35, 40); fix.BorderSizePixel = 0; fix.Parent = titleBar
+	fix.BackgroundColor3 = Color3.fromHex("1C4F8F"); fix.BorderSizePixel = 0; fix.Parent = titleBar
 
 	local titleLbl = Instance.new("TextLabel")
 	titleLbl.Size = UDim2.new(1, -60, 1, 0); titleLbl.Position = UDim2.new(0, 15, 0, 0)
@@ -359,7 +359,7 @@ local function buildUI()
 
 	local closeBtn = Instance.new("TextButton")
 	closeBtn.Size = UDim2.new(0, 32, 0, 32); closeBtn.Position = UDim2.new(1, -38, 0.5, -16)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(200, 50, 50); closeBtn.Text = "X"; closeBtn.TextColor3 = Color3.new(1, 1, 1)
+	closeBtn.BackgroundColor3 = Color3.fromHex("FF6B5A"); closeBtn.Text = "X"; closeBtn.TextColor3 = Color3.new(1, 1, 1)
 	closeBtn.TextScaled = true; closeBtn.Font = Enum.Font.GothamBold; closeBtn.BorderSizePixel = 0; closeBtn.Parent = titleBar
 	Instance.new("UICorner", closeBtn).CornerRadius = UDim.new(0, 8)
 	closeBtn.MouseButton1Click:Connect(closeUI)
@@ -387,7 +387,7 @@ local function buildUI()
 
 	local oreTitle = Instance.new("TextLabel")
 	oreTitle.Size = UDim2.new(0, 80, 0, 12); oreTitle.Position = UDim2.new(0, 0, 0, 72)
-	oreTitle.BackgroundTransparency = 1; oreTitle.Text = "Ore"; oreTitle.TextColor3 = Color3.fromRGB(140, 140, 140)
+	oreTitle.BackgroundTransparency = 1; oreTitle.Text = "Ore"; oreTitle.TextColor3 = Color3.fromRGB(214, 230, 247)
 	oreTitle.TextScaled = true; oreTitle.Font = Enum.Font.Gotham; oreTitle.Parent = content
 
 	-- Fuel slot
@@ -405,7 +405,7 @@ local function buildUI()
 
 	local fuelTitle = Instance.new("TextLabel")
 	fuelTitle.Size = UDim2.new(0, 80, 0, 12); fuelTitle.Position = UDim2.new(0, 0, 0, 164)
-	fuelTitle.BackgroundTransparency = 1; fuelTitle.Text = "Fuel"; fuelTitle.TextColor3 = Color3.fromRGB(140, 140, 140)
+	fuelTitle.BackgroundTransparency = 1; fuelTitle.Text = "Fuel"; fuelTitle.TextColor3 = Color3.fromRGB(214, 230, 247)
 	fuelTitle.TextScaled = true; fuelTitle.Font = Enum.Font.Gotham; fuelTitle.Parent = content
 
 	-- Fuel counter
@@ -447,7 +447,7 @@ local function buildUI()
 
 	local outTitle = Instance.new("TextLabel")
 	outTitle.Size = UDim2.new(0, 110, 0, 12); outTitle.Position = UDim2.new(0, 240, 0, 87)
-	outTitle.BackgroundTransparency = 1; outTitle.Text = "Output"; outTitle.TextColor3 = Color3.fromRGB(140, 140, 140)
+	outTitle.BackgroundTransparency = 1; outTitle.Text = "Output"; outTitle.TextColor3 = Color3.fromRGB(214, 230, 247)
 	outTitle.TextScaled = true; outTitle.Font = Enum.Font.Gotham; outTitle.Parent = content
 
 	-- ═══ Status ═══
