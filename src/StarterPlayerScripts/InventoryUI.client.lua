@@ -336,9 +336,14 @@ local COLORS = {
 	panelTop = Color3.fromHex("54A7EC"),    -- верх градиента панели
 	panelBg = Color3.fromHex("3A7FD0"),     -- низ градиента панели
 	panelBorder = Color3.fromHex("1C4F8F"),
-	slotBg = Color3.fromHex("A9D6F7"),
-	slotBorder = Color3.fromHex("1C4F8F"),
-	slotLocked = Color3.fromHex("2A5CA0"),  -- заблокированный слот (тёмный)
+	-- Слоты — песочная спека: занятый FBD9A4→F2C57E / B5762B; пустой 35% / 7A4310 50%;
+	-- заблокированный rgba(70,40,12,0.45) + полосы; выбранный — золото F5C95C.
+	slotTop = Color3.fromHex("FBD9A4"),
+	slotBottom = Color3.fromHex("F2C57E"),
+	slotFrame = Color3.fromHex("B5762B"),
+	slotEmptyFrame = Color3.fromHex("7A4310"),
+	slotLockedBg = Color3.fromRGB(70, 40, 12),
+	slotSelected = Color3.fromHex("F5C95C"),
 	titleText = Color3.fromRGB(255, 255, 255),
 	lightText = Color3.fromRGB(255, 255, 255),
 	craftPanelBg = Color3.fromHex("3A7FD0"),
@@ -353,6 +358,96 @@ local COLORS = {
 }
 -- Пустой слот — заливка 35% прозрачности (по споке); занятый — 0.
 local SLOT_EMPTY_TRANSPARENCY = 0.35
+
+-- Базовая отделка слота: песочный градиент (SlotGrad), скругление 12, рамка 3 и
+-- скрытый слой диагональных полос (LockStripes) для заблокированного состояния.
+-- Полосы — тёмный слой с UIGradient 45°, где прозрачность чередуется 0/1.
+local function styleSlotBase(slot)
+	slot.BackgroundColor3 = Color3.new(1, 1, 1) -- белый под градиент (он умножается)
+	slot.BorderSizePixel = 0
+
+	local grad = Instance.new("UIGradient")
+	grad.Name = "SlotGrad"
+	grad.Color = ColorSequence.new(COLORS.slotTop, COLORS.slotBottom)
+	grad.Rotation = 90
+	grad.Parent = slot
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 12)
+	corner.Parent = slot
+
+	local stroke = Instance.new("UIStroke")
+	stroke.Color = COLORS.slotEmptyFrame
+	stroke.Thickness = 3
+	stroke.Transparency = 0.5
+	stroke.Parent = slot
+
+	local stripes = Instance.new("Frame")
+	stripes.Name = "LockStripes"
+	stripes.Size = UDim2.fromScale(1, 1)
+	stripes.BackgroundColor3 = Color3.fromRGB(36, 20, 6)
+	stripes.BackgroundTransparency = 0.45
+	stripes.BorderSizePixel = 0
+	stripes.Visible = false
+	stripes.Parent = slot
+
+	local stripesCorner = Instance.new("UICorner")
+	stripesCorner.CornerRadius = UDim.new(0, 12)
+	stripesCorner.Parent = stripes
+
+	local sg = Instance.new("UIGradient")
+	sg.Rotation = 45
+	local keypoints = {}
+	for k = 0, 4 do -- 5 тёмных полос через прозрачные промежутки
+		local a = k * 0.2
+		table.insert(keypoints, NumberSequenceKeypoint.new(a, 1))
+		table.insert(keypoints, NumberSequenceKeypoint.new(math.min(a + 0.099, 1), 1))
+		table.insert(keypoints, NumberSequenceKeypoint.new(math.min(a + 0.1, 1), 0))
+		table.insert(keypoints, NumberSequenceKeypoint.new(math.min(a + 0.199, 1), 0))
+	end
+	table.insert(keypoints, NumberSequenceKeypoint.new(1, 0))
+	sg.Transparency = NumberSequence.new(keypoints)
+	sg.Parent = stripes
+end
+
+-- Применить состояние слота по споке: locked → тёмный с полосами; selected →
+-- золотая рамка; иначе занятый/пустой (плотный/35% + своя рамка).
+local function applySlotState(slot, hasItem, selected, locked)
+	local stroke = slot:FindFirstChildWhichIsA("UIStroke")
+	local grad = slot:FindFirstChild("SlotGrad")
+	local stripes = slot:FindFirstChild("LockStripes")
+	if locked then
+		if grad then grad.Enabled = false end
+		slot.BackgroundColor3 = COLORS.slotLockedBg
+		slot.BackgroundTransparency = 0.55 -- rgba(...,0.45)
+		if stripes then stripes.Visible = true end
+		if stroke then
+			stroke.Color = COLORS.slotEmptyFrame
+			stroke.Thickness = 3
+			stroke.Transparency = 0.6
+		end
+		return
+	end
+	if grad then grad.Enabled = true end
+	slot.BackgroundColor3 = Color3.new(1, 1, 1)
+	slot.BackgroundTransparency = hasItem and 0 or SLOT_EMPTY_TRANSPARENCY
+	if stripes then stripes.Visible = false end
+	if stroke then
+		if selected then
+			stroke.Color = COLORS.slotSelected
+			stroke.Thickness = 4
+			stroke.Transparency = 0
+		elseif hasItem then
+			stroke.Color = COLORS.slotFrame
+			stroke.Thickness = 3
+			stroke.Transparency = 0
+		else
+			stroke.Color = COLORS.slotEmptyFrame
+			stroke.Thickness = 3
+			stroke.Transparency = 0.5
+		end
+	end
+end
 
 local HOTBAR_SLOTS = 8
 local GRID_SLOTS = 20
@@ -461,19 +556,10 @@ local function applyUnlockedSlots()
 		local globalIdx = HOTBAR_SLOTS + i
 		local locked    = globalIdx > unlockedSlots
 		if rec.button then
-			if locked then
-				-- заблокированный слот — тёмная заливка (как в прототипе)
-				rec.button.BackgroundColor3 = COLORS.slotLocked
-				rec.button.BackgroundTransparency = 0.25
-			else
-				rec.button.BackgroundColor3 = COLORS.slotBg
-				rec.button.BackgroundTransparency = SLOT_EMPTY_TRANSPARENCY -- renderAllSlots уточнит (0, если занят)
-			end
+			-- hasItem уточнит ближайший renderAllSlots
+			applySlotState(rec.button, false, false, locked)
 			rec.button.AutoButtonColor = false
 			rec.button.Active          = not locked
-		end
-		if rec.stroke then
-			rec.stroke.Transparency = locked and 0.5 or 0
 		end
 	end
 
@@ -1303,57 +1389,41 @@ function renderAllSlots()
 				local slot = bar:FindFirstChild("HotbarSlot_" .. i)
 				if slot then
 					renderSlot(slot, slotData[i])
-					-- пустой слот — 35% прозрачности, занятый — плотный
-					slot.BackgroundTransparency = slotData[i] and 0 or SLOT_EMPTY_TRANSPARENCY
 					local data = slotData[i]
+					-- «Выбран» = соответствующий Tool сейчас В РУКЕ. Совпадение по
+					-- ИНСТАНСУ, не по имени (иначе два EmptyCapsule светились бы оба);
+					-- фолбэк на имя — когда toolInst устарел после save/restore.
+					local selected = false
 					if data and data.type == "tool" and char then
-						-- Match by Tool INSTANCE, not by Tool.Name —
-						-- otherwise equipping a single tool highlights
-						-- every hotbar slot that holds an item of the
-						-- same name (two EmptyCapsules both lighting
-						-- up, etc.). Fall back to name match only when
-						-- the slot's toolInst ref has gone stale
-						-- (e.g. right after a save/restore round-trip
-						-- that only stored the name).
-						local isEquipped = false
 						local inst = data.toolInst
 						if inst and inst:IsA("Tool") and inst.Parent == char then
-							isEquipped = true
+							selected = true
 						elseif not inst then
 							for _, t in char:GetChildren() do
-								if t:IsA("Tool") and t.Name == data.toolName then isEquipped = true break end
+								if t:IsA("Tool") and t.Name == data.toolName then selected = true break end
 							end
 						end
-						slot.BackgroundColor3 = isEquipped and COLORS.equipped or COLORS.slotBg
 					elseif data and data.type == "resource" and data.name and FOOD_RESOURCE_SET[data.name] and char then
-						-- Food resource slot lights up the same way as
-						-- a tool slot when the matching food Tool is
-						-- in the player's hand. countFoodToolsForName
-						-- doesn't distinguish hand vs Backpack — we
-						-- need the strict "in hand right now" check
-						-- here, mirroring the tool-instance test
-						-- above.
-						local isFoodEquipped = false
+						-- Еда в руке подсвечивает слот ресурса так же, как инструмент.
 						for _, t in char:GetChildren() do
 							if t:IsA("Tool") and t.Name == data.name and t:GetAttribute("FoodResource") == data.name then
-								isFoodEquipped = true
+								selected = true
 								break
 							end
 						end
-						slot.BackgroundColor3 = isFoodEquipped and COLORS.equipped or COLORS.slotBg
 					elseif data and data.type == "resource" and data.name and BUSH_SEED_RESOURCE_SET[data.name] and char then
-						-- Bush-seed resource slot — same hand-only highlight
-						-- as the food path above, keyed on BushSeedResource.
-						local isBushSeedEquipped = false
 						for _, t in char:GetChildren() do
 							if t:IsA("Tool") and t.Name == data.name and t:GetAttribute("BushSeedResource") == data.name then
-								isBushSeedEquipped = true
+								selected = true
 								break
 							end
 						end
-						slot.BackgroundColor3 = isBushSeedEquipped and COLORS.equipped or COLORS.slotBg
-					else
-						slot.BackgroundColor3 = COLORS.slotBg
+					end
+					applySlotState(slot, data ~= nil, selected, false)
+					-- мягкое свечение за выбранным слотом
+					local glow = bar:FindFirstChild("HotbarGlow_" .. i)
+					if glow then
+						glow.BackgroundTransparency = selected and 0.72 or 1
 					end
 				end
 			end
@@ -1369,14 +1439,8 @@ function renderAllSlots()
 				if slot then
 					local globalIdx = HOTBAR_SLOTS + i
 					renderSlot(slot, slotData[globalIdx])
-					-- стиль слота: заблокирован — тёмный; пустой — 35%; занятый — плотный
-					if isSlotLocked(globalIdx) then
-						slot.BackgroundColor3 = COLORS.slotLocked
-						slot.BackgroundTransparency = 0.25
-					else
-						slot.BackgroundColor3 = COLORS.slotBg
-						slot.BackgroundTransparency = slotData[globalIdx] and 0 or SLOT_EMPTY_TRANSPARENCY
-					end
+					-- стиль по споке: заблокирован/пустой/занятый
+					applySlotState(slot, slotData[globalIdx] ~= nil, false, isSlotLocked(globalIdx))
 				end
 			end
 		end
@@ -2375,49 +2439,40 @@ local function buildHotbar()
 	hotbarGui.Parent = playerGui
 	attachResponsiveScale(hotbarGui)
 
+	-- «Без подложки»: контейнер прозрачный, виден только ряд слотов.
 	local barWidth = HOTBAR_SLOTS * (SLOT_SIZE + SLOT_PAD) + SLOT_PAD
 	local bar = Instance.new("Frame")
 	bar.Name = "Hotbar"
 	bar.Size = UDim2.new(0, barWidth, 0, SLOT_SIZE + SLOT_PAD * 2)
 	bar.Position = UDim2.new(0.5, -barWidth / 2, 1, -(SLOT_SIZE + SLOT_PAD * 2) - 10)
-	bar.BackgroundColor3 = Color3.new(1, 1, 1) -- белый под градиент (он умножается)
-	bar.BorderSizePixel = 0
+	bar.BackgroundTransparency = 1
 	bar.Parent = hotbarGui
 
-	local barGradient = Instance.new("UIGradient")
-	barGradient.Color = ColorSequence.new(COLORS.panelTop, COLORS.panelBg)
-	barGradient.Rotation = 90
-	barGradient.Parent = bar
-
-	local barCorner = Instance.new("UICorner")
-	barCorner.CornerRadius = UDim.new(0, 18)
-	barCorner.Parent = bar
-
-	local barStroke = Instance.new("UIStroke")
-	barStroke.Color = COLORS.panelBorder
-	barStroke.Thickness = 4
-	barStroke.Parent = bar
-
 	for i = 1, HOTBAR_SLOTS do
+		-- мягкое свечение за выбранным слотом (включает renderAllSlots)
+		local glow = Instance.new("Frame")
+		glow.Name = "HotbarGlow_" .. i
+		glow.Size = UDim2.new(0, SLOT_SIZE + 12, 0, SLOT_SIZE + 12)
+		glow.Position = UDim2.new(0, SLOT_PAD + (i - 1) * (SLOT_SIZE + SLOT_PAD) - 6, 0, SLOT_PAD - 6)
+		glow.BackgroundColor3 = COLORS.slotSelected
+		glow.BackgroundTransparency = 1
+		glow.BorderSizePixel = 0
+		glow.ZIndex = 0
+		glow.Parent = bar
+
+		local glowCorner = Instance.new("UICorner")
+		glowCorner.CornerRadius = UDim.new(0, 16)
+		glowCorner.Parent = glow
+
 		local slot = Instance.new("TextButton")
 		slot.Name = "HotbarSlot_" .. i
 		slot.Size = UDim2.new(0, SLOT_SIZE, 0, SLOT_SIZE)
 		slot.Position = UDim2.new(0, SLOT_PAD + (i - 1) * (SLOT_SIZE + SLOT_PAD), 0, SLOT_PAD)
-		slot.BackgroundColor3 = COLORS.slotBg
 		slot.BackgroundTransparency = SLOT_EMPTY_TRANSPARENCY
-		slot.BorderSizePixel = 0
 		slot.Text = ""
 		slot.AutoButtonColor = false
 		slot.Parent = bar
-
-		local slotCorner = Instance.new("UICorner")
-		slotCorner.CornerRadius = UDim.new(0, 12)
-		slotCorner.Parent = slot
-
-		local slotStroke = Instance.new("UIStroke")
-		slotStroke.Color = COLORS.slotBorder
-		slotStroke.Thickness = 3
-		slotStroke.Parent = slot
+		styleSlotBase(slot)
 
 		local slotIndex = i
 
@@ -2655,23 +2710,13 @@ local function buildUI()
 		slot.Name = "Slot_" .. i
 		slot.Size = UDim2.new(0, SLOT_SIZE, 0, SLOT_SIZE)
 		slot.Position = UDim2.new(0, SLOT_PAD + col * (SLOT_SIZE + SLOT_PAD), 0, SLOT_PAD + row * (SLOT_SIZE + SLOT_PAD))
-		slot.BackgroundColor3 = COLORS.slotBg
 		slot.BackgroundTransparency = SLOT_EMPTY_TRANSPARENCY
-		slot.BorderSizePixel = 0
 		slot.Text = ""
 		slot.AutoButtonColor = false
 		slot.Parent = gridFrame
+		styleSlotBase(slot)
 
-		local slotCorner = Instance.new("UICorner")
-		slotCorner.CornerRadius = UDim.new(0, 12)
-		slotCorner.Parent = slot
-
-		local slotStroke = Instance.new("UIStroke")
-		slotStroke.Color = COLORS.slotBorder
-		slotStroke.Thickness = 3
-		slotStroke.Parent = slot
-
-		gridSlotVisuals[i] = { button = slot, stroke = slotStroke }
+		gridSlotVisuals[i] = { button = slot }
 
 		local globalIdx = HOTBAR_SLOTS + i
 
