@@ -430,7 +430,112 @@ local function playIslandCleared()
 	end)
 end
 
-_G.PlayIslandClearedEffect = playIslandCleared
+--====================================================
+-- КАТСЦЕНА (камера по ЯКОРНЫМ партам острова — острова спавнятся в разных местах)
+--====================================================
+-- Кадр N: камера встаёт в Camera_N_Frame и смотрит на Camera_look_N_Frame. Папку
+-- CutScene берём БЛИЖАЙШУЮ к игроку (на нужном острове). Тайминги: держим кадры
+-- CUTSCENE_HOLDS, между кадрами — резкий переход Circular.
+local CUTSCENE_FOLDER     = "CutScene"
+local CUTSCENE_COUNT      = 3
+local CUTSCENE_HOLDS      = { 5, 4, 3 }            -- сек на кадрах 1 / 2 / 3
+local CUTSCENE_TRANSITION = 1.0                    -- длительность перехода (резкий)
+local CUTSCENE_STYLE      = Enum.EasingStyle.Circular
+
+local function framePos(inst)
+	if not inst then return nil end
+	if inst:IsA("BasePart") then return inst.Position end
+	if inst:IsA("Model") then
+		local ok, cf = pcall(function() return inst:GetPivot() end)
+		if ok then return cf.Position end
+	end
+	return nil
+end
+
+-- Ближайшая к игроку папка CutScene (с Camera_1_Frame).
+local function findCutscene()
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	local origin = (hrp and hrp.Position) or Vector3.zero
+	local best, bestD
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d.Name == CUTSCENE_FOLDER and (d:IsA("Folder") or d:IsA("Model"))
+			and d:FindFirstChild("Camera_1_Frame") then
+			local p = framePos(d:FindFirstChild("Camera_1_Frame"))
+			if p then
+				local dist = (p - origin).Magnitude
+				if not bestD or dist < bestD then best, bestD = d, dist end
+			end
+		end
+	end
+	return best
+end
+
+-- CFrame камеры для кадра idx: позиция Camera_idx_Frame, взгляд на Camera_look_idx_Frame.
+local function frameCFrame(cs, idx)
+	local pos  = framePos(cs:FindFirstChild("Camera_" .. idx .. "_Frame"))
+	local look = framePos(cs:FindFirstChild("Camera_look_" .. idx .. "_Frame"))
+	if not (pos and look) then return nil end
+	if (look - pos).Magnitude < 1e-3 then return CFrame.new(pos) end
+	return CFrame.lookAt(pos, look)
+end
+
+local cutscenePlaying = false
+
+local function playCutscene()
+	if cutscenePlaying then return end
+	local cs = findCutscene()
+	if not cs then
+		warn("[IslandCleared] катсцена: не найдена папка '" .. CUTSCENE_FOLDER ..
+			"' с Camera_1.." .. CUTSCENE_COUNT .. "_Frame на острове")
+		return
+	end
+	local frames = {}
+	for i = 1, CUTSCENE_COUNT do
+		local cf = frameCFrame(cs, i)
+		if not cf then
+			warn("[IslandCleared] катсцена: нет Camera_" .. i .. "_Frame или Camera_look_" .. i .. "_Frame")
+			return
+		end
+		frames[i] = cf
+	end
+
+	cutscenePlaying = true
+	task.spawn(function()
+		local cam = workspace.CurrentCamera
+		-- забираем управление камерой (повтор — на случай, если другой скрипт перебивает)
+		repeat
+			cam.CameraType = Enum.CameraType.Scriptable
+			task.wait()
+		until cam.CameraType == Enum.CameraType.Scriptable
+
+		cam.CFrame = frames[1]                 -- кадр 1 мгновенно
+		task.wait(CUTSCENE_HOLDS[1] or 5)      -- держим
+
+		for i = 2, CUTSCENE_COUNT do           -- резкий переход → выдержка
+			local tw = TweenService:Create(
+				cam,
+				TweenInfo.new(CUTSCENE_TRANSITION, CUTSCENE_STYLE, Enum.EasingDirection.Out),
+				{ CFrame = frames[i] }
+			)
+			tw:Play()
+			tw.Completed:Wait()
+			task.wait(CUTSCENE_HOLDS[i] or 3)
+		end
+
+		cam.CameraType = Enum.CameraType.Custom -- конец — управление игроку
+		cutscenePlaying = false
+	end)
+end
+
+-- Полный запуск по кнопке/ремоуту: анимация награды + катсцена одновременно.
+local function playAll()
+	playIslandCleared()
+	playCutscene()
+end
+
+_G.PlayIslandClearedEffect = playAll
+_G.PlayIslandClearedCutscene = playCutscene
 
 --====================================================
 -- ТЕСТ-КНОПКА (по центру правого края) — пока нет реального триггера
@@ -459,7 +564,7 @@ btnStroke.Color = Color3.fromRGB(120, 80, 0)
 btnStroke.Thickness = 2
 btnStroke.Parent = btn
 
-btn.MouseButton1Click:Connect(playIslandCleared)
+btn.MouseButton1Click:Connect(playAll)
 
 --====================================================
 -- НЕОБЯЗАТЕЛЬНЫЙ ХУК ДЛЯ СЕРВЕРА (если появится RemoteEvent)
@@ -468,7 +573,7 @@ btn.MouseButton1Click:Connect(playIslandCleared)
 local function bindRemote(remote)
 	if remote and remote:IsA("RemoteEvent") then
 		remote.OnClientEvent:Connect(function()
-			playIslandCleared()
+			playAll()
 		end)
 	end
 end
