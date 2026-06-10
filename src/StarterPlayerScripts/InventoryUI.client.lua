@@ -329,23 +329,30 @@ local isOpen = false
 local screenGui = nil
 local hotbarGui = nil
 
--- Wooden / tan inventory palette.
+-- Палитра «Океан» из редизайна (спека: панель #54A7EC→#3A7FD0, рамка #1C4F8F,
+-- слот #A9D6F7, золото #FFD95A/#F5B73C, цена #4CD964/#FF6B5A). Ключи прежние —
+-- вся логика перекрашивается через эту таблицу.
 local COLORS = {
-	panelBg = Color3.fromRGB(139, 109, 63),
-	panelBorder = Color3.fromRGB(100, 75, 40),
-	slotBg = Color3.fromRGB(175, 145, 95),
-	slotBorder = Color3.fromRGB(120, 90, 50),
-	titleText = Color3.fromRGB(50, 35, 15),
-	lightText = Color3.fromRGB(255, 245, 220),
-	craftPanelBg = Color3.fromRGB(220, 205, 175),
-	craftItemBg = Color3.fromRGB(200, 180, 140),
-	craftItemHover = Color3.fromRGB(180, 160, 120),
-	affordable = Color3.fromRGB(60, 160, 60),
-	notAffordable = Color3.fromRGB(160, 60, 60),
-	hotbarBg = Color3.fromRGB(139, 109, 63),
-	separator = Color3.fromRGB(200, 185, 150),
-	equipped = Color3.fromRGB(200, 170, 100),
+	panelTop = Color3.fromHex("54A7EC"),    -- верх градиента панели
+	panelBg = Color3.fromHex("3A7FD0"),     -- низ градиента панели
+	panelBorder = Color3.fromHex("1C4F8F"),
+	slotBg = Color3.fromHex("A9D6F7"),
+	slotBorder = Color3.fromHex("1C4F8F"),
+	slotLocked = Color3.fromHex("2A5CA0"),  -- заблокированный слот (тёмный)
+	titleText = Color3.fromRGB(255, 255, 255),
+	lightText = Color3.fromRGB(255, 255, 255),
+	craftPanelBg = Color3.fromHex("3A7FD0"),
+	craftItemBg = Color3.fromHex("2F6CB8"),
+	craftItemHover = Color3.fromHex("4E92DC"),
+	affordable = Color3.fromHex("4CD964"),
+	notAffordable = Color3.fromHex("FF6B5A"),
+	hotbarBg = Color3.fromHex("3A7FD0"),
+	separator = Color3.fromHex("1C4F8F"),
+	equipped = Color3.fromHex("F5B73C"),    -- активный слот/вкладка — золото
+	goldFrame = Color3.fromHex("B07A14"),
 }
+-- Пустой слот — заливка 35% прозрачности (по споке); занятый — 0.
+local SLOT_EMPTY_TRANSPARENCY = 0.35
 
 local HOTBAR_SLOTS = 8
 local GRID_SLOTS = 20
@@ -454,12 +461,19 @@ local function applyUnlockedSlots()
 		local globalIdx = HOTBAR_SLOTS + i
 		local locked    = globalIdx > unlockedSlots
 		if rec.button then
-			rec.button.BackgroundTransparency = locked and 0.55 or 0.05
-			rec.button.AutoButtonColor        = false
-			rec.button.Active                 = not locked
+			if locked then
+				-- заблокированный слот — тёмная заливка (как в прототипе)
+				rec.button.BackgroundColor3 = COLORS.slotLocked
+				rec.button.BackgroundTransparency = 0.25
+			else
+				rec.button.BackgroundColor3 = COLORS.slotBg
+				rec.button.BackgroundTransparency = SLOT_EMPTY_TRANSPARENCY -- renderAllSlots уточнит (0, если занят)
+			end
+			rec.button.AutoButtonColor = false
+			rec.button.Active          = not locked
 		end
 		if rec.stroke then
-			rec.stroke.Transparency = locked and 0.7 or 0
+			rec.stroke.Transparency = locked and 0.5 or 0
 		end
 	end
 
@@ -625,11 +639,11 @@ local function ensureTooltipGui()
 	tooltipLabel.Name = "Label"
 	tooltipLabel.AutomaticSize = Enum.AutomaticSize.XY
 	tooltipLabel.Size = UDim2.new(0, 0, 0, 0)
-	tooltipLabel.BackgroundColor3 = Color3.fromRGB(30, 22, 10)
-	tooltipLabel.BackgroundTransparency = 0.1
+	tooltipLabel.BackgroundColor3 = COLORS.panelBorder
+	tooltipLabel.BackgroundTransparency = 0.05
 	tooltipLabel.BorderSizePixel = 0
-	tooltipLabel.TextColor3 = Color3.fromRGB(255, 245, 220)
-	tooltipLabel.Font = Enum.Font.GothamMedium
+	tooltipLabel.TextColor3 = Color3.new(1, 1, 1)
+	tooltipLabel.Font = Enum.Font.GothamBold
 	tooltipLabel.TextSize = 14
 	tooltipLabel.Text = ""
 	tooltipLabel.Parent = tooltipGui
@@ -642,12 +656,12 @@ local function ensureTooltipGui()
 	pad.Parent = tooltipLabel
 
 	local corner = Instance.new("UICorner")
-	corner.CornerRadius = UDim.new(0, 4)
+	corner.CornerRadius = UDim.new(0, 8)
 	corner.Parent = tooltipLabel
 
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(120, 90, 50)
-	stroke.Thickness = 1
+	stroke.Color = Color3.fromHex("0F2C52")
+	stroke.Thickness = 2
 	stroke.Parent = tooltipLabel
 end
 
@@ -1289,6 +1303,8 @@ function renderAllSlots()
 				local slot = bar:FindFirstChild("HotbarSlot_" .. i)
 				if slot then
 					renderSlot(slot, slotData[i])
+					-- пустой слот — 35% прозрачности, занятый — плотный
+					slot.BackgroundTransparency = slotData[i] and 0 or SLOT_EMPTY_TRANSPARENCY
 					local data = slotData[i]
 					if data and data.type == "tool" and char then
 						-- Match by Tool INSTANCE, not by Tool.Name —
@@ -1351,7 +1367,16 @@ function renderAllSlots()
 			for i = 1, GRID_SLOTS do
 				local slot = grid:FindFirstChild("Slot_" .. i)
 				if slot then
-					renderSlot(slot, slotData[HOTBAR_SLOTS + i])
+					local globalIdx = HOTBAR_SLOTS + i
+					renderSlot(slot, slotData[globalIdx])
+					-- стиль слота: заблокирован — тёмный; пустой — 35%; занятый — плотный
+					if isSlotLocked(globalIdx) then
+						slot.BackgroundColor3 = COLORS.slotLocked
+						slot.BackgroundTransparency = 0.25
+					else
+						slot.BackgroundColor3 = COLORS.slotBg
+						slot.BackgroundTransparency = slotData[globalIdx] and 0 or SLOT_EMPTY_TRANSPARENCY
+					end
 				end
 			end
 		end
@@ -2203,11 +2228,15 @@ local function updateCategoryTabs()
 		if tab:IsA("TextButton") then
 			local cat = tab:GetAttribute("Category")
 			local color
+			local stroke = tab:FindFirstChildWhichIsA("UIStroke")
 			if cat == selectedCategory then
-				tab.BackgroundColor3 = COLORS.panelBg
+				-- активная вкладка — всегда золотая (спека)
+				tab.BackgroundColor3 = COLORS.equipped
+				if stroke then stroke.Color = COLORS.goldFrame end
 				color = COLORS.lightText
 			else
 				tab.BackgroundColor3 = COLORS.craftItemBg
+				if stroke then stroke.Color = COLORS.panelBorder end
 				color = COLORS.titleText
 			end
 			tab.TextColor3 = color
@@ -2351,18 +2380,22 @@ local function buildHotbar()
 	bar.Name = "Hotbar"
 	bar.Size = UDim2.new(0, barWidth, 0, SLOT_SIZE + SLOT_PAD * 2)
 	bar.Position = UDim2.new(0.5, -barWidth / 2, 1, -(SLOT_SIZE + SLOT_PAD * 2) - 10)
-	bar.BackgroundColor3 = COLORS.hotbarBg
-	bar.BackgroundTransparency = 0.15
+	bar.BackgroundColor3 = Color3.new(1, 1, 1) -- белый под градиент (он умножается)
 	bar.BorderSizePixel = 0
 	bar.Parent = hotbarGui
 
+	local barGradient = Instance.new("UIGradient")
+	barGradient.Color = ColorSequence.new(COLORS.panelTop, COLORS.panelBg)
+	barGradient.Rotation = 90
+	barGradient.Parent = bar
+
 	local barCorner = Instance.new("UICorner")
-	barCorner.CornerRadius = UDim.new(0, 8)
+	barCorner.CornerRadius = UDim.new(0, 18)
 	barCorner.Parent = bar
 
 	local barStroke = Instance.new("UIStroke")
 	barStroke.Color = COLORS.panelBorder
-	barStroke.Thickness = 2
+	barStroke.Thickness = 4
 	barStroke.Parent = bar
 
 	for i = 1, HOTBAR_SLOTS do
@@ -2371,19 +2404,19 @@ local function buildHotbar()
 		slot.Size = UDim2.new(0, SLOT_SIZE, 0, SLOT_SIZE)
 		slot.Position = UDim2.new(0, SLOT_PAD + (i - 1) * (SLOT_SIZE + SLOT_PAD), 0, SLOT_PAD)
 		slot.BackgroundColor3 = COLORS.slotBg
-		slot.BackgroundTransparency = 0.1
+		slot.BackgroundTransparency = SLOT_EMPTY_TRANSPARENCY
 		slot.BorderSizePixel = 0
 		slot.Text = ""
 		slot.AutoButtonColor = false
 		slot.Parent = bar
 
 		local slotCorner = Instance.new("UICorner")
-		slotCorner.CornerRadius = UDim.new(0, 6)
+		slotCorner.CornerRadius = UDim.new(0, 12)
 		slotCorner.Parent = slot
 
 		local slotStroke = Instance.new("UIStroke")
 		slotStroke.Color = COLORS.slotBorder
-		slotStroke.Thickness = 1.5
+		slotStroke.Thickness = 3
 		slotStroke.Parent = slot
 
 		local slotIndex = i
@@ -2537,76 +2570,72 @@ local function buildUI()
 	centerPanel.Name = "CenterPanel"
 	centerPanel.Size = UDim2.new(0, panelWidth, 0, panelHeight)
 	centerPanel.Position = UDim2.new(0.5, centerPanelLeft, 0.5, -panelHeight / 2)
-	centerPanel.BackgroundColor3 = COLORS.panelBg
+	centerPanel.BackgroundColor3 = Color3.new(1, 1, 1) -- белый под градиент (он умножается)
 	centerPanel.BorderSizePixel = 0
 	centerPanel.Parent = screenGui
 
+	local centerGradient = Instance.new("UIGradient")
+	centerGradient.Color = ColorSequence.new(COLORS.panelTop, COLORS.panelBg)
+	centerGradient.Rotation = 90
+	centerGradient.Parent = centerPanel
+
 	local centerCorner = Instance.new("UICorner")
-	centerCorner.CornerRadius = UDim.new(0, 10)
+	centerCorner.CornerRadius = UDim.new(0, 18)
 	centerCorner.Parent = centerPanel
 
 	local centerStroke = Instance.new("UIStroke")
 	centerStroke.Color = COLORS.panelBorder
-	centerStroke.Thickness = 3
+	centerStroke.Thickness = 4
 	centerStroke.Parent = centerPanel
 
 	local title = Instance.new("TextLabel")
 	title.Size = UDim2.new(1, -80, 0, 30)
-	title.Position = UDim2.new(0, 10, 0, 8)
+	title.Position = UDim2.new(0, 14, 0, 8)
 	title.BackgroundTransparency = 1
 	title.Text = "Inventory"
 	title.TextColor3 = COLORS.titleText
-	title.Font = Enum.Font.GothamBold
+	title.Font = Enum.Font.GothamBlack
 	title.TextSize = 22
+	title.TextStrokeColor3 = Color3.new(0, 0, 0)
+	title.TextStrokeTransparency = 0.6
 	title.TextXAlignment = Enum.TextXAlignment.Left
 	title.Parent = centerPanel
 
-	local sep = Instance.new("Frame")
-	sep.Size = UDim2.new(1, -30, 0, 2)
-	sep.Position = UDim2.new(0, 15, 0, 42)
-	sep.BackgroundColor3 = COLORS.separator
-	sep.BorderSizePixel = 0
-	sep.Parent = centerPanel
-
-	-- Log counter
-	local logIcon = Instance.new("ImageLabel")
-	logIcon.Size = UDim2.new(0, 20, 0, 20)
-	logIcon.Position = UDim2.new(1, -130, 0, 13)
-	logIcon.BackgroundTransparency = 1
-	logIcon.Image = LOG_ICON
-	logIcon.ScaleType = Enum.ScaleType.Fit
-	logIcon.Parent = centerPanel
-
-	local logCount = Instance.new("TextLabel")
-	logCount.Name = "LogCount"
-	logCount.Size = UDim2.new(0, 30, 0, 20)
-	logCount.Position = UDim2.new(1, -108, 0, 13)
-	logCount.BackgroundTransparency = 1
-	logCount.Text = "0" -- updated by renderAllSlots from slotData
-	logCount.TextColor3 = COLORS.titleText
-	logCount.Font = Enum.Font.GothamBold
-	logCount.TextSize = 14
-	logCount.TextXAlignment = Enum.TextXAlignment.Left
-	logCount.Parent = centerPanel
-
-	-- Plastic counter
-	local plasticIcon = Instance.new("ImageLabel")
-	plasticIcon.Size = UDim2.new(0, 20, 0, 20)
-	plasticIcon.Position = UDim2.new(1, -70, 0, 13)
-	plasticIcon.BackgroundTransparency = 1
-	plasticIcon.Image = PLASTIC_ICON
-	plasticIcon.ScaleType = Enum.ScaleType.Fit
-	plasticIcon.Parent = centerPanel
-
-	local plasticCount = Instance.new("TextLabel")
-	plasticCount.Name = "PlasticCount"
-	plasticCount.Size = UDim2.new(0, 30, 0, 20)
-	plasticCount.Position = UDim2.new(1, -48, 0, 13)
-	plasticCount.BackgroundTransparency = 1
-	plasticCount.Text = "0" -- updated by renderAllSlots from slotData
-	plasticCount.TextColor3 = COLORS.titleText
-	plasticCount.Font = Enum.Font.GothamBold
-	plasticCount.TextSize = 14
+	-- Валюты в шапке — тёмно-синие пилюли (иконка + число), как в прототипе.
+	-- Имена "LogCount"/"PlasticCount" сохранены — их обновляет renderAllSlots.
+	local function headerChip(name, icon, rightOffset)
+		local chip = Instance.new("Frame")
+		chip.Name = name .. "Chip"
+		chip.AnchorPoint = Vector2.new(1, 0)
+		chip.Position = UDim2.new(1, rightOffset, 0, 10)
+		chip.Size = UDim2.new(0, 66, 0, 26)
+		chip.BackgroundColor3 = COLORS.panelBorder
+		chip.BorderSizePixel = 0
+		chip.Parent = centerPanel
+		local cc = Instance.new("UICorner")
+		cc.CornerRadius = UDim.new(1, 0)
+		cc.Parent = chip
+		local ic = Instance.new("ImageLabel")
+		ic.Size = UDim2.new(0, 18, 0, 18)
+		ic.Position = UDim2.new(0, 5, 0, 4)
+		ic.BackgroundTransparency = 1
+		ic.Image = icon
+		ic.ScaleType = Enum.ScaleType.Fit
+		ic.Parent = chip
+		local ct = Instance.new("TextLabel")
+		ct.Name = name .. "Count"
+		ct.Size = UDim2.new(1, -30, 1, 0)
+		ct.Position = UDim2.new(0, 27, 0, 0)
+		ct.BackgroundTransparency = 1
+		ct.Text = "0" -- updated by renderAllSlots from slotData
+		ct.TextColor3 = COLORS.lightText
+		ct.Font = Enum.Font.GothamBold
+		ct.TextSize = 14
+		ct.TextXAlignment = Enum.TextXAlignment.Left
+		ct.Parent = chip
+	end
+	headerChip("Log", LOG_ICON, -110)
+	headerChip("Plastic", PLASTIC_ICON, -40)
 	-- Inventory grid (these are slots 9-28)
 	local gridFrame = Instance.new("Frame")
 	gridFrame.Name = "InventoryGrid"
@@ -2627,19 +2656,19 @@ local function buildUI()
 		slot.Size = UDim2.new(0, SLOT_SIZE, 0, SLOT_SIZE)
 		slot.Position = UDim2.new(0, SLOT_PAD + col * (SLOT_SIZE + SLOT_PAD), 0, SLOT_PAD + row * (SLOT_SIZE + SLOT_PAD))
 		slot.BackgroundColor3 = COLORS.slotBg
-		slot.BackgroundTransparency = 0.05
+		slot.BackgroundTransparency = SLOT_EMPTY_TRANSPARENCY
 		slot.BorderSizePixel = 0
 		slot.Text = ""
 		slot.AutoButtonColor = false
 		slot.Parent = gridFrame
 
 		local slotCorner = Instance.new("UICorner")
-		slotCorner.CornerRadius = UDim.new(0, 5)
+		slotCorner.CornerRadius = UDim.new(0, 12)
 		slotCorner.Parent = slot
 
 		local slotStroke = Instance.new("UIStroke")
 		slotStroke.Color = COLORS.slotBorder
-		slotStroke.Thickness = 1.5
+		slotStroke.Thickness = 3
 		slotStroke.Parent = slot
 
 		gridSlotVisuals[i] = { button = slot, stroke = slotStroke }
@@ -2689,21 +2718,52 @@ local function buildUI()
 		end)
 	end
 
-	-- Big "NEED STRENGTH" overlay that covers the locked portion of the
-	-- grid. applyUnlockedSlots() repositions/hides it based on the
-	-- current unlocked-count.
-	lockedOverlayLabel = Instance.new("TextLabel")
+	-- "NEED STRENGTH" над заблокированной частью сетки — красная пилюля по центру
+	-- области (как в прототипе). applyUnlockedSlots() позиционирует/прячет контейнер.
+	lockedOverlayLabel = Instance.new("Frame")
 	lockedOverlayLabel.Name = "LockedOverlay"
 	lockedOverlayLabel.BackgroundTransparency = 1
-	lockedOverlayLabel.Text = "NEED STRENGTH"
-	lockedOverlayLabel.Font = Enum.Font.GothamBold
-	lockedOverlayLabel.TextScaled = true
-	lockedOverlayLabel.TextColor3 = Color3.fromRGB(240, 240, 240)
-	lockedOverlayLabel.TextTransparency = 0.25
-	lockedOverlayLabel.TextStrokeTransparency = 0.4
-	lockedOverlayLabel.TextStrokeColor3 = Color3.fromRGB(20, 20, 20)
 	lockedOverlayLabel.ZIndex = 10
 	lockedOverlayLabel.Parent = gridFrame
+
+	local needPill = Instance.new("Frame")
+	needPill.Name = "Pill"
+	needPill.AnchorPoint = Vector2.new(0.5, 0.5)
+	needPill.Position = UDim2.fromScale(0.5, 0.5)
+	needPill.AutomaticSize = Enum.AutomaticSize.XY
+	needPill.BackgroundColor3 = COLORS.notAffordable
+	needPill.BorderSizePixel = 0
+	needPill.ZIndex = 11
+	needPill.Parent = lockedOverlayLabel
+
+	local needCorner = Instance.new("UICorner")
+	needCorner.CornerRadius = UDim.new(1, 0)
+	needCorner.Parent = needPill
+
+	local needStroke = Instance.new("UIStroke")
+	needStroke.Color = Color3.fromHex("8A2A12")
+	needStroke.Thickness = 3
+	needStroke.Parent = needPill
+
+	local needPad = Instance.new("UIPadding")
+	needPad.PaddingLeft = UDim.new(0, 16)
+	needPad.PaddingRight = UDim.new(0, 16)
+	needPad.PaddingTop = UDim.new(0, 7)
+	needPad.PaddingBottom = UDim.new(0, 7)
+	needPad.Parent = needPill
+
+	local needText = Instance.new("TextLabel")
+	needText.AutomaticSize = Enum.AutomaticSize.XY
+	needText.Size = UDim2.new(0, 0, 0, 0)
+	needText.BackgroundTransparency = 1
+	needText.Text = "NEED STRENGTH"
+	needText.Font = Enum.Font.GothamBlack
+	needText.TextSize = 16
+	needText.TextColor3 = Color3.new(1, 1, 1)
+	needText.TextStrokeColor3 = Color3.new(0, 0, 0)
+	needText.TextStrokeTransparency = 0.6
+	needText.ZIndex = 12
+	needText.Parent = needPill
 
 	applyUnlockedSlots()
 
@@ -2714,36 +2774,36 @@ local function buildUI()
 	craftPanel.Name = "CraftPanel"
 	craftPanel.Size = UDim2.new(0, craftPanelWidth, 0, panelHeight)
 	craftPanel.Position = UDim2.new(0.5, -combinedWidth / 2, 0.5, -panelHeight / 2)
-	craftPanel.BackgroundColor3 = COLORS.craftPanelBg
+	craftPanel.BackgroundColor3 = Color3.new(1, 1, 1) -- белый под градиент
 	craftPanel.BorderSizePixel = 0
 	craftPanel.Parent = screenGui
 
+	local craftGradient = Instance.new("UIGradient")
+	craftGradient.Color = ColorSequence.new(COLORS.panelTop, COLORS.panelBg)
+	craftGradient.Rotation = 90
+	craftGradient.Parent = craftPanel
+
 	local craftCorner = Instance.new("UICorner")
-	craftCorner.CornerRadius = UDim.new(0, 10)
+	craftCorner.CornerRadius = UDim.new(0, 18)
 	craftCorner.Parent = craftPanel
 
 	local craftStroke = Instance.new("UIStroke")
 	craftStroke.Color = COLORS.panelBorder
-	craftStroke.Thickness = 2
+	craftStroke.Thickness = 4
 	craftStroke.Parent = craftPanel
 
 	local craftTitle = Instance.new("TextLabel")
 	craftTitle.Size = UDim2.new(1, -15, 0, 28)
-	craftTitle.Position = UDim2.new(0, 10, 0, 8)
+	craftTitle.Position = UDim2.new(0, 0, 0, 8)
 	craftTitle.BackgroundTransparency = 1
 	craftTitle.Text = "Crafting"
 	craftTitle.TextColor3 = COLORS.titleText
-	craftTitle.Font = Enum.Font.GothamMedium
-	craftTitle.TextSize = 18
-	craftTitle.TextXAlignment = Enum.TextXAlignment.Left
+	craftTitle.Font = Enum.Font.GothamBlack
+	craftTitle.TextSize = 19
+	craftTitle.TextStrokeColor3 = Color3.new(0, 0, 0)
+	craftTitle.TextStrokeTransparency = 0.6
+	craftTitle.TextXAlignment = Enum.TextXAlignment.Center
 	craftTitle.Parent = craftPanel
-
-	local craftSep = Instance.new("Frame")
-	craftSep.Size = UDim2.new(1, -20, 0, 2)
-	craftSep.Position = UDim2.new(0, 10, 0, 38)
-	craftSep.BackgroundColor3 = COLORS.panelBorder
-	craftSep.BorderSizePixel = 0
-	craftSep.Parent = craftPanel
 
 	-- Vertical category tabs
 	local tabFrame = Instance.new("Frame")
@@ -2782,18 +2842,20 @@ local function buildUI()
 		label.BackgroundTransparency = 1
 		label.Text = cat
 		label.TextColor3 = COLORS.titleText
-		label.Font = Enum.Font.GothamMedium
-		label.TextSize = 18
+		label.Font = Enum.Font.GothamBlack
+		label.TextSize = 17
+		label.TextStrokeColor3 = Color3.new(0, 0, 0)
+		label.TextStrokeTransparency = 0.6
 		label.TextXAlignment = Enum.TextXAlignment.Center
 		label.Parent = tab
 
 		local tabCorner = Instance.new("UICorner")
-		tabCorner.CornerRadius = UDim.new(0, 6)
+		tabCorner.CornerRadius = UDim.new(0, 12)
 		tabCorner.Parent = tab
 
 		local tabStroke = Instance.new("UIStroke")
 		tabStroke.Color = COLORS.panelBorder
-		tabStroke.Thickness = 1
+		tabStroke.Thickness = 3
 		tabStroke.Parent = tab
 
 		tab.MouseEnter:Connect(function()
@@ -2813,21 +2875,27 @@ local function buildUI()
 		end)
 	end
 
-	-- Close button
+	-- Close button — красная скруглённая кнопка (как в прототипе)
 	local closeBtn = Instance.new("TextButton")
-	closeBtn.Size = UDim2.new(0, 28, 0, 28)
-	closeBtn.Position = UDim2.new(1, -32, 0, 6)
-	closeBtn.BackgroundColor3 = Color3.fromRGB(180, 60, 50)
-	closeBtn.Text = "X"
+	closeBtn.Size = UDim2.new(0, 30, 0, 30)
+	closeBtn.Position = UDim2.new(1, -36, 0, 8)
+	closeBtn.BackgroundColor3 = COLORS.notAffordable
+	closeBtn.Text = "✕"
 	closeBtn.TextColor3 = Color3.new(1, 1, 1)
-	closeBtn.Font = Enum.Font.GothamBold
+	closeBtn.Font = Enum.Font.GothamBlack
 	closeBtn.TextSize = 16
 	closeBtn.BorderSizePixel = 0
+	closeBtn.AutoButtonColor = true
 	closeBtn.Parent = centerPanel
 
 	local closeBtnCorner = Instance.new("UICorner")
-	closeBtnCorner.CornerRadius = UDim.new(0, 6)
+	closeBtnCorner.CornerRadius = UDim.new(0, 10)
 	closeBtnCorner.Parent = closeBtn
+
+	local closeBtnStroke = Instance.new("UIStroke")
+	closeBtnStroke.Color = Color3.fromHex("8A2A12")
+	closeBtnStroke.Thickness = 3
+	closeBtnStroke.Parent = closeBtn
 
 	closeBtn.MouseButton1Click:Connect(closeUI)
 
