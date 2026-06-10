@@ -29,14 +29,14 @@ local inventoryEvent     = ReplicatedStorage:WaitForChild("InventoryUpdate", 30)
 local openWorkbenchEvent = ReplicatedStorage:WaitForChild("OpenWorkbench", 30)
 
 -- ─── Wood/paper palette (matches QuestMenu) ─────────────────────────
-local COLOR_WOOD_DARKEST = Color3.fromRGB( 61,  40,  23)
-local COLOR_WOOD_DARK    = Color3.fromRGB( 91,  58,  34)
-local COLOR_WOOD_MID     = Color3.fromRGB(138, 106,  68)
-local COLOR_WOOD_BASE    = Color3.fromRGB(176, 138,  92)
-local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
-local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
-local COLOR_GREEN_OK     = Color3.fromRGB( 96, 148,  72)
-local COLOR_RED_BAD      = Color3.fromRGB(168,  64,  56)
+local COLOR_WOOD_DARKEST = Color3.fromHex("123C6E") -- тёмно-синий (текст/рамки)
+local COLOR_WOOD_DARK    = Color3.fromHex("1C4F8F")
+local COLOR_WOOD_MID     = Color3.fromHex("3A7FD0")
+local COLOR_WOOD_BASE    = Color3.fromHex("54A7EC")
+local COLOR_PAPER        = Color3.fromHex("CFE6FA") -- светлая «бумага» в голубом
+local COLOR_PAPER_LIGHT  = Color3.fromHex("E3F1FD")
+local COLOR_GREEN_OK     = Color3.fromHex("4CD964")
+local COLOR_RED_BAD      = Color3.fromHex("FF6B5A")
 
 -- ─── Layout constants ───────────────────────────────────────────────
 local SCREENGUI_DISPLAY_ORDER = 105
