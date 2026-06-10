@@ -74,6 +74,46 @@ local function playSound(name)
 	end
 end
 
+-- Звуки, которые лежат ДЕТЬМИ этого скрипта (Music, Tree_Farm_Spawn, Storage_Spawn …).
+local function sfx(name)
+	if not name then return nil end
+	local s = script:FindFirstChild(name)
+	return (s and s:IsA("Sound")) and s or nil
+end
+
+-- Сыграть звук-«ваншот» из детей скрипта (с начала).
+local function playSfx(s)
+	if s then
+		s.TimePosition = 0
+		s:Play()
+	end
+end
+
+-- Фоновая музыка: плавный заход в начале анимации и плавное затухание в КОНЦЕ
+-- анимации (не звука). Родную громкость берём из самого Sound.
+local MUSIC_FADE_IN  = 1.0
+local MUSIC_FADE_OUT = 1.2
+local music = sfx("Music")
+local musicTarget = (music and music.Volume > 0) and music.Volume or 0.5
+
+local function startMusic()
+	if not music then return end
+	music.Looped = true -- на случай, если анимация окажется длиннее трека
+	music.Volume = 0
+	music.TimePosition = 0
+	music:Play()
+	TweenService:Create(music, TweenInfo.new(MUSIC_FADE_IN), { Volume = musicTarget }):Play()
+end
+
+local function stopMusic()
+	if not music then return end
+	local fade = TweenService:Create(music, TweenInfo.new(MUSIC_FADE_OUT), { Volume = 0 })
+	fade:Play()
+	fade.Completed:Once(function()
+		if music.Volume <= 0.001 then music:Stop() end -- не глушим, если уже перезапустили
+	end)
+end
+
 --====================================================
 -- GUI (строим один раз; в простое ничего не видно)
 --====================================================
@@ -451,6 +491,7 @@ local CUTSCENE_DRIFT_STYLE = Enum.EasingStyle.Linear -- дрейф внутри 
 -- GetScale — никакого хардкода, работает на любом острове) за GROW_PORTION времени
 -- выдержки. Прячутся (масштаб ~0) в момент старта катсцены.
 local GROW_MODELS  = { [2] = "Tree_Farm", [3] = "Storage_Palm" }
+local GROW_SOUNDS  = { [2] = "Tree_Farm_Spawn", [3] = "Storage_Spawn" } -- звук в момент роста
 local GROW_DELAY   = 0.2  -- старт роста после прихода камеры в кадр
 local GROW_PORTION = 0.5  -- доля выдержки кадра на рост (половина)
 local GROW_STYLE   = Enum.EasingStyle.Back -- в конце чуть перерастает и «садится»
@@ -599,20 +640,20 @@ end
 
 local cutscenePlaying = false
 
-local function playCutscene()
-	if cutscenePlaying then return end
+local function playCutscene(onComplete)
+	if cutscenePlaying then return false end
 	local cs = findCutscene()
 	if not cs then
 		warn("[IslandCleared] катсцена: не найдена папка '" .. CUTSCENE_FOLDER ..
 			"' с Camera_1.." .. CUTSCENE_COUNT .. "_Frame на острове")
-		return
+		return false
 	end
 	local frames = {}
 	for i = 1, CUTSCENE_COUNT do
 		local shot = shotFrames(cs, i)
 		if not shot then
 			warn("[IslandCleared] катсцена: нет Camera_" .. i .. "_Frame или Camera_look_" .. i .. "_Frame")
-			return
+			return false
 		end
 		frames[i] = shot
 	end
@@ -625,7 +666,7 @@ local function playCutscene()
 		local m = findNearestModel(modelName, origin)
 		if m then
 			hideBuilding(m) -- no-op, если уже спрятана; иначе спрячет и запомнит Scale
-			grows[shotIdx] = { model = m, scale = hiddenBuildings[m].scale }
+			grows[shotIdx] = { model = m, scale = hiddenBuildings[m].scale, sound = sfx(GROW_SOUNDS[shotIdx]) }
 		else
 			warn("[IslandCleared] катсцена: не нашёл модель '" .. modelName .. "' для кадра " .. shotIdx)
 		end
@@ -660,6 +701,7 @@ local function playCutscene()
 			local g = grows[i]
 			if not g then return end
 			task.delay(GROW_DELAY, function()
+				playSfx(g.sound) -- звук появления — синхронно с началом роста модели
 				growModel(g.model, g.scale, (CUTSCENE_HOLDS[i] or 3) * GROW_PORTION, function()
 					revealBuilding(g.model) -- рост закончен — включаем функционал (промпты)
 				end)
@@ -702,13 +744,30 @@ local function playCutscene()
 
 		cam.CameraType = Enum.CameraType.Custom -- конец — управление игроку
 		cutscenePlaying = false
+		if onComplete then onComplete() end
 	end)
+	return true
 end
 
--- Полный запуск по кнопке/ремоуту: анимация награды + катсцена одновременно.
+-- Полный запуск по кнопке/ремоуту: музыка + анимация награды + катсцена. Музыка
+-- затухает в КОНЦЕ анимации (конец катсцены; если её нет — после баннера/тостов).
+local MUSIC_TAIL = 11.5
+local effectRunning = false
 local function playAll()
+	if effectRunning then return end
+	effectRunning = true
+	startMusic()
 	playIslandCleared()
-	playCutscene()
+	local started = playCutscene(function()
+		stopMusic()
+		effectRunning = false
+	end)
+	if not started then
+		task.delay(MUSIC_TAIL, function()
+			stopMusic()
+			effectRunning = false
+		end)
+	end
 end
 
 _G.PlayIslandClearedEffect = playAll
