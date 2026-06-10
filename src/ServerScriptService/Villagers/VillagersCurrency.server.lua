@@ -44,3 +44,35 @@ _G.SpendVillagers = function(player, n)
 	player:SetAttribute("Villagers", have - n)
 	return true
 end
+
+--====================================================
+-- Награда за зачистку острова (+жители)
+--====================================================
+-- Клиентская анимация «Остров зачищен!» в момент кадра-1 просит начислить жителей.
+-- ВРЕМЕННО клиент-инициировано (тест-кнопкой): когда появится реальный СЕРВЕРНЫЙ
+-- триггер зачистки, награду должен выдавать он, а этот обработчик — закрыть/убрать
+-- (иначе эксплойт «бесконечные жители»). Пока — кулдаун на игрока против спама.
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ISLAND_REWARD_VILLAGERS = 5
+local ISLAND_REWARD_COOLDOWN  = 20
+
+local rewardRemote = ReplicatedStorage:FindFirstChild("IslandClearedReward")
+if not rewardRemote then
+	rewardRemote = Instance.new("RemoteEvent")
+	rewardRemote.Name = "IslandClearedReward"
+	rewardRemote.Parent = ReplicatedStorage
+end
+
+local lastReward = {}
+rewardRemote.OnServerEvent:Connect(function(player)
+	local now = os.clock()
+	if lastReward[player] and now - lastReward[player] < ISLAND_REWARD_COOLDOWN then
+		return
+	end
+	lastReward[player] = now
+	_G.AddVillagers(player, ISLAND_REWARD_VILLAGERS)
+end)
+
+Players.PlayerRemoving:Connect(function(player)
+	lastReward[player] = nil
+end)

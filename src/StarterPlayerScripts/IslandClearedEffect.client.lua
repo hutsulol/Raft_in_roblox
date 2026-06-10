@@ -35,14 +35,13 @@ local SOUND_CARD   = "Level Complete"       -- при появлении кар�
 local SHOW_OVERLAY_TEXT = false
 local OVERLAY_TEXT      = "ОСТРОВ ЗАЧИЩЕН!"
 
--- Сводка наград сверху-справа (шаг 7): ТРИ отдельных тоста, появляются вместе.
-local CARD_LINES   = {
-	"🏴 Пиратский лагерь уничтожен",
-	"👥 Освобождено жителей: +5",
-	"📍 Доступна телепортация на остров",
-}
-local CARD_DELAY   = 5.0  -- через сколько после старта показать сводку (не «почти сразу»)
-local CARD_DISPLAY = 5.0  -- сколько сводка висит до ухода
+-- Уведомления сверху-справа появляются по ходу катсцены (по кадрам), стопкой.
+local NOTIF_VILLAGERS      = "👥 Освобождено жителей: +5" -- кадр 1 (+5 к валюте)
+local NOTIF_MONOLITH_TITLE = "🗿 Древний монолит"          -- кадр 2
+local NOTIF_MONOLITH_BODY  = "Открыто новое: Лесорубы"
+local NOTIF_TELEPORT       = "📍 Доступна телепортация на остров" -- конец анимации
+local NOTIF_DURATION       = 6   -- сколько висит один тост
+local ISLAND_REWARD_VILLAGERS = 5 -- сколько жителей реально начислить
 
 -- Сколько баннер держится перед уходом (до появления сводки).
 local BANNER_HOLD  = 4.5
@@ -221,35 +220,40 @@ overlay.ZIndex = 4
 overlay.Visible = false
 overlay.Parent = banner
 
--- 7) сводка наград сверху-справа — ТРИ отдельных тоста в стопке. Двигаем общий
--- контейнер, поэтому все три «выезжают» в одно время (как пачка квестов).
+-- Уведомления-тосты сверху-справа (ниже счётчика «Жители»): появляются по одному в
+-- разные моменты катсцены и накапливаются стопкой. Каждый «вспыхивает» (pop + fade
+-- через CanvasGroup) и сам исчезает через duration.
 local notif = Instance.new("Frame")
 notif.Name = "RewardToasts"
 notif.AnchorPoint = Vector2.new(1, 0)
-notif.Position = UDim2.new(1, 380, 0, 16) -- старт за правым краем
-notif.Size = UDim2.new(0, 330, 0, 0)
-notif.AutomaticSize = Enum.AutomaticSize.Y
+notif.Position = UDim2.new(1, -16, 0, 64) -- ниже HUD «Жители»
+notif.Size = UDim2.new(0, 330, 1, -80)
 notif.BackgroundTransparency = 1
 notif.ZIndex = 10
-notif.Visible = false
 notif.Parent = gui
 
 local notifList = Instance.new("UIListLayout")
 notifList.SortOrder = Enum.SortOrder.LayoutOrder
 notifList.Padding = UDim.new(0, 8)
 notifList.HorizontalAlignment = Enum.HorizontalAlignment.Right
+notifList.VerticalAlignment = Enum.VerticalAlignment.Top
 notifList.Parent = notif
 
--- Один тост = одна строка-награда (отдельная карточка в стиле уведомлений квестов).
-local function buildToast(text, order)
-	local panel = Instance.new("Frame")
-	panel.Name = "Toast" .. order
+local notifOrder = 0
+
+-- Показать тост: title (акцент, опц.) + body. Появляется поверх стопки, гаснет сам.
+local function pushToast(title, body, duration)
+	playSound(SOUND_CARD) -- чим уведомления (Level Complete из SoundService)
+	notifOrder += 1
+	local panel = Instance.new("CanvasGroup") -- GroupTransparency гасит всё разом
+	panel.Name = "Toast"
 	panel.Size = UDim2.new(1, 0, 0, 0)
 	panel.AutomaticSize = Enum.AutomaticSize.Y
 	panel.BackgroundColor3 = COLOR_PANEL
 	panel.BackgroundTransparency = 0.08
 	panel.BorderSizePixel = 0
-	panel.LayoutOrder = order
+	panel.GroupTransparency = 1
+	panel.LayoutOrder = notifOrder
 	panel.ZIndex = 11
 	panel.Parent = notif
 
@@ -269,24 +273,62 @@ local function buildToast(text, order)
 	pad.PaddingRight  = UDim.new(0, 12)
 	pad.Parent = panel
 
-	local lbl = Instance.new("TextLabel")
-	lbl.Name = "Text"
-	lbl.BackgroundTransparency = 1
-	lbl.Size = UDim2.new(1, 0, 0, 0)
-	lbl.AutomaticSize = Enum.AutomaticSize.Y
-	lbl.Font = FONT_BODY
-	lbl.TextSize = 16
-	lbl.TextColor3 = COLOR_TEXT
-	lbl.Text = text
-	lbl.TextXAlignment = Enum.TextXAlignment.Left
-	lbl.TextWrapped = true
-	lbl.ZIndex = 12
-	lbl.Parent = panel
+	local list = Instance.new("UIListLayout")
+	list.SortOrder = Enum.SortOrder.LayoutOrder
+	list.Padding = UDim.new(0, 2)
+	list.Parent = panel
+
+	local function addLine(text, font, size, color, order)
+		local lbl = Instance.new("TextLabel")
+		lbl.BackgroundTransparency = 1
+		lbl.Size = UDim2.new(1, 0, 0, 0)
+		lbl.AutomaticSize = Enum.AutomaticSize.Y
+		lbl.Font = font
+		lbl.TextSize = size
+		lbl.TextColor3 = color
+		lbl.Text = text
+		lbl.TextXAlignment = Enum.TextXAlignment.Left
+		lbl.TextWrapped = true
+		lbl.LayoutOrder = order
+		lbl.Parent = panel
+	end
+	if title and title ~= "" then addLine(title, FONT_TITLE, 16, COLOR_ACCENT, 1) end
+	if body  and body  ~= "" then addLine(body,  FONT_BODY,  15, COLOR_TEXT,   2) end
+
+	local scale = Instance.new("UIScale")
+	scale.Scale = 0.85
+	scale.Parent = panel
+
+	TweenService:Create(panel, TweenInfo.new(0.3), { GroupTransparency = 0 }):Play()
+	TweenService:Create(scale, TweenInfo.new(0.35, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
+		{ Scale = 1 }):Play()
+
+	task.delay(duration or NOTIF_DURATION, function()
+		if not panel.Parent then return end
+		local out = TweenService:Create(panel, TweenInfo.new(0.3), { GroupTransparency = 1 })
+		out:Play()
+		out.Completed:Once(function() if panel.Parent then panel:Destroy() end end)
+	end)
 end
 
-for i, line in ipairs(CARD_LINES) do
-	buildToast(line, i)
+-- Реальное начисление жителей: валюта серверная, поэтому просим сервер (RemoteEvent
+-- IslandClearedReward — его создаёт VillagersCurrency.server.lua). Раз за прогон.
+local rewardRemote = ReplicatedStorage:WaitForChild("IslandClearedReward", 5)
+local rewardGranted = false
+local function grantVillagers()
+	if rewardGranted then return end
+	rewardGranted = true
+	if rewardRemote then
+		rewardRemote:FireServer()
+	else
+		warn("[IslandCleared] RemoteEvent 'IslandClearedReward' не найден — жители не начислятся")
+	end
 end
+
+-- Готовые уведомления по событиям катсцены.
+local function notifyVillagers() pushToast(nil, NOTIF_VILLAGERS, NOTIF_DURATION); grantVillagers() end
+local function notifyMonolith() pushToast(NOTIF_MONOLITH_TITLE, NOTIF_MONOLITH_BODY, NOTIF_DURATION) end
+local function notifyTeleport() pushToast(nil, NOTIF_TELEPORT, NOTIF_DURATION) end
 
 --====================================================
 -- ЧАСТИЦЫ (UI-искры вокруг баннера)
@@ -363,31 +405,6 @@ end
 
 local playing = false
 
--- Сводка наград: вся стопка из трёх тостов въезжает справа в одно время, висит,
--- уезжает. По завершении снимает флаг.
-local function showToasts()
-	notif.Position = UDim2.new(1, 380, 0, 16)
-	notif.Visible = true
-	TweenService:Create(
-		notif,
-		TweenInfo.new(0.45, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
-		{ Position = UDim2.new(1, -16, 0, 16) }
-	):Play()
-
-	task.delay(CARD_DISPLAY, function()
-		local out = TweenService:Create(
-			notif,
-			TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-			{ Position = UDim2.new(1, 380, 0, 16) }
-		)
-		out:Play()
-		out.Completed:Once(function()
-			notif.Visible = false
-			playing = false
-		end)
-	end)
-end
-
 local function playIslandCleared()
 	if playing then return end
 	playing = true
@@ -439,11 +456,7 @@ local function playIslandCleared()
 		end)
 	end
 
-	-- 5) сводка наград (три тоста в одно время) + её звук (через CARD_DELAY)
-	task.delay(CARD_DELAY, function()
-		showToasts()
-		playSound(SOUND_CARD)
-	end)
+	-- (уведомления-награды теперь показывает катсцена по кадрам, см. playCutscene)
 
 	-- уход баннера вверх
 	task.delay(BANNER_HOLD, function()
@@ -864,6 +877,7 @@ local function playCutscene(onComplete)
 		twIn.Completed:Wait()
 		spawnFreedVillagers(origin) -- освобождённые жители выходят из палатки (кадр 1)
 		task.delay(FLAG_DELAY, recolorFlag, origin) -- флаг: чёрный → Navy blue (2-я сек)
+		notifyVillagers()                  -- кадр 1: «+5 жителей» (и реально начисляем)
 		startGrow(1)
 		holdShot(cam, frames[1], CUTSCENE_HOLDS[1] or 5)
 
@@ -875,6 +889,7 @@ local function playCutscene(onComplete)
 			)
 			tw:Play()
 			tw.Completed:Wait()
+			if i == 2 then notifyMonolith() end -- кадр 2: «Древний монолит / Лесорубы»
 			startGrow(i)
 			holdShot(cam, frames[i], CUTSCENE_HOLDS[i] or 3)
 		end
@@ -897,6 +912,7 @@ local function playCutscene(onComplete)
 		end
 
 		cam.CameraType = Enum.CameraType.Custom -- конец — управление игроку
+		notifyTeleport()                        -- конец анимации: «доступна телепортация»
 		cutscenePlaying = false
 		if onComplete then onComplete() end
 	end)
@@ -910,6 +926,7 @@ local effectRunning = false
 local function playAll()
 	if effectRunning then return end
 	effectRunning = true
+	rewardGranted = false -- разрешить начисление в этом прогоне
 	startMusic()
 	playIslandCleared()
 	local started = playCutscene(function()
@@ -917,6 +934,10 @@ local function playAll()
 		effectRunning = false
 	end)
 	if not started then
+		-- катсцены нет — показываем уведомления по таймеру (тосты обычно ведёт катсцена)
+		task.delay(1, notifyVillagers)
+		task.delay(5, notifyMonolith)
+		task.delay(9, notifyTeleport)
 		task.delay(MUSIC_TAIL, function()
 			stopMusic()
 			effectRunning = false
