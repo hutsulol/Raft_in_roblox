@@ -503,14 +503,29 @@ local function playCutscene()
 	cutscenePlaying = true
 	task.spawn(function()
 		local cam = workspace.CurrentCamera
+		-- Запоминаем вид игрока ДО катсцены: и сам CFrame, и его смещение относительно
+		-- персонажа — если игрок за катсцену сдвинулся, вернёмся к тому же ракурсу
+		-- у его НОВОЙ позиции (без скачка при переключении на Custom).
+		local startCF = cam.CFrame
+		local hrp0 = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		local relCF = hrp0 and hrp0.CFrame:ToObjectSpace(startCF) or nil
+
 		-- забираем управление камерой (повтор — на случай, если другой скрипт перебивает)
 		repeat
 			cam.CameraType = Enum.CameraType.Scriptable
 			task.wait()
 		until cam.CameraType == Enum.CameraType.Scriptable
 
-		cam.CFrame = frames[1]                 -- кадр 1 мгновенно
-		task.wait(CUTSCENE_HOLDS[1] or 5)      -- держим
+		-- перенос: камера игрока → кадр 1
+		cam.CFrame = startCF
+		local twIn = TweenService:Create(
+			cam,
+			TweenInfo.new(CUTSCENE_TRANSITION, CUTSCENE_STYLE, Enum.EasingDirection.Out),
+			{ CFrame = frames[1] }
+		)
+		twIn:Play()
+		twIn.Completed:Wait()
+		task.wait(CUTSCENE_HOLDS[1] or 5)      -- держим кадр 1
 
 		for i = 2, CUTSCENE_COUNT do           -- резкий переход → выдержка
 			local tw = TweenService:Create(
@@ -522,6 +537,17 @@ local function playCutscene()
 			tw.Completed:Wait()
 			task.wait(CUTSCENE_HOLDS[i] or 3)
 		end
+
+		-- возврат: последний кадр → камера игрока (по текущему положению персонажа)
+		local hrp1 = player.Character and player.Character:FindFirstChild("HumanoidRootPart")
+		local backCF = (hrp1 and relCF) and (hrp1.CFrame * relCF) or startCF
+		local twOut = TweenService:Create(
+			cam,
+			TweenInfo.new(CUTSCENE_TRANSITION, CUTSCENE_STYLE, Enum.EasingDirection.Out),
+			{ CFrame = backCF }
+		)
+		twOut:Play()
+		twOut.Completed:Wait()
 
 		cam.CameraType = Enum.CameraType.Custom -- конец — управление игроку
 		cutscenePlaying = false
