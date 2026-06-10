@@ -433,14 +433,17 @@ end
 --====================================================
 -- КАТСЦЕНА (камера по ЯКОРНЫМ партам острова — острова спавнятся в разных местах)
 --====================================================
--- Кадр N: камера встаёт в Camera_N_Frame и смотрит на Camera_look_N_Frame. Папку
--- CutScene берём БЛИЖАЙШУЮ к игроку (на нужном острове). Тайминги: держим кадры
--- CUTSCENE_HOLDS, между кадрами — резкий переход Circular.
+-- Кадр N: камера встаёт в Camera_N_Frame и смотрит на Camera_look_N_Frame. Если есть
+-- Camera_N_N_Frame — за время выдержки камера ПЛАВНО ДРЕЙФУЕТ из Camera_N_Frame в
+-- Camera_N_N_Frame (взгляд остаётся на look-точке), чтобы кадр не стоял на месте;
+-- без него кадр статичный. Папку CutScene берём БЛИЖАЙШУЮ к игроку (на нужном
+-- острове). Тайминги: держим кадры CUTSCENE_HOLDS, между кадрами — резкий Circular.
 local CUTSCENE_FOLDER     = "CutScene"
 local CUTSCENE_COUNT      = 3
 local CUTSCENE_HOLDS      = { 5, 4, 3 }            -- сек на кадрах 1 / 2 / 3
 local CUTSCENE_TRANSITION = 1.0                    -- длительность перехода (резкий)
 local CUTSCENE_STYLE      = Enum.EasingStyle.Circular
+local CUTSCENE_DRIFT_STYLE = Enum.EasingStyle.Linear -- дрейф внутри кадра (равномерный)
 
 local function framePos(inst)
 	if not inst then return nil end
@@ -471,13 +474,34 @@ local function findCutscene()
 	return best
 end
 
--- CFrame камеры для кадра idx: позиция Camera_idx_Frame, взгляд на Camera_look_idx_Frame.
-local function frameCFrame(cs, idx)
+-- Кадр idx: start = из Camera_idx_Frame, finish = из Camera_idx_idx_Frame (если есть);
+-- обе точки смотрят на Camera_look_idx_Frame.
+local function shotFrames(cs, idx)
 	local pos  = framePos(cs:FindFirstChild("Camera_" .. idx .. "_Frame"))
 	local look = framePos(cs:FindFirstChild("Camera_look_" .. idx .. "_Frame"))
 	if not (pos and look) then return nil end
-	if (look - pos).Magnitude < 1e-3 then return CFrame.new(pos) end
-	return CFrame.lookAt(pos, look)
+	local function cfAt(p)
+		if (look - p).Magnitude < 1e-3 then return CFrame.new(p) end
+		return CFrame.lookAt(p, look)
+	end
+	local driftPos = framePos(cs:FindFirstChild("Camera_" .. idx .. "_" .. idx .. "_Frame"))
+	return { start = cfAt(pos), finish = driftPos and cfAt(driftPos) or nil }
+end
+
+-- Выдержка кадра: с конечной точкой — равномерный дрейф к ней на всё время выдержки
+-- («живой» кадр), без неё — статичная пауза.
+local function holdShot(cam, shot, seconds)
+	if shot.finish then
+		local drift = TweenService:Create(
+			cam,
+			TweenInfo.new(seconds, CUTSCENE_DRIFT_STYLE, Enum.EasingDirection.Out),
+			{ CFrame = shot.finish }
+		)
+		drift:Play()
+		drift.Completed:Wait()
+	else
+		task.wait(seconds)
+	end
 end
 
 local cutscenePlaying = false
@@ -492,12 +516,12 @@ local function playCutscene()
 	end
 	local frames = {}
 	for i = 1, CUTSCENE_COUNT do
-		local cf = frameCFrame(cs, i)
-		if not cf then
+		local shot = shotFrames(cs, i)
+		if not shot then
 			warn("[IslandCleared] катсцена: нет Camera_" .. i .. "_Frame или Camera_look_" .. i .. "_Frame")
 			return
 		end
-		frames[i] = cf
+		frames[i] = shot
 	end
 
 	cutscenePlaying = true
@@ -521,21 +545,21 @@ local function playCutscene()
 		local twIn = TweenService:Create(
 			cam,
 			TweenInfo.new(CUTSCENE_TRANSITION, CUTSCENE_STYLE, Enum.EasingDirection.Out),
-			{ CFrame = frames[1] }
+			{ CFrame = frames[1].start }
 		)
 		twIn:Play()
 		twIn.Completed:Wait()
-		task.wait(CUTSCENE_HOLDS[1] or 5)      -- держим кадр 1
+		holdShot(cam, frames[1], CUTSCENE_HOLDS[1] or 5)
 
-		for i = 2, CUTSCENE_COUNT do           -- резкий переход → выдержка
+		for i = 2, CUTSCENE_COUNT do           -- резкий переход → выдержка с дрейфом
 			local tw = TweenService:Create(
 				cam,
 				TweenInfo.new(CUTSCENE_TRANSITION, CUTSCENE_STYLE, Enum.EasingDirection.Out),
-				{ CFrame = frames[i] }
+				{ CFrame = frames[i].start }
 			)
 			tw:Play()
 			tw.Completed:Wait()
-			task.wait(CUTSCENE_HOLDS[i] or 3)
+			holdShot(cam, frames[i], CUTSCENE_HOLDS[i] or 3)
 		end
 
 		-- возврат: последний кадр → камера игрока (по текущему положению персонажа)
