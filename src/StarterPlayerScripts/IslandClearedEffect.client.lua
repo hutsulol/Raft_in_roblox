@@ -17,6 +17,7 @@ local Players           = game:GetService("Players")
 local TweenService      = game:GetService("TweenService")
 local SoundService      = game:GetService("SoundService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local RunService        = game:GetService("RunService")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -445,6 +446,15 @@ local CUTSCENE_TRANSITION = 1.0                    -- длительность �
 local CUTSCENE_STYLE      = Enum.EasingStyle.Circular
 local CUTSCENE_DRIFT_STYLE = Enum.EasingStyle.Linear -- дрейф внутри кадра (равномерный)
 
+-- «Вырастающие» в катсцене постройки: кадр → имя модели. Когда камера приходит в
+-- кадр, через GROW_DELAY модель растёт с ~0 до СВОЕГО родного Scale (читаем через
+-- GetScale — никакого хардкода, работает на любом острове) за GROW_PORTION времени
+-- выдержки. Прячутся (масштаб ~0) в момент старта катсцены.
+local GROW_MODELS  = { [2] = "Tree_Farm", [3] = "Storage_Palm" }
+local GROW_DELAY   = 0.2  -- старт роста после прихода камеры в кадр
+local GROW_PORTION = 0.5  -- доля выдержки кадра на рост (половина)
+local GROW_STYLE   = Enum.EasingStyle.Back -- в конце чуть перерастает и «садится»
+
 local function framePos(inst)
 	if not inst then return nil end
 	if inst:IsA("BasePart") then return inst.Position end
@@ -472,6 +482,38 @@ local function findCutscene()
 		end
 	end
 	return best
+end
+
+-- Ближайшая к origin модель с именем name (постройки нужного острова).
+local function findNearestModel(name, origin)
+	local best, bestD
+	for _, d in ipairs(workspace:GetDescendants()) do
+		if d:IsA("Model") and d.Name == name then
+			local ok, cf = pcall(function() return d:GetPivot() end)
+			if ok then
+				local dist = (cf.Position - origin).Magnitude
+				if not bestD or dist < bestD then best, bestD = d, dist end
+			end
+		end
+	end
+	return best
+end
+
+-- Рост модели с ~0 до target за seconds. Model.Scale нельзя твинить — каждый кадр
+-- зовём ScaleTo с easing-прогрессом (GROW_STYLE).
+local function growModel(model, target, seconds)
+	local t0 = os.clock()
+	local conn
+	conn = RunService.RenderStepped:Connect(function()
+		if not model.Parent then conn:Disconnect() return end
+		local a = math.min((os.clock() - t0) / seconds, 1)
+		local eased = TweenService:GetValue(a, GROW_STYLE, Enum.EasingDirection.Out)
+		model:ScaleTo(math.max(target * eased, 0.001))
+		if a >= 1 then
+			conn:Disconnect()
+			model:ScaleTo(target)
+		end
+	end)
 end
 
 -- Кадр idx: start = из Camera_idx_Frame, finish = из Camera_idx_idx_Frame (если есть);
@@ -524,6 +566,20 @@ local function playCutscene()
 		frames[i] = shot
 	end
 
+	-- «Вырастающие» постройки: ближайшие к острову катсцены. Запоминаем их родной
+	-- Scale и прячем (≈0) — появятся ростом каждая в своём кадре.
+	local origin = framePos(cs:FindFirstChild("Camera_1_Frame")) or Vector3.zero
+	local grows = {}
+	for shotIdx, modelName in pairs(GROW_MODELS) do
+		local m = findNearestModel(modelName, origin)
+		if m then
+			grows[shotIdx] = { model = m, scale = m:GetScale() }
+			m:ScaleTo(0.001)
+		else
+			warn("[IslandCleared] катсцена: не нашёл модель '" .. modelName .. "' для кадра " .. shotIdx)
+		end
+	end
+
 	cutscenePlaying = true
 	task.spawn(function()
 		local cam = workspace.CurrentCamera
@@ -547,8 +603,19 @@ local function playCutscene()
 			TweenInfo.new(CUTSCENE_TRANSITION, CUTSCENE_STYLE, Enum.EasingDirection.Out),
 			{ CFrame = frames[1].start }
 		)
+		-- Рост постройки кадра i: через GROW_DELAY после прихода камеры, длится
+		-- половину выдержки (идёт параллельно дрейфу камеры).
+		local function startGrow(i)
+			local g = grows[i]
+			if not g then return end
+			task.delay(GROW_DELAY, function()
+				growModel(g.model, g.scale, (CUTSCENE_HOLDS[i] or 3) * GROW_PORTION)
+			end)
+		end
+
 		twIn:Play()
 		twIn.Completed:Wait()
+		startGrow(1)
 		holdShot(cam, frames[1], CUTSCENE_HOLDS[1] or 5)
 
 		for i = 2, CUTSCENE_COUNT do           -- резкий переход → выдержка с дрейфом
@@ -559,6 +626,7 @@ local function playCutscene()
 			)
 			tw:Play()
 			tw.Completed:Wait()
+			startGrow(i)
 			holdShot(cam, frames[i], CUTSCENE_HOLDS[i] or 3)
 		end
 
@@ -572,6 +640,11 @@ local function playCutscene()
 		)
 		twOut:Play()
 		twOut.Completed:Wait()
+
+		-- подстраховка: все «вырастающие» модели точно в родном масштабе
+		for _, g in pairs(grows) do
+			if g.model.Parent then g.model:ScaleTo(g.scale) end
+		end
 
 		cam.CameraType = Enum.CameraType.Custom -- конец — управление игроку
 		cutscenePlaying = false
