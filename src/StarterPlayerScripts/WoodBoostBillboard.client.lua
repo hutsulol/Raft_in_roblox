@@ -32,7 +32,7 @@ local CHECK_EVERY = 0.2           -- частота проверки диста�
 
 -- Положение и размер блока на экране — правь под себя.
 local UI_POS  = UDim2.new(0.18, 0, 0.1, 0) -- ближе к центру и выше
-local UI_SIZE = UDim2.fromOffset(120, 120) -- квадрат под иконку (текст наезжает)
+local UI_SIZE = UDim2.fromOffset(80, 80)   -- квадрат под иконку (текст наезжает)
 
 -- Что предлагаем при текущем множителе игрока.
 local TIERS = {
@@ -90,7 +90,7 @@ icon.Parent = holder
 local title = Instance.new("TextLabel")
 title.AnchorPoint = Vector2.new(0.5, 0.5)
 title.Position = UDim2.new(0.5, 0, 0.13, 0) -- наезжает на верх иконки
-title.Size = UDim2.new(1.3, 0, 0, 28)
+title.Size = UDim2.new(1.3, 0, 0, 19)
 title.ZIndex = 2
 styleText(title)
 title.Parent = holder
@@ -98,7 +98,7 @@ title.Parent = holder
 local price = Instance.new("TextLabel")
 price.AnchorPoint = Vector2.new(0.5, 0.5)
 price.Position = UDim2.new(0.5, 0, 0.9, 0) -- наезжает на низ иконки
-price.Size = UDim2.new(0.95, 0, 0, 26)
+price.Size = UDim2.new(0.95, 0, 0, 17)
 price.ZIndex = 2
 styleText(price)
 price.Parent = holder

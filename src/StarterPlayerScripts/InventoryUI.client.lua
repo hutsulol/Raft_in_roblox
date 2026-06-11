@@ -3479,9 +3479,10 @@ bpButton.MouseEnter:Connect(function() bpScale.Scale = 1.07 end)
 bpButton.MouseLeave:Connect(function() bpScale.Scale = 1 end)
 
 local bpLabel = Instance.new("TextLabel")
-bpLabel.AnchorPoint = Vector2.new(0.5, 1)
-bpLabel.Position = UDim2.new(0.5, 0, 1, 0)
+bpLabel.AnchorPoint = Vector2.new(0.5, 0.5)
+bpLabel.Position = UDim2.new(0.5, 0, 0, 70) -- наезжает на низ рюкзака
 bpLabel.Size = UDim2.new(1, 0, 0, 20)
+bpLabel.ZIndex = 2
 bpLabel.BackgroundTransparency = 1
 bpLabel.Text = "Инвентарь"
 bpLabel.AutoLocalize = true
