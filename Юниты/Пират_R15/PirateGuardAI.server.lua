@@ -684,6 +684,69 @@ local function runAlerted()
 end
 
 --====================================================
+-- IDLE-СТОЙКА: спокойная (Animation1) / тревожная (Animation2)
+--====================================================
+-- Ходьбу/бег ведёт штатный Animate, а idle мы переопределяем сами: когда пират стоит
+-- (не идёт и не бьёт) — играем нужный idle на приоритете Action (он перебивает
+-- штатный случайный idle и не конфликтует с ходьбой, т.к. на ходу мы его гасим).
+-- Спокойный — когда никого не преследует; тревожный — когда есть chaseTarget.
+
+-- Найти idle-анимацию: сперва Animation у скрипта (Idle/Idle2), затем штатный
+-- Animate — папка idle/<childName> (Animation1/Animation2).
+local function resolveIdleAnim(scriptChild, animateChild)
+	local a = script:FindFirstChild(scriptChild)
+	if a and a:IsA("Animation") then return a end
+	local animate = npc:FindFirstChild("Animate")
+	local idleFolder = animate and animate:FindFirstChild("idle")
+	local b = idleFolder and idleFolder:FindFirstChild(animateChild)
+	if b and b:IsA("Animation") then return b end
+	return nil
+end
+
+local idleCalmTrack, idleAlertTrack
+do
+	local calmAnim  = resolveIdleAnim("Idle",  "Animation1")
+	local alertAnim = resolveIdleAnim("Idle2", "Animation2")
+	if calmAnim then
+		local animator = humanoid:FindFirstChildOfClass("Animator")
+		if not animator then
+			animator = Instance.new("Animator")
+			animator.Parent = humanoid
+		end
+		idleCalmTrack = animator:LoadAnimation(calmAnim)
+		idleCalmTrack.Looped = true
+		idleCalmTrack.Priority = Enum.AnimationPriority.Action
+		if alertAnim then
+			idleAlertTrack = animator:LoadAnimation(alertAnim)
+			idleAlertTrack.Looped = true
+			idleAlertTrack.Priority = Enum.AnimationPriority.Action
+		else
+			idleAlertTrack = idleCalmTrack
+			warn("[PirateGuardAI] Второй idle (преследование) не найден — будет обычный idle")
+		end
+	else
+		warn("[PirateGuardAI] Idle-анимация не найдена (script.Idle или Animate/idle/Animation1) — переключение idle отключено")
+	end
+end
+
+-- Зовётся каждый кадр: на ходу/в атаке гасим свой idle (играет Animate/attack),
+-- стоя — играем спокойный или тревожный по наличию цели преследования.
+local function updateIdleAnim()
+	if not idleCalmTrack then return end
+	local moving = humanoid.MoveDirection.Magnitude > 0.1
+	local attacking = attackTrack and attackTrack.IsPlaying
+	if moving or attacking then
+		if idleCalmTrack.IsPlaying then idleCalmTrack:Stop(0.15) end
+		if idleAlertTrack ~= idleCalmTrack and idleAlertTrack.IsPlaying then idleAlertTrack:Stop(0.15) end
+		return
+	end
+	local want = (chaseTarget and idleAlertTrack) or idleCalmTrack
+	local other = (want == idleCalmTrack) and idleAlertTrack or idleCalmTrack
+	if other ~= want and other.IsPlaying then other:Stop(0.2) end
+	if not want.IsPlaying then want:Play(0.2) end
+end
+
+--====================================================
 -- ГЛАВНЫЙ ЦИКЛ
 --====================================================
 
@@ -691,6 +754,8 @@ RunService.Heartbeat:Connect(function(dt)
 	if humanoid.Health <= 0 or not rootPart.Parent then
 		return
 	end
+
+	updateIdleAnim() -- спокойный/тревожный idle по состоянию преследования
 
 	local visibleRoot, visibleChar = updatePerception(dt)
 
