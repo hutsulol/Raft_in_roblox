@@ -26,8 +26,8 @@ local MarketplaceService = game:GetService("MarketplaceService")
 local DataStoreService   = game:GetService("DataStoreService")
 local ReplicatedStorage  = game:GetService("ReplicatedStorage")
 
-local PRODUCT_2X = 0 -- ← ID девпродукта «2x дерево» (50 Robux)
-local PRODUCT_4X = 0 -- ← ID девпродукта «4x дерево» (75 Robux)
+local PRODUCT_2X = 3603970313 -- девпродукт «2x дерево» (50 Robux)
+local PRODUCT_4X = 3603970680 -- девпродукт «4x дерево» (75 Robux)
 
 local ATTR = "WoodMultiplier"
 

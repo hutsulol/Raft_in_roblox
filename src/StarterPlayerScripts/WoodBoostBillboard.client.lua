@@ -17,7 +17,10 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
 
-local ANCHOR_NAME = "Wood_Donate"
+local ANCHOR_NAME = "Wood_Donate" -- парт/модель для ТОЧНОГО места иконки
+local FARM_NAME   = "Tree_Farm"   -- если якоря нет — вешаем над фермой
+local FARM_PART   = "Part"        -- основной парт борда (CFG.BOARD_PART)
+local FARM_OFFSET = Vector3.new(0, 9, 0) -- смещение над бордом (правь под себя)
 local ICON        = "rbxassetid://111260937639554"
 local ATTR        = "WoodMultiplier"
 local SHOW_RADIUS = 50
@@ -62,11 +65,12 @@ local function refreshOne(rec)
 	rec.price.Text = tier.price
 end
 
-local function buildBillboard(part)
+local function buildBillboard(part, offset)
 	local gui = Instance.new("BillboardGui")
 	gui.Name = "WoodBoostBillboard"
 	gui.Adornee = part
 	gui.Size = UDim2.fromScale(6, 8)        -- размер в студах
+	gui.StudsOffsetWorldSpace = offset or Vector3.zero -- над бордом / точно на якоре
 	gui.MaxDistance = SHOW_RADIUS           -- «появляется в зоне 50»
 	gui.AlwaysOnTop = false                 -- прячется за рельефом, как в примере
 	gui.ResetOnSpawn = false
@@ -121,28 +125,49 @@ local function buildBillboard(part)
 end
 
 --====================================================
--- Поиск якорей Wood_Donate (сейчас и появляющихся позже)
+-- Куда вешать: якорь Wood_Donate (точно) ИЛИ ферма Tree_Farm (над бордом).
 --====================================================
 
 local attached = {}
 
-local function tryAttach(inst)
-	if inst.Name ~= ANCHOR_NAME then return end
-	local part
-	if inst:IsA("BasePart") then
-		part = inst
-	elseif inst:IsA("Model") then
-		part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
-	end
+local function makeFor(part, offset)
 	if part == nil or attached[part] then return end
 	attached[part] = true
-	buildBillboard(part)
+	buildBillboard(part, offset)
+end
+
+local function partOf(inst)
+	if inst:IsA("BasePart") then return inst end
+	if inst:IsA("Model") then
+		return inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
+	end
+	return nil
+end
+
+-- Есть ли у фермы свой якорь Wood_Donate (тогда ферму не трогаем — иконка на нём).
+local function farmHasAnchor(model)
+	for _, d in ipairs(model:GetDescendants()) do
+		if d.Name == ANCHOR_NAME then return true end
+	end
+	return false
+end
+
+local function consider(inst)
+	if inst.Name == ANCHOR_NAME then
+		makeFor(partOf(inst), Vector3.zero)            -- точное место
+	elseif inst:IsA("Model") and inst.Name == FARM_NAME and not farmHasAnchor(inst) then
+		local part = inst:FindFirstChild(FARM_PART) or partOf(inst)
+		makeFor(part, FARM_OFFSET)                     -- запасной вариант: над бордом
+	end
 end
 
 for _, d in ipairs(workspace:GetDescendants()) do
-	tryAttach(d)
+	consider(d)
 end
-workspace.DescendantAdded:Connect(tryAttach)
+workspace.DescendantAdded:Connect(function(inst)
+	task.wait(0.1) -- дать модели догрузиться (PrimaryPart/части)
+	consider(inst)
+end)
 
 -- Смена тира (покупка прошла) — обновить все биллборды.
 player:GetAttributeChangedSignal(ATTR):Connect(function()
