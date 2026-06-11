@@ -751,6 +751,18 @@ local function chopFor(anims, sounds, worker, humanoid, hrp, center, duration, s
 	end
 end
 
+-- Донат «2x/4x дерево» (WoodBoostProducts.server.lua): сколько брёвен рабочий
+-- кладёт за ходку. Фермы общие, поэтому берём максимальный купленный множитель
+-- среди игроков сервера (сессии фактически одиночные).
+local function woodBoostAmount()
+	local mult = 1
+	for _, plr in ipairs(Players:GetPlayers()) do
+		local m = plr:GetAttribute("WoodMultiplier")
+		if type(m) == "number" and m > mult then mult = m end
+	end
+	return mult
+end
+
 -- Точка рубки для конкретного рабочего — со СВОЕЙ стороны дерева (по углу slot).
 local function chopPosForSlot(env, slot)
 	local angle = (slot - 1) * (2 * math.pi / math.max(1, CFG.WORKERS_MAX))
@@ -793,7 +805,7 @@ local function runWorker(board, env, worker, slot)
 			playSound(sounds, "putting")
 			anims.playOnce("Drop")
 			if env.storage and env.storage:IsDescendantOf(workspace) then
-				addToStorage(env.storage, CFG.DEPOSIT_RESOURCE, 1)
+				addToStorage(env.storage, CFG.DEPOSIT_RESOURCE, woodBoostAmount())
 				-- шанс добыть ещё и кокос
 				if math.random() < CFG.COCONUT_CHANCE then
 					addToStorage(env.storage, CFG.COCONUT_RESOURCE, 1)
