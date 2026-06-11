@@ -1,29 +1,32 @@
 --[[
-	PirateGuardAI — сторож-пират на ОБЫЧНОМ Humanoid (R6/R15).
+	PirateGuardAI v5-clean — сторож-пират на Humanoid (R6/R15). ПЕРЕПИСАН С НУЛЯ:
+	без чужого кода, без PathfindingService (никаких NoPath), один аним-драйвер.
 
-	Та же система сторожа, что и у безхуманоидного пирата (Юниты/Пират), но вся
-	физика/локомоция/анимации отданы Humanoid'у:
-	  • ходьба/бег/прыжки и их анимации   → Humanoid:MoveTo + штатный Animate;
-	  • обход препятствий                  → PathfindingService (с прямым LOS-срезом);
-	  • перелаз/прыжки через мелочь        → Humanoid (AgentCanJump + JumpCheck).
+	КАК СТАВИТЬ: один ЭТОТ Script внутрь модели пирата. Штатный Animate удалить.
+	Анимации лежат ПЛОСКО в любой папке модели (имена с альтернативами):
+	  Animation1|Idle   — спокойная стойка (никого не преследует)
+	  Animation2|Idle2  — тревожная стойка (есть цель преследования)
+	  WalkAnim|Walk     — шаг (патруль/проверка/поиск/возврат)
+	  RunAnim|Run       — бег (погоня)
+	  JumpAnim / FallAnim — прыжок / полёт (опционально)
+	  Attack            — Animation РЕБЁНКОМ этого скрипта (замах)
 
-	Мозг сторожа полностью свой:
-	  • Зрение (Far Cry / AC): угол от «глаз» (Head) до игрока — спереди замечает
-	    быстро, сбоку медленно, сзади не видит; обзор рвётся стеной (Raycast).
-	  • Шкала подозрения 0..100 с полосой над головой (бело→жёлтый→красный).
-	  • FSM: Guard / Patrol / Investigate / Chase+Attack / Search / Return / Alerted.
-	  • Крик отряду: на 100% пират поднимает соседних пиратов с тегом PirateGuard.
-	  • Патруль по маркерам из папки PatrolPoints (необязательно).
-
-	Куда вставлять: обычный серверный Script внутрь модели пирата (рядом с Humanoid).
-	Атака берёт инструмент (Tool, напр. ClassicSword) — Activate + наш TakeDamage;
-	если есть дочерняя Animation "Attack" у скрипта — проигрываем её.
+	ПОВЕДЕНИЕ:
+	  • Зрение: конус (спереди быстро, сбоку медленно) + Raycast-LOS; шкала
+	    подозрения 0..100 с полосой над головой; вплотную — мгновенная агрессия.
+	  • УВИДЕЛ → сразу CHASE: бежит ПРЯМО на игрока (CHASE_SPEED + RunAnim),
+	    в радиусе бьёт (анимация Attack + урон с задержкой под замах).
+	  • Потерял из виду → SEARCH шагом к последней точке, осмотрелся → RETURN на пост.
+	  • Подозрение 50+ без прямой видимости → INVESTIGATE шагом.
+	  • Отряд: при старте погони кричит соседям с тегом PirateGuard — те идут
+	    проверять точку крика.
+	  • Патруль: папка PatrolPoints с партами внутри модели — ходит по кругу
+	    с паузами; нет папки — стоит на посту.
 --]]
 
-local Players            = game:GetService("Players")
-local CollectionService  = game:GetService("CollectionService")
-local PathfindingService = game:GetService("PathfindingService")
-local RunService         = game:GetService("RunService")
+local Players           = game:GetService("Players")
+local RunService        = game:GetService("RunService")
+local CollectionService = game:GetService("CollectionService")
 
 local npc = script.Parent
 
@@ -32,70 +35,57 @@ local npc = script.Parent
 --====================================================
 
 local CFG = {
-	-- Движение (Humanoid.WalkSpeed)
-	PATROL_SPEED = 8,
-	CHASE_SPEED  = 18,
+	-- скорости
+	WALK_SPEED  = 8,    -- шаг: патруль/проверка/поиск/возврат
+	CHASE_SPEED = 18,   -- бег: только при видимой цели
 
-	-- Бой
-	ATTACK_RANGE        = 6,    -- studs (центр-к-центру HRP)
-	ATTACK_RANGE_BUFFER = 3,    -- гистерезис выхода из боя
-	ATTACK_COOLDOWN     = 1.2,  -- сек между ударами
-	ATTACK_DAMAGE       = 20,   -- урон по игроку за удар
-	ATTACK_HIT_DELAY    = 0.25, -- задержка нанесения урона (под замах анимации)
+	-- бой
+	ATTACK_RANGE     = 6,
+	ATTACK_COOLDOWN  = 1.2,
+	ATTACK_DAMAGE    = 20,
+	ATTACK_HIT_DELAY = 0.25, -- урон под замах анимации
 
-	-- Поведение / память места
-	BEHAVIOR_VARIANT  = "Guard",       -- Guard | Patrol
-	PATROL_POINTS_FOLDER_NAME = "PatrolPoints",
-	GUARD_DURATION    = 60,            -- сколько стоит на посту перед патрулём (Patrol-вариант)
-	PATROL_POINT_REACH = 3,
-	PATROL_PAUSE_MIN  = 10,
-	PATROL_PAUSE_MAX  = 30,
+	-- зрение/подозрение
+	SIGHT_RANGE   = 50,
+	FOV_FRONT_DEG = 50,   -- в этом конусе подозрение растёт быстро
+	FOV_SIDE_DEG  = 110,  -- в этом — медленно; дальше не видит
+	EYE_HEIGHT    = 1.5,
+	GAIN_FRONT    = 90,   -- ед/сек на близкой дистанции
+	GAIN_SIDE     = 35,
+	DECAY         = 25,   -- спад подозрения вне видимости
+	INVESTIGATE_AT = 50,  -- порог «пойти проверить»
+	MELEE_REFLEX  = 8,    -- ближе этого — мгновенная агрессия (даже сзади)
 
-	-- Зрение и подозрение
-	SIGHT_RANGE        = 50,
-	FOV_FRONT_DEGREES  = 50,   -- спереди (быстро замечает)
-	FOV_SIDE_DEGREES   = 110,  -- сбоку (медленно)
-	EYE_HEIGHT_OFFSET  = 1,
-	SUSPICION_GAIN_FRONT = 90,
-	SUSPICION_GAIN_SIDE  = 35,
-	SUSPICION_DECAY      = 25,
-	SUSPICION_INVESTIGATE = 50,  -- порог «пойти проверить»
-	SUSPICION_ALERT       = 100, -- порог «в бой + крик»
-	SEARCH_DURATION       = 15,  -- сколько искать у последней точки
+	-- поиск/возврат
+	SEARCH_DURATION = 8,  -- сколько осматривается у последней точки
+	REACH           = 3,  -- «дошёл», если ближе
 
-	-- Отряд (крик соседям)
-	GUARD_TAG          = "PirateGuard",
-	SQUAD_ALERT_RADIUS = 200,  -- кого поднимаем криком
-	SQUAD_ENGAGE_RADIUS = 60,  -- ближе — идут проверять, дальше — в готовность
-	ALERT_MEMORY       = 8,    -- сколько помнить чужой крик
-	SHOUT_INTERVAL     = 2,    -- как часто перекрикивать в бою
-	DEBUG_SQUAD        = false,
+	-- патруль
+	PATROL_FOLDER    = "PatrolPoints",
+	PATROL_PAUSE_MIN = 8,
+	PATROL_PAUSE_MAX = 20,
 
-	-- Навигация
-	AGENT_RADIUS   = 2,
-	AGENT_HEIGHT   = 5,
-	AGENT_CAN_JUMP = true,
-	PATH_RECOMPUTE_INTERVAL = 0.5,
-	PATH_GOAL_MOVE_THRESHOLD = 6,  -- цель сдвинулась дальше — пересчёт
-	WAYPOINT_REACH = 4,
-	NAV_LOS_MARGIN = 4,            -- ближе этого считаем «видим напрямую»
-	JUMP_CHECK_INTERVAL = 0.4,
+	-- отряд
+	GUARD_TAG      = "PirateGuard",
+	SHOUT_RADIUS   = 60,
+	SHOUT_INTERVAL = 4,
+	ALERT_FRESH    = 6,   -- сколько секунд чужой крик считается актуальным
+
+	-- застревание
+	STUCK_TIME     = 1.2, -- почти не двигаемся столько секунд → шаг вбок
+	STUCK_DIST     = 0.5,
 }
 
 --====================================================
--- РИГ: Humanoid / HumanoidRootPart / Head
+-- РИГ
 --====================================================
-
--- Модель может реплицироваться/собираться не мгновенно — подождём ключевые части.
-while not npc:IsDescendantOf(workspace) do
-	npc.AncestryChanged:Wait()
-end
 
 local humanoid = npc:FindFirstChildOfClass("Humanoid")
 do
 	local waited = 0
 	while not humanoid and waited < 5 do
-		task.wait(0.1); waited += 0.1
+		task.wait(0.1)
+		waited += 0.1
 		humanoid = npc:FindFirstChildOfClass("Humanoid")
 	end
 end
@@ -105,9 +95,7 @@ if not humanoid then
 end
 
 local rootPart = npc:FindFirstChild("HumanoidRootPart") or humanoid.RootPart
-if not rootPart then
-	rootPart = npc:WaitForChild("HumanoidRootPart", 5)
-end
+	or npc:WaitForChild("HumanoidRootPart", 5)
 if not rootPart then
 	warn("[PirateGuardAI] HumanoidRootPart не найден — скрипт не запущен")
 	return
@@ -115,24 +103,22 @@ end
 
 local head = npc:FindFirstChild("Head") or rootPart
 
--- PrimaryPart нужен, чтобы соседние сторожа находили нас по своему крику.
 if not npc.PrimaryPart then
 	npc.PrimaryPart = rootPart
 end
 
--- Базовая настройка рига.
 for _, d in ipairs(npc:GetDescendants()) do
 	if d:IsA("BasePart") then
 		d.Anchored = false
 	end
 end
-humanoid.WalkSpeed = CFG.PATROL_SPEED
+humanoid.WalkSpeed = CFG.WALK_SPEED
 humanoid.AutoRotate = true
 pcall(function()
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
 end)
--- Физика NPC всегда на СЕРВЕРЕ. Без этого владение физикой прыгает на ближайшего
--- клиента, и серверный MoveTo дёргается/«подвисает» на бегу рядом с игроком.
+
+-- Физика всегда на сервере (иначе владение прыгает на клиента → рывки на бегу).
 task.defer(function()
 	pcall(function()
 		rootPart:SetNetworkOwner(nil)
@@ -141,26 +127,16 @@ end)
 
 CollectionService:AddTag(npc, CFG.GUARD_TAG)
 
--- Анимация атаки (необязательно): дочерняя Animation "Attack" у скрипта.
-local attackTrack = nil
-do
-	local attackAnim = script:FindFirstChild("Attack")
-	if attackAnim and attackAnim:IsA("Animation") then
-		local animator = humanoid:FindFirstChildOfClass("Animator")
-		if not animator then
-			animator = Instance.new("Animator")
-			animator.Parent = humanoid
-		end
-		local ok, track = pcall(function()
-			return animator:LoadAnimation(attackAnim)
-		end)
-		if ok then attackTrack = track end
-	end
-end
+local homePosition = rootPart.Position
+local homeLook = rootPart.CFrame.LookVector
 
 --====================================================
--- ОБЩИЕ ХЕЛПЕРЫ
+-- ХЕЛПЕРЫ
 --====================================================
+
+local function flatDistance(a, b)
+	return (Vector3.new(a.X, 0, a.Z) - Vector3.new(b.X, 0, b.Z)).Magnitude
+end
 
 local raycastParams = RaycastParams.new()
 raycastParams.FilterType = Enum.RaycastFilterType.Exclude
@@ -168,47 +144,17 @@ raycastParams.IgnoreWater = true
 raycastParams.FilterDescendantsInstances = { npc }
 
 local function getCharacterRoot(character)
-	return character:FindFirstChild("HumanoidRootPart")
-		or character:FindFirstChild("Torso")
-		or character:FindFirstChild("UpperTorso")
-		or character.PrimaryPart
-end
-
-local function getCharacterHumanoid(character)
-	return character:FindFirstChildOfClass("Humanoid")
+	return character and character:FindFirstChild("HumanoidRootPart")
 end
 
 local function isAliveCharacter(character)
-	local h = character and getCharacterHumanoid(character)
+	local h = character and character:FindFirstChildOfClass("Humanoid")
 	return h ~= nil and h.Health > 0
 end
 
-local function flatDistance(a, b)
-	return Vector3.new(a.X - b.X, 0, a.Z - b.Z).Magnitude
-end
-
--- Куда «смотрит» пират (Humanoid сам поворачивается по движению).
-local function getLookDirection()
-	local look = rootPart.CFrame.LookVector
-	return Vector3.new(look.X, 0, look.Z).Unit
-end
-
-local function getEyePosition()
-	return head.Position + Vector3.new(0, CFG.EYE_HEIGHT_OFFSET, 0)
-end
-
--- Повернуть корпус к точке (для атаки/осмотра, когда не двигаемся).
-local function faceTowards(position)
-	local flatTarget = Vector3.new(position.X, rootPart.Position.Y, position.Z)
-	if (flatTarget - rootPart.Position).Magnitude < 0.05 then
-		return
-	end
-	rootPart.CFrame = CFrame.lookAt(rootPart.Position, flatTarget)
-end
-
--- Прямая видимость до персонажа: луч от глаз, стена рвёт обзор.
-local function canSeeCharacter(targetRoot)
-	local origin = getEyePosition()
+-- Видна ли цель (стены рвут обзор).
+local function canSee(targetRoot)
+	local origin = head.Position + Vector3.new(0, CFG.EYE_HEIGHT - 1, 0)
 	local result = workspace:Raycast(origin, targetRoot.Position - origin, raycastParams)
 	if result and not result.Instance:IsDescendantOf(targetRoot.Parent) then
 		return false
@@ -216,502 +162,17 @@ local function canSeeCharacter(targetRoot)
 	return true
 end
 
---====================================================
--- ВОСПРИЯТИЕ (зрение + подозрение)
---====================================================
-
-local suspicion = 0
-local lastKnownPosition = nil
-local chaseTarget = nil
-
--- Обновляет подозрение по FOV + LOS. Возвращает ближайшего видимого игрока.
-local function updatePerception(dt)
-	local lookDir = getLookDirection()
-	local eye = getEyePosition()
-	local bestRoot, bestChar, bestDist = nil, nil, math.huge
-
-	for _, player in ipairs(Players:GetPlayers()) do
-		local character = player.Character
-		if character and isAliveCharacter(character) then
-			local root = getCharacterRoot(character)
-			if root then
-				local flat = Vector3.new(root.Position.X - eye.X, 0, root.Position.Z - eye.Z)
-				local dist = flat.Magnitude
-				if dist > 0.05 and dist <= CFG.SIGHT_RANGE then
-					local angle = math.deg(math.acos(math.clamp(lookDir:Dot(flat.Unit), -1, 1)))
-					local gain = nil
-					if angle <= CFG.FOV_FRONT_DEGREES then
-						gain = CFG.SUSPICION_GAIN_FRONT
-					elseif angle <= CFG.FOV_SIDE_DEGREES then
-						gain = CFG.SUSPICION_GAIN_SIDE
-					end
-
-					-- Вплотную «не заметить» нельзя — независимо от угла.
-					if dist <= CFG.ATTACK_RANGE + CFG.ATTACK_RANGE_BUFFER then
-						gain = CFG.SUSPICION_GAIN_FRONT
-					end
-
-					if gain and canSeeCharacter(root) then
-						local distFactor = 1 - (dist / CFG.SIGHT_RANGE) * 0.6
-						suspicion = math.min(100, suspicion + gain * distFactor * dt)
-						if dist < bestDist then
-							bestDist, bestRoot, bestChar = dist, root, character
-						end
-					end
-				end
-			end
-		end
-	end
-
-	if bestRoot then
-		lastKnownPosition = bestRoot.Position
-	end
-	return bestRoot, bestChar
-end
-
---====================================================
--- ИНДИКАТОР ПОДОЗРЕНИЯ (полоса над головой)
---====================================================
-
-local suspicionGui = Instance.new("BillboardGui")
-suspicionGui.Name = "SuspicionBar"
-suspicionGui.Size = UDim2.new(0, 80, 0, 8)
-suspicionGui.StudsOffsetWorldSpace = Vector3.new(0, 3.2, 0)
-suspicionGui.AlwaysOnTop = true
-suspicionGui.MaxDistance = 90
-suspicionGui.Enabled = false
-suspicionGui.Adornee = head
-suspicionGui.Parent = head
-
-local suspicionBg = Instance.new("Frame")
-suspicionBg.Size = UDim2.new(1, 0, 1, 0)
-suspicionBg.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-suspicionBg.BackgroundTransparency = 0.4
-suspicionBg.BorderSizePixel = 0
-suspicionBg.Parent = suspicionGui
-
-local suspicionFill = Instance.new("Frame")
-suspicionFill.Size = UDim2.new(0, 0, 1, 0)
-suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-suspicionFill.BorderSizePixel = 0
-suspicionFill.Parent = suspicionBg
-
-local function updateSuspicionBar()
-	suspicionGui.Enabled = suspicion > 1
-	suspicionFill.Size = UDim2.new(math.clamp(suspicion / 100, 0, 1), 0, 1, 0)
-	if suspicion >= CFG.SUSPICION_ALERT then
-		suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-	elseif suspicion >= CFG.SUSPICION_INVESTIGATE then
-		suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 220, 120)
-	else
-		suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+-- Развернуться к точке (по горизонтали), стоя на месте.
+local function faceTowards(pos)
+	local flat = Vector3.new(pos.X, rootPart.Position.Y, pos.Z)
+	if (flat - rootPart.Position).Magnitude > 0.1 then
+		rootPart.CFrame = CFrame.lookAt(rootPart.Position, flat)
 	end
 end
 
 --====================================================
--- ПАТРУЛЬ И ДОМ (память места)
+-- АНИМАЦИИ (всё играем сами; штатного Animate в риге НЕТ)
 --====================================================
-
-local homePosition = rootPart.Position
-local homeLook = getLookDirection()
-
-local patrolPoints = {}
-do
-	local folder = npc:FindFirstChild(CFG.PATROL_POINTS_FOLDER_NAME)
-	if folder then
-		local markers = {}
-		for _, child in ipairs(folder:GetChildren()) do
-			if child:IsA("BasePart") then
-				table.insert(markers, child)
-			end
-		end
-		table.sort(markers, function(a, b) return a.Name < b.Name end)
-		for _, m in ipairs(markers) do
-			table.insert(patrolPoints, m.Position)
-		end
-	end
-end
-local patrolIndex = 1
-
---====================================================
--- ОТРЯД (крик соседним пиратам)
---====================================================
-
-local alertedUntil = 0
-local alertPosition = nil
-local alertUserId = nil
-local lastShoutClock = 0
-
-local function broadcastAlert()
-	if not chaseTarget then return end
-	local player = Players:GetPlayerFromCharacter(chaseTarget)
-	local userId = player and player.UserId or 0
-	local pos = lastKnownPosition or rootPart.Position
-	lastShoutClock = os.clock()
-
-	local raised = 0
-	for _, other in ipairs(CollectionService:GetTagged(CFG.GUARD_TAG)) do
-		if other ~= npc then
-			local otherRoot = other.PrimaryPart or other:FindFirstChild("HumanoidRootPart")
-			if otherRoot and (otherRoot.Position - rootPart.Position).Magnitude <= CFG.SQUAD_ALERT_RADIUS then
-				other:SetAttribute("AlertPosition", pos)
-				other:SetAttribute("AlertUserId", userId)
-				other:SetAttribute("AlertClock", os.clock()) -- меняем последним — триггерит реакцию
-				raised += 1
-			end
-		end
-	end
-	if CFG.DEBUG_SQUAD then
-		print(string.format("[PirateSquad] %s кричит отряду (поднято %d)", npc.Name, raised))
-	end
-end
-
-npc:GetAttributeChangedSignal("AlertClock"):Connect(function()
-	alertedUntil = os.clock() + CFG.ALERT_MEMORY
-	alertPosition = npc:GetAttribute("AlertPosition")
-	alertUserId = npc:GetAttribute("AlertUserId")
-	if CFG.DEBUG_SQUAD then
-		print(string.format("[PirateSquad] %s услышал крик отряда", npc.Name))
-	end
-end)
-
-local function getSquadAlert()
-	if os.clock() < alertedUntil then
-		return alertPosition
-	end
-	return nil
-end
-
---====================================================
--- НАВИГАЦИЯ (Humanoid:MoveTo + PathfindingService + LOS-срез)
---====================================================
-
-local agentParams = {
-	AgentRadius = CFG.AGENT_RADIUS,
-	AgentHeight = CFG.AGENT_HEIGHT,
-	AgentCanJump = CFG.AGENT_CAN_JUMP,
-}
-
-local path = nil
-local pathWaypoints = {}
-local waypointIndex = 1
-local pathGoal = nil
-local pathComputeClock = 0
-local pathComputing = false
-local lastJumpCheck = 0
-
--- Прямая видимость до точки (3 луча на ширину агента), чтобы идти ровно прямо.
-local function hasClearPath(toPos)
-	local origin = rootPart.Position
-	local flat = Vector3.new(toPos.X - origin.X, 0, toPos.Z - origin.Z)
-	local dist = flat.Magnitude
-	if dist <= CFG.NAV_LOS_MARGIN then
-		return true
-	end
-	local dir = flat.Unit
-	local rayVec = dir * (dist - CFG.NAV_LOS_MARGIN)
-	local side = Vector3.new(-dir.Z, 0, dir.X) * (CFG.AGENT_RADIUS + 1)
-	for _, off in ipairs({ Vector3.zero, side, -side }) do
-		if workspace:Raycast(origin + off, rayVec, raycastParams) then
-			return false
-		end
-	end
-	return true
-end
-
-local function computePathAsync(goal)
-	pathComputing = true
-	task.spawn(function()
-		local p = PathfindingService:CreatePath(agentParams)
-		local ok = pcall(function()
-			p:ComputeAsync(rootPart.Position, goal)
-		end)
-		if ok and p.Status == Enum.PathStatus.Success then
-			local wps = {}
-			for _, wp in ipairs(p:GetWaypoints()) do
-				table.insert(wps, wp)
-			end
-			path = p
-			pathWaypoints = wps
-			waypointIndex = 1
-			pathGoal = goal
-			pathComputeClock = os.clock()
-		end
-		pathComputing = false
-	end)
-end
-
--- Перепрыгнуть низкое препятствие на курсе (Humanoid сам прыгает).
-local function jumpCheck(goal)
-	if os.clock() - lastJumpCheck < CFG.JUMP_CHECK_INTERVAL then
-		return
-	end
-	lastJumpCheck = os.clock()
-	local origin = rootPart.Position
-	local dir = Vector3.new(goal.X - origin.X, 0, goal.Z - origin.Z)
-	if dir.Magnitude < 0.1 then return end
-	local result = workspace:Raycast(origin + Vector3.new(0, -1.5, 0), dir.Unit * 3, raycastParams)
-	if result then
-		humanoid.Jump = true
-	end
-end
-
--- Идти к goal. Есть прямая видимость — идём прямо; иначе по маршруту.
-local function navigateTo(goal, speed)
-	humanoid.WalkSpeed = speed or CFG.PATROL_SPEED
-	jumpCheck(goal)
-
-	if hasClearPath(goal) then
-		-- Идём прямо — кэш маршрута сбрасываем. Иначе при мигании LOS цель прыгала
-		-- между игроком и УСТАРЕВШИМИ вейпоинтами старого пути (могли быть позади),
-		-- и пирата трясло на бегу.
-		pathGoal = nil
-		pathWaypoints = {}
-		waypointIndex = 1
-		humanoid:MoveTo(goal)
-		return
-	end
-
-	local needRecompute = (not pathGoal)
-		or flatDistance(pathGoal, goal) > CFG.PATH_GOAL_MOVE_THRESHOLD
-		or waypointIndex > #pathWaypoints
-		or (os.clock() - pathComputeClock > CFG.PATH_RECOMPUTE_INTERVAL)
-
-	if needRecompute and not pathComputing then
-		computePathAsync(goal)
-	end
-
-	if #pathWaypoints > 0 then
-		while waypointIndex <= #pathWaypoints
-			and flatDistance(rootPart.Position, pathWaypoints[waypointIndex].Position) <= CFG.WAYPOINT_REACH do
-			waypointIndex += 1
-		end
-		local wp = pathWaypoints[waypointIndex]
-		if wp then
-			if wp.Action == Enum.PathWaypointAction.Jump then
-				humanoid.Jump = true
-			end
-			humanoid:MoveTo(wp.Position)
-		else
-			humanoid:MoveTo(goal)
-		end
-	else
-		humanoid:MoveTo(goal)
-	end
-end
-
-local function stopMoving()
-	humanoid:MoveTo(rootPart.Position)
-end
-
---====================================================
--- АТАКА
---====================================================
-
-local lastAttackTime = 0
-local isAttacking = false
-
-local function attackTarget(targetRoot, targetHumanoid)
-	if isAttacking then return end
-	local now = os.clock()
-	if now - lastAttackTime < CFG.ATTACK_COOLDOWN then return end
-	lastAttackTime = now
-	isAttacking = true
-
-	faceTowards(targetRoot.Position)
-
-	if attackTrack then
-		attackTrack:Play()
-	end
-	-- Инструмент (ClassicSword и т.п.): свой замах/звук.
-	local tool = npc:FindFirstChildWhichIsA("Tool")
-	if tool then
-		pcall(function() tool:Activate() end)
-	end
-
-	task.delay(CFG.ATTACK_HIT_DELAY, function()
-		if targetHumanoid and targetHumanoid.Parent and targetHumanoid.Health > 0 then
-			local d = (targetRoot.Position - rootPart.Position).Magnitude
-			if d <= CFG.ATTACK_RANGE + CFG.ATTACK_RANGE_BUFFER then
-				targetHumanoid:TakeDamage(CFG.ATTACK_DAMAGE)
-			end
-		end
-	end)
-
-	task.delay(CFG.ATTACK_COOLDOWN, function()
-		isAttacking = false
-	end)
-end
-
---====================================================
--- КОНЕЧНЫЙ АВТОМАТ (FSM)
---====================================================
-
-local STATE = {
-	GUARD = "Guard",
-	PATROL = "Patrol",
-	INVESTIGATE = "Investigate",
-	CHASE = "Chase",          -- видит врага: бежит и бьёт (chase+attack слиты)
-	SEARCH = "Search",        -- потерял из виду: ищет у последней точки
-	RETURN = "Return",        -- возвращается на пост
-	ALERTED = "Alerted",      -- поднят по тревоге отряда
-}
-
-local currentState = STATE.GUARD
-local stateClock = os.clock()
-local patrolPauseUntil = 0
-local nextScanClock = 0
-local scanYawTarget = nil
-
-local function setState(newState)
-	if currentState == newState then return end
-	currentState = newState
-	stateClock = os.clock()
-	if newState ~= STATE.CHASE then
-		-- Сбрасываем кэш пути при смене не-боевого состояния.
-		pathGoal = nil
-	end
-end
-
-local function stateAge()
-	return os.clock() - stateClock
-end
-
--- Осмотр по сторонам (поворот корпуса), когда стоим.
-local function scan()
-	if os.clock() >= nextScanClock then
-		nextScanClock = os.clock() + math.random(12, 24) * 0.1
-		local _, yaw = rootPart.CFrame:ToOrientation()
-		scanYawTarget = yaw + math.rad(math.random(-70, 70))
-	end
-	if scanYawTarget then
-		local _, yaw = rootPart.CFrame:ToOrientation()
-		local diff = (scanYawTarget - yaw + math.pi) % (2 * math.pi) - math.pi
-		local step = math.clamp(diff, -math.rad(2), math.rad(2))
-		rootPart.CFrame = CFrame.new(rootPart.Position) * CFrame.Angles(0, yaw + step, 0)
-	end
-end
-
-local function runGuard()
-	stopMoving()
-	scan()
-	if suspicion < CFG.SUSPICION_INVESTIGATE * 0.5 and not getSquadAlert() then
-		-- Patrol-вариант: спустя GUARD_DURATION уходит в обход.
-		if CFG.BEHAVIOR_VARIANT == "Patrol" and #patrolPoints > 0 and stateAge() >= CFG.GUARD_DURATION then
-			setState(STATE.PATROL)
-		end
-	end
-end
-
-local function runPatrol()
-	if #patrolPoints == 0 then
-		setState(STATE.GUARD)
-		return
-	end
-	local target = patrolPoints[patrolIndex]
-	if flatDistance(rootPart.Position, target) > CFG.PATROL_POINT_REACH then
-		navigateTo(target, CFG.PATROL_SPEED)
-		patrolPauseUntil = 0
-	else
-		stopMoving()
-		scan()
-		if patrolPauseUntil == 0 then
-			patrolPauseUntil = os.clock() + math.random(CFG.PATROL_PAUSE_MIN, CFG.PATROL_PAUSE_MAX)
-		elseif os.clock() >= patrolPauseUntil then
-			patrolPauseUntil = 0
-			patrolIndex = patrolIndex % #patrolPoints + 1
-		end
-	end
-end
-
-local function runInvestigate()
-	local target = lastKnownPosition or homePosition
-	if flatDistance(rootPart.Position, target) > CFG.PATROL_POINT_REACH then
-		navigateTo(target, CFG.PATROL_SPEED)
-	else
-		stopMoving()
-		scan()
-		if suspicion < CFG.SUSPICION_INVESTIGATE * 0.5 and not getSquadAlert() then
-			setState(STATE.RETURN)
-		end
-	end
-end
-
--- Слитые Chase+Attack: дальше радиуса — бежим к цели; в радиусе — бьём.
-local function runChase(visibleRoot)
-	if not visibleRoot then
-		setState(STATE.SEARCH)
-		return
-	end
-	lastKnownPosition = visibleRoot.Position
-	local dist = flatDistance(rootPart.Position, visibleRoot.Position)
-	if dist <= CFG.ATTACK_RANGE then
-		stopMoving()
-		faceTowards(visibleRoot.Position)
-		local character = visibleRoot.Parent
-		local h = character and getCharacterHumanoid(character)
-		if h then
-			attackTarget(visibleRoot, h)
-		end
-	else
-		-- Цель ВИДИМА (перцепция уже подтвердила LOS) — бежим ПРЯМО на неё, без
-		-- pathfinding. Раньше геометрический LOS-луч мигал о перила/мелочь, и пират
-		-- чередовал «прямо к игроку / боковой вейпоинт» — его шманало туда-сюда.
-		humanoid.WalkSpeed = CFG.CHASE_SPEED
-		jumpCheck(visibleRoot.Position)
-		humanoid:MoveTo(visibleRoot.Position)
-		pathGoal = nil -- кэш маршрута не нужен, пока цель на глазах
-		pathWaypoints = {}
-		waypointIndex = 1
-	end
-end
-
-local function runSearch()
-	-- Игрок ВНЕ поля зрения → двигаемся шагом (бег только при визуальном контакте).
-	local target = lastKnownPosition or homePosition
-	if flatDistance(rootPart.Position, target) > CFG.PATROL_POINT_REACH then
-		navigateTo(target, CFG.PATROL_SPEED)
-	else
-		stopMoving()
-		scan()
-	end
-	if suspicion <= 0 or stateAge() >= CFG.SEARCH_DURATION then
-		chaseTarget = nil
-		setState(STATE.RETURN)
-	end
-end
-
-local function runReturn()
-	if flatDistance(rootPart.Position, homePosition) > CFG.PATROL_POINT_REACH then
-		navigateTo(homePosition, CFG.PATROL_SPEED)
-	else
-		stopMoving()
-		faceTowards(rootPart.Position + homeLook)
-		setState(STATE.GUARD)
-	end
-end
-
-local function runAlerted()
-	local pos = getSquadAlert()
-	if not pos then
-		setState(STATE.RETURN)
-		return
-	end
-	if flatDistance(rootPart.Position, pos) > CFG.SQUAD_ENGAGE_RADIUS then
-		navigateTo(pos, CFG.CHASE_SPEED)
-	else
-		lastKnownPosition = pos
-		setState(STATE.INVESTIGATE)
-	end
-end
-
---====================================================
--- АНИМАЦИИ (штатный Animate УДАЛЁН — играем всё сами из папки внутри NPC)
---====================================================
--- Структура в модели: Folder/{idle/Animation1+Animation2, walk/WalkAnim,
--- run/RunAnim, jump/JumpAnim, fall/FallAnim, ...}. Ищем по паре
--- «имя контейнера → имя Animation» рекурсивно, чтобы не зависеть от обёртки.
--- Один активный трек локомоции за раз — никакого смешения walk+run.
 
 local animator = humanoid:FindFirstChildOfClass("Animator")
 if not animator then
@@ -719,8 +180,6 @@ if not animator then
 	animator.Parent = humanoid
 end
 
--- Поиск по СПИСКУ имён где угодно в модели (структура плоская: все Animation
--- лежат в одной папке — Animation1, Animation2, WalkAnim, RunAnim, ...).
 local function findAnim(names)
 	for _, want in ipairs(names) do
 		for _, d in ipairs(npc:GetDescendants()) do
@@ -750,14 +209,32 @@ local function loadTrack(label, names, priority, looped)
 	return track
 end
 
-local idleCalmTrack  = loadTrack("idle спокойный",  { "Animation1", "Idle", "IdleAnim" },  Enum.AnimationPriority.Idle, true)
-local idleAlertTrack = loadTrack("idle тревожный",  { "Animation2", "Idle2" },             Enum.AnimationPriority.Idle, true) or idleCalmTrack
-local walkTrack      = loadTrack("ходьба",          { "WalkAnim", "Walk" },                Enum.AnimationPriority.Movement, true)
-local runTrack       = loadTrack("бег",             { "RunAnim", "Run" },                  Enum.AnimationPriority.Movement, true) or walkTrack
-local jumpTrack      = loadTrack("прыжок",          { "JumpAnim", "Jump" },                Enum.AnimationPriority.Movement, false)
-local fallTrack      = loadTrack("падение",         { "FallAnim", "Fall" },                Enum.AnimationPriority.Movement, true)
+local idleCalmTrack  = loadTrack("idle спокойный", { "Animation1", "Idle", "IdleAnim" }, Enum.AnimationPriority.Idle, true)
+local idleAlertTrack = loadTrack("idle тревожный", { "Animation2", "Idle2" },            Enum.AnimationPriority.Idle, true) or idleCalmTrack
+local walkTrack      = loadTrack("ходьба",         { "WalkAnim", "Walk" },               Enum.AnimationPriority.Movement, true)
+local runTrack       = loadTrack("бег",            { "RunAnim", "Run" },                 Enum.AnimationPriority.Movement, true) or walkTrack
+local jumpTrack      = loadTrack("прыжок",         { "JumpAnim", "Jump" },               Enum.AnimationPriority.Movement, false)
+local fallTrack      = loadTrack("падение",        { "FallAnim", "Fall" },               Enum.AnimationPriority.Movement, true)
 
--- Единственный активный трек локомоции (idle calm/alert | walk | run | fall).
+local attackTrack = nil
+do
+	local attackAnim = script:FindFirstChild("Attack")
+	if attackAnim and attackAnim:IsA("Animation") then
+		local ok, track = pcall(function()
+			return animator:LoadAnimation(attackAnim)
+		end)
+		if ok and track then
+			track.Priority = Enum.AnimationPriority.Action
+			track.Looped = false
+			attackTrack = track
+		end
+	end
+	if not attackTrack then
+		warn("[PirateGuardAI] анимация «Attack» (ребёнок скрипта) не найдена — бой без замаха")
+	end
+end
+
+-- Ровно ОДИН активный трек локомоции за раз — смешение walk+run исключено.
 local currentLoco = nil
 local function playLoco(track, fade)
 	fade = fade or 0.15
@@ -774,7 +251,6 @@ local function playLoco(track, fade)
 	end
 end
 
--- Прыжок/полёт по состояниям Humanoid.
 local airborne = false
 humanoid.StateChanged:Connect(function(_, new)
 	if new == Enum.HumanoidStateType.Jumping then
@@ -791,7 +267,8 @@ humanoid.StateChanged:Connect(function(_, new)
 	end
 end)
 
--- Каждый кадр выбираем ровно одну анимацию по реальному состоянию.
+local chaseTarget = nil -- forward (нужен аниматору для тревожной стойки)
+
 local stillSince = nil
 local function updateAnimations()
 	if airborne then
@@ -802,25 +279,324 @@ local function updateAnimations()
 
 	if humanoid.MoveDirection.Magnitude > 0.05 then
 		stillSince = nil
-		-- бег в погоне (скорость CHASE_SPEED), шаг во всех остальных состояниях
-		local runMode = humanoid.WalkSpeed > (CFG.PATROL_SPEED + CFG.CHASE_SPEED) / 2
+		local runMode = humanoid.WalkSpeed > (CFG.WALK_SPEED + CFG.CHASE_SPEED) / 2
 		playLoco(runMode and runTrack or walkTrack)
 		return
 	end
 
-	-- Гистерезис остановки: в микропаузы движения (смена вейпоинта) не мигаем idle.
+	-- гистерезис остановки: микропаузы движения не мигают idle поверх бега
 	stillSince = stillSince or os.clock()
 	if os.clock() - stillSince < 0.15 then
 		return
 	end
 
 	if attackTrack and attackTrack.IsPlaying then
-		playLoco(nil, 0.1) -- удар (Action) играет сам, локомоцию гасим
+		playLoco(nil, 0.1) -- замах (Action) играет сам
 		return
 	end
 
-	-- Стоим: спокойный idle без цели, тревожный — когда преследуем.
 	playLoco((chaseTarget and idleAlertTrack) or idleCalmTrack, 0.2)
+end
+
+--====================================================
+-- ДВИЖЕНИЕ (прямой MoveTo + прыжок через мелочь + анти-застревание)
+--====================================================
+
+local lastJumpCheck = 0
+local function jumpCheck(goal)
+	if os.clock() - lastJumpCheck < 0.5 then return end
+	lastJumpCheck = os.clock()
+	local dir = Vector3.new(goal.X - rootPart.Position.X, 0, goal.Z - rootPart.Position.Z)
+	if dir.Magnitude < 0.1 then return end
+	local origin = rootPart.Position + Vector3.new(0, -1.5, 0)
+	if workspace:Raycast(origin, dir.Unit * 3, raycastParams) then
+		humanoid.Jump = true
+	end
+end
+
+local stuckPos, stuckSince = nil, nil
+local function moveTo(goal, speed)
+	humanoid.WalkSpeed = speed
+	jumpCheck(goal)
+	humanoid:MoveTo(goal)
+
+	-- почти не двигаемся, а цель далеко → шаг вбок, чтобы соскочить с угла
+	if stuckPos and (rootPart.Position - stuckPos).Magnitude > CFG.STUCK_DIST then
+		stuckPos, stuckSince = rootPart.Position, os.clock()
+	elseif not stuckPos then
+		stuckPos, stuckSince = rootPart.Position, os.clock()
+	elseif os.clock() - stuckSince > CFG.STUCK_TIME
+		and flatDistance(rootPart.Position, goal) > CFG.REACH then
+		local dir = (Vector3.new(goal.X, 0, goal.Z) - Vector3.new(rootPart.Position.X, 0, rootPart.Position.Z))
+		if dir.Magnitude > 0.1 then
+			local side = Vector3.new(-dir.Unit.Z, 0, dir.Unit.X) * 4
+			if math.random() < 0.5 then side = -side end
+			humanoid.Jump = true
+			humanoid:MoveTo(rootPart.Position + side)
+		end
+		stuckPos, stuckSince = rootPart.Position, os.clock()
+	end
+end
+
+local function stopMoving()
+	humanoid:MoveTo(rootPart.Position)
+	stuckPos, stuckSince = nil, nil
+end
+
+--====================================================
+-- ШКАЛА ПОДОЗРЕНИЯ (полоса над головой)
+--====================================================
+
+local suspicion = 0
+local lastKnownPosition = nil
+
+local suspicionGui = Instance.new("BillboardGui")
+suspicionGui.Name = "SuspicionBar"
+suspicionGui.Size = UDim2.new(0, 80, 0, 8)
+suspicionGui.StudsOffsetWorldSpace = Vector3.new(0, 3.2, 0)
+suspicionGui.AlwaysOnTop = true
+suspicionGui.MaxDistance = 90
+suspicionGui.Enabled = false
+suspicionGui.Adornee = head
+suspicionGui.Parent = head
+
+local suspicionBg = Instance.new("Frame")
+suspicionBg.Size = UDim2.new(1, 0, 1, 0)
+suspicionBg.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+suspicionBg.BackgroundTransparency = 0.4
+suspicionBg.BorderSizePixel = 0
+suspicionBg.Parent = suspicionGui
+
+local suspicionFill = Instance.new("Frame")
+suspicionFill.Size = UDim2.new(0, 0, 1, 0)
+suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+suspicionFill.BorderSizePixel = 0
+suspicionFill.Parent = suspicionBg
+
+local function updateSuspicionBar()
+	suspicionGui.Enabled = suspicion > 1
+	suspicionFill.Size = UDim2.new(math.clamp(suspicion / 100, 0, 1), 0, 1, 0)
+	if chaseTarget then
+		suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+	elseif suspicion >= CFG.INVESTIGATE_AT then
+		suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 220, 120)
+	else
+		suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	end
+end
+
+--====================================================
+-- ВОСПРИЯТИЕ (конус зрения + LOS)
+--====================================================
+
+-- Возвращает видимый root/character ближайшего игрока и копит подозрение.
+local function updatePerception(dt)
+	local bestRoot, bestChar, bestDist = nil, nil, math.huge
+	local lookDir = rootPart.CFrame.LookVector
+
+	for _, player in ipairs(Players:GetPlayers()) do
+		local character = player.Character
+		local targetRoot = getCharacterRoot(character)
+		if targetRoot and isAliveCharacter(character) then
+			local offset = targetRoot.Position - head.Position
+			local dist = offset.Magnitude
+			if dist <= CFG.SIGHT_RANGE then
+				local melee = dist <= CFG.MELEE_REFLEX
+				local angle = math.deg(math.acos(math.clamp(
+					lookDir:Dot(Vector3.new(offset.X, 0, offset.Z).Unit), -1, 1)))
+				if (melee or angle <= CFG.FOV_SIDE_DEG / 2) and canSee(targetRoot) then
+					local gain
+					if melee then
+						gain = 1000 -- вплотную — мгновенно
+					elseif angle <= CFG.FOV_FRONT_DEG / 2 then
+						gain = CFG.GAIN_FRONT
+					else
+						gain = CFG.GAIN_SIDE
+					end
+					local distFactor = 1 - 0.6 * math.clamp(dist / CFG.SIGHT_RANGE, 0, 1)
+					suspicion = math.min(100, suspicion + gain * distFactor * dt)
+					if dist < bestDist then
+						bestRoot, bestChar, bestDist = targetRoot, character, dist
+					end
+				end
+			end
+		end
+	end
+
+	return bestRoot, bestChar
+end
+
+--====================================================
+-- ОТРЯД (крик соседям с тем же тегом)
+--====================================================
+
+local lastShout = 0
+local function broadcastShout(pos)
+	if os.clock() - lastShout < CFG.SHOUT_INTERVAL then return end
+	lastShout = os.clock()
+	for _, other in ipairs(CollectionService:GetTagged(CFG.GUARD_TAG)) do
+		if other ~= npc and other.Parent then
+			local otherRoot = other.PrimaryPart or other:FindFirstChild("HumanoidRootPart")
+			if otherRoot and (otherRoot.Position - rootPart.Position).Magnitude <= CFG.SHOUT_RADIUS then
+				other:SetAttribute("SquadAlertPos", pos)
+				other:SetAttribute("SquadAlertAt", os.clock())
+			end
+		end
+	end
+end
+
+-- Свежий чужой крик (или nil).
+local function getSquadAlert()
+	local at = npc:GetAttribute("SquadAlertAt")
+	if at and os.clock() - at <= CFG.ALERT_FRESH then
+		return npc:GetAttribute("SquadAlertPos")
+	end
+	return nil
+end
+
+--====================================================
+-- БОЙ
+--====================================================
+
+local lastAttack = 0
+local function tryAttack(targetRoot, targetHumanoid)
+	if os.clock() - lastAttack < CFG.ATTACK_COOLDOWN then return end
+	lastAttack = os.clock()
+
+	if attackTrack then
+		attackTrack:Play(0.05)
+	end
+	task.delay(CFG.ATTACK_HIT_DELAY, function()
+		if not targetRoot.Parent or not targetHumanoid.Parent then return end
+		if targetHumanoid.Health <= 0 then return end
+		if (targetRoot.Position - rootPart.Position).Magnitude <= CFG.ATTACK_RANGE + 2 then
+			targetHumanoid:TakeDamage(CFG.ATTACK_DAMAGE)
+		end
+	end)
+end
+
+--====================================================
+-- ПАТРУЛЬ
+--====================================================
+
+local patrolPoints = {}
+do
+	local folder = npc:FindFirstChild(CFG.PATROL_FOLDER)
+	if folder then
+		for _, p in ipairs(folder:GetChildren()) do
+			if p:IsA("BasePart") then
+				table.insert(patrolPoints, p.Position)
+				p.Anchored = true
+				p.CanCollide = false
+				p.Transparency = 1
+			end
+		end
+	end
+end
+local patrolIndex = 1
+local patrolPauseUntil = 0
+
+--====================================================
+-- FSM
+--====================================================
+
+local STATE = { GUARD = "Guard", PATROL = "Patrol", INVESTIGATE = "Investigate",
+	CHASE = "Chase", SEARCH = "Search", RETURN = "Return" }
+
+local currentState = STATE.GUARD
+local stateClock = os.clock()
+
+local function setState(s)
+	if currentState == s then return end
+	currentState = s
+	stateClock = os.clock()
+end
+
+local function stateAge()
+	return os.clock() - stateClock
+end
+
+local function runGuard()
+	stopMoving()
+	if #patrolPoints > 0 and stateAge() > 4 then
+		setState(STATE.PATROL)
+	end
+end
+
+local function runPatrol()
+	if #patrolPoints == 0 then
+		setState(STATE.GUARD)
+		return
+	end
+	local target = patrolPoints[patrolIndex]
+	if flatDistance(rootPart.Position, target) > CFG.REACH then
+		moveTo(target, CFG.WALK_SPEED)
+		patrolPauseUntil = 0
+	else
+		stopMoving()
+		if patrolPauseUntil == 0 then
+			patrolPauseUntil = os.clock() + math.random(CFG.PATROL_PAUSE_MIN, CFG.PATROL_PAUSE_MAX)
+		elseif os.clock() >= patrolPauseUntil then
+			patrolPauseUntil = 0
+			patrolIndex = patrolIndex % #patrolPoints + 1
+		end
+	end
+end
+
+local function runInvestigate()
+	local target = lastKnownPosition or homePosition
+	if flatDistance(rootPart.Position, target) > CFG.REACH then
+		moveTo(target, CFG.WALK_SPEED)
+	else
+		stopMoving()
+		suspicion = math.max(0, suspicion - CFG.DECAY * 0.5 * (1 / 60))
+		if suspicion < CFG.INVESTIGATE_AT * 0.5 then
+			setState(STATE.RETURN)
+		end
+	end
+end
+
+local function runChase(visibleRoot)
+	if not visibleRoot then
+		setState(STATE.SEARCH)
+		return
+	end
+	lastKnownPosition = visibleRoot.Position
+	local dist = flatDistance(rootPart.Position, visibleRoot.Position)
+	if dist <= CFG.ATTACK_RANGE then
+		stopMoving()
+		faceTowards(visibleRoot.Position)
+		local h = visibleRoot.Parent and visibleRoot.Parent:FindFirstChildOfClass("Humanoid")
+		if h then
+			tryAttack(visibleRoot, h)
+		end
+	else
+		-- цель видима → бежим ПРЯМО на неё (никакого pathfinding и зигзагов)
+		moveTo(visibleRoot.Position, CFG.CHASE_SPEED)
+	end
+end
+
+local function runSearch()
+	local target = lastKnownPosition or homePosition
+	if flatDistance(rootPart.Position, target) > CFG.REACH then
+		moveTo(target, CFG.WALK_SPEED) -- игрок вне поля зрения → шагом
+	else
+		stopMoving()
+	end
+	if suspicion <= 0 or stateAge() >= CFG.SEARCH_DURATION then
+		chaseTarget = nil
+		setState(STATE.RETURN)
+	end
+end
+
+local function runReturn()
+	if flatDistance(rootPart.Position, homePosition) > CFG.REACH then
+		moveTo(homePosition, CFG.WALK_SPEED)
+	else
+		stopMoving()
+		faceTowards(rootPart.Position + homeLook)
+		setState(STATE.GUARD)
+	end
 end
 
 --====================================================
@@ -832,93 +608,37 @@ RunService.Heartbeat:Connect(function(dt)
 		return
 	end
 
-	updateAnimations() -- idle/walk/run/fall — всё играем сами (Animate удалён)
-
 	local visibleRoot, visibleChar = updatePerception(dt)
 
-	-- Спад подозрения (в погоне не падает; в проверке/поиске — после прихода на точку).
-	if not visibleRoot then
-		local allowDecay = true
-		if currentState == STATE.CHASE then
-			allowDecay = false
-		elseif currentState == STATE.INVESTIGATE or currentState == STATE.SEARCH then
-			local spot = lastKnownPosition or homePosition
-			allowDecay = flatDistance(rootPart.Position, spot) <= CFG.PATROL_POINT_REACH
-		end
-		if allowDecay then
-			suspicion = math.max(0, suspicion - CFG.SUSPICION_DECAY * dt)
-		end
+	-- спад подозрения вне видимости (в погоне не падает)
+	if not visibleRoot and currentState ~= STATE.CHASE then
+		suspicion = math.max(0, suspicion - CFG.DECAY * dt)
 	end
 	updateSuspicionBar()
 
-	-- УВИДЕЛ игрока (FOV + LOS) → сразу в погоню бегом. Шкала подозрения остаётся
-	-- для полосы над головой и реакции отряда; порог 100 для старта боя больше не ждём.
+	-- УВИДЕЛ → сразу погоня бегом + крик отряду
 	if visibleRoot then
 		chaseTarget = visibleChar
 		if currentState ~= STATE.CHASE then
-			broadcastAlert() -- первый крик
+			setState(STATE.CHASE)
 		end
-		setState(STATE.CHASE)
-	elseif suspicion >= CFG.SUSPICION_INVESTIGATE
+		broadcastShout(visibleRoot.Position)
+	elseif suspicion >= CFG.INVESTIGATE_AT
 		and (currentState == STATE.GUARD or currentState == STATE.PATROL or currentState == STATE.RETURN) then
 		setState(STATE.INVESTIGATE)
 	end
 
-	-- Перекрикиваем в бою, обновляя позицию игрока для отряда.
-	if currentState == STATE.CHASE and os.clock() - lastShoutClock >= CFG.SHOUT_INTERVAL then
-		broadcastAlert()
-	end
-
-	-- Реакция на чужой крик, если сами ещё не в бою.
-	local squadPos = getSquadAlert()
-	if squadPos and currentState ~= STATE.CHASE then
-		local player = (alertUserId and alertUserId > 0) and Players:GetPlayerByUserId(alertUserId)
-		if player and player.Character and isAliveCharacter(player.Character) then
-			chaseTarget = player.Character
-		end
-		if flatDistance(rootPart.Position, squadPos) <= CFG.SQUAD_ENGAGE_RADIUS then
-			lastKnownPosition = squadPos
-			if currentState ~= STATE.INVESTIGATE then
-				setState(STATE.INVESTIGATE)
-			end
-		elseif currentState == STATE.GUARD or currentState == STATE.PATROL or currentState == STATE.RETURN then
-			setState(STATE.ALERTED)
+	-- чужой крик: идём проверять, если сами не в бою
+	local alertPos = getSquadAlert()
+	if alertPos and currentState ~= STATE.CHASE then
+		lastKnownPosition = alertPos
+		suspicion = math.max(suspicion, CFG.INVESTIGATE_AT)
+		if currentState ~= STATE.INVESTIGATE and currentState ~= STATE.SEARCH then
+			setState(STATE.INVESTIGATE)
 		end
 	end
 
-	-- Видим назначенную цель (LOS + радиус, без FOV) → сразу в бой.
-	local chaseVisibleRoot = nil
-	if chaseTarget then
-		local root = getCharacterRoot(chaseTarget)
-		if root and isAliveCharacter(chaseTarget) then
-			local flat = flatDistance(rootPart.Position, root.Position)
-			if flat <= CFG.ATTACK_RANGE + CFG.ATTACK_RANGE_BUFFER then
-				chaseVisibleRoot = root
-			elseif flat <= CFG.SIGHT_RANGE and canSeeCharacter(root) then
-				chaseVisibleRoot = root
-			end
-		end
-	end
-	if chaseVisibleRoot and currentState ~= STATE.CHASE then
-		setState(STATE.CHASE)
-	end
-
-	-- Безусловный рефлекс: игрок вплотную → сразу цель и бой.
-	for _, player in ipairs(Players:GetPlayers()) do
-		local character = player.Character
-		if character and isAliveCharacter(character) then
-			local root = getCharacterRoot(character)
-			if root and flatDistance(rootPart.Position, root.Position) <= CFG.ATTACK_RANGE + CFG.ATTACK_RANGE_BUFFER then
-				chaseTarget = character
-				chaseVisibleRoot = root
-				if currentState ~= STATE.CHASE then
-					broadcastAlert()
-					setState(STATE.CHASE)
-				end
-				break
-			end
-		end
-	end
+	updateAnimations()
 
 	if currentState == STATE.GUARD then
 		runGuard()
@@ -927,35 +647,40 @@ RunService.Heartbeat:Connect(function(dt)
 	elseif currentState == STATE.INVESTIGATE then
 		runInvestigate()
 	elseif currentState == STATE.CHASE then
-		runChase(chaseVisibleRoot)
+		runChase(visibleRoot)
 	elseif currentState == STATE.SEARCH then
-		runSearch()
+		if visibleRoot then
+			setState(STATE.CHASE)
+		else
+			runSearch()
+		end
 	elseif currentState == STATE.RETURN then
 		runReturn()
-	elseif currentState == STATE.ALERTED then
-		runAlerted()
 	end
 end)
 
--- Диагностика: версия, статус аним-треков и поиск конфликтующих скриптов в модели.
+--====================================================
+-- ДИАГНОСТИКА
+--====================================================
+
 local function ts(t) return t and "OK" or "НЕТ" end
 print(string.format(
-	"[PirateGuardAI v4-flat] %s | Variant=%s PatrolPoints=%d Rig=%s | аним: idle1=%s idle2=%s walk=%s run=%s jump=%s fall=%s attack=%s",
-	script:GetFullName(), CFG.BEHAVIOR_VARIANT, #patrolPoints, npc.Name,
+	"[PirateGuardAI v5-clean] %s | PatrolPoints=%d Rig=%s | аним: idle1=%s idle2=%s walk=%s run=%s jump=%s fall=%s attack=%s",
+	script:GetFullName(), #patrolPoints, npc.Name,
 	ts(idleCalmTrack), ts(idleAlertTrack), ts(walkTrack), ts(runTrack),
 	ts(jumpTrack), ts(fallTrack), ts(attackTrack)
 ))
 
--- Другой ИИ/Animate в этой же модели = драка за анимации и телепорты. Кричим.
+-- Другой ИИ/Animate в этой же модели = драка за анимации/движение. Кричим.
 local HARMLESS_SCRIPTS = {
 	ChangeFaceOnDeath = true, ChangeFaceOnFullHealth = true,
-	Ragdoller = true, Health = true, Sound = true,
+	Ragdoller = true, Health = true, Sound = true, Respawn = true,
 }
 for _, d in ipairs(npc:GetDescendants()) do
 	if (d:IsA("Script") or d:IsA("LocalScript")) and d ~= script
 		and not HARMLESS_SCRIPTS[d.Name]
 		and not d:FindFirstAncestorOfClass("Tool") then
 		warn("[PirateGuardAI] ⚠ посторонний скрипт в модели: " .. d:GetFullName() ..
-			" — если это другой ИИ или Animate, ОТКЛЮЧИ его (конфликт = телепорты/слом анимаций)")
+			" — если это другой ИИ или Animate, УДАЛИ/отключи его")
 	end
 end
