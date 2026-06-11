@@ -12,6 +12,7 @@ local CFG = {
 	VISUAL_MESH_NAME = "Pirate",
 	BODY_COLLIDERS_NAME = "BodyColliders",
 	IDLE_ANIMATION_NAME = "Idle",
+	IDLE_ALERT_ANIMATION_NAME = "Idle2", -- второй idle: играет при преследовании
 	WALK_ANIMATION_NAME = "Walk",
 	RUN_ANIMATION_NAME = "Run",
 	ATTACK_ANIMATION_NAME = "Attack",
@@ -1152,7 +1153,22 @@ if not animator then
 	animator.Parent = animationController
 end
 
-local idleAnimation = npc:FindFirstChild(CFG.IDLE_ANIMATION_NAME, true)
+-- Поиск idle-анимации: сначала Animation с нужным именем где угодно в модели, затем
+-- внутри штатного Animate — папка idle/<childName> (Animation1/Animation2).
+local function resolveIdleAnim(primaryName, animateChild)
+	local a = npc:FindFirstChild(primaryName, true)
+	if a and a:IsA("Animation") then return a end
+	local animate = npc:FindFirstChild("Animate", true)
+	local idleFolder = animate and animate:FindFirstChild("idle")
+	local b = idleFolder and idleFolder:FindFirstChild(animateChild)
+	if b and b:IsA("Animation") then return b end
+	return nil
+end
+
+-- Два idle: спокойный (Animation1) — когда никого не преследует; тревожный
+-- (Animation2) — когда есть цель преследования (шкала наблюдения сработала).
+local idleAnimation = resolveIdleAnim(CFG.IDLE_ANIMATION_NAME, "Animation1")
+local idleAlertAnimation = resolveIdleAnim(CFG.IDLE_ALERT_ANIMATION_NAME, "Animation2")
 local walkAnimation = npc:FindFirstChild(CFG.WALK_ANIMATION_NAME, true)
 local runAnimation = npc:FindFirstChild(CFG.RUN_ANIMATION_NAME, true)
 local attackAnimation = npc:FindFirstChild(CFG.ATTACK_ANIMATION_NAME, true)
@@ -1172,7 +1188,13 @@ if not attackAnimation or not attackAnimation:IsA("Animation") then
 	return
 end
 
-local idleTrack = animator:LoadAnimation(idleAnimation)
+local idleTrack = animator:LoadAnimation(idleAnimation)         -- спокойный idle (Animation1)
+local idleAlertTrack = idleTrack
+if idleAlertAnimation and idleAlertAnimation:IsA("Animation") then
+	idleAlertTrack = animator:LoadAnimation(idleAlertAnimation) -- тревожный idle (Animation2)
+else
+	warn("[PirateUnitAI] Второй idle (преследование) не найден — будет обычный idle")
+end
 local walkTrack = animator:LoadAnimation(walkAnimation)
 local attackTrack = animator:LoadAnimation(attackAnimation)
 
@@ -1205,11 +1227,36 @@ idleTrack.Priority = Enum.AnimationPriority.Idle
 walkTrack.Priority = Enum.AnimationPriority.Movement
 runTrack.Priority = Enum.AnimationPriority.Movement
 attackTrack.Priority = Enum.AnimationPriority.Action
+if idleAlertTrack ~= idleTrack then
+	idleAlertTrack.Looped = true
+	idleAlertTrack.Priority = Enum.AnimationPriority.Idle
+end
+
+-- Состояние восприятия (forward-declared, чтобы playIdle мог читать его раньше FSM).
+local suspicion = 0
+local chaseTarget = nil
+
+-- Какой idle нужен сейчас: тревожный при наличии цели преследования, иначе спокойный.
+local function currentIdleTrack()
+	if chaseTarget and idleAlertTrack then
+		return idleAlertTrack
+	end
+	return idleTrack
+end
+
+local function stopIdles(fade)
+	idleTrack:Stop(fade)
+	if idleAlertTrack ~= idleTrack then
+		idleAlertTrack:Stop(fade)
+	end
+end
 
 local currentAnimationState = nil
 
 local function playIdle()
-	if currentAnimationState == "Idle" then
+	local want = currentIdleTrack()
+	-- уже idle и нужный вариант играет — ничего не делаем
+	if currentAnimationState == "Idle" and want.IsPlaying then
 		return
 	end
 
@@ -1223,8 +1270,13 @@ local function playIdle()
 
 	attackTrack:Stop(0.1)
 
-	if not idleTrack.IsPlaying then
-		idleTrack:Play(0.2)
+	-- остановить НЕ нужный idle и запустить нужный
+	if idleAlertTrack ~= idleTrack then
+		local other = (want == idleTrack) and idleAlertTrack or idleTrack
+		other:Stop(0.2)
+	end
+	if not want.IsPlaying then
+		want:Play(0.2)
 	end
 end
 
@@ -1235,7 +1287,7 @@ local function playWalk()
 
 	currentAnimationState = "Walk"
 
-	idleTrack:Stop(0.2)
+	stopIdles(0.2)
 
 	if runTrack ~= walkTrack then
 		runTrack:Stop(0.2)
@@ -1255,7 +1307,7 @@ local function playRun()
 
 	currentAnimationState = "Run"
 
-	idleTrack:Stop(0.15)
+	stopIdles(0.15)
 	walkTrack:Stop(0.15)
 	attackTrack:Stop(0.1)
 
@@ -1267,7 +1319,7 @@ end
 local function playAttack()
 	currentAnimationState = "Attack"
 
-	idleTrack:Stop(0.1)
+	stopIdles(0.1)
 	walkTrack:Stop(0.1)
 
 	if runTrack ~= walkTrack then
@@ -1480,10 +1532,10 @@ local function canSeeCharacter(targetRoot)
 	return true
 end
 
--- Состояние восприятия и памяти.
-local suspicion = 0
+-- Состояние восприятия и памяти (suspicion/chaseTarget forward-declared выше).
+suspicion = 0
 local lastKnownPosition = nil
-local chaseTarget = nil
+chaseTarget = nil
 
 -- Обновляет подозрение по FOV + LOS. Возвращает ближайшего видимого игрока.
 local function updatePerception(dt)
@@ -1724,7 +1776,7 @@ function Jump.playAnim()
 		return
 	end
 	currentAnimationState = "Jump"
-	idleTrack:Stop(0.05)
+	stopIdles(0.05)
 	walkTrack:Stop(0.05)
 	if runTrack ~= walkTrack then
 		runTrack:Stop(0.05)
