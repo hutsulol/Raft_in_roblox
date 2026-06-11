@@ -131,6 +131,13 @@ humanoid.AutoRotate = true
 pcall(function()
 	humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
 end)
+-- Физика NPC всегда на СЕРВЕРЕ. Без этого владение физикой прыгает на ближайшего
+-- клиента, и серверный MoveTo дёргается/«подвисает» на бегу рядом с игроком.
+task.defer(function()
+	pcall(function()
+		rootPart:SetNetworkOwner(nil)
+	end)
+end)
 
 CollectionService:AddTag(npc, CFG.GUARD_TAG)
 
@@ -646,9 +653,10 @@ local function runChase(visibleRoot)
 end
 
 local function runSearch()
+	-- Игрок ВНЕ поля зрения → двигаемся шагом (бег только при визуальном контакте).
 	local target = lastKnownPosition or homePosition
 	if flatDistance(rootPart.Position, target) > CFG.PATROL_POINT_REACH then
-		navigateTo(target, CFG.CHASE_SPEED)
+		navigateTo(target, CFG.PATROL_SPEED)
 	else
 		stopMoving()
 		scan()
@@ -774,8 +782,9 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 	updateSuspicionBar()
 
-	-- Эскалация по подозрению.
-	if suspicion >= CFG.SUSPICION_ALERT and visibleRoot then
+	-- УВИДЕЛ игрока (FOV + LOS) → сразу в погоню бегом. Шкала подозрения остаётся
+	-- для полосы над головой и реакции отряда; порог 100 для старта боя больше не ждём.
+	if visibleRoot then
 		chaseTarget = visibleChar
 		if currentState ~= STATE.CHASE then
 			broadcastAlert() -- первый крик
