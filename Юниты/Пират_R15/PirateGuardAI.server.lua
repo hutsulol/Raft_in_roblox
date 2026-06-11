@@ -654,7 +654,15 @@ local function runChase(visibleRoot)
 			attackTarget(visibleRoot, h)
 		end
 	else
-		navigateTo(visibleRoot.Position, CFG.CHASE_SPEED)
+		-- Цель ВИДИМА (перцепция уже подтвердила LOS) — бежим ПРЯМО на неё, без
+		-- pathfinding. Раньше геометрический LOS-луч мигал о перила/мелочь, и пират
+		-- чередовал «прямо к игроку / боковой вейпоинт» — его шманало туда-сюда.
+		humanoid.WalkSpeed = CFG.CHASE_SPEED
+		jumpCheck(visibleRoot.Position)
+		humanoid:MoveTo(visibleRoot.Position)
+		pathGoal = nil -- кэш маршрута не нужен, пока цель на глазах
+		pathWaypoints = {}
+		waypointIndex = 1
 	end
 end
 
@@ -711,32 +719,30 @@ if not animator then
 	animator.Parent = humanoid
 end
 
-local function findAnim(folderName, animName)
-	for _, d in ipairs(npc:GetDescendants()) do
-		if d:IsA("Animation") and d.Name == animName
-			and d.Parent and d.Parent.Name == folderName then
-			return d
-		end
-	end
-	for _, d in ipairs(npc:GetDescendants()) do
-		if d:IsA("Animation") and d.Name == animName then
-			return d
+-- Поиск по СПИСКУ имён где угодно в модели (структура плоская: все Animation
+-- лежат в одной папке — Animation1, Animation2, WalkAnim, RunAnim, ...).
+local function findAnim(names)
+	for _, want in ipairs(names) do
+		for _, d in ipairs(npc:GetDescendants()) do
+			if d:IsA("Animation") and d.Name == want then
+				return d
+			end
 		end
 	end
 	return nil
 end
 
-local function loadTrack(folderName, animName, priority, looped)
-	local a = findAnim(folderName, animName)
+local function loadTrack(label, names, priority, looped)
+	local a = findAnim(names)
 	if not a then
-		warn(("[PirateGuardAI] анимация %s/%s не найдена"):format(folderName, animName))
+		warn(("[PirateGuardAI] анимация «%s» не найдена (искал: %s)"):format(label, table.concat(names, ", ")))
 		return nil
 	end
 	local ok, track = pcall(function()
 		return animator:LoadAnimation(a)
 	end)
 	if not ok or not track then
-		warn(("[PirateGuardAI] не удалось загрузить %s/%s"):format(folderName, animName))
+		warn(("[PirateGuardAI] не удалось загрузить «%s» (%s)"):format(label, a:GetFullName()))
 		return nil
 	end
 	track.Priority = priority
@@ -744,12 +750,12 @@ local function loadTrack(folderName, animName, priority, looped)
 	return track
 end
 
-local idleCalmTrack  = loadTrack("idle", "Animation1", Enum.AnimationPriority.Idle, true)
-local idleAlertTrack = loadTrack("idle", "Animation2", Enum.AnimationPriority.Idle, true) or idleCalmTrack
-local walkTrack      = loadTrack("walk", "WalkAnim",   Enum.AnimationPriority.Movement, true)
-local runTrack       = loadTrack("run",  "RunAnim",    Enum.AnimationPriority.Movement, true) or walkTrack
-local jumpTrack      = loadTrack("jump", "JumpAnim",   Enum.AnimationPriority.Movement, false)
-local fallTrack      = loadTrack("fall", "FallAnim",   Enum.AnimationPriority.Movement, true)
+local idleCalmTrack  = loadTrack("idle спокойный",  { "Animation1", "Idle", "IdleAnim" },  Enum.AnimationPriority.Idle, true)
+local idleAlertTrack = loadTrack("idle тревожный",  { "Animation2", "Idle2" },             Enum.AnimationPriority.Idle, true) or idleCalmTrack
+local walkTrack      = loadTrack("ходьба",          { "WalkAnim", "Walk" },                Enum.AnimationPriority.Movement, true)
+local runTrack       = loadTrack("бег",             { "RunAnim", "Run" },                  Enum.AnimationPriority.Movement, true) or walkTrack
+local jumpTrack      = loadTrack("прыжок",          { "JumpAnim", "Jump" },                Enum.AnimationPriority.Movement, false)
+local fallTrack      = loadTrack("падение",         { "FallAnim", "Fall" },                Enum.AnimationPriority.Movement, true)
 
 -- Единственный активный трек локомоции (idle calm/alert | walk | run | fall).
 local currentLoco = nil
@@ -934,7 +940,7 @@ end)
 -- Диагностика: версия, статус аним-треков и поиск конфликтующих скриптов в модели.
 local function ts(t) return t and "OK" or "НЕТ" end
 print(string.format(
-	"[PirateGuardAI v3-anim] %s | Variant=%s PatrolPoints=%d Rig=%s | аним: idle1=%s idle2=%s walk=%s run=%s jump=%s fall=%s attack=%s",
+	"[PirateGuardAI v4-flat] %s | Variant=%s PatrolPoints=%d Rig=%s | аним: idle1=%s idle2=%s walk=%s run=%s jump=%s fall=%s attack=%s",
 	script:GetFullName(), CFG.BEHAVIOR_VARIANT, #patrolPoints, npc.Name,
 	ts(idleCalmTrack), ts(idleAlertTrack), ts(walkTrack), ts(runTrack),
 	ts(jumpTrack), ts(fallTrack), ts(attackTrack)
