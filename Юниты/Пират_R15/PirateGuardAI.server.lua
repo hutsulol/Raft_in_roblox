@@ -61,7 +61,7 @@ assert(Self:FindFirstChild'Respawn' and Self.Respawn:IsA'BindableFunction', 'Mon
 assert(Self:FindFirstChild'Died' and Self.Died:IsA'BindableEvent', 'Monster does not have a Died BindableEvent')
 assert(Self:FindFirstChild'Respawned' and Self.Died:IsA'BindableEvent', 'Monster does not have a Respawned BindableEvent')
 assert(Self:FindFirstChild'Attacked' and Self.Died:IsA'BindableEvent', 'Monster does not have a Attacked BindableEvent')
-assert(script:FindFirstChild'Attack' and script.Attack:IsA'Animation', 'Monster does not have a MonsterScript.Attack Animation')
+assert(script:FindFirstChild'Attack' ~= nil or script:FindFirstChild'Attack_1' ~= nil, 'Monster does not have a MonsterScript.Attack (or Attack_1) Animation')
 
 
 --
@@ -93,7 +93,8 @@ local Data = {
 	LastAttack = 0,
 	
 	BaseMonster = Self:Clone(),
-	AttackTrack = nil,
+	AttackTracks = {},   -- загруженные треки ударов (Attack_1, Attack_2, ...)
+	NextAttackIndex = 1, -- какой трек играть следующим (чередование по кругу)
 }
 
 --====================================================
@@ -474,7 +475,12 @@ function Monster:Attack()
 	if (myPos - targetPos).magnitude <= Settings.AttackRange.Value then
 		Mind.CurrentTargetHumanoid.Value:TakeDamage(Settings.AttackDamage.Value)
 		Data.LastAttack = tick()
-		Data.AttackTrack:Play()
+		-- Чередуем анимации ударов по кругу: Attack_1 → Attack_2 → Attack_1 → ...
+		local track = Data.AttackTracks[Data.NextAttackIndex]
+		if track ~= nil then
+			track:Play()
+			Data.NextAttackIndex = Data.NextAttackIndex % #Data.AttackTracks + 1
+		end
 	end
 end
 
@@ -556,7 +562,20 @@ function Monster:Respawn(point)
 end
 
 function Monster:InitializeUnique()
-	Data.AttackTrack = Self.Humanoid:LoadAnimation(script.Attack)
+	-- Атаки: грузим все Attack-анимации скрипта (Attack, Attack_1, Attack_2, ...),
+	-- отсортированные по имени; при ударах они чередуются по кругу.
+	Data.AttackTracks = {}
+	local attackAnims = {}
+	for _, child in ipairs(script:GetChildren()) do
+		if child:IsA('Animation') and child.Name:sub(1, 6) == 'Attack' then
+			table.insert(attackAnims, child)
+		end
+	end
+	table.sort(attackAnims, function(a, b) return a.Name < b.Name end)
+	for _, anim in ipairs(attackAnims) do
+		table.insert(Data.AttackTracks, Self.Humanoid:LoadAnimation(anim))
+	end
+	Data.NextAttackIndex = 1
 	-- HP: снимаем ForceField, если он есть на риге. Игрок и наёмники бьют через
 	-- Humanoid:TakeDamage, а он НЕ проходит сквозь ForceField — из-за этого пират
 	-- казался бессмертным. Делается и при старте, и после респавна.
