@@ -33,20 +33,20 @@ screenGui.DisplayOrder = 40
 screenGui.Parent = playerGui
 
 -- Контейнер: правый край, по центру высоты; карточки выезжают справа и центрируются.
--- Контейнер: по центру по горизонтали, над хотбаром; карточки всплывают снизу.
+-- Контейнер: правый верхний угол (ниже счётчика «Жители»); карточки выезжают справа.
 local container = Instance.new("Frame")
 container.Name = "Stack"
-container.AnchorPoint = Vector2.new(0.5, 1)
-container.Position = UDim2.new(0.5, 0, 1, -130) -- над панелью быстрого доступа
-container.Size = UDim2.new(0, CARD_WIDTH, 0, 460)
+container.AnchorPoint = Vector2.new(1, 0)
+container.Position = UDim2.new(1, -16, 0, 70)
+container.Size = UDim2.new(0, CARD_WIDTH, 1, -90)
 container.BackgroundTransparency = 1
 container.Parent = screenGui
 
 local layout = Instance.new("UIListLayout")
 layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding = UDim.new(0, 10)
-layout.HorizontalAlignment = Enum.HorizontalAlignment.Center
-layout.VerticalAlignment = Enum.VerticalAlignment.Bottom
+layout.HorizontalAlignment = Enum.HorizontalAlignment.Right
+layout.VerticalAlignment = Enum.VerticalAlignment.Top
 layout.Parent = container
 
 local order = 0
@@ -58,7 +58,7 @@ local function pushCard(opts)
 	local colors = UITheme.Notif[nType] or UITheme.Notif.info
 	order += 1
 
-	-- Слот держит место в стопке; карточка внутри всплывает снизу.
+	-- Слот держит место в стопке; карточка внутри выезжает справа.
 	local slot = Instance.new("Frame")
 	slot.Name = "Slot"
 	slot.BackgroundTransparency = 1
@@ -71,7 +71,7 @@ local function pushCard(opts)
 		corner = 14,
 		stroke = 4,
 		size = UDim2.new(1, 0, 1, 0),
-		position = UDim2.new(0, 0, 1.4, 0), -- старт ниже слота (всплывёт вверх)
+		position = UDim2.new(1.15, 0, 0, 0), -- старт за правым краем слота (= за экраном)
 		parent = slot,
 	})
 
@@ -126,15 +126,15 @@ local function pushCard(opts)
 		body.AutomaticSize = Enum.AutomaticSize.Y
 	end
 
-	-- всплытие снизу
+	-- выезд справа
 	TweenService:Create(card, TweenInfo.new(0.4, Enum.EasingStyle.Back, Enum.EasingDirection.Out),
 		{ Position = UDim2.new(0, 0, 0, 0) }):Play()
 
-	-- авто-исчезание (уезжает вниз)
+	-- авто-исчезание (уезжает вправо)
 	task.delay(opts.duration or DEFAULT_DURATION, function()
 		if not card.Parent then return end
 		local out = TweenService:Create(card, TweenInfo.new(0.3, Enum.EasingStyle.Quad, Enum.EasingDirection.In),
-			{ Position = UDim2.new(0, 0, 1.4, 0) })
+			{ Position = UDim2.new(1.15, 0, 0, 0) })
 		out:Play()
 		out.Completed:Once(function()
 			if slot.Parent then slot:Destroy() end
