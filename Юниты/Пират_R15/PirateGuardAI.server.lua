@@ -127,6 +127,33 @@ end)
 
 CollectionService:AddTag(npc, CFG.GUARD_TAG)
 
+-- Все анимации играем САМИ. Если в риге остался штатный Animate (или его копия) —
+-- он дерётся за walk/run/idle и подсовывает свои (часто placeholder) анимации.
+-- Убиваем его и гасим всё, что он успел запустить, чтобы остаться единственным
+-- хозяином анимаций.
+do
+	local function looksLikeAnimate(s)
+		local n = s.Name:lower()
+		return n == "animate" or n:find("animate") ~= nil
+	end
+	for _, d in ipairs(npc:GetDescendants()) do
+		if (d:IsA("Script") or d:IsA("LocalScript")) and d ~= script and looksLikeAnimate(d)
+			and not d:FindFirstAncestorOfClass("Tool") then
+			warn("[PirateGuardAI] убираю конфликтующий Animate: " .. d:GetFullName())
+			d.Disabled = true
+			d:Destroy()
+		end
+	end
+	local existingAnimator = humanoid:FindFirstChildOfClass("Animator")
+	if existingAnimator then
+		task.defer(function()
+			for _, t in ipairs(existingAnimator:GetPlayingAnimationTracks()) do
+				t:Stop(0)
+			end
+		end)
+	end
+end
+
 local homePosition = rootPart.Position
 local homeLook = rootPart.CFrame.LookVector
 
@@ -665,7 +692,7 @@ end)
 
 local function ts(t) return t and "OK" or "НЕТ" end
 print(string.format(
-	"[PirateGuardAI v5-clean] %s | PatrolPoints=%d Rig=%s | аним: idle1=%s idle2=%s walk=%s run=%s jump=%s fall=%s attack=%s",
+	"[PirateGuardAI v6-anim] %s | PatrolPoints=%d Rig=%s | аним: idle1=%s idle2=%s walk=%s run=%s jump=%s fall=%s attack=%s",
 	script:GetFullName(), #patrolPoints, npc.Name,
 	ts(idleCalmTrack), ts(idleAlertTrack), ts(walkTrack), ts(runTrack),
 	ts(jumpTrack), ts(fallTrack), ts(attackTrack)
