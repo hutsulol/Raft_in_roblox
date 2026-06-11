@@ -9,7 +9,17 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 
-local TreeFarmAction = ReplicatedStorage:WaitForChild("TreeFarmAction")
+-- Если RemoteEvent не появился — серверный TreeFarmSystem.server.lua не запущен
+-- (не лежит в ServerScriptService / заменён другим скриптом / упал с ошибкой).
+-- Без него кнопки борда работать не могут — кричим об этом прямо в Output.
+local TreeFarmAction = ReplicatedStorage:WaitForChild("TreeFarmAction", 15)
+if not TreeFarmAction then
+	warn("[TreeFarmBoard] НЕТ RemoteEvent 'TreeFarmAction' спустя 15 сек — "
+		.. "TreeFarmSystem.server.lua не работает на сервере. Проверь, что он лежит "
+		.. "в ServerScriptService и в Output нет красных ошибок от [TreeFarm]. "
+		.. "Кнопка «Начать» без него не работает.")
+	return
+end
 
 -- Должно совпадать с CFG в TreeFarmSystem.server.lua.
 local CFG = {
@@ -102,4 +112,15 @@ for _, b in ipairs(CollectionService:GetTagged("TreeFarmBoard")) do
 end
 CollectionService:GetInstanceAddedSignal("TreeFarmBoard"):Connect(function(b)
 	task.spawn(wireBoard, b)
+end)
+
+-- Контрольный выстрел для отладки: если сервер за 10 сек не пометил ни одного
+-- борда тегом — что-то не так на серверной стороне (борд не найден по имени
+-- Tree_Farm или TreeFarmSystem упал) — пишем об этом явно.
+task.delay(10, function()
+	if #CollectionService:GetTagged("TreeFarmBoard") == 0 then
+		warn("[TreeFarmBoard] за 10 сек сервер не пометил ни одного борда "
+			.. "Tree_Farm тегом 'TreeFarmBoard' — клики вешать не на что. "
+			.. "Смотри сводку [TreeFarm] в Output сервера.")
+	end
 end)
