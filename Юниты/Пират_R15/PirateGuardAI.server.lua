@@ -931,7 +931,25 @@ RunService.Heartbeat:Connect(function(dt)
 	end
 end)
 
+-- Диагностика: версия, статус аним-треков и поиск конфликтующих скриптов в модели.
+local function ts(t) return t and "OK" or "НЕТ" end
 print(string.format(
-	"[PirateGuardAI] Humanoid guard loaded. Variant=%s PatrolPoints=%d Rig=%s",
-	CFG.BEHAVIOR_VARIANT, #patrolPoints, npc.Name
+	"[PirateGuardAI v3-anim] %s | Variant=%s PatrolPoints=%d Rig=%s | аним: idle1=%s idle2=%s walk=%s run=%s jump=%s fall=%s attack=%s",
+	script:GetFullName(), CFG.BEHAVIOR_VARIANT, #patrolPoints, npc.Name,
+	ts(idleCalmTrack), ts(idleAlertTrack), ts(walkTrack), ts(runTrack),
+	ts(jumpTrack), ts(fallTrack), ts(attackTrack)
 ))
+
+-- Другой ИИ/Animate в этой же модели = драка за анимации и телепорты. Кричим.
+local HARMLESS_SCRIPTS = {
+	ChangeFaceOnDeath = true, ChangeFaceOnFullHealth = true,
+	Ragdoller = true, Health = true, Sound = true,
+}
+for _, d in ipairs(npc:GetDescendants()) do
+	if (d:IsA("Script") or d:IsA("LocalScript")) and d ~= script
+		and not HARMLESS_SCRIPTS[d.Name]
+		and not d:FindFirstAncestorOfClass("Tool") then
+		warn("[PirateGuardAI] ⚠ посторонний скрипт в модели: " .. d:GetFullName() ..
+			" — если это другой ИИ или Animate, ОТКЛЮЧИ его (конфликт = телепорты/слом анимаций)")
+	end
+end
