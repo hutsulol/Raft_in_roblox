@@ -1,30 +1,38 @@
 -- WoodBoostBillboard.client.lua
--- ЭКРАННАЯ иконка доната «2x / 4x дерево» (как в референсе): блок слева сверху
--- экрана — сверху «2X ДЕРЕВО», в центре иконка (брёвна на сером круге), снизу
--- цена «50 R». Появляется, только когда игрок в радиусе 50 студов от фермы
--- (модель Tree_Farm или парт-якорь Wood_Donate — он имеет тот же эффект).
+-- ЭКРАННАЯ иконка доната «2x / 4x дерево»: компактный блок (сверху «2X ДЕРЕВО»,
+-- в центре иконка, снизу «50 R») в левом верхнем углу экрана.
 --
--- Это ScreenGui, НЕ BillboardGui: ничего не висит в мире и не перехватывает
--- клики по кнопкам борда фермы.
+-- Показывается ТОЛЬКО когда:
+--   • рядом (радиус 50) есть ферма Tree_Farm, которая ПОСТРОЕНА и работает
+--     (атрибут Built = true — его ставит TreeFarmSystem по кнопке «Начать»);
+--     до зачистки острова здания нет вовсе, а пока ферма закрыта — предлагать
+--     буст нельзя;
+--   • буст ещё не на максимуме (после 4x иконка не показывается никогда).
+--
+-- Парт-якорь Wood_Donate (опционально) тоже задаёт зону показа, но работает
+-- только когда в мире есть хотя бы одна построенная ферма.
 --
 -- Наведение: иконка увеличивается и слегка поворачивается. Клик/тап → RemoteEvent
 -- WoodBoostBuy → сервер открывает родное окно покупки Roblox. После покупки 2x
--- предложение меняется на «4X ДЕРЕВО / 75 R», после 4x иконка исчезает навсегда.
+-- предложение меняется на «4X ДЕРЕВО / 75 R».
+--
+-- Заодно чистим мировые BillboardGui "WoodBoostBillboard" от СТАРОЙ версии
+-- скрипта (иконка, висящая в воздухе) — если её дубликат ещё остался в Studio.
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local TweenService      = game:GetService("TweenService")
 
 local ANCHOR_NAME = "Wood_Donate" -- необязательный парт-якорь зоны
-local FARM_NAME   = "Tree_Farm"   -- зона работает вокруг каждой фермы
+local FARM_NAME   = "Tree_Farm"   -- зона вокруг каждой ПОСТРОЕННОЙ фермы
 local ATTR        = "WoodMultiplier"
 local ICON        = "rbxassetid://111260937639554"
 local SHOW_RADIUS = 50            -- «появляется в зоне 50»
 local CHECK_EVERY = 0.2           -- частота проверки дистанции, сек
 
--- Положение блока на экране (левый верх, как в референсе) — правь под себя.
-local UI_POS  = UDim2.new(0, 24, 0.12, 0)
-local UI_SIZE = UDim2.fromOffset(170, 215)
+-- Положение и размер блока на экране — правь под себя.
+local UI_POS  = UDim2.new(0, 16, 0, 100) -- левый верх, под кнопками Roblox
+local UI_SIZE = UDim2.fromOffset(120, 150)
 
 -- Что предлагаем при текущем множителе игрока.
 local TIERS = {
@@ -51,7 +59,7 @@ local function styleText(label)
 	label.TextScaled = true
 	local stroke = Instance.new("UIStroke")
 	stroke.Color = Color3.fromRGB(0, 0, 0)
-	stroke.Thickness = 3
+	stroke.Thickness = 2.5
 	stroke.Parent = label
 end
 
@@ -71,14 +79,14 @@ holder.Parent = gui
 local title = Instance.new("TextLabel")
 title.AnchorPoint = Vector2.new(0.5, 0)
 title.Position = UDim2.new(0.5, 0, 0, 0)
-title.Size = UDim2.new(1, 0, 0, 34)
+title.Size = UDim2.new(1, 0, 0, 24)
 styleText(title)
 title.Parent = holder
 
 local icon = Instance.new("ImageButton")
 icon.AnchorPoint = Vector2.new(0.5, 0.5)
-icon.Position = UDim2.new(0.5, 0, 0.5, 4)
-icon.Size = UDim2.fromOffset(128, 128)
+icon.Position = UDim2.new(0.5, 0, 0.5, 2)
+icon.Size = UDim2.fromOffset(84, 84)
 icon.BackgroundTransparency = 1
 icon.Image = ICON
 icon.ScaleType = Enum.ScaleType.Fit
@@ -87,7 +95,7 @@ icon.Parent = holder
 local price = Instance.new("TextLabel")
 price.AnchorPoint = Vector2.new(0.5, 1)
 price.Position = UDim2.new(0.5, 0, 1, 0)
-price.Size = UDim2.new(1, 0, 0, 30)
+price.Size = UDim2.new(1, 0, 0, 22)
 styleText(price)
 price.Parent = holder
 
@@ -131,20 +139,18 @@ refreshTier()
 player:GetAttributeChangedSignal(ATTR):Connect(refreshTier)
 
 --====================================================
--- Зона: фермы Tree_Farm + якоря Wood_Donate (и появляющиеся позже)
+-- Зона: ПОСТРОЕННЫЕ фермы Tree_Farm + якоря Wood_Donate
 --====================================================
 
-local zoneParts = {} -- set: BasePart, от которых меряем дистанцию
+local farms   = {} -- [model Tree_Farm] = BasePart для замера дистанции
+local anchors = {} -- set BasePart Wood_Donate
 
 local function addZone(inst)
-	local part
-	if inst.Name == ANCHOR_NAME and inst:IsA("BasePart") then
-		part = inst
-	elseif inst:IsA("Model") and (inst.Name == FARM_NAME or inst.Name == ANCHOR_NAME) then
-		part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
-	end
-	if part then
-		zoneParts[part] = true
+	if inst:IsA("BasePart") and inst.Name == ANCHOR_NAME then
+		anchors[inst] = true
+	elseif inst:IsA("Model") and inst.Name == FARM_NAME then
+		local part = inst.PrimaryPart or inst:FindFirstChildWhichIsA("BasePart", true)
+		if part then farms[inst] = part end
 	end
 end
 
@@ -161,19 +167,47 @@ local function inZone()
 	local hrp = char and char:FindFirstChild("HumanoidRootPart")
 	if not hrp then return false end
 	local pos = hrp.Position
-	for part in pairs(zoneParts) do
-		if part.Parent == nil or not part:IsDescendantOf(workspace) then
-			zoneParts[part] = nil -- ферма удалена/despawn
-		elseif (part.Position - pos).Magnitude <= SHOW_RADIUS then
-			return true
+
+	-- Построенные фермы: и зона, и общее условие «ферма работает».
+	local anyBuilt = false
+	for farm, part in pairs(farms) do
+		if not farm:IsDescendantOf(workspace) then
+			farms[farm] = nil -- остров despawn'улся
+		elseif farm:GetAttribute("Built") == true then
+			anyBuilt = true
+			if part:IsDescendantOf(workspace)
+				and (part.Position - pos).Magnitude <= SHOW_RADIUS then
+				return true
+			end
+		end
+	end
+
+	-- Якоря учитываются, только если в мире вообще есть работающая ферма.
+	if anyBuilt then
+		for part in pairs(anchors) do
+			if not part:IsDescendantOf(workspace) then
+				anchors[part] = nil
+			elseif (part.Position - pos).Magnitude <= SHOW_RADIUS then
+				return true
+			end
 		end
 	end
 	return false
 end
 
--- Показ/скрытие по дистанции.
+-- Мировые биллборды старой версии скрипта (иконка в воздухе) — сносим.
+local function killStaleBillboards()
+	for _, child in ipairs(playerGui:GetChildren()) do
+		if child:IsA("BillboardGui") and child.Name == "WoodBoostBillboard" then
+			child:Destroy()
+		end
+	end
+end
+
+-- Показ/скрытие по дистанции + построенности фермы.
 task.spawn(function()
 	while true do
+		killStaleBillboards()
 		gui.Enabled = (not maxed) and inZone()
 		task.wait(CHECK_EVERY)
 	end
