@@ -787,13 +787,28 @@ end
 ensureScreenGui()
 publishMenuRefs()
 
--- ─── ESC key + entry-button toggle ───────────────────────────────────
--- Pressing ESC while the menu is open closes it (gameProcessed-aware
--- so chat / text-input ESCs don't trip the path).
+-- ─── ESC / J keys ────────────────────────────────────────────────────
+-- ESC closes the open menu; J toggles it (J жил в кнопке-свитке
+-- QuestEntryButton — кнопку убрали, шорткат переехал сюда). Оба
+-- gameProcessed-aware, чтобы ввод в чате не дёргал меню.
 local UserInputService = game:GetService("UserInputService")
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode == Enum.KeyCode.Escape and isOpen then
 		closeQuestMenu()
+	elseif input.KeyCode == Enum.KeyCode.J then
+		if isOpen then
+			closeQuestMenu()
+		else
+			-- Не открываем поверх телефона/меню строительства (та же
+			-- защита, что была у кнопки-свитка).
+			for _, key in ipairs({ "PhoneScreenGui", "BuildingScreenGui" }) do
+				local gui = _G[key]
+				if gui and gui:IsA("ScreenGui") and gui.Enabled then
+					return
+				end
+			end
+			openQuestMenu()
+		end
 	end
 end)
