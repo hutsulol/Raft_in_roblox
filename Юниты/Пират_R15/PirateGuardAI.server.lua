@@ -462,6 +462,12 @@ local function navigateTo(goal, speed)
 	jumpCheck(goal)
 
 	if hasClearPath(goal) then
+		-- Идём прямо — кэш маршрута сбрасываем. Иначе при мигании LOS цель прыгала
+		-- между игроком и УСТАРЕВШИМИ вейпоинтами старого пути (могли быть позади),
+		-- и пирата трясло на бегу.
+		pathGoal = nil
+		pathWaypoints = {}
+		waypointIndex = 1
 		humanoid:MoveTo(goal)
 		return
 	end
@@ -739,13 +745,22 @@ end
 
 -- Зовётся каждый кадр: на ходу/в атаке гасим свой idle (играет Animate/attack),
 -- стоя — играем спокойный или тревожный по наличию цели преследования.
+local idleStillSince = nil
 local function updateIdleAnim()
 	if not idleCalmTrack then return end
-	local moving = humanoid.MoveDirection.Magnitude > 0.1
+	local moving = humanoid.MoveDirection.Magnitude > 0.05
 	local attacking = attackTrack and attackTrack.IsPlaying
 	if moving or attacking then
-		if idleCalmTrack.IsPlaying then idleCalmTrack:Stop(0.15) end
-		if idleAlertTrack ~= idleCalmTrack and idleAlertTrack.IsPlaying then idleAlertTrack:Stop(0.15) end
+		idleStillSince = nil
+		if idleCalmTrack.IsPlaying then idleCalmTrack:Stop(0.1) end
+		if idleAlertTrack ~= idleCalmTrack and idleAlertTrack.IsPlaying then idleAlertTrack:Stop(0.1) end
+		return
+	end
+	-- Гистерезис: idle включаем только после УСТОЙЧИВОЙ остановки (0.2с). Иначе в
+	-- микропаузы движения (смена вейпоинта/перевыдача MoveTo) idle на приоритете
+	-- Action вспыхивал поверх бега — выглядело как «бежит и ходит одновременно».
+	idleStillSince = idleStillSince or os.clock()
+	if os.clock() - idleStillSince < 0.2 then
 		return
 	end
 	local want = (chaseTarget and idleAlertTrack) or idleCalmTrack
