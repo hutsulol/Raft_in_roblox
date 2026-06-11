@@ -3442,3 +3442,58 @@ task.spawn(function()
 		syncSlotLayoutToServer()
 	end
 end)
+
+-- ─── Кнопка-рюкзак (появляется после подбора рюкзака) ───
+-- Иконка слева по центру экрана; клик/тап открывает инвентарь (на телефоне это
+-- единственный способ — клавиши E там нет). Сам арт уже содержит бейдж «E».
+-- Подпись «Инвентарь» авто-переводится Roblox на язык игрока (AutoLocalize).
+
+local backpackBtnGui = Instance.new("ScreenGui")
+backpackBtnGui.Name = "BackpackButton"
+backpackBtnGui.ResetOnSpawn = false
+backpackBtnGui.IgnoreGuiInset = true
+backpackBtnGui.DisplayOrder = 8
+backpackBtnGui.Enabled = player:GetAttribute("HasBackpack") == true
+backpackBtnGui.Parent = playerGui
+
+local bpHolder = Instance.new("Frame")
+bpHolder.AnchorPoint = Vector2.new(0, 0.5)
+bpHolder.Position = UDim2.new(0, 12, 0.5, 0)
+bpHolder.Size = UDim2.fromOffset(92, 102)
+bpHolder.BackgroundTransparency = 1
+bpHolder.Parent = backpackBtnGui
+
+local bpButton = Instance.new("ImageButton")
+bpButton.Name = "OpenInventory"
+bpButton.AnchorPoint = Vector2.new(0.5, 0)
+bpButton.Position = UDim2.new(0.5, 0, 0, 0)
+bpButton.Size = UDim2.fromOffset(76, 76)
+bpButton.BackgroundTransparency = 1
+bpButton.Image = "rbxassetid://91094734917860"
+bpButton.ScaleType = Enum.ScaleType.Fit
+bpButton.Parent = bpHolder
+
+local bpScale = Instance.new("UIScale")
+bpScale.Parent = bpButton
+bpButton.MouseEnter:Connect(function() bpScale.Scale = 1.07 end)
+bpButton.MouseLeave:Connect(function() bpScale.Scale = 1 end)
+
+local bpLabel = Instance.new("TextLabel")
+bpLabel.AnchorPoint = Vector2.new(0.5, 1)
+bpLabel.Position = UDim2.new(0.5, 0, 1, 0)
+bpLabel.Size = UDim2.new(1, 0, 0, 20)
+bpLabel.BackgroundTransparency = 1
+bpLabel.Text = "Инвентарь"
+bpLabel.AutoLocalize = true
+bpLabel.Font = Enum.Font.GothamBold
+bpLabel.TextSize = 16
+bpLabel.TextColor3 = Color3.new(1, 1, 1)
+bpLabel.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+bpLabel.TextStrokeTransparency = 0.3
+bpLabel.Parent = bpHolder
+
+bpButton.Activated:Connect(toggleInventory)
+
+player:GetAttributeChangedSignal("HasBackpack"):Connect(function()
+	backpackBtnGui.Enabled = player:GetAttribute("HasBackpack") == true
+end)
