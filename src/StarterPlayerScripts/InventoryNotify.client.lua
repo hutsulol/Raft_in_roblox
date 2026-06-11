@@ -1,16 +1,20 @@
 -- InventoryNotify.client.lua
 -- Generic "+N item" notification stack — listens on the
--- InventoryNotify RemoteEvent and renders a Raft-style bottom-right
--- card for every inventory add the server reports. Used by tree
--- chopping, stone mining, ocean pulls, shovel digging, floor pickups,
--- fishing — anything that routes through _G.AddResourceToInventory.
+-- InventoryNotify RemoteEvent and renders a bottom-right card for
+-- every inventory add the server reports. Used by tree chopping,
+-- stone mining, ocean pulls, shovel digging, floor pickups, fishing —
+-- anything that routes through _G.AddResourceToInventory.
 -- Container takeouts (SmallContainerSystem / PlasticContainerSystem /
 -- MercenaryEquipment) pass silent=true so chest extraction doesn't
 -- spam this stack.
 --
--- This file used to live inside StoneAxeClient.client.lua as the
--- chop-only notification path; it's now its own module so every
--- pickup gets the same UI without per-tool duplication.
+-- Редизайн «Вариант А — плашки с панелью» (палитра «Океан»):
+--   • карточка = градиентная панель #54A7EC→#3A7FD0, рамка #1C4F8F, скругление;
+--   • слева иконка в светлом слот-боксе #A9D6F7, затем «+N» золотом и имя белым;
+--   • ширина адаптивна под текст (AutomaticSize.X);
+--   • стопка в правом нижнем углу, новые снизу; повторный подбор того же
+--     предмета суммирует счётчик и продлевает жизнь карточки;
+--   • ПЕРВОЕ попадание предмета в инвентарь — золотая рамка + бейдж «NEW!».
 
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
@@ -21,10 +25,6 @@ local playerGui = player:WaitForChild("PlayerGui")
 local notifyEvent = ReplicatedStorage:WaitForChild("InventoryNotify")
 
 -- ─── Resource → display-name overrides ───────────────────────────
--- Mirrors the small subset of overrides the inventory UI applies for
--- snake_case / multi-word items. Resources we don't list here render
--- using their raw name, which is fine for "Log", "Stone", "Plastic",
--- "Coconut", "Sapling", etc. that already read naturally.
 local DISPLAY_NAMES = {
 	Iron_Ore       = "Iron Ore",
 	Iron_Ingot     = "Iron Ingot",
@@ -52,15 +52,21 @@ local function displayName(rawName)
 end
 
 local function iconFor(rawName)
-	-- _G.GetItemIcon is published by InventoryUI for the merc backpack
-	-- + this notify stack. Returns "" for items without an asset id
-	-- (Banana / Coconut / Sapling today) — the card still renders the
-	-- count + name correctly.
+	-- _G.GetItemIcon публикует InventoryUI; "" — карточка остаётся валидной.
 	if typeof(_G.GetItemIcon) == "function" then
 		return _G.GetItemIcon(rawName) or ""
 	end
 	return ""
 end
+
+-- ─── Палитра «Океан» ──────────────────────────────────────────────
+local PANEL_TOP   = Color3.fromHex("54A7EC")
+local PANEL_BOT   = Color3.fromHex("3A7FD0")
+local FRAME_NAVY  = Color3.fromHex("1C4F8F")
+local SLOT_LIGHT  = Color3.fromHex("A9D6F7")
+local GOLD        = Color3.fromHex("FFD95A")
+local GOLD_FRAME  = Color3.fromHex("B07A14")
+local GOLD_NEW    = Color3.fromHex("F5B73C") -- рамка карточки «новый предмет»
 
 -- ─── HUD root ────────────────────────────────────────────────────
 local hud = Instance.new("ScreenGui")
@@ -71,16 +77,15 @@ hud.ResetOnSpawn = false
 hud.Parent = playerGui
 
 local NOTIF_LIFETIME = 3.0
-local NOTIF_FADE     = 0.5
-local NOTIF_HEIGHT   = 48
-local NOTIF_WIDTH    = 220
-local NOTIF_GAP      = 2
+local NOTIF_FADE     = 0.45
+local NOTIF_HEIGHT   = 56
+local NOTIF_GAP      = 8
 
 local container = Instance.new("Frame")
 container.Name = "Stack"
 container.AnchorPoint = Vector2.new(1, 1)
-container.Position = UDim2.new(1, -16, 1, -110)   -- above the hotbar
-container.Size = UDim2.fromOffset(NOTIF_WIDTH, 380)
+container.Position = UDim2.new(1, -16, 1, -110)   -- над хотбаром
+container.Size = UDim2.fromOffset(340, 420)
 container.BackgroundTransparency = 1
 container.Parent = hud
 
@@ -92,11 +97,31 @@ layout.SortOrder = Enum.SortOrder.LayoutOrder
 layout.Padding   = UDim.new(0, NOTIF_GAP)
 layout.Parent = container
 
+-- ─── «Новый предмет» ──────────────────────────────────────────────
+-- NEW показываем при ПЕРВОМ попадании предмета в инвентарь. «Уже есть» сидируем
+-- из опубликованной инвентарём раскладки (_G.InventorySlotData): всё, что лежит
+-- в слотах на момент загрузки, новым не считается.
+local seenItems = {}
+task.spawn(function()
+	local t0 = os.clock()
+	while not _G.InventorySlotData and os.clock() - t0 < 10 do
+		task.wait(0.25)
+	end
+	local slots = _G.InventorySlotData
+	if typeof(slots) ~= "table" then return end
+	task.wait(1) -- дать слотам заполниться первым снапшотом сервера
+	for _, data in pairs(slots) do
+		if typeof(data) == "table" then
+			local nm = data.name or data.toolName
+			if nm then seenItems[nm] = true end
+		end
+	end
+end)
+
 -- ─── Per-item dedup ───────────────────────────────────────────────
--- Burst pickups (ocean pull → 3 logs in quick succession) shouldn't
--- spawn 3 separate cards. Track an active card per item name; if the
--- card still exists, bump its count instead of stacking duplicates.
-local activeCards = {}    -- [itemName] = { card, countLabel, total, fadeAt }
+-- Повторный подбор того же предмета, пока карточка жива, суммирует счётчик
+-- и продлевает её жизнь (никаких дублей в стопке).
+local activeCards = {}    -- [itemName] = { card, countLabel, total, bumpedAt }
 local notifOrder  = 0
 
 local function showNotif(rawName, count)
@@ -106,106 +131,156 @@ local function showNotif(rawName, count)
 	if existing and existing.card.Parent then
 		existing.total = existing.total + count
 		existing.countLabel.Text = "+" .. tostring(existing.total)
-		-- Reset the fade timer so the bumped total stays on screen
-		-- the full lifetime, rather than fading at the original
-		-- card's deadline.
 		existing.bumpedAt = tick()
 		return
 	end
 
+	local isNew = not seenItems[rawName]
+	seenItems[rawName] = true
+
 	notifOrder = notifOrder + 1
 
-	-- Reference layout (from the user's screenshot): wide-ish beige
-	-- parchment card, tight stacking, "+N" in big bold cream on the
-	-- LEFT, icon centred horizontally inside the card, item name in
-	-- the right column. Sharp corners (no UICorner), partly
-	-- transparent from the start so the cards layer over the world
-	-- like the reference, and text rendered with TextScaled so the
-	-- content adapts to a fixed-size rectangle (the user's brief:
-	-- "адаптация текста под прямоугольник, не наоборот").
-	local card = Instance.new("Frame")
+	-- CanvasGroup: GroupTransparency гасит карточку целиком одним свойством.
+	local card = Instance.new("CanvasGroup")
 	card.Name = "Drop_" .. rawName
-	card.Size = UDim2.fromOffset(NOTIF_WIDTH, NOTIF_HEIGHT)
-	card.BackgroundColor3 = Color3.fromRGB(126, 100, 68)
-	card.BackgroundTransparency = 0.2
+	card.AutomaticSize = Enum.AutomaticSize.X     -- ширина адаптивна под текст
+	card.Size = UDim2.fromOffset(0, NOTIF_HEIGHT)
+	card.BackgroundColor3 = Color3.new(1, 1, 1)   -- белый под градиент (он умножается)
 	card.BorderSizePixel = 0
 	card.LayoutOrder = notifOrder
 	card.Parent = container
 
+	local grad = Instance.new("UIGradient")
+	grad.Color = ColorSequence.new(PANEL_TOP, PANEL_BOT)
+	grad.Rotation = 90
+	grad.Parent = card
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 14)
+	corner.Parent = card
+
 	local stroke = Instance.new("UIStroke")
-	stroke.Color = Color3.fromRGB(92, 64, 36)
-	stroke.Thickness = 1.4
-	stroke.Transparency = 0.1
+	stroke.Color = isNew and GOLD_NEW or FRAME_NAVY
+	stroke.Thickness = isNew and 4 or 3
 	stroke.Parent = card
 
-	-- Tight three-column layout: "+N" • icon • name. The name
-	-- column gets a large MaxTextSize so short names ("Log",
-	-- "Stone") grow with TextScaled to fill the column without
-	-- leaving a big empty gap on the right — the user explicitly
-	-- asked for "no empty space at all".
-	local PAD_LEFT   = 8
-	local COUNT_W    = 36
-	local ICON_GAP   = 4
-	local ICON_SIZE  = NOTIF_HEIGHT - 12   -- 36 px in a 48 px card
-	local NAME_GAP   = 6
-	local PAD_RIGHT  = 6
+	-- Контент в строку: [слот-бокс с иконкой] +N Имя
+	local body = Instance.new("Frame")
+	body.Name = "Body"
+	body.AutomaticSize = Enum.AutomaticSize.X
+	body.Size = UDim2.new(0, 0, 1, 0)
+	body.BackgroundTransparency = 1
+	body.Parent = card
 
-	-- Fixed text sizes (not TextScaled) so every card reads the
-	-- same regardless of name length. The user complained the
-	-- previous TextScaled path produced unreadable "Log" when a
-	-- longer name in another card pulled the auto-scaled size
-	-- down. 26 px for "+N", 22 px for the name — both safely
-	-- readable at the 48 px card height.
-	-- Count uses TextScaled so the number adapts to the column:
-	-- "+1" renders at full 26 px, "+30" / "+999" shrink down to fit
-	-- without bleeding into the icon. The size constraint caps the
-	-- upper end so short text doesn't blow up into a giant glyph.
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft   = UDim.new(0, 8)
+	pad.PaddingRight  = UDim.new(0, 14)
+	pad.PaddingTop    = UDim.new(0, 7)
+	pad.PaddingBottom = UDim.new(0, 7)
+	pad.Parent = body
+
+	local row = Instance.new("UIListLayout")
+	row.FillDirection = Enum.FillDirection.Horizontal
+	row.VerticalAlignment = Enum.VerticalAlignment.Center
+	row.SortOrder = Enum.SortOrder.LayoutOrder
+	row.Padding = UDim.new(0, 9)
+	row.Parent = body
+
+	-- иконка в светлом слот-боксе
+	local iconBox = Instance.new("Frame")
+	iconBox.Size = UDim2.fromOffset(NOTIF_HEIGHT - 14, NOTIF_HEIGHT - 14)
+	iconBox.BackgroundColor3 = SLOT_LIGHT
+	iconBox.BorderSizePixel = 0
+	iconBox.LayoutOrder = 1
+	iconBox.Parent = body
+
+	local iconCorner = Instance.new("UICorner")
+	iconCorner.CornerRadius = UDim.new(0, 10)
+	iconCorner.Parent = iconBox
+
+	local iconStroke = Instance.new("UIStroke")
+	iconStroke.Color = FRAME_NAVY
+	iconStroke.Thickness = 2
+	iconStroke.Parent = iconBox
+
+	local icon = Instance.new("ImageLabel")
+	icon.AnchorPoint = Vector2.new(0.5, 0.5)
+	icon.Position = UDim2.fromScale(0.5, 0.5)
+	icon.Size = UDim2.fromScale(0.8, 0.8)
+	icon.BackgroundTransparency = 1
+	icon.Image = iconFor(rawName)
+	icon.ScaleType = Enum.ScaleType.Fit
+	icon.Parent = iconBox
+
+	-- «+N» — золотым жирным
 	local countLabel = Instance.new("TextLabel")
-	countLabel.Position = UDim2.fromOffset(PAD_LEFT, 0)
-	countLabel.Size = UDim2.fromOffset(COUNT_W, NOTIF_HEIGHT)
+	countLabel.AutomaticSize = Enum.AutomaticSize.X
+	countLabel.Size = UDim2.new(0, 0, 1, 0)
 	countLabel.BackgroundTransparency = 1
 	countLabel.Text = "+" .. tostring(count)
-	countLabel.TextColor3 = Color3.fromRGB(250, 240, 215)
-	countLabel.TextScaled = true
-	countLabel.Font = Enum.Font.GothamBold
-	countLabel.TextXAlignment = Enum.TextXAlignment.Left
+	countLabel.TextColor3 = GOLD
+	countLabel.TextSize = 22
+	countLabel.Font = Enum.Font.GothamBlack
+	countLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+	countLabel.TextStrokeTransparency = 0.6
 	countLabel.TextYAlignment = Enum.TextYAlignment.Center
-	countLabel.Parent = card
+	countLabel.LayoutOrder = 2
+	countLabel.Parent = body
 
-	local countSizeCap = Instance.new("UITextSizeConstraint")
-	countSizeCap.MaxTextSize = 26
-	countSizeCap.MinTextSize = 12
-	countSizeCap.Parent = countLabel
-
-	-- Icon column — vertically centred 30x30 box.
-	local iconX = PAD_LEFT + COUNT_W + ICON_GAP
-	local iconBox = Instance.new("ImageLabel")
-	iconBox.Position = UDim2.fromOffset(iconX, (NOTIF_HEIGHT - ICON_SIZE) / 2)
-	iconBox.Size = UDim2.fromOffset(ICON_SIZE, ICON_SIZE)
-	iconBox.BackgroundTransparency = 1
-	iconBox.Image = iconFor(rawName)
-	iconBox.ScaleType = Enum.ScaleType.Fit
-	iconBox.Parent = card
-
-	-- Name column — fixed 22 px so the text is always readable.
-	-- Wraps to two lines if a long name like "Пальмовый лист" or
-	-- "Legendary Fish" can't fit a single 22 px line in the
-	-- column. The 48 px card height comfortably hosts two 22 px
-	-- lines with breathing room.
-	local nameX = iconX + ICON_SIZE + NAME_GAP
+	-- имя предмета — белым жирным
 	local nameLabel = Instance.new("TextLabel")
-	nameLabel.Position = UDim2.fromOffset(nameX, 0)
-	nameLabel.Size = UDim2.fromOffset(NOTIF_WIDTH - nameX - PAD_RIGHT, NOTIF_HEIGHT)
+	nameLabel.AutomaticSize = Enum.AutomaticSize.X
+	nameLabel.Size = UDim2.new(0, 0, 1, 0)
 	nameLabel.BackgroundTransparency = 1
 	nameLabel.Text = displayName(rawName)
-	nameLabel.TextColor3 = Color3.fromRGB(250, 240, 215)
-	nameLabel.TextSize = 22
-	nameLabel.Font = Enum.Font.GothamSemibold
-	nameLabel.TextXAlignment = Enum.TextXAlignment.Left
+	nameLabel.TextColor3 = Color3.new(1, 1, 1)
+	nameLabel.TextSize = 20
+	nameLabel.Font = Enum.Font.GothamBold
+	nameLabel.TextStrokeColor3 = Color3.new(0, 0, 0)
+	nameLabel.TextStrokeTransparency = 0.6
 	nameLabel.TextYAlignment = Enum.TextYAlignment.Center
-	nameLabel.TextWrapped = true
-	nameLabel.TextTruncate = Enum.TextTruncate.AtEnd
-	nameLabel.Parent = card
+	nameLabel.LayoutOrder = 3
+	nameLabel.Parent = body
+
+	-- бейдж «NEW!» — золотая пилюля на верхней кромке (первый подбор)
+	if isNew then
+		local badge = Instance.new("Frame")
+		badge.Name = "NewBadge"
+		badge.AnchorPoint = Vector2.new(0, 0.5)
+		badge.Position = UDim2.new(0, 14, 0, 2)
+		badge.AutomaticSize = Enum.AutomaticSize.XY
+		badge.BackgroundColor3 = GOLD
+		badge.BorderSizePixel = 0
+		badge.ZIndex = 3
+		badge.Parent = card
+
+		local badgeCorner = Instance.new("UICorner")
+		badgeCorner.CornerRadius = UDim.new(1, 0)
+		badgeCorner.Parent = badge
+
+		local badgeStroke = Instance.new("UIStroke")
+		badgeStroke.Color = GOLD_FRAME
+		badgeStroke.Thickness = 2
+		badgeStroke.Parent = badge
+
+		local badgePad = Instance.new("UIPadding")
+		badgePad.PaddingLeft = UDim.new(0, 8)
+		badgePad.PaddingRight = UDim.new(0, 8)
+		badgePad.PaddingTop = UDim.new(0, 2)
+		badgePad.PaddingBottom = UDim.new(0, 2)
+		badgePad.Parent = badge
+
+		local badgeText = Instance.new("TextLabel")
+		badgeText.AutomaticSize = Enum.AutomaticSize.XY
+		badgeText.Size = UDim2.new(0, 0, 0, 0)
+		badgeText.BackgroundTransparency = 1
+		badgeText.Text = "NEW!"
+		badgeText.TextColor3 = Color3.fromHex("6B4A0E")
+		badgeText.TextSize = 11
+		badgeText.Font = Enum.Font.GothamBlack
+		badgeText.ZIndex = 3
+		badgeText.Parent = badge
+	end
 
 	local rec = {
 		card       = card,
@@ -216,9 +291,7 @@ local function showNotif(rawName, count)
 	activeCards[rawName] = rec
 
 	task.spawn(function()
-		-- Polling fade: re-check bumpedAt each loop so a fresh pickup
-		-- on the same item resets the timer cleanly. Card lifetime is
-		-- measured from the most recent bump.
+		-- Жизнь меряем от последнего подбора (bumpedAt), затем плавное растворение.
 		while card.Parent do
 			local since = tick() - rec.bumpedAt
 			if since >= NOTIF_LIFETIME then break end
@@ -228,12 +301,7 @@ local function showNotif(rawName, count)
 		local steps = 10
 		for i = 0, steps do
 			if not card.Parent then return end
-			local a = i / steps
-			card.BackgroundTransparency = 0.2 + a * 0.8
-			stroke.Transparency        = 0.1 + a * 0.9
-			countLabel.TextTransparency = a
-			nameLabel.TextTransparency  = a
-			iconBox.ImageTransparency   = a
+			card.GroupTransparency = i / steps
 			task.wait(NOTIF_FADE / steps)
 		end
 		if card.Parent then card:Destroy() end
