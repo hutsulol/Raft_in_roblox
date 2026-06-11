@@ -698,75 +698,123 @@ local function runAlerted()
 end
 
 --====================================================
--- IDLE-СТОЙКА: спокойная (Animation1) / тревожная (Animation2)
+-- АНИМАЦИИ (штатный Animate УДАЛЁН — играем всё сами из папки внутри NPC)
 --====================================================
--- Ходьбу/бег ведёт штатный Animate, а idle мы переопределяем сами: когда пират стоит
--- (не идёт и не бьёт) — играем нужный idle на приоритете Action (он перебивает
--- штатный случайный idle и не конфликтует с ходьбой, т.к. на ходу мы его гасим).
--- Спокойный — когда никого не преследует; тревожный — когда есть chaseTarget.
+-- Структура в модели: Folder/{idle/Animation1+Animation2, walk/WalkAnim,
+-- run/RunAnim, jump/JumpAnim, fall/FallAnim, ...}. Ищем по паре
+-- «имя контейнера → имя Animation» рекурсивно, чтобы не зависеть от обёртки.
+-- Один активный трек локомоции за раз — никакого смешения walk+run.
 
--- Найти idle-анимацию: сперва Animation у скрипта (Idle/Idle2), затем штатный
--- Animate — папка idle/<childName> (Animation1/Animation2).
-local function resolveIdleAnim(scriptChild, animateChild)
-	local a = script:FindFirstChild(scriptChild)
-	if a and a:IsA("Animation") then return a end
-	local animate = npc:FindFirstChild("Animate")
-	local idleFolder = animate and animate:FindFirstChild("idle")
-	local b = idleFolder and idleFolder:FindFirstChild(animateChild)
-	if b and b:IsA("Animation") then return b end
+local animator = humanoid:FindFirstChildOfClass("Animator")
+if not animator then
+	animator = Instance.new("Animator")
+	animator.Parent = humanoid
+end
+
+local function findAnim(folderName, animName)
+	for _, d in ipairs(npc:GetDescendants()) do
+		if d:IsA("Animation") and d.Name == animName
+			and d.Parent and d.Parent.Name == folderName then
+			return d
+		end
+	end
+	for _, d in ipairs(npc:GetDescendants()) do
+		if d:IsA("Animation") and d.Name == animName then
+			return d
+		end
+	end
 	return nil
 end
 
-local idleCalmTrack, idleAlertTrack
-do
-	local calmAnim  = resolveIdleAnim("Idle",  "Animation1")
-	local alertAnim = resolveIdleAnim("Idle2", "Animation2")
-	if calmAnim then
-		local animator = humanoid:FindFirstChildOfClass("Animator")
-		if not animator then
-			animator = Instance.new("Animator")
-			animator.Parent = humanoid
-		end
-		idleCalmTrack = animator:LoadAnimation(calmAnim)
-		idleCalmTrack.Looped = true
-		idleCalmTrack.Priority = Enum.AnimationPriority.Action
-		if alertAnim then
-			idleAlertTrack = animator:LoadAnimation(alertAnim)
-			idleAlertTrack.Looped = true
-			idleAlertTrack.Priority = Enum.AnimationPriority.Action
-		else
-			idleAlertTrack = idleCalmTrack
-			warn("[PirateGuardAI] Второй idle (преследование) не найден — будет обычный idle")
-		end
-	else
-		warn("[PirateGuardAI] Idle-анимация не найдена (script.Idle или Animate/idle/Animation1) — переключение idle отключено")
+local function loadTrack(folderName, animName, priority, looped)
+	local a = findAnim(folderName, animName)
+	if not a then
+		warn(("[PirateGuardAI] анимация %s/%s не найдена"):format(folderName, animName))
+		return nil
+	end
+	local ok, track = pcall(function()
+		return animator:LoadAnimation(a)
+	end)
+	if not ok or not track then
+		warn(("[PirateGuardAI] не удалось загрузить %s/%s"):format(folderName, animName))
+		return nil
+	end
+	track.Priority = priority
+	track.Looped = looped
+	return track
+end
+
+local idleCalmTrack  = loadTrack("idle", "Animation1", Enum.AnimationPriority.Idle, true)
+local idleAlertTrack = loadTrack("idle", "Animation2", Enum.AnimationPriority.Idle, true) or idleCalmTrack
+local walkTrack      = loadTrack("walk", "WalkAnim",   Enum.AnimationPriority.Movement, true)
+local runTrack       = loadTrack("run",  "RunAnim",    Enum.AnimationPriority.Movement, true) or walkTrack
+local jumpTrack      = loadTrack("jump", "JumpAnim",   Enum.AnimationPriority.Movement, false)
+local fallTrack      = loadTrack("fall", "FallAnim",   Enum.AnimationPriority.Movement, true)
+
+-- Единственный активный трек локомоции (idle calm/alert | walk | run | fall).
+local currentLoco = nil
+local function playLoco(track, fade)
+	fade = fade or 0.15
+	if currentLoco == track then
+		if track and not track.IsPlaying then track:Play(fade) end
+		return
+	end
+	if currentLoco and currentLoco.IsPlaying then
+		currentLoco:Stop(fade)
+	end
+	currentLoco = track
+	if track and not track.IsPlaying then
+		track:Play(fade)
 	end
 end
 
--- Зовётся каждый кадр: на ходу/в атаке гасим свой idle (играет Animate/attack),
--- стоя — играем спокойный или тревожный по наличию цели преследования.
-local idleStillSince = nil
-local function updateIdleAnim()
-	if not idleCalmTrack then return end
-	local moving = humanoid.MoveDirection.Magnitude > 0.05
-	local attacking = attackTrack and attackTrack.IsPlaying
-	if moving or attacking then
-		idleStillSince = nil
-		if idleCalmTrack.IsPlaying then idleCalmTrack:Stop(0.1) end
-		if idleAlertTrack ~= idleCalmTrack and idleAlertTrack.IsPlaying then idleAlertTrack:Stop(0.1) end
+-- Прыжок/полёт по состояниям Humanoid.
+local airborne = false
+humanoid.StateChanged:Connect(function(_, new)
+	if new == Enum.HumanoidStateType.Jumping then
+		airborne = true
+		if jumpTrack then
+			jumpTrack:Play(0.1)
+		end
+	elseif new == Enum.HumanoidStateType.Freefall then
+		airborne = true
+	elseif new == Enum.HumanoidStateType.Landed
+		or new == Enum.HumanoidStateType.Running
+		or new == Enum.HumanoidStateType.RunningNoPhysics then
+		airborne = false
+	end
+end)
+
+-- Каждый кадр выбираем ровно одну анимацию по реальному состоянию.
+local stillSince = nil
+local function updateAnimations()
+	if airborne then
+		stillSince = nil
+		playLoco(fallTrack or runTrack or walkTrack, 0.1)
 		return
 	end
-	-- Гистерезис: idle включаем только после УСТОЙЧИВОЙ остановки (0.2с). Иначе в
-	-- микропаузы движения (смена вейпоинта/перевыдача MoveTo) idle на приоритете
-	-- Action вспыхивал поверх бега — выглядело как «бежит и ходит одновременно».
-	idleStillSince = idleStillSince or os.clock()
-	if os.clock() - idleStillSince < 0.2 then
+
+	if humanoid.MoveDirection.Magnitude > 0.05 then
+		stillSince = nil
+		-- бег в погоне (скорость CHASE_SPEED), шаг во всех остальных состояниях
+		local runMode = humanoid.WalkSpeed > (CFG.PATROL_SPEED + CFG.CHASE_SPEED) / 2
+		playLoco(runMode and runTrack or walkTrack)
 		return
 	end
-	local want = (chaseTarget and idleAlertTrack) or idleCalmTrack
-	local other = (want == idleCalmTrack) and idleAlertTrack or idleCalmTrack
-	if other ~= want and other.IsPlaying then other:Stop(0.2) end
-	if not want.IsPlaying then want:Play(0.2) end
+
+	-- Гистерезис остановки: в микропаузы движения (смена вейпоинта) не мигаем idle.
+	stillSince = stillSince or os.clock()
+	if os.clock() - stillSince < 0.15 then
+		return
+	end
+
+	if attackTrack and attackTrack.IsPlaying then
+		playLoco(nil, 0.1) -- удар (Action) играет сам, локомоцию гасим
+		return
+	end
+
+	-- Стоим: спокойный idle без цели, тревожный — когда преследуем.
+	playLoco((chaseTarget and idleAlertTrack) or idleCalmTrack, 0.2)
 end
 
 --====================================================
@@ -778,7 +826,7 @@ RunService.Heartbeat:Connect(function(dt)
 		return
 	end
 
-	updateIdleAnim() -- спокойный/тревожный idle по состоянию преследования
+	updateAnimations() -- idle/walk/run/fall — всё играем сами (Animate удалён)
 
 	local visibleRoot, visibleChar = updatePerception(dt)
 
