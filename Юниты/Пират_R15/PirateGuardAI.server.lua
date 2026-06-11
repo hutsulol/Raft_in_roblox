@@ -96,6 +96,28 @@ local Data = {
 	AttackTrack = nil,
 }
 
+--====================================================
+-- СИСТЕМА СЛЕЖКИ (шкала наблюдения)
+--====================================================
+-- Конус зрения: спереди замечает быстро, сбоку медленно, сзади не видит; стены
+-- рвут обзор (Raycast). Шкала 0..100 с полосой над головой (белая→жёлтая→красная).
+-- Цель назначается ТОЛЬКО при 100. Пока цель есть — ходьба ×SpeedMult (бега нет).
+local Watch = {
+	SightRange = 50,   -- дальность зрения
+	FrontFov   = 50,   -- |угол| ≤ этого — быстрый набор (спереди)
+	SideFov    = 110,  -- |угол| ≤ этого — медленный (сбоку); дальше не видит
+	GainFront  = 90,   -- ед/сек вплотную спереди
+	GainSide   = 35,
+	Decay      = 25,   -- спад в секунду, когда никого не видит
+	SpeedMult  = 1.3,  -- множитель скорости ходьбы, когда игрок замечен
+
+	Suspicion  = 0,
+	Candidate  = nil,  -- ближайший видимый персонаж в этом кадре
+	BaseSpeed  = nil,  -- обычная скорость (захватывается при старте)
+	Gui = nil,
+	Fill = nil,
+}
+
 --
 --
 local Monster = {} -- Create the monster class
@@ -126,26 +148,69 @@ function Monster:GetMaximumDetectionDistance()
 end
 
 function Monster:SearchForTarget()
-	-- Finds the closest player and sets the target
+	-- Цель назначается ТОЛЬКО когда шкала наблюдения заполнена (100) и кандидат
+	-- всё ещё на виду — никакого мгновенного агра по дистанции.
+	if Watch.Suspicion >= 100 and Watch.Candidate ~= nil then
+		local humanoid = Watch.Candidate:FindFirstChild('Humanoid')
+		if humanoid ~= nil and humanoid:IsA('Humanoid') and humanoid.Health > 0 then
+			Mind.CurrentTargetHumanoid.Value = humanoid
+		end
+	end
+end
 
-	local players = Info.Players:GetPlayers()
-	local closestCharacter, closestCharacterDistance
+-- Видим ли персонажа (стена рвёт обзор).
+function Monster:CanSeeCharacter(character)
+	local root = character:FindFirstChild('HumanoidRootPart') or character:FindFirstChild('Torso')
+	if root == nil then return false end
+	local myPos = Monster:GetCFrame().p + Vector3.new(0, 1.5, 0)
+	local hit = Workspace:FindPartOnRayWithIgnoreList(
+		Ray.new(myPos, root.Position - myPos),
+		{ Self, character }
+	)
+	return hit == nil
+end
 
-	for i=1, #players do
-		local player = players[i]
-		
+-- Копит/остужает шкалу по конусу зрения + LOS. Запоминает ближайшего видимого.
+function Monster:UpdatePerception(dt)
+	Watch.Candidate = nil
+
+	-- Пока цель есть — шкала прижата к 100 (полоса горит красным).
+	if Monster:TargetIsValid() then
+		Watch.Suspicion = 100
+		return
+	end
+
+	local myCF = Monster:GetCFrame()
+	local look = Vector3.new(myCF.lookVector.X, 0, myCF.lookVector.Z).unit
+	local bestDist = nil
+
+	for _, player in ipairs(Info.Players:GetPlayers()) do
 		if player.Neutral or player.TeamColor ~= Settings.FriendlyTeam.Value then
 			local character = player.Character
-	
-			if character ~= nil and character:FindFirstChild('Humanoid') ~= nil and character.Humanoid:IsA('Humanoid') then
-				local distance = player:DistanceFromCharacter(Monster:GetCFrame().p)
-	
-				if distance < Monster:GetMaximumDetectionDistance() then
-					if closestCharacter == nil then
-						closestCharacter, closestCharacterDistance = character, distance
-					else
-						if closestCharacterDistance > distance then
-							closestCharacter, closestCharacterDistance = character, distance
+			local humanoid = character and character:FindFirstChild('Humanoid')
+			local root = character and (character:FindFirstChild('HumanoidRootPart') or character:FindFirstChild('Torso'))
+			if humanoid ~= nil and humanoid.Health > 0 and root ~= nil then
+				local offset = root.Position - myCF.p
+				local flat = Vector3.new(offset.X, 0, offset.Z)
+				local dist = flat.magnitude
+				if dist > 0.05 and dist <= Watch.SightRange then
+					local angle = math.deg(math.acos(math.clamp(look:Dot(flat.unit), -1, 1)))
+					local gain = nil
+					if angle <= Watch.FrontFov then
+						gain = Watch.GainFront
+					elseif angle <= Watch.SideFov then
+						gain = Watch.GainSide
+					end
+					-- Вплотную «не заметить» нельзя — независимо от угла.
+					if dist <= Settings.AttackRange.Value + 2 then
+						gain = Watch.GainFront * 3
+					end
+					if gain ~= nil and Monster:CanSeeCharacter(character) then
+						local distFactor = 1 - (dist / Watch.SightRange) * 0.6
+						Watch.Suspicion = math.min(100, Watch.Suspicion + gain * distFactor * dt)
+						if bestDist == nil or dist < bestDist then
+							bestDist = dist
+							Watch.Candidate = character
 						end
 					end
 				end
@@ -153,9 +218,68 @@ function Monster:SearchForTarget()
 		end
 	end
 
+	-- Никого не видим — подозрение остывает.
+	if Watch.Candidate == nil then
+		Watch.Suspicion = math.max(0, Watch.Suspicion - Watch.Decay * dt)
+	end
+end
 
-	if closestCharacter ~= nil then
-		Mind.CurrentTargetHumanoid.Value = closestCharacter.Humanoid
+-- Полоса над головой. Пересоздаётся после респавна (голова уничтожается вместе с ней).
+function Monster:CreateSuspicionBar()
+	local head = Self:FindFirstChild('Head') or Self:FindFirstChild('HumanoidRootPart')
+	if head == nil then return end
+	if Watch.Gui ~= nil then Watch.Gui:Destroy() end
+
+	local gui = Instance.new('BillboardGui')
+	gui.Name = 'SuspicionBar'
+	gui.Size = UDim2.new(0, 80, 0, 8)
+	gui.StudsOffsetWorldSpace = Vector3.new(0, 3.2, 0)
+	gui.AlwaysOnTop = true
+	gui.MaxDistance = 90
+	gui.Enabled = false
+	gui.Adornee = head
+	gui.Parent = head
+
+	local bg = Instance.new('Frame')
+	bg.Size = UDim2.new(1, 0, 1, 0)
+	bg.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
+	bg.BackgroundTransparency = 0.4
+	bg.BorderSizePixel = 0
+	bg.Parent = gui
+
+	local fill = Instance.new('Frame')
+	fill.Size = UDim2.new(0, 0, 1, 0)
+	fill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	fill.BorderSizePixel = 0
+	fill.Parent = bg
+
+	Watch.Gui = gui
+	Watch.Fill = fill
+end
+
+function Monster:UpdateSuspicionBar()
+	if Watch.Gui == nil or Watch.Gui.Parent == nil then return end
+	Watch.Gui.Enabled = Watch.Suspicion > 1
+	Watch.Fill.Size = UDim2.new(math.clamp(Watch.Suspicion / 100, 0, 1), 0, 1, 0)
+	if Monster:TargetIsValid() or Watch.Suspicion >= 100 then
+		Watch.Fill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
+	elseif Watch.Suspicion >= 50 then
+		Watch.Fill.BackgroundColor3 = Color3.fromRGB(255, 220, 120)
+	else
+		Watch.Fill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+	end
+end
+
+-- Скорость: заметили игрока (цель есть) — обычная ходьба ×SpeedMult; иначе обычная.
+function Monster:UpdateSpeed()
+	local humanoid = Self:FindFirstChild('Humanoid')
+	if humanoid == nil then return end
+	if Watch.BaseSpeed == nil then
+		Watch.BaseSpeed = humanoid.WalkSpeed
+	end
+	local want = Monster:TargetIsValid() and (Watch.BaseSpeed * Watch.SpeedMult) or Watch.BaseSpeed
+	if humanoid.WalkSpeed ~= want then
+		humanoid.WalkSpeed = want
 	end
 end
 
@@ -248,9 +372,12 @@ function Monster:RecomputePath()
 	end
 end
 
-function Monster:Update()
+function Monster:Update(dt)
 	Monster:ReevaluateTarget()
+	Monster:UpdatePerception(dt or 0.03)
 	Monster:SearchForTarget()
+	Monster:UpdateSuspicionBar()
+	Monster:UpdateSpeed()
 	Monster:TryRecomputePath()
 	Monster:TravelPath()
 end
@@ -402,31 +529,46 @@ end
 
 function Monster:InitializeUnique()
 	Data.AttackTrack = Self.Humanoid:LoadAnimation(script.Attack)
+	-- Слежка: полоса над головой (после респавна голова новая) + обычная скорость.
+	Monster:CreateSuspicionBar()
+	Watch.Suspicion = 0
+	local humanoid = Self:FindFirstChild('Humanoid')
+	if humanoid ~= nil and Watch.BaseSpeed == nil then
+		Watch.BaseSpeed = humanoid.WalkSpeed
+	end
 end
 
 function Monster:ReevaluateTarget()
 	local currentTarget = Mind.CurrentTargetHumanoid.Value
-	
+
 	if currentTarget ~= nil and currentTarget:IsA'Humanoid' then
 		local character = currentTarget.Parent
-		
+
 		if character ~= nil then
 			local player = Info.Players:GetPlayerFromCharacter(character)
-			
+
 			if player ~= nil then
 				if not player.Neutral and player.TeamColor == Settings.FriendlyTeam.Value then
 					Mind.CurrentTargetHumanoid.Value = nil
+					Watch.Suspicion = 0
 				end
 			end
 		end
-		
-		
+
+		-- Цель умерла — слежка с нуля.
+		if currentTarget.Health <= 0 then
+			Mind.CurrentTargetHumanoid.Value = nil
+			Watch.Suspicion = 0
+		end
+
 		if currentTarget == Mind.CurrentTargetHumanoid.Value then
 			local torso = currentTarget.Torso
-			
+
 			if torso ~= nil and torso:IsA 'BasePart' then
 				if Settings.CanGiveUp.Value and (torso.Position - Monster:GetCFrame().p).magnitude > Monster:GetMaximumDetectionDistance() then
+					-- Сдался (цель слишком далеко) — шкала остывает с нуля, скорость обычная.
 					Mind.CurrentTargetHumanoid.Value = nil
+					Watch.Suspicion = 0
 				end
 			end
 		end
@@ -438,7 +580,12 @@ end
 Monster:Initialize()
 Monster:InitializeUnique()
 
+local lastUpdate = tick()
 while true do
+	local now = tick()
+	local dt = now - lastUpdate
+	lastUpdate = now
+
 	if not Monster:IsAlive() then
 		if Data.IsDead == false then
 			Data.IsDead = true
@@ -448,13 +595,14 @@ while true do
 		if Data.IsDead == true then
 			if tick()-Data.TimeOfDeath > Info.RespawnWaitTime then
 				Monster:Respawn()
+				Data.IsDead = false
 			end
 		end
 	end
-	
+
 	if Monster:IsAlive() then
-		Monster:Update()
+		Monster:Update(dt)
 	end
-	
+
 	wait()
 end
