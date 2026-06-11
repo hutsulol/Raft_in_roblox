@@ -1,713 +1,460 @@
 --[[
-	PirateGuardAI v5-clean — сторож-пират на Humanoid (R6/R15). ПЕРЕПИСАН С НУЛЯ:
-	без чужого кода, без PathfindingService (никаких NoPath), один аним-драйвер.
+	Basic Monster by ArceusInator
 
-	КАК СТАВИТЬ: один ЭТОТ Script внутрь модели пирата. Штатный Animate удалить.
-	Анимации лежат ПЛОСКО в любой папке модели (имена с альтернативами):
-	  Animation1|Idle   — спокойная стойка (никого не преследует)
-	  Animation2|Idle2  — тревожная стойка (есть цель преследования)
-	  WalkAnim|Walk     — шаг (патруль/проверка/поиск/возврат)
-	  RunAnim|Run       — бег (погоня)
-	  JumpAnim / FallAnim — прыжок / полёт (опционально)
-	  Attack            — Animation РЕБЁНКОМ этого скрипта (замах)
-
-	ПОВЕДЕНИЕ:
-	  • Зрение: конус (спереди быстро, сбоку медленно) + Raycast-LOS; шкала
-	    подозрения 0..100 с полосой над головой; вплотную — мгновенная агрессия.
-	  • УВИДЕЛ → сразу CHASE: бежит ПРЯМО на игрока (CHASE_SPEED + RunAnim),
-	    в радиусе бьёт (анимация Attack + урон с задержкой под замах).
-	  • Потерял из виду → SEARCH шагом к последней точке, осмотрелся → RETURN на пост.
-	  • Подозрение 50+ без прямой видимости → INVESTIGATE шагом.
-	  • Отряд: при старте погони кричит соседям с тегом PirateGuard — те идут
-	    проверять точку крика.
-	  • Патруль: папка PatrolPoints с партами внутри модели — ходит по кругу
-	    с паузами; нет папки — стоит на посту.
+	Information:
+		Configurations.MaximumDetectionDistance (default 200)
+			The monster will not detect players past this point.  If you set it to a negative number then the monster will be able to chase from any distance.
+			
+		Configurations.CanGiveUp (default true)
+			If true, the monster will give up if its target goes past the MaximumDetectionDistance.  This is a pretty good idea if you have people teleporting around.
+			
+		Configurations.CanRespawn (default true)
+			If true, the monster will respawn after it dies
+			
+		Configurations.AutoDetectSpawnPoint (default true)
+			If true, the spawn point will be auto detected based on where the monster is when it starts
+		
+		Configurations.SpawnPoint (default 0,0,0)
+			If Settings.AutoDetectSpawnPoint is disabled, this will be set to the monster's initial position.  This value will be used when the monster auto respawns to tell it where to spawn next.
+			
+		Configurations.FriendlyTeam (default Really black)
+			The monster will not attack players on this team
+		
+		
+		
+		Mind.CurrentTargetHumanoid (Humanoid objects only)
+			You can force the monster to follow a certain humanoid by setting this to that humanoid
+		
+		
+		
+		Monster.Respawn (Function)
+			Arguments are: Vector3 point
+			Info: Respawns the monster at the given point, or at the SpawnPoint setting if none if provided
+		
+		Monster.Died (Event)
+			Info: Fired when the monster dies
+		
+		Monster.Respawned (Event)
+			Info: Fired when the monster respawns
 --]]
 
-local Players           = game:GetService("Players")
-local RunService        = game:GetService("RunService")
-local CollectionService = game:GetService("CollectionService")
+local Self = script.Parent
+local Settings = Self:FindFirstChild'Configurations' -- Points to the settings.
+local Mind = Self:FindFirstChild'Mind' -- Points to the monster's mind.  You can edit parts of this from other scripts in-game to change the monster's behavior.  Advanced users only.
 
-local npc = script.Parent
+--
+-- Verify that everything is where it should be
+assert(Self:FindFirstChild'Humanoid' ~= nil, 'Monster does not have a humanoid')
+assert(Settings ~= nil, 'Monster does not have a Configurations object')
+	assert(Settings:FindFirstChild'MaximumDetectionDistance' ~= nil and Settings.MaximumDetectionDistance:IsA'NumberValue', 'Monster does not have a MaximumDetectionDistance (NumberValue) setting')
+	assert(Settings:FindFirstChild'CanGiveUp' ~= nil and Settings.CanGiveUp:IsA'BoolValue', 'Monster does not have a CanGiveUp (BoolValue) setting')
+	assert(Settings:FindFirstChild'CanRespawn' ~= nil and Settings.CanRespawn:IsA'BoolValue', 'Monster does not have a CanRespawn (BoolValue) setting')
+	assert(Settings:FindFirstChild'SpawnPoint' ~= nil and Settings.SpawnPoint:IsA'Vector3Value', 'Monster does not have a SpawnPoint (Vector3Value) setting')
+	assert(Settings:FindFirstChild'AutoDetectSpawnPoint' ~= nil and Settings.AutoDetectSpawnPoint:IsA'BoolValue', 'Monster does not have a AutoDetectSpawnPoint (BoolValue) setting')
+	assert(Settings:FindFirstChild'FriendlyTeam' ~= nil and Settings.FriendlyTeam:IsA'BrickColorValue', 'Monster does not have a FriendlyTeam (BrickColorValue) setting')
+	assert(Settings:FindFirstChild'AttackDamage' ~= nil and Settings.AttackDamage:IsA'NumberValue', 'Monster does not have a AttackDamage (NumberValue) setting')
+	assert(Settings:FindFirstChild'AttackFrequency' ~= nil and Settings.AttackFrequency:IsA'NumberValue', 'Monster does not have a AttackFrequency (NumberValue) setting')
+	assert(Settings:FindFirstChild'AttackRange' ~= nil and Settings.AttackRange:IsA'NumberValue', 'Monster does not have a AttackRange (NumberValue) setting')
+assert(Mind ~= nil, 'Monster does not have a Mind object')
+	assert(Mind:FindFirstChild'CurrentTargetHumanoid' ~= nil and Mind.CurrentTargetHumanoid:IsA'ObjectValue', 'Monster does not have a CurrentTargetHumanoid (ObjectValue) mind setting')
+assert(Self:FindFirstChild'Respawn' and Self.Respawn:IsA'BindableFunction', 'Monster does not have a Respawn BindableFunction')
+assert(Self:FindFirstChild'Died' and Self.Died:IsA'BindableEvent', 'Monster does not have a Died BindableEvent')
+assert(Self:FindFirstChild'Respawned' and Self.Died:IsA'BindableEvent', 'Monster does not have a Respawned BindableEvent')
+assert(Self:FindFirstChild'Attacked' and Self.Died:IsA'BindableEvent', 'Monster does not have a Attacked BindableEvent')
+assert(script:FindFirstChild'Attack' and script.Attack:IsA'Animation', 'Monster does not have a MonsterScript.Attack Animation')
 
---====================================================
--- НАСТРОЙКИ
---====================================================
 
-local CFG = {
-	-- скорости
-	WALK_SPEED  = 8,    -- шаг: патруль/проверка/поиск/возврат
-	CHASE_SPEED = 18,   -- бег: только при видимой цели
+--
+--
+local Info = {
+	-- These are constant values.  Don't change them unless you know what you're doing.
 
-	-- бой
-	ATTACK_RANGE     = 6,
-	ATTACK_COOLDOWN  = 1.2,
-	ATTACK_DAMAGE    = 20,
-	ATTACK_HIT_DELAY = 0.25, -- урон под замах анимации
+	-- Services
+	Players = Game:GetService 'Players',
+	PathfindingService = Game:GetService 'PathfindingService',
 
-	-- зрение/подозрение
-	SIGHT_RANGE   = 50,
-	FOV_FRONT_DEG = 50,   -- в этом конусе подозрение растёт быстро
-	FOV_SIDE_DEG  = 110,  -- в этом — медленно; дальше не видит
-	EYE_HEIGHT    = 1.5,
-	GAIN_FRONT    = 90,   -- ед/сек на близкой дистанции
-	GAIN_SIDE     = 35,
-	DECAY         = 25,   -- спад подозрения вне видимости
-	INVESTIGATE_AT = 50,  -- порог «пойти проверить»
-	MELEE_REFLEX  = 8,    -- ближе этого — мгновенная агрессия (даже сзади)
+	-- Advanced settings
+	RecomputePathFrequency = 1, -- The monster will recompute its path this many times per second
+	RespawnWaitTime = 5, -- How long to wait before the monster respawns
+	JumpCheckFrequency = 1, -- How many times per second it will do a jump check
+}
+local Data = {
+	-- These are variable values used internally by the script.  Advanced users only.
 
-	-- поиск/возврат
-	SEARCH_DURATION = 8,  -- сколько осматривается у последней точки
-	REACH           = 3,  -- «дошёл», если ближе
-
-	-- патруль
-	PATROL_FOLDER    = "PatrolPoints",
-	PATROL_PAUSE_MIN = 8,
-	PATROL_PAUSE_MAX = 20,
-
-	-- отряд
-	GUARD_TAG      = "PirateGuard",
-	SHOUT_RADIUS   = 60,
-	SHOUT_INTERVAL = 4,
-	ALERT_FRESH    = 6,   -- сколько секунд чужой крик считается актуальным
-
-	-- застревание
-	STUCK_TIME     = 1.2, -- почти не двигаемся столько секунд → шаг вбок
-	STUCK_DIST     = 0.5,
+	LastRecomputePath = 0,
+	Recomputing = false, -- Reocmputing occurs async, meaning this script will still run while it's happening.  This variable will prevent the script from running two recomputes at once.
+	PathCoords = {},
+	IsDead = false,
+	TimeOfDeath = 0,
+	CurrentNode = nil,
+	CurrentNodeIndex = 1,
+	AutoRecompute = true,
+	LastJumpCheck = 0,
+	LastAttack = 0,
+	
+	BaseMonster = Self:Clone(),
+	AttackTrack = nil,
 }
 
---====================================================
--- РИГ
---====================================================
+--
+--
+local Monster = {} -- Create the monster class
 
-local humanoid = npc:FindFirstChildOfClass("Humanoid")
-do
-	local waited = 0
-	while not humanoid and waited < 5 do
-		task.wait(0.1)
-		waited += 0.1
-		humanoid = npc:FindFirstChildOfClass("Humanoid")
-	end
-end
-if not humanoid then
-	warn("[PirateGuardAI] Humanoid не найден — скрипт не запущен")
-	return
-end
 
-local rootPart = npc:FindFirstChild("HumanoidRootPart") or humanoid.RootPart
-	or npc:WaitForChild("HumanoidRootPart", 5)
-if not rootPart then
-	warn("[PirateGuardAI] HumanoidRootPart не найден — скрипт не запущен")
-	return
-end
+function Monster:GetCFrame()
+	-- Returns the CFrame of the monster's humanoidrootpart
 
-local head = npc:FindFirstChild("Head") or rootPart
+	local humanoidRootPart = Self:FindFirstChild('HumanoidRootPart')
 
-if not npc.PrimaryPart then
-	npc.PrimaryPart = rootPart
-end
-
-for _, d in ipairs(npc:GetDescendants()) do
-	if d:IsA("BasePart") then
-		d.Anchored = false
-	end
-end
-humanoid.WalkSpeed = CFG.WALK_SPEED
-humanoid.AutoRotate = true
-pcall(function()
-	humanoid:SetStateEnabled(Enum.HumanoidStateType.Seated, false)
-end)
-
--- Физика всегда на сервере (иначе владение прыгает на клиента → рывки на бегу).
-task.defer(function()
-	pcall(function()
-		rootPart:SetNetworkOwner(nil)
-	end)
-end)
-
-CollectionService:AddTag(npc, CFG.GUARD_TAG)
-
--- Все анимации играем САМИ. Если в риге остался штатный Animate (или его копия) —
--- он дерётся за walk/run/idle и подсовывает свои (часто placeholder) анимации.
--- Убиваем его и гасим всё, что он успел запустить, чтобы остаться единственным
--- хозяином анимаций.
-do
-	local function looksLikeAnimate(s)
-		local n = s.Name:lower()
-		return n == "animate" or n:find("animate") ~= nil
-	end
-	for _, d in ipairs(npc:GetDescendants()) do
-		if (d:IsA("Script") or d:IsA("LocalScript")) and d ~= script and looksLikeAnimate(d)
-			and not d:FindFirstAncestorOfClass("Tool") then
-			warn("[PirateGuardAI] убираю конфликтующий Animate: " .. d:GetFullName())
-			d.Disabled = true
-			d:Destroy()
-		end
-	end
-	local existingAnimator = humanoid:FindFirstChildOfClass("Animator")
-	if existingAnimator then
-		task.defer(function()
-			for _, t in ipairs(existingAnimator:GetPlayingAnimationTracks()) do
-				t:Stop(0)
-			end
-		end)
-	end
-end
-
-local homePosition = rootPart.Position
-local homeLook = rootPart.CFrame.LookVector
-
---====================================================
--- ХЕЛПЕРЫ
---====================================================
-
-local function flatDistance(a, b)
-	return (Vector3.new(a.X, 0, a.Z) - Vector3.new(b.X, 0, b.Z)).Magnitude
-end
-
-local raycastParams = RaycastParams.new()
-raycastParams.FilterType = Enum.RaycastFilterType.Exclude
-raycastParams.IgnoreWater = true
-raycastParams.FilterDescendantsInstances = { npc }
-
-local function getCharacterRoot(character)
-	return character and character:FindFirstChild("HumanoidRootPart")
-end
-
-local function isAliveCharacter(character)
-	local h = character and character:FindFirstChildOfClass("Humanoid")
-	return h ~= nil and h.Health > 0
-end
-
--- Видна ли цель (стены рвут обзор).
-local function canSee(targetRoot)
-	local origin = head.Position + Vector3.new(0, CFG.EYE_HEIGHT - 1, 0)
-	local result = workspace:Raycast(origin, targetRoot.Position - origin, raycastParams)
-	if result and not result.Instance:IsDescendantOf(targetRoot.Parent) then
-		return false
-	end
-	return true
-end
-
--- Развернуться к точке (по горизонтали), стоя на месте.
-local function faceTowards(pos)
-	local flat = Vector3.new(pos.X, rootPart.Position.Y, pos.Z)
-	if (flat - rootPart.Position).Magnitude > 0.1 then
-		rootPart.CFrame = CFrame.lookAt(rootPart.Position, flat)
-	end
-end
-
---====================================================
--- АНИМАЦИИ (всё играем сами; штатного Animate в риге НЕТ)
---====================================================
-
-local animator = humanoid:FindFirstChildOfClass("Animator")
-if not animator then
-	animator = Instance.new("Animator")
-	animator.Parent = humanoid
-end
-
-local function findAnim(names)
-	for _, want in ipairs(names) do
-		for _, d in ipairs(npc:GetDescendants()) do
-			if d:IsA("Animation") and d.Name == want then
-				return d
-			end
-		end
-	end
-	return nil
-end
-
-local function loadTrack(label, names, priority, looped)
-	local a = findAnim(names)
-	if not a then
-		warn(("[PirateGuardAI] анимация «%s» не найдена (искал: %s)"):format(label, table.concat(names, ", ")))
-		return nil
-	end
-	local ok, track = pcall(function()
-		return animator:LoadAnimation(a)
-	end)
-	if not ok or not track then
-		warn(("[PirateGuardAI] не удалось загрузить «%s» (%s)"):format(label, a:GetFullName()))
-		return nil
-	end
-	track.Priority = priority
-	track.Looped = looped
-	return track
-end
-
-local idleCalmTrack  = loadTrack("idle спокойный", { "Animation1", "Idle", "IdleAnim" }, Enum.AnimationPriority.Idle, true)
-local idleAlertTrack = loadTrack("idle тревожный", { "Animation2", "Idle2" },            Enum.AnimationPriority.Idle, true) or idleCalmTrack
-local walkTrack      = loadTrack("ходьба",         { "WalkAnim", "Walk" },               Enum.AnimationPriority.Movement, true)
-local runTrack       = loadTrack("бег",            { "RunAnim", "Run" },                 Enum.AnimationPriority.Movement, true) or walkTrack
-local jumpTrack      = loadTrack("прыжок",         { "JumpAnim", "Jump" },               Enum.AnimationPriority.Movement, false)
-local fallTrack      = loadTrack("падение",        { "FallAnim", "Fall" },               Enum.AnimationPriority.Movement, true)
-
-local attackTrack = nil
-do
-	local attackAnim = script:FindFirstChild("Attack")
-	if attackAnim and attackAnim:IsA("Animation") then
-		local ok, track = pcall(function()
-			return animator:LoadAnimation(attackAnim)
-		end)
-		if ok and track then
-			track.Priority = Enum.AnimationPriority.Action
-			track.Looped = false
-			attackTrack = track
-		end
-	end
-	if not attackTrack then
-		warn("[PirateGuardAI] анимация «Attack» (ребёнок скрипта) не найдена — бой без замаха")
-	end
-end
-
--- Ровно ОДИН активный трек локомоции за раз — смешение walk+run исключено.
-local currentLoco = nil
-local function playLoco(track, fade)
-	fade = fade or 0.15
-	if currentLoco == track then
-		if track and not track.IsPlaying then track:Play(fade) end
-		return
-	end
-	if currentLoco and currentLoco.IsPlaying then
-		currentLoco:Stop(fade)
-	end
-	currentLoco = track
-	if track and not track.IsPlaying then
-		track:Play(fade)
-	end
-end
-
-local airborne = false
-humanoid.StateChanged:Connect(function(_, new)
-	if new == Enum.HumanoidStateType.Jumping then
-		airborne = true
-		if jumpTrack then
-			jumpTrack:Play(0.1)
-		end
-	elseif new == Enum.HumanoidStateType.Freefall then
-		airborne = true
-	elseif new == Enum.HumanoidStateType.Landed
-		or new == Enum.HumanoidStateType.Running
-		or new == Enum.HumanoidStateType.RunningNoPhysics then
-		airborne = false
-	end
-end)
-
-local chaseTarget = nil -- forward (нужен аниматору для тревожной стойки)
-
-local stillSince = nil
-local function updateAnimations()
-	if airborne then
-		stillSince = nil
-		playLoco(fallTrack or runTrack or walkTrack, 0.1)
-		return
-	end
-
-	if humanoid.MoveDirection.Magnitude > 0.05 then
-		stillSince = nil
-		local runMode = humanoid.WalkSpeed > (CFG.WALK_SPEED + CFG.CHASE_SPEED) / 2
-		playLoco(runMode and runTrack or walkTrack)
-		return
-	end
-
-	-- гистерезис остановки: микропаузы движения не мигают idle поверх бега
-	stillSince = stillSince or os.clock()
-	if os.clock() - stillSince < 0.15 then
-		return
-	end
-
-	if attackTrack and attackTrack.IsPlaying then
-		playLoco(nil, 0.1) -- замах (Action) играет сам
-		return
-	end
-
-	playLoco((chaseTarget and idleAlertTrack) or idleCalmTrack, 0.2)
-end
-
---====================================================
--- ДВИЖЕНИЕ (прямой MoveTo + прыжок через мелочь + анти-застревание)
---====================================================
-
-local lastJumpCheck = 0
-local function jumpCheck(goal)
-	if os.clock() - lastJumpCheck < 0.5 then return end
-	lastJumpCheck = os.clock()
-	local dir = Vector3.new(goal.X - rootPart.Position.X, 0, goal.Z - rootPart.Position.Z)
-	if dir.Magnitude < 0.1 then return end
-	local origin = rootPart.Position + Vector3.new(0, -1.5, 0)
-	if workspace:Raycast(origin, dir.Unit * 3, raycastParams) then
-		humanoid.Jump = true
-	end
-end
-
-local stuckPos, stuckSince = nil, nil
-local function moveTo(goal, speed)
-	humanoid.WalkSpeed = speed
-	jumpCheck(goal)
-	humanoid:MoveTo(goal)
-
-	-- почти не двигаемся, а цель далеко → шаг вбок, чтобы соскочить с угла
-	if stuckPos and (rootPart.Position - stuckPos).Magnitude > CFG.STUCK_DIST then
-		stuckPos, stuckSince = rootPart.Position, os.clock()
-	elseif not stuckPos then
-		stuckPos, stuckSince = rootPart.Position, os.clock()
-	elseif os.clock() - stuckSince > CFG.STUCK_TIME
-		and flatDistance(rootPart.Position, goal) > CFG.REACH then
-		local dir = (Vector3.new(goal.X, 0, goal.Z) - Vector3.new(rootPart.Position.X, 0, rootPart.Position.Z))
-		if dir.Magnitude > 0.1 then
-			local side = Vector3.new(-dir.Unit.Z, 0, dir.Unit.X) * 4
-			if math.random() < 0.5 then side = -side end
-			humanoid.Jump = true
-			humanoid:MoveTo(rootPart.Position + side)
-		end
-		stuckPos, stuckSince = rootPart.Position, os.clock()
-	end
-end
-
-local function stopMoving()
-	humanoid:MoveTo(rootPart.Position)
-	stuckPos, stuckSince = nil, nil
-end
-
---====================================================
--- ШКАЛА ПОДОЗРЕНИЯ (полоса над головой)
---====================================================
-
-local suspicion = 0
-local lastKnownPosition = nil
-
-local suspicionGui = Instance.new("BillboardGui")
-suspicionGui.Name = "SuspicionBar"
-suspicionGui.Size = UDim2.new(0, 80, 0, 8)
-suspicionGui.StudsOffsetWorldSpace = Vector3.new(0, 3.2, 0)
-suspicionGui.AlwaysOnTop = true
-suspicionGui.MaxDistance = 90
-suspicionGui.Enabled = false
-suspicionGui.Adornee = head
-suspicionGui.Parent = head
-
-local suspicionBg = Instance.new("Frame")
-suspicionBg.Size = UDim2.new(1, 0, 1, 0)
-suspicionBg.BackgroundColor3 = Color3.fromRGB(20, 20, 20)
-suspicionBg.BackgroundTransparency = 0.4
-suspicionBg.BorderSizePixel = 0
-suspicionBg.Parent = suspicionGui
-
-local suspicionFill = Instance.new("Frame")
-suspicionFill.Size = UDim2.new(0, 0, 1, 0)
-suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
-suspicionFill.BorderSizePixel = 0
-suspicionFill.Parent = suspicionBg
-
-local function updateSuspicionBar()
-	suspicionGui.Enabled = suspicion > 1
-	suspicionFill.Size = UDim2.new(math.clamp(suspicion / 100, 0, 1), 0, 1, 0)
-	if chaseTarget then
-		suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 60, 60)
-	elseif suspicion >= CFG.INVESTIGATE_AT then
-		suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 220, 120)
+	if humanoidRootPart ~= nil and humanoidRootPart:IsA('BasePart') then
+		return humanoidRootPart.CFrame
 	else
-		suspicionFill.BackgroundColor3 = Color3.fromRGB(255, 255, 255)
+		return CFrame.new()
 	end
 end
 
---====================================================
--- ВОСПРИЯТИЕ (конус зрения + LOS)
---====================================================
+function Monster:GetMaximumDetectionDistance()
+	-- Returns the maximum detection distance
+	
+	local setting = Settings.MaximumDetectionDistance.Value
 
--- Возвращает видимый root/character ближайшего игрока и копит подозрение.
-local function updatePerception(dt)
-	local bestRoot, bestChar, bestDist = nil, nil, math.huge
-	local lookDir = rootPart.CFrame.LookVector
+	if setting < 0 then
+		return math.huge
+	else
+		return setting
+	end
+end
 
-	for _, player in ipairs(Players:GetPlayers()) do
-		local character = player.Character
-		local targetRoot = getCharacterRoot(character)
-		if targetRoot and isAliveCharacter(character) then
-			local offset = targetRoot.Position - head.Position
-			local dist = offset.Magnitude
-			if dist <= CFG.SIGHT_RANGE then
-				local melee = dist <= CFG.MELEE_REFLEX
-				local angle = math.deg(math.acos(math.clamp(
-					lookDir:Dot(Vector3.new(offset.X, 0, offset.Z).Unit), -1, 1)))
-				if (melee or angle <= CFG.FOV_SIDE_DEG / 2) and canSee(targetRoot) then
-					local gain
-					if melee then
-						gain = 1000 -- вплотную — мгновенно
-					elseif angle <= CFG.FOV_FRONT_DEG / 2 then
-						gain = CFG.GAIN_FRONT
+function Monster:SearchForTarget()
+	-- Finds the closest player and sets the target
+
+	local players = Info.Players:GetPlayers()
+	local closestCharacter, closestCharacterDistance
+
+	for i=1, #players do
+		local player = players[i]
+		
+		if player.Neutral or player.TeamColor ~= Settings.FriendlyTeam.Value then
+			local character = player.Character
+	
+			if character ~= nil and character:FindFirstChild('Humanoid') ~= nil and character.Humanoid:IsA('Humanoid') then
+				local distance = player:DistanceFromCharacter(Monster:GetCFrame().p)
+	
+				if distance < Monster:GetMaximumDetectionDistance() then
+					if closestCharacter == nil then
+						closestCharacter, closestCharacterDistance = character, distance
 					else
-						gain = CFG.GAIN_SIDE
-					end
-					local distFactor = 1 - 0.6 * math.clamp(dist / CFG.SIGHT_RANGE, 0, 1)
-					suspicion = math.min(100, suspicion + gain * distFactor * dt)
-					if dist < bestDist then
-						bestRoot, bestChar, bestDist = targetRoot, character, dist
+						if closestCharacterDistance > distance then
+							closestCharacter, closestCharacterDistance = character, distance
+						end
 					end
 				end
 			end
 		end
 	end
 
-	return bestRoot, bestChar
+
+	if closestCharacter ~= nil then
+		Mind.CurrentTargetHumanoid.Value = closestCharacter.Humanoid
+	end
 end
 
---====================================================
--- ОТРЯД (крик соседям с тем же тегом)
---====================================================
+function Monster:TryRecomputePath()
+	if Data.AutoRecompute or tick() - Data.LastRecomputePath > 1/Info.RecomputePathFrequency then
+		Monster:RecomputePath()
+	end
+end
 
-local lastShout = 0
-local function broadcastShout(pos)
-	if os.clock() - lastShout < CFG.SHOUT_INTERVAL then return end
-	lastShout = os.clock()
-	for _, other in ipairs(CollectionService:GetTagged(CFG.GUARD_TAG)) do
-		if other ~= npc and other.Parent then
-			local otherRoot = other.PrimaryPart or other:FindFirstChild("HumanoidRootPart")
-			if otherRoot and (otherRoot.Position - rootPart.Position).Magnitude <= CFG.SHOUT_RADIUS then
-				other:SetAttribute("SquadAlertPos", pos)
-				other:SetAttribute("SquadAlertAt", os.clock())
+function Monster:GetTargetCFrame()
+	local targetHumanoid = Mind.CurrentTargetHumanoid.Value
+	
+	if Monster:TargetIsValid() then
+		return targetHumanoid.Torso.CFrame
+	else
+		return CFrame.new()
+	end
+end
+
+function Monster:IsAlive()
+	return Self.Humanoid.Health > 0 and Self.Humanoid.Torso ~= nil
+end
+
+function Monster:TargetIsValid()
+	local targetHumanoid = Mind.CurrentTargetHumanoid.Value
+	
+	if targetHumanoid ~= nil and targetHumanoid:IsA 'Humanoid' and targetHumanoid.Torso ~= nil and targetHumanoid.Torso:IsA 'BasePart' then
+		return true
+	else
+		return false
+	end
+end
+
+function Monster:HasClearLineOfSight()
+	-- Going to cast a ray to see if I can just see my target
+	local myPos, targetPos = Monster:GetCFrame().p, Monster:GetTargetCFrame().p
+	
+	local hit, pos = Workspace:FindPartOnRayWithIgnoreList(
+		Ray.new(
+			myPos,
+			targetPos - myPos
+		),
+		{
+			Self,
+			Mind.CurrentTargetHumanoid.Value.Parent
+		}
+	)
+	
+	
+	if hit == nil then
+		return true
+	else
+		return false
+	end
+end
+
+function Monster:RecomputePath()
+	if not Data.Recomputing then
+		if Monster:IsAlive() and Monster:TargetIsValid() then
+			if Monster:HasClearLineOfSight() then
+				Data.AutoRecompute = true
+				Data.PathCoords = {
+					Monster:GetCFrame().p,
+					Monster:GetTargetCFrame().p
+				}
+				
+				Data.LastRecomputePath = tick()
+				Data.CurrentNode = nil
+				Data.CurrentNodeIndex = 2 -- Starts chasing the target without evaluating its current position
+			else
+				-- Do pathfinding since you can't walk straight
+				Data.Recomputing = true -- Basically a debounce.
+				Data.AutoRecompute = false
+				
+				
+				local path = Info.PathfindingService:ComputeSmoothPathAsync(
+					Monster:GetCFrame().p,
+					Monster:GetTargetCFrame().p,
+					500
+				)
+				Data.PathCoords = path:GetPointCoordinates()
+				
+				
+				Data.Recomputing = false
+				Data.LastRecomputePath = tick()
+				Data.CurrentNode = nil
+				Data.CurrentNodeIndex = 1
 			end
 		end
 	end
 end
 
--- Свежий чужой крик (или nil).
-local function getSquadAlert()
-	local at = npc:GetAttribute("SquadAlertAt")
-	if at and os.clock() - at <= CFG.ALERT_FRESH then
-		return npc:GetAttribute("SquadAlertPos")
-	end
-	return nil
+function Monster:Update()
+	Monster:ReevaluateTarget()
+	Monster:SearchForTarget()
+	Monster:TryRecomputePath()
+	Monster:TravelPath()
 end
 
---====================================================
--- БОЙ
---====================================================
-
-local lastAttack = 0
-local function tryAttack(targetRoot, targetHumanoid)
-	if os.clock() - lastAttack < CFG.ATTACK_COOLDOWN then return end
-	lastAttack = os.clock()
-
-	if attackTrack then
-		attackTrack:Play(0.05)
+function Monster:TravelPath()
+	local closest, closestDistance, closestIndex
+	local myPosition = Monster:GetCFrame().p
+	local skipCurrentNode = Data.CurrentNode ~= nil and (Data.CurrentNode - myPosition).magnitude < 3
+	
+	for i=Data.CurrentNodeIndex, #Data.PathCoords do
+		local coord = Data.PathCoords[i]
+		if not (skipCurrentNode and coord == Data.CurrentNode) then
+			local distance = (coord - myPosition).magnitude
+			
+			if closest == nil then
+				closest, closestDistance, closestIndex = coord, distance, i
+			else
+				if distance < closestDistance then
+					closest, closestDistance, closestIndex = coord, distance, i
+				else
+					break
+				end
+			end
+		end
 	end
-	task.delay(CFG.ATTACK_HIT_DELAY, function()
-		if not targetRoot.Parent or not targetHumanoid.Parent then return end
-		if targetHumanoid.Health <= 0 then return end
-		if (targetRoot.Position - rootPart.Position).Magnitude <= CFG.ATTACK_RANGE + 2 then
-			targetHumanoid:TakeDamage(CFG.ATTACK_DAMAGE)
+	
+	
+	--
+	if closest ~= nil then
+		Data.CurrentNode = closest
+		Data.CurrentNodeIndex = closestIndex
+		
+		local humanoid = Self:FindFirstChild 'Humanoid'
+		
+		if humanoid ~= nil and humanoid:IsA'Humanoid' then
+			humanoid:MoveTo(closest)
+		end
+		
+		if Monster:IsAlive() and Monster:TargetIsValid() then
+			Monster:TryJumpCheck()
+			Monster:TryAttack()
+		end
+		
+		if closestIndex == #Data.PathCoords then
+			-- Reached the end of the path, force a new check
+			Data.AutoRecompute = true
+		end
+	end
+end
+
+function Monster:TryJumpCheck()
+	if tick() - Data.LastJumpCheck > 1/Info.JumpCheckFrequency then
+		Monster:JumpCheck()
+	end
+end
+
+function Monster:TryAttack()
+	if tick() - Data.LastAttack > 1/Settings.AttackFrequency.Value then
+		Monster:Attack()
+	end
+end
+
+function Monster:Attack()
+	local myPos, targetPos = Monster:GetCFrame().p, Monster:GetTargetCFrame().p
+	
+	if (myPos - targetPos).magnitude <= Settings.AttackRange.Value then
+		Mind.CurrentTargetHumanoid.Value:TakeDamage(Settings.AttackDamage.Value)
+		Data.LastAttack = tick()
+		Data.AttackTrack:Play()
+	end
+end
+
+function Monster:JumpCheck()
+	-- Do a raycast to check if we need to jump
+	local myCFrame = Monster:GetCFrame()
+	local checkVector = (Monster:GetTargetCFrame().p - myCFrame.p).unit*2
+	
+	local hit, pos = Workspace:FindPartOnRay(
+		Ray.new(
+			myCFrame.p + Vector3.new(0, -2.4, 0),
+			checkVector
+		),
+		Self
+	)
+	
+	if hit ~= nil and not hit:IsDescendantOf(Mind.CurrentTargetHumanoid.Value.Parent) then
+		-- Do a slope check to make sure we're not walking up a ramp
+		
+		local hit2, pos2 = Workspace:FindPartOnRay(
+			Ray.new(
+				myCFrame.p + Vector3.new(0, -2.3, 0),
+				checkVector
+			),
+			Self
+		)
+		
+		if hit2 == hit then
+			if ((pos2 - pos)*Vector3.new(1,0,1)).magnitude < 0.05 then -- Will pass for any ramp with <2 slope
+				Self.Humanoid.Jump = true
+			end
+		end
+	end
+	
+	Data.LastJumpCheck = tick()
+end
+
+function Monster:Connect()
+	Mind.CurrentTargetHumanoid.Changed:connect(function(humanoid)
+		if humanoid ~= nil then
+			assert(humanoid:IsA'Humanoid', 'Monster target must be a humanoid')
+			
+			Monster:RecomputePath()
 		end
 	end)
+	
+	Self.Respawn.OnInvoke = function(point)
+		Monster:Respawn(point)
+	end
 end
 
---====================================================
--- ПАТРУЛЬ
---====================================================
+function Monster:Initialize()
+	Monster:Connect()
+	
+	if Settings.AutoDetectSpawnPoint.Value then
+		Settings.SpawnPoint.Value = Monster:GetCFrame().p
+	end
+end
 
-local patrolPoints = {}
-do
-	local folder = npc:FindFirstChild(CFG.PATROL_FOLDER)
-	if folder then
-		for _, p in ipairs(folder:GetChildren()) do
-			if p:IsA("BasePart") then
-				table.insert(patrolPoints, p.Position)
-				p.Anchored = true
-				p.CanCollide = false
-				p.Transparency = 1
+function Monster:Respawn(point)
+	local point = point or Settings.SpawnPoint.Value
+	
+	for index, obj in next, Data.BaseMonster:Clone():GetChildren() do
+		if obj.Name == 'Configurations' or obj.Name == 'Mind' or obj.Name == 'Respawned' or obj.Name == 'Died' or obj.Name == 'MonsterScript' or obj.Name == 'Respawn' then
+			obj:Destroy()
+		else
+			Self[obj.Name]:Destroy()
+			obj.Parent = Self
+		end
+	end
+	
+	Monster:InitializeUnique()
+	
+	Self.Parent = Workspace
+	
+	Self.HumanoidRootPart.CFrame = CFrame.new(point)
+	Settings.SpawnPoint.Value = point
+	Self.Respawned:Fire()
+end
+
+function Monster:InitializeUnique()
+	Data.AttackTrack = Self.Humanoid:LoadAnimation(script.Attack)
+end
+
+function Monster:ReevaluateTarget()
+	local currentTarget = Mind.CurrentTargetHumanoid.Value
+	
+	if currentTarget ~= nil and currentTarget:IsA'Humanoid' then
+		local character = currentTarget.Parent
+		
+		if character ~= nil then
+			local player = Info.Players:GetPlayerFromCharacter(character)
+			
+			if player ~= nil then
+				if not player.Neutral and player.TeamColor == Settings.FriendlyTeam.Value then
+					Mind.CurrentTargetHumanoid.Value = nil
+				end
+			end
+		end
+		
+		
+		if currentTarget == Mind.CurrentTargetHumanoid.Value then
+			local torso = currentTarget.Torso
+			
+			if torso ~= nil and torso:IsA 'BasePart' then
+				if Settings.CanGiveUp.Value and (torso.Position - Monster:GetCFrame().p).magnitude > Monster:GetMaximumDetectionDistance() then
+					Mind.CurrentTargetHumanoid.Value = nil
+				end
 			end
 		end
 	end
 end
-local patrolIndex = 1
-local patrolPauseUntil = 0
 
---====================================================
--- FSM
---====================================================
+--
+--
+Monster:Initialize()
+Monster:InitializeUnique()
 
-local STATE = { GUARD = "Guard", PATROL = "Patrol", INVESTIGATE = "Investigate",
-	CHASE = "Chase", SEARCH = "Search", RETURN = "Return" }
-
-local currentState = STATE.GUARD
-local stateClock = os.clock()
-
-local function setState(s)
-	if currentState == s then return end
-	currentState = s
-	stateClock = os.clock()
-end
-
-local function stateAge()
-	return os.clock() - stateClock
-end
-
-local function runGuard()
-	stopMoving()
-	if #patrolPoints > 0 and stateAge() > 4 then
-		setState(STATE.PATROL)
-	end
-end
-
-local function runPatrol()
-	if #patrolPoints == 0 then
-		setState(STATE.GUARD)
-		return
-	end
-	local target = patrolPoints[patrolIndex]
-	if flatDistance(rootPart.Position, target) > CFG.REACH then
-		moveTo(target, CFG.WALK_SPEED)
-		patrolPauseUntil = 0
-	else
-		stopMoving()
-		if patrolPauseUntil == 0 then
-			patrolPauseUntil = os.clock() + math.random(CFG.PATROL_PAUSE_MIN, CFG.PATROL_PAUSE_MAX)
-		elseif os.clock() >= patrolPauseUntil then
-			patrolPauseUntil = 0
-			patrolIndex = patrolIndex % #patrolPoints + 1
+while true do
+	if not Monster:IsAlive() then
+		if Data.IsDead == false then
+			Data.IsDead = true
+			Data.TimeOfDeath = tick()
+			Self.Died:Fire()
+		end
+		if Data.IsDead == true then
+			if tick()-Data.TimeOfDeath > Info.RespawnWaitTime then
+				Monster:Respawn()
+			end
 		end
 	end
-end
-
-local function runInvestigate()
-	local target = lastKnownPosition or homePosition
-	if flatDistance(rootPart.Position, target) > CFG.REACH then
-		moveTo(target, CFG.WALK_SPEED)
-	else
-		stopMoving()
-		suspicion = math.max(0, suspicion - CFG.DECAY * 0.5 * (1 / 60))
-		if suspicion < CFG.INVESTIGATE_AT * 0.5 then
-			setState(STATE.RETURN)
-		end
+	
+	if Monster:IsAlive() then
+		Monster:Update()
 	end
-end
-
-local function runChase(visibleRoot)
-	if not visibleRoot then
-		setState(STATE.SEARCH)
-		return
-	end
-	lastKnownPosition = visibleRoot.Position
-	local dist = flatDistance(rootPart.Position, visibleRoot.Position)
-	if dist <= CFG.ATTACK_RANGE then
-		stopMoving()
-		faceTowards(visibleRoot.Position)
-		local h = visibleRoot.Parent and visibleRoot.Parent:FindFirstChildOfClass("Humanoid")
-		if h then
-			tryAttack(visibleRoot, h)
-		end
-	else
-		-- цель видима → бежим ПРЯМО на неё (никакого pathfinding и зигзагов)
-		moveTo(visibleRoot.Position, CFG.CHASE_SPEED)
-	end
-end
-
-local function runSearch()
-	local target = lastKnownPosition or homePosition
-	if flatDistance(rootPart.Position, target) > CFG.REACH then
-		moveTo(target, CFG.WALK_SPEED) -- игрок вне поля зрения → шагом
-	else
-		stopMoving()
-	end
-	if suspicion <= 0 or stateAge() >= CFG.SEARCH_DURATION then
-		chaseTarget = nil
-		setState(STATE.RETURN)
-	end
-end
-
-local function runReturn()
-	if flatDistance(rootPart.Position, homePosition) > CFG.REACH then
-		moveTo(homePosition, CFG.WALK_SPEED)
-	else
-		stopMoving()
-		faceTowards(rootPart.Position + homeLook)
-		setState(STATE.GUARD)
-	end
-end
-
---====================================================
--- ГЛАВНЫЙ ЦИКЛ
---====================================================
-
-RunService.Heartbeat:Connect(function(dt)
-	if humanoid.Health <= 0 or not rootPart.Parent then
-		return
-	end
-
-	local visibleRoot, visibleChar = updatePerception(dt)
-
-	-- спад подозрения вне видимости (в погоне не падает)
-	if not visibleRoot and currentState ~= STATE.CHASE then
-		suspicion = math.max(0, suspicion - CFG.DECAY * dt)
-	end
-	updateSuspicionBar()
-
-	-- УВИДЕЛ → сразу погоня бегом + крик отряду
-	if visibleRoot then
-		chaseTarget = visibleChar
-		if currentState ~= STATE.CHASE then
-			setState(STATE.CHASE)
-		end
-		broadcastShout(visibleRoot.Position)
-	elseif suspicion >= CFG.INVESTIGATE_AT
-		and (currentState == STATE.GUARD or currentState == STATE.PATROL or currentState == STATE.RETURN) then
-		setState(STATE.INVESTIGATE)
-	end
-
-	-- чужой крик: идём проверять, если сами не в бою
-	local alertPos = getSquadAlert()
-	if alertPos and currentState ~= STATE.CHASE then
-		lastKnownPosition = alertPos
-		suspicion = math.max(suspicion, CFG.INVESTIGATE_AT)
-		if currentState ~= STATE.INVESTIGATE and currentState ~= STATE.SEARCH then
-			setState(STATE.INVESTIGATE)
-		end
-	end
-
-	updateAnimations()
-
-	if currentState == STATE.GUARD then
-		runGuard()
-	elseif currentState == STATE.PATROL then
-		runPatrol()
-	elseif currentState == STATE.INVESTIGATE then
-		runInvestigate()
-	elseif currentState == STATE.CHASE then
-		runChase(visibleRoot)
-	elseif currentState == STATE.SEARCH then
-		if visibleRoot then
-			setState(STATE.CHASE)
-		else
-			runSearch()
-		end
-	elseif currentState == STATE.RETURN then
-		runReturn()
-	end
-end)
-
---====================================================
--- ДИАГНОСТИКА
---====================================================
-
-local function ts(t) return t and "OK" or "НЕТ" end
-print(string.format(
-	"[PirateGuardAI v6-anim] %s | PatrolPoints=%d Rig=%s | аним: idle1=%s idle2=%s walk=%s run=%s jump=%s fall=%s attack=%s",
-	script:GetFullName(), #patrolPoints, npc.Name,
-	ts(idleCalmTrack), ts(idleAlertTrack), ts(walkTrack), ts(runTrack),
-	ts(jumpTrack), ts(fallTrack), ts(attackTrack)
-))
-
--- Другой ИИ/Animate в этой же модели = драка за анимации/движение. Кричим.
-local HARMLESS_SCRIPTS = {
-	ChangeFaceOnDeath = true, ChangeFaceOnFullHealth = true,
-	Ragdoller = true, Health = true, Sound = true, Respawn = true,
-}
-for _, d in ipairs(npc:GetDescendants()) do
-	if (d:IsA("Script") or d:IsA("LocalScript")) and d ~= script
-		and not HARMLESS_SCRIPTS[d.Name]
-		and not d:FindFirstAncestorOfClass("Tool") then
-		warn("[PirateGuardAI] ⚠ посторонний скрипт в модели: " .. d:GetFullName() ..
-			" — если это другой ИИ или Animate, УДАЛИ/отключи его")
-	end
+	
+	wait()
 end
