@@ -31,8 +31,8 @@ local SHOW_RADIUS = 50            -- «появляется в зоне 50»
 local CHECK_EVERY = 0.2           -- частота проверки дистанции, сек
 
 -- Положение и размер блока на экране — правь под себя.
-local UI_POS  = UDim2.new(0, 16, 0, 100) -- левый верх, под кнопками Roblox
-local UI_SIZE = UDim2.fromOffset(120, 150)
+local UI_POS  = UDim2.new(0.18, 0, 0.1, 0) -- ближе к центру и выше
+local UI_SIZE = UDim2.fromOffset(120, 120) -- квадрат под иконку (текст наезжает)
 
 -- Что предлагаем при текущем множителе игрока.
 local TIERS = {
@@ -76,26 +76,30 @@ holder.Size = UI_SIZE
 holder.BackgroundTransparency = 1
 holder.Parent = gui
 
-local title = Instance.new("TextLabel")
-title.AnchorPoint = Vector2.new(0.5, 0)
-title.Position = UDim2.new(0.5, 0, 0, 0)
-title.Size = UDim2.new(1, 0, 0, 24)
-styleText(title)
-title.Parent = holder
-
+-- Иконка заполняет блок; текст накладывается на её верх/низ (ZIndex выше).
 local icon = Instance.new("ImageButton")
 icon.AnchorPoint = Vector2.new(0.5, 0.5)
-icon.Position = UDim2.new(0.5, 0, 0.5, 2)
-icon.Size = UDim2.fromOffset(84, 84)
+icon.Position = UDim2.new(0.5, 0, 0.5, 0)
+icon.Size = UDim2.new(1, 0, 1, 0)
 icon.BackgroundTransparency = 1
 icon.Image = ICON
 icon.ScaleType = Enum.ScaleType.Fit
+icon.ZIndex = 1
 icon.Parent = holder
 
+local title = Instance.new("TextLabel")
+title.AnchorPoint = Vector2.new(0.5, 0.5)
+title.Position = UDim2.new(0.5, 0, 0.13, 0) -- наезжает на верх иконки
+title.Size = UDim2.new(1.3, 0, 0, 28)
+title.ZIndex = 2
+styleText(title)
+title.Parent = holder
+
 local price = Instance.new("TextLabel")
-price.AnchorPoint = Vector2.new(0.5, 1)
-price.Position = UDim2.new(0.5, 0, 1, 0)
-price.Size = UDim2.new(1, 0, 0, 22)
+price.AnchorPoint = Vector2.new(0.5, 0.5)
+price.Position = UDim2.new(0.5, 0, 0.9, 0) -- наезжает на низ иконки
+price.Size = UDim2.new(0.95, 0, 0, 26)
+price.ZIndex = 2
 styleText(price)
 price.Parent = holder
 
