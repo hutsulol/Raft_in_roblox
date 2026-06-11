@@ -113,6 +113,8 @@ local Watch = {
 
 	Suspicion  = 0,
 	Candidate  = nil,  -- ближайший видимый персонаж в этом кадре
+	LastSeenPos = nil, -- где ПОСЛЕДНИЙ раз видели игрока (для хода на проверку)
+	InvestigateAt = 50,-- с этого порога идём проверять последнюю точку
 	BaseSpeed  = nil,  -- обычная скорость (захватывается при старте)
 	Gui = nil,
 	Fill = nil,
@@ -211,6 +213,7 @@ function Monster:UpdatePerception(dt)
 						if bestDist == nil or dist < bestDist then
 							bestDist = dist
 							Watch.Candidate = character
+							Watch.LastSeenPos = root.Position -- запоминаем точку, где видим
 						end
 					end
 				end
@@ -378,8 +381,33 @@ function Monster:Update(dt)
 	Monster:SearchForTarget()
 	Monster:UpdateSuspicionBar()
 	Monster:UpdateSpeed()
-	Monster:TryRecomputePath()
-	Monster:TravelPath()
+
+	if Monster:TargetIsValid() then
+		-- Цель захвачена (100%) — обычная погоня по пути.
+		Monster:TryRecomputePath()
+		Monster:TravelPath()
+	else
+		-- Цели нет: при шкале ≥ порога идём проверить последнюю точку.
+		Monster:Investigate()
+	end
+end
+
+-- Нет цели, но подозрение ≥ InvestigateAt (50%) — идём проверить место, где
+-- последний раз видели игрока. Прямой MoveTo (без пасфайндинга — проще). Дойдя,
+-- забываем точку и осматриваемся; шкала тем временем остывает.
+function Monster:Investigate()
+	local humanoid = Self:FindFirstChild('Humanoid')
+	if humanoid == nil or not humanoid:IsA('Humanoid') then return end
+
+	if Watch.Suspicion >= Watch.InvestigateAt and Watch.LastSeenPos ~= nil then
+		local myPos = Monster:GetCFrame().p
+		local flat = (Watch.LastSeenPos - myPos) * Vector3.new(1, 0, 1)
+		if flat.magnitude > 3 then
+			humanoid:MoveTo(Watch.LastSeenPos) -- идём к месту замеченного движения
+		else
+			Watch.LastSeenPos = nil            -- дошли — осмотрелись, точку забыли
+		end
+	end
 end
 
 function Monster:TravelPath()
@@ -529,6 +557,14 @@ end
 
 function Monster:InitializeUnique()
 	Data.AttackTrack = Self.Humanoid:LoadAnimation(script.Attack)
+	-- HP: снимаем ForceField, если он есть на риге. Игрок и наёмники бьют через
+	-- Humanoid:TakeDamage, а он НЕ проходит сквозь ForceField — из-за этого пират
+	-- казался бессмертным. Делается и при старте, и после респавна.
+	for _, obj in ipairs(Self:GetDescendants()) do
+		if obj:IsA('ForceField') then
+			obj:Destroy()
+		end
+	end
 	-- Слежка: полоса над головой (после респавна голова новая) + обычная скорость.
 	Monster:CreateSuspicionBar()
 	Watch.Suspicion = 0
