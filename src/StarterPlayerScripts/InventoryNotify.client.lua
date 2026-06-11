@@ -140,8 +140,9 @@ local function showNotif(rawName, count)
 
 	notifOrder = notifOrder + 1
 
-	-- CanvasGroup: GroupTransparency гасит карточку целиком одним свойством.
-	local card = Instance.new("CanvasGroup")
+	-- Обычный Frame + РУЧНОЕ растворение по списку свойств: GroupTransparency у
+	-- CanvasGroup гасил только фон (рамка/иконка/бокс оставались плотными).
+	local card = Instance.new("Frame")
 	card.Name = "Drop_" .. rawName
 	card.AutomaticSize = Enum.AutomaticSize.X     -- ширина адаптивна под текст
 	card.Size = UDim2.fromOffset(0, NOTIF_HEIGHT)
@@ -243,8 +244,9 @@ local function showNotif(rawName, count)
 	nameLabel.Parent = body
 
 	-- бейдж «NEW!» — золотая пилюля на верхней кромке (первый подбор)
+	local badge, badgeStroke, badgeText
 	if isNew then
-		local badge = Instance.new("Frame")
+		badge = Instance.new("Frame")
 		badge.Name = "NewBadge"
 		badge.AnchorPoint = Vector2.new(0, 0.5)
 		badge.Position = UDim2.new(0, 14, 0, 2)
@@ -258,7 +260,7 @@ local function showNotif(rawName, count)
 		badgeCorner.CornerRadius = UDim.new(1, 0)
 		badgeCorner.Parent = badge
 
-		local badgeStroke = Instance.new("UIStroke")
+		badgeStroke = Instance.new("UIStroke")
 		badgeStroke.Color = GOLD_FRAME
 		badgeStroke.Thickness = 2
 		badgeStroke.Parent = badge
@@ -270,7 +272,7 @@ local function showNotif(rawName, count)
 		badgePad.PaddingBottom = UDim.new(0, 2)
 		badgePad.Parent = badge
 
-		local badgeText = Instance.new("TextLabel")
+		badgeText = Instance.new("TextLabel")
 		badgeText.AutomaticSize = Enum.AutomaticSize.XY
 		badgeText.Size = UDim2.new(0, 0, 0, 0)
 		badgeText.BackgroundTransparency = 1
@@ -280,6 +282,24 @@ local function showNotif(rawName, count)
 		badgeText.Font = Enum.Font.GothamBlack
 		badgeText.ZIndex = 3
 		badgeText.Parent = badge
+	end
+
+	-- Всё, что растворяем при уходе карточки: {объект, свойство, базовое значение}.
+	local fadeItems = {
+		{ card,       "BackgroundTransparency", 0 },
+		{ stroke,     "Transparency",           0 },
+		{ iconBox,    "BackgroundTransparency", 0 },
+		{ iconStroke, "Transparency",           0 },
+		{ icon,       "ImageTransparency",      0 },
+		{ countLabel, "TextTransparency",       0 },
+		{ countLabel, "TextStrokeTransparency", 0.6 },
+		{ nameLabel,  "TextTransparency",       0 },
+		{ nameLabel,  "TextStrokeTransparency", 0.6 },
+	}
+	if badge then
+		table.insert(fadeItems, { badge,      "BackgroundTransparency", 0 })
+		table.insert(fadeItems, { badgeStroke, "Transparency",          0 })
+		table.insert(fadeItems, { badgeText,  "TextTransparency",       0 })
 	end
 
 	local rec = {
@@ -301,7 +321,11 @@ local function showNotif(rawName, count)
 		local steps = 10
 		for i = 0, steps do
 			if not card.Parent then return end
-			card.GroupTransparency = i / steps
+			local a = i / steps
+			for _, item in ipairs(fadeItems) do
+				local obj, prop, base = item[1], item[2], item[3]
+				obj[prop] = base + (1 - base) * a
+			end
 			task.wait(NOTIF_FADE / steps)
 		end
 		if card.Parent then card:Destroy() end
