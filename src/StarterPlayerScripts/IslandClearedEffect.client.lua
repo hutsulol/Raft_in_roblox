@@ -453,11 +453,14 @@ local function framePos(inst)
 	return nil
 end
 
--- Ближайшая к игроку папка CutScene (с Camera_1_Frame).
-local function findCutscene()
-	local char = player.Character
-	local hrp = char and char:FindFirstChild("HumanoidRootPart")
-	local origin = (hrp and hrp.Position) or Vector3.zero
+-- Ближайшая папка CutScene (с Camera_1_Frame) к origin. origin задаёт сервер
+-- (позиция зачищенного острова); если не передан — берём позицию игрока.
+local function findCutscene(origin)
+	if origin == nil then
+		local char = player.Character
+		local hrp = char and char:FindFirstChild("HumanoidRootPart")
+		origin = (hrp and hrp.Position) or Vector3.zero
+	end
 	local best, bestD
 	for _, d in ipairs(workspace:GetDescendants()) do
 		if d.Name == CUTSCENE_FOLDER and (d:IsA("Folder") or d:IsA("Model"))
@@ -726,9 +729,9 @@ end
 
 local cutscenePlaying = false
 
-local function playCutscene(onComplete)
+local function playCutscene(onComplete, islandOrigin)
 	if cutscenePlaying then return false end
-	local cs = findCutscene()
+	local cs = findCutscene(islandOrigin)
 	if not cs then
 		warn("[IslandCleared] катсцена: не найдена папка '" .. CUTSCENE_FOLDER ..
 			"' с Camera_1.." .. CUTSCENE_COUNT .. "_Frame на острове")
@@ -844,7 +847,7 @@ end
 -- затухает в КОНЦЕ анимации (конец катсцены; если её нет — после баннера/тостов).
 local MUSIC_TAIL = 11.5
 local effectRunning = false
-local function playAll()
+local function playAll(islandOrigin)
 	if effectRunning then return end
 	effectRunning = true
 	rewardGranted = false -- разрешить начисление в этом прогоне
@@ -853,7 +856,7 @@ local function playAll()
 	local started = playCutscene(function()
 		stopMusic()
 		effectRunning = false
-	end)
+	end, islandOrigin)
 	if not started then
 		-- катсцены нет — показываем уведомления по таймеру (тосты обычно ведёт катсцена)
 		task.delay(1, notifyVillagers)
@@ -866,47 +869,19 @@ local function playAll()
 	end
 end
 
+-- Запустить вручную (тест без зачистки врагов):  _G.PlayIslandClearedEffect()
 _G.PlayIslandClearedEffect = playAll
 _G.PlayIslandClearedCutscene = playCutscene
 
 --====================================================
--- ТЕСТ-КНОПКА (по центру правого края) — пока нет реального триггера
+-- ТРИГГЕР ОТ СЕРВЕРА: RemoteEvent IslandClearedEffect (IslandClearSystem.server)
 --====================================================
-
-local btn = Instance.new("TextButton")
-btn.Name = "IslandClearedTestBtn"
--- ниже центра, чтобы не перекрывать стопку уведомлений (она по центру правого края)
-btn.AnchorPoint = Vector2.new(1, 1)
-btn.Position = UDim2.new(1, -10, 1, -140)
-btn.Size = UDim2.fromOffset(54, 54)
-btn.BackgroundColor3 = Color3.fromRGB(245, 175, 40)
-btn.AutoButtonColor = true
-btn.Text = "🏆"
-btn.TextScaled = true
-btn.Font = Enum.Font.GothamBold
-btn.TextColor3 = Color3.fromRGB(40, 25, 0)
-btn.ZIndex = 20
-btn.Parent = gui
-
-local btnCorner = Instance.new("UICorner")
-btnCorner.CornerRadius = UDim.new(1, 0)
-btnCorner.Parent = btn
-
-local btnStroke = Instance.new("UIStroke")
-btnStroke.Color = Color3.fromRGB(120, 80, 0)
-btnStroke.Thickness = 2
-btnStroke.Parent = btn
-
-btn.MouseButton1Click:Connect(playAll)
-
---====================================================
--- НЕОБЯЗАТЕЛЬНЫЙ ХУК ДЛЯ СЕРВЕРА (если появится RemoteEvent)
 --====================================================
 
 local function bindRemote(remote)
 	if remote and remote:IsA("RemoteEvent") then
-		remote.OnClientEvent:Connect(function()
-			playAll()
+		remote.OnClientEvent:Connect(function(islandOrigin)
+			playAll(islandOrigin) -- сервер шлёт позицию зачищенного острова
 		end)
 	end
 end
