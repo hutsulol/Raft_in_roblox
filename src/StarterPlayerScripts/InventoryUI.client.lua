@@ -3075,10 +3075,17 @@ local function buildUI()
 	updateUI()
 end
 
+-- Пока игрок не подобрал рюкзак (Workspace.BackPack, атрибут HasBackpack от
+-- BackpackPickup.server.lua) — инвентарь не открывается. Закрытие не гейтим.
+local function hasBackpack()
+	return player:GetAttribute("HasBackpack") == true
+end
+
 local function toggleInventory()
 	if isOpen then
 		closeUI()
 	else
+		if not hasBackpack() then return end
 		isOpen = true
 		inventoryCraftEvent:FireServer("requestRecipes")
 		buildUI()
@@ -3088,6 +3095,7 @@ end
 -- Expose an open hook so other scripts (e.g. the mercenary backpack
 -- UI) can force the main inventory open alongside their own UI.
 _G.OpenInventory = function()
+	if not hasBackpack() then return end
 	if not isOpen then
 		isOpen = true
 		inventoryCraftEvent:FireServer("requestRecipes")
