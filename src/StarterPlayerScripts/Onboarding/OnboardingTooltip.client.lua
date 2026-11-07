@@ -33,6 +33,7 @@
 
 local Players      = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
+local UITheme      = require(game:GetService("ReplicatedStorage"):WaitForChild("UITheme"))
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -40,10 +41,8 @@ local playerGui = player:WaitForChild("PlayerGui")
 -- ─── Palette (lifted from Claude Design's CSS variables) ──────────────
 local COLOR_WOOD_DARKEST = Color3.fromRGB( 61,  40,  23)
 local COLOR_WOOD_DARK    = Color3.fromRGB( 91,  58,  34)
-local COLOR_WOOD_MID     = Color3.fromRGB(138, 106,  68)
 local COLOR_WOOD_BASE    = Color3.fromRGB(176, 138,  92)
 local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
-local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
 -- Lighter than the mockup's #4A7C3A — the original gradient read as
 -- almost-black against the wood panel. Bumped each stop ~30-40 RGB
 -- points toward white so the fill pops as a clear positive signal.
@@ -411,29 +410,22 @@ local function buildPanel(opts)
 	title.Parent = titles
 
 	-- ── Close button ──────────────────────────────────────────────────
+	-- Крестик берём из UITheme, а не рисуем свой. Игрок воспринимает кнопку
+	-- закрытия как один и тот же элемент управления во всех меню океана, и
+	-- разнобой читается как небрежность; эталоном владелец назвал инвентарь.
+	-- Здесь была своя деревянная кнопка 26 px с символом ✕ — она выпадала из
+	-- общего ряда, да и глифа ✕ в игровых шрифтах нет, движок рисует пустой
+	-- квадрат. Размер живёт в UITheme.CLOSE_SIZE и намеренно не параметризован:
+	-- нужен другой — правится там, во всех меню сразу.
+	-- Посадку не передаём: умолчание модуля и есть правый верхний угол панели,
+	-- ровно та же посадка, что была тут раньше. ZIndex оставляем прежний (1) —
+	-- у модуля по умолчанию 20, а здесь шапка плоская и подниматься не над чем.
 	local closeBtn
 	if opts.showClose ~= false then
-		closeBtn = Instance.new("TextButton")
-		closeBtn.Name = "Close"
-		closeBtn.AnchorPoint = Vector2.new(1, 0)
-		closeBtn.Position = UDim2.new(1, 0, 0, 0)
-		closeBtn.Size = UDim2.fromOffset(26, 26)
-		closeBtn.BackgroundColor3 = COLOR_WOOD_MID
-		closeBtn.BorderSizePixel = 0
-		closeBtn.AutoButtonColor = false
-		closeBtn.Font = FONT_TITLE
-		closeBtn.TextSize = 14
-		closeBtn.TextColor3 = COLOR_PAPER_LIGHT
-		closeBtn.Text = "✕"
-		closeBtn.Parent = header
-		corner(closeBtn, 8)
-		stroke(closeBtn, 2, COLOR_WOOD_DARK)
-		closeBtn.MouseEnter:Connect(function()
-			closeBtn.BackgroundColor3 = COLOR_WOOD_DARK
-		end)
-		closeBtn.MouseLeave:Connect(function()
-			closeBtn.BackgroundColor3 = COLOR_WOOD_MID
-		end)
+		closeBtn = UITheme.closeButton({
+			parent = header,
+			zIndex = 1,
+		})
 	end
 
 	-- ── Body card ─────────────────────────────────────────────────────

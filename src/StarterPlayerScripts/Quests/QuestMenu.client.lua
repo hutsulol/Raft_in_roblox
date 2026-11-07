@@ -1,799 +1,738 @@
+local print, warn = (function() local RS = game:GetService("RunService") if RS:IsServer() then return print, warn end local P, W, Pl = print, warn, game:GetService("Players") local function ok() local p = Pl.LocalPlayer return p ~= nil and p:GetAttribute("DevLogs") == true end return function(...) if ok() then P(...) end end, function(...) if ok() then W(...) end end end)() -- DevLogs: клиентские логи видят только админы (флаг ставит DevLogFlag.server)
 -- QuestMenu.client.lua
--- Full-screen quest log opened by the left-side QuestEntryButton or
--- the J key. Builds incrementally across B1 → B10 so each commit is
--- testable on its own.
+-- Меню квестов — 1:1 по дизайну "Quest Menu Roblox.dc.html": ОДИН список без вкладок.
+--   • тёмно-синяя панель 720px с чёрной рамкой 4px, в правом верхнем углу —
+--     ОБЩИЙ крестик закрытия из UITheme (свой X поверх угла больше не рисуем);
+--   • шапка с ТОЧЕЧНЫМ ПАТТЕРНОМ (кружки, как в эталоне): жёлтый бейдж «!»,
+--     заголовок + подзаголовок, пилюля «Active: N»;
+--   • золотая полоса-разделитель с градиентом;
+--   • СКРОЛЛ-список карточек; скроллбар как в эталоне: плоский синий бегунок
+--     (#2a7fd4) на тёмном жёлобе с чёрной кромкой слева;
+--   • карточка: круглая аватарка (кольцо-акцент → чёрное кольцо → градиентный круг,
+--     место под портрет NPC) + плашка типа, название, описание, награды (у РЕДКИХ —
+--     пульсирующий фиолетовый ореол + ★), кнопка действия;
+--   • отслеживаемая: белая рамка с пульсом + качающаяся золотая ★ (starWiggle);
+--   • подвал-подсказка.
+-- Данные — QuestState RemoteEvent; глаголы: track / untrack / claimReward /
+-- startChallenge / getState. Старые вкладочные скрипты монтируются в скрытые
+-- страницы-заглушки (совместимость), игрок видит только новый список.
 --
--- B1 scope: lazy ScreenGui host + _G.OpenQuestMenu / _G.CloseQuestMenu
--- stubs that flip the host's Enabled flag. Nothing visible yet —
--- B2 lands the wood panel, B3 the tab rail, etc.
---
--- DisplayOrder 110 sits above PhoneMenu (200? actually phone uses
--- 200 for its main screenGui; the OnboardingTooltip uses 200 too,
--- and QuestNotificationGui uses 8). Lifting QuestMenu to 110 keeps
--- it ABOVE in-game HUD and the QuestEntryButton (90) but BELOW the
--- phone if both happen to be open — phone takes precedence as the
--- bigger, more deliberate UI.
---
--- Public API (final shape across B1 → B10):
---   _G.OpenQuestMenu()    -- show the menu (no-op if already open)
---   _G.CloseQuestMenu()   -- hide the menu (no-op if already hidden)
+-- Public API: _G.OpenQuestMenu() / _G.CloseQuestMenu(), ESC закрывает, J — тумблер.
 
-local Players = game:GetService("Players")
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService      = game:GetService("TweenService")
+--[[ ⚠️ ОБЩИЙ КРЕСТИК ЗАКРЫТИЯ — ОБЪЯВЛЯЕМ ЗДЕСЬ, В ШАПКЕ ФАЙЛА.
+     Сначала этот require стоял внизу, рядом с HudScale, — а кнопка собирается
+     в функции ВЫШЕ него. Локальная переменная, объявленная позже тела функции,
+     для неё не существует: обращение уходит в глобальную область, получает nil,
+     и всё меню квестов падало на построении панели. ]]
+local UITheme           = require(game:GetService("ReplicatedStorage"):WaitForChild("UITheme"))
+local UserInputService  = game:GetService("UserInputService")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
 local SCREENGUI_DISPLAY_ORDER = 110
 
--- ─── Wood/paper palette (matches OnboardingTooltip + Claude Design
--- handoff) ────────────────────────────────────────────────────────────
-local COLOR_WOOD_DARKEST = Color3.fromRGB( 61,  40,  23)
-local COLOR_WOOD_DARK    = Color3.fromRGB( 91,  58,  34)
-local COLOR_WOOD_MID     = Color3.fromRGB(138, 106,  68)
-local COLOR_WOOD_BASE    = Color3.fromRGB(176, 138,  92)
-local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
-local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
+-- ── палитра (из дизайна) ──
+local C_PANEL      = Color3.fromRGB(14, 31, 48)    -- #0e1f30
+local C_HEADER     = Color3.fromRGB(26, 58, 88)    -- #1a3a58
+local C_DARK       = Color3.fromRGB(10, 24, 38)    -- #0a1826
+local C_CARD       = Color3.fromRGB(18, 41, 61)    -- #12293d
+local C_BLACK      = Color3.new(0, 0, 0)
+local C_WHITE      = Color3.new(1, 1, 1)
+local C_GOLD       = Color3.fromRGB(255, 210, 58)  -- #ffd23a
+local C_GOLD_LIGHT = Color3.fromRGB(255, 215, 111) -- #ffd76f
+local C_GOLD_DARK  = Color3.fromRGB(201, 150, 42)  -- #c9962a
+local C_GOLD_TEXT  = Color3.fromRGB(61, 42, 5)     -- #3d2a05
+local C_SUB        = Color3.fromRGB(127, 168, 201) -- #7fa8c9
+local C_MUTED      = Color3.fromRGB(90, 122, 150)  -- #5a7a96
+local C_ORANGE     = Color3.fromRGB(226, 87, 31)   -- #e2571f
+local C_ORANGE_HOV = Color3.fromRGB(240, 106, 48)  -- #f06a30
+local C_GREEN      = Color3.fromRGB(53, 180, 53)   -- #35b435
+local C_GREEN_TXT  = Color3.fromRGB(53, 212, 53)   -- #35d435
+local C_BLUE       = Color3.fromRGB(42, 127, 212)  -- #2a7fd4
+local C_RARE       = Color3.fromRGB(200, 143, 232) -- #c88fe8
+local C_RARE_SLOT  = Color3.fromRGB(42, 29, 61)    -- #2a1d3d
+local C_RARE_GLOW1 = Color3.fromRGB(122, 63, 176)  -- #7a3fb0
+local C_RARE_GLOW2 = Color3.fromRGB(154, 95, 208)  -- #9a5fd0
+-- ⚠️ GothamBlack, А НЕ FredokaOne.
+-- В хендоффе дисплейным шрифтом стоял FredokaOne (замена эталонному M PLUS
+-- Rounded), и это работало, пока тексты меню были английскими. У FredokaOne НЕТ
+-- КИРИЛЛИЦЫ: русские заголовки он не рисует, Roblox молча подставляет дефолтное
+-- тонкое начертание — рядом с телом карточки на GothamBold это читалось как
+-- «шрифт не тот». Тот же выбор и по той же причине сделан в TrackerCard.
+local FONT  = Enum.Font.GothamBlack
+local FONTB = Enum.Font.GothamBold
 
--- ─── Layout constants ────────────────────────────────────────────────
--- Panel is sized to fit four daily quest cards in a single horizontal
--- row inside the Quests tab (Phase D target design). Content area =
--- PANEL_W - TAB_RAIL_W - CONTENT_GAP = 578 px; QuestsTab puts 4×130-px
--- cards with 10-px gaps + 12-px side padding into that band.
-local PANEL_W      = 720
--- Bumped from 360 → 420 so the new full-width title bar at the top
--- doesn't squeeze the tab rail / content area below it.
-local PANEL_H      = 420
-local PANEL_RADIUS = 18
-local PANEL_PAD    = 14
-
--- Tab rail (left half of the panel content). Three vertical tabs:
--- "Quests", "History", "Challenges". Width tuned so a long label
--- like "Challenges" fits without clipping at our 14-px font.
-local TAB_RAIL_W   = 130
-local TAB_HEIGHT   = 38
-local TAB_GAP      = 6
-local TAB_RADIUS   = 8
--- Tabs now start at the top of the rail because the QUESTS title +
--- scroll glyph + close button live in their own full-width title bar
--- above the rail (TITLE_BAR_H below). Older builds reserved
--- TAB_LIST_TOP = 56 inside the rail for the title.
-local TAB_LIST_TOP = 0
-
--- Right-side content area sits to the right of the tab rail with a
--- small gap so the rail's active-tab fill doesn't kiss the content
--- card. Each tab's content lives inside as a child Frame; only the
--- one matching activeTabId is Visible at any time (B9).
-local CONTENT_GAP   = 12
-local CONTENT_RADIUS = 12
-
--- Title bar (top of the panel, spans the full content width).
--- Scroll glyph + "QUESTS" label on the left, X close button on the
--- right. Tab rail + content root sit below this bar with a small
--- gap so the wood panel reads as title-on-top, browser-below, like
--- the reference mockup.
-local TITLE_BAR_H   = 46
-local TITLE_BAR_GAP = 12
-local QUEST_ICON_ASSET  = "rbxassetid://104397826961228"
-local TITLE_GLYPH_SIZE  = 36
-local TITLE_GLYPH_GAP   = 10
-
--- Header (top-left of the panel content). Scroll/parchment glyph
--- followed by the "QUESTS" label. Same on every tab — only the right
--- pane swaps content. Reuses the supplied quest icon asset shrunk
--- down so the menu shell has a consistent visual language with the
--- entry button.
-local HEADER_HEIGHT     = 36
-local HEADER_GLYPH_SIZE = 30
-local HEADER_GLYPH_GAP  = 8
-
--- Close button (top-right of the panel). Now an illustrated wood-X
--- asset, sized a touch larger than the legacy plain-square button so
--- the bezel + cross have room to read.
-local CLOSE_BTN_SIZE = 36
-local CLOSE_BTN_RADIUS = 8
-
--- ─── Tab catalog ─────────────────────────────────────────────────────
--- Order = vertical order in the rail. id is used as the key for the
--- right-side content swap (B6) and the active-tab tracking (B9).
--- Glyph + label per tab. Glyphs are Unicode (no asset id needed) and
--- mirror the reference design's icon-on-the-left, label-on-the-right
--- layout: a paper-scroll for the daily Quests tab, an open book for
--- the Story arc, crossed swords for timed Challenges, a hourglass-ish
--- counter-clockwise arrow for History.
-local TABS = {
-	{ id = "quests",     label = "Quests",     glyph = "📜" },
-	{ id = "story",      label = "Story",      glyph = "📖" },
-	{ id = "challenges", label = "Challenges", glyph = "⚔" },
-	{ id = "history",    label = "History",    glyph = "↻" },
+-- акценты карточки по типу квеста
+local KIND_STYLE = {
+	story     = { name = "STORY",     accent = Color3.fromRGB(42, 127, 212), dim = Color3.fromRGB(29, 66, 102), bright = Color3.fromRGB(127, 192, 255) },
+	daily     = { name = "QUEST",     accent = Color3.fromRGB(47, 155, 58),  dim = Color3.fromRGB(29, 74, 38),  bright = Color3.fromRGB(127, 224, 122) },
+	challenge = { name = "CHALLENGE", accent = Color3.fromRGB(201, 58, 58),  dim = Color3.fromRGB(74, 29, 29),  bright = Color3.fromRGB(240, 122, 106) },
 }
 
--- Lazy build: the ScreenGui isn't created until the menu is first
--- opened. Cuts the cost of one always-resident GUI for players who
--- never open the quest log. Panel + tabs + content are also built
--- once during ensureScreenGui's first call.
-local screenGui
-local panel         -- the wood panel root (built in B2)
-local tabRail       -- container for the left-side tab buttons (B3)
-local tabHandles    -- [id] = { tile, dot } populated by B3 / B5
-local activeTabId   -- which tab is currently selected (default = first
-                    -- entry in TABS, applied by buildTabRail)
-local contentRoot   -- right-side content frame (built in B6)
-local contentPages  -- [id] = Frame; one per tab, only the active one
-                    -- is Visible. Populated lazily by Phases D / E /
-                    -- F / G — B6 just creates the empty container.
+-- ── ПОРТРЕТ И НИК ИГРОКА ──
+-- ⚠️ ПОРТРЕТ ТЯНЕТСЯ ОДИН РАЗ НА ВЕСЬ СЕАНС.
+-- GetUserThumbnailAsync — сетевой вызов, и дёргать его на каждую карточку значит
+-- ждать сеть при каждой перерисовке списка. Тянем однажды, а карточки, которые
+-- успели построиться раньше ответа, догоняем через faceSlots.
+local playerHeadshot = nil
+local faceSlots = {}     -- карточки, ждущие портрет
 
--- ─── Tab visual states (B4) ─────────────────────────────────────────
--- Both active and inactive tabs render with a paper fill — the
--- inactive variant is dimmer (BackgroundTransparency 0.55, faint
--- text) so the wood-textured rail shows through, the active variant
--- snaps to fully opaque paper-light + wood-darkest text + a small
--- dot pinned to the right edge. This matches the reference where
--- every tile reads as a button instead of bare text on the rail.
-local TAB_DOT_SIZE   = 6
-local TAB_DOT_INSET  = 14   -- distance from the tab's right edge to the dot's centre
+task.spawn(function()
+	local ok, url = pcall(function()
+		return Players:GetUserThumbnailAsync(player.UserId,
+			Enum.ThumbnailType.HeadShot, Enum.ThumbnailSize.Size150x150)
+	end)
+	if not ok or not url then return end
+	playerHeadshot = url
+	for _, slot in ipairs(faceSlots) do
+		if slot.image.Parent then
+			slot.image.Image = url
+			slot.glyph.Visible = false
+		end
+	end
+end)
 
-local function paintTab(id)
-	local h = tabHandles[id]
-	if not h or not h.tile then return end
-	local tile  = h.tile
-	local dot   = h.dot
-	local glyph = h.glyph
-	local label = h.label
-	if id == activeTabId then
-		tile.BackgroundColor3       = COLOR_PAPER_LIGHT
-		tile.BackgroundTransparency = 0
-		if h.stroke then h.stroke.Color = COLOR_WOOD_DARKEST end
-		if label    then label.TextColor3 = COLOR_WOOD_DARKEST end
-		if glyph    then glyph.TextColor3 = COLOR_WOOD_DARKEST end
-		if dot      then dot.Visible      = true               end
+-- Ник для плашки. DisplayName ближе к тому, как игрок себя зовёт; если его нет
+-- (старые аккаунты) — обычное имя. Длинный обрезаем: плашка растёт по тексту и
+-- иначе уедет за карточку.
+local function playerTag()
+	local n = player.DisplayName
+	if not n or n == "" then n = player.Name end
+	if utf8.len(n) and utf8.len(n) > 14 then
+		n = n:sub(1, utf8.offset(n, 15) - 1) .. "…"
+	end
+	return n:upper()
+end
+
+-- какие награды РЕДКИЕ/ЭПИЧЕСКИЕ (фиолетовый пульсирующий ореол + ★):
+--   1) reward.rare = true в каталоге квестов (QuestCatalog) — главный способ;
+--   2) имя из таблицы ниже;
+--   3) любой предмет (kind == "item") — сундуки и т.п. редкие по умолчанию.
+local RARE_REWARD_NAMES = {}
+local function isRareReward(reward)
+	if not reward then return false end
+	if reward.rare == true then return true end
+	if RARE_REWARD_NAMES[reward.name] then return true end
+	return reward.kind == "item"
+end
+
+-- ── геометрия ──
+local PANEL_W  = 720
+local HEADER_H = 84
+local BAND_H   = 12
+local LIST_H   = 400
+local FOOTER_H = 40
+local PANEL_H  = HEADER_H + BAND_H + LIST_H + FOOTER_H
+local CARD_H   = 150
+local SCROLLBAR_W = 16
+
+--[[ ⚠️ ОПИСАНИЕ КВЕСТА В НЕСКОЛЬКО СТРОК, А НЕ В ОДНУ С МНОГОТОЧИЕМ.
+     Строка была одна и обрывалась на середине: «Собери молоток и…» — прочитать
+     задание было нельзя вообще, а именно за ним игрок и открывает меню.
+     Даём до трёх строк и растим карточку ровно на столько, сколько текст занял.
+     Больше трёх не пускаем сознательно: список должен листаться, а не
+     превращаться в стену текста; всё, что длиннее, по-прежнему подрезается. ]]
+local BODY_LINE_H  = 19   -- высота строки описания при TextSize 16
+local BODY_MAX_LINES = 3
+local BODY_TOP     = 30   -- отступ описания от верха контента
+
+local function new(class, props, parent)
+	local o = Instance.new(class)
+	for k, v in pairs(props) do o[k] = v end
+	if parent then o.Parent = parent end
+	return o
+end
+-- обводка ТЕКСТА (Contextual). Для рамок коробок — borderStroke, иначе UIStroke на
+-- текстовых элементах обводит буквы, а не рамку.
+local function stroke(inst, color, thickness)
+	return new("UIStroke", { Color = color, Thickness = thickness }, inst)
+end
+local function borderStroke(inst, color, thickness)
+	return new("UIStroke", {
+		Color = color, Thickness = thickness, ApplyStrokeMode = Enum.ApplyStrokeMode.Border,
+	}, inst)
+end
+
+-- ── состояние ──
+local screenGui, panel, backdrop, listFrame, countLabel, panelScale
+local isOpen = false
+local closeQuestMenu -- forward-decl: buildCard (выше по файлу) закрывает меню на Claim
+local lastQuests = {}
+local liveTweens = {}
+local questStateEvent
+
+local function addLoop(tween)
+	table.insert(liveTweens, tween)
+	tween:Play()
+end
+local function stopLoops()
+	for _, t in ipairs(liveTweens) do pcall(function() t:Cancel() end) end
+	table.clear(liveTweens)
+	-- список перерисовывается на каждый снимок: старые карточки уничтожены, и
+	-- ссылки на их портреты копились бы без конца
+	table.clear(faceSlots)
+end
+
+-- ── карточка квеста ──
+local function buildCard(q, order)
+	local ks = KIND_STYLE[q.kind] or KIND_STYLE.daily
+	local tracked = q.tracked == true
+
+	local card = new("Frame", {
+		LayoutOrder = order, Size = UDim2.new(1, -4, 0, CARD_H),
+		BackgroundColor3 = C_CARD, BorderSizePixel = 0,
+	}, listFrame)
+	local cardStroke = borderStroke(card, tracked and C_WHITE or C_BLACK, 3)
+	if tracked then -- selPulse: белая рамка «дышит»
+		addLoop(TweenService:Create(cardStroke,
+			TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+			{ Thickness = 5, Transparency = 0.35 }))
+	end
+
+	-- звезда отслеживания над углом (starWiggle)
+	if tracked then
+		local star = new("TextLabel", {
+			AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 12, 0, -16),
+			Size = UDim2.fromOffset(38, 38), BackgroundTransparency = 1,
+			Font = FONT, Text = "★", TextSize = 34, TextColor3 = C_GOLD,
+			Rotation = -10, ZIndex = 3,
+		}, card)
+		stroke(star, C_BLACK, 2)
+		local starScale = new("UIScale", { Scale = 1 }, star)
+		addLoop(TweenService:Create(star,
+			TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+			{ Rotation = 4 }))
+		addLoop(TweenService:Create(starScale,
+			TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+			{ Scale = 1.12 }))
+	end
+
+	-- ── аватарка: три вложенных круга (акцент-кольцо → чёрное кольцо → градиентный круг),
+	-- рамки НЕ рисуются поверх друг друга, кольцо-акцент всегда видно, как в эталоне ──
+	local ring = new("Frame", {
+		Position = UDim2.fromOffset(16, 16), Size = UDim2.fromOffset(78, 78),
+		BackgroundColor3 = ks.accent, BorderSizePixel = 0,
+	}, card)
+	new("UICorner", { CornerRadius = UDim.new(1, 0) }, ring)
+	local blackRing = new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(72, 72), BackgroundColor3 = C_BLACK, BorderSizePixel = 0,
+	}, ring)
+	new("UICorner", { CornerRadius = UDim.new(1, 0) }, blackRing)
+	local avatar = new("Frame", {
+		AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+		Size = UDim2.fromOffset(66, 66), BackgroundColor3 = ks.dim, BorderSizePixel = 0,
+	}, blackRing)
+	new("UICorner", { CornerRadius = UDim.new(1, 0) }, avatar)
+	new("UIGradient", { Rotation = 90, Color = ColorSequence.new(ks.dim, C_DARK) }, avatar)
+	-- ⚠️ ЗАКАЗЧИК КВЕСТА — САМ ИГРОК.
+	-- Круг был зарезервирован под портрет NPC, и стояла глиф-заглушка «☻». Но
+	-- задачи здесь никто не выдаёт: игрок ставит их себе сам. Поэтому в круге его
+	-- собственный портрет, тот же самый, что в окне диалогов, а на плашке вместо
+	-- служебного «STORY» — его ник.
+	local face = new("ImageLabel", {
+		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+		Image = playerHeadshot or "", ScaleType = Enum.ScaleType.Crop,
+	}, avatar)
+	new("UICorner", { CornerRadius = UDim.new(1, 0) }, face)
+	-- портрет приходит с сервера Roblox и может опоздать: пока его нет, в круге
+	-- остаётся прежний глиф, а не пустая дыра
+	local placeholder = new("TextLabel", {
+		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+		Font = FONT, Text = "☻", TextSize = 36, TextColor3 = ks.bright,
+		Visible = playerHeadshot == nil,
+	}, avatar)
+	table.insert(faceSlots, { image = face, glyph = placeholder })
+
+	-- плашка с ником, перекрывает низ кольца
+	local badge = new("TextLabel", {
+		AnchorPoint = Vector2.new(0.5, 0), Position = UDim2.fromOffset(16 + 39, 16 + 78 - 11),
+		AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 20),
+		BackgroundColor3 = ks.accent, Font = FONT, TextSize = 12,
+		TextColor3 = C_WHITE, Text = " " .. playerTag() .. " ", ZIndex = 2,
+	}, card)
+	borderStroke(badge, C_BLACK, 2)
+
+	-- ── контент ──
+	local BTN_COL = 210
+	local content = new("Frame", {
+		Position = UDim2.fromOffset(108, 16), Size = UDim2.new(1, -108 - BTN_COL, 1, -28),
+		BackgroundTransparency = 1,
+	}, card)
+	local titleLbl = new("TextLabel", {
+		Size = UDim2.new(1, 0, 0, 28), BackgroundTransparency = 1,
+		Font = FONT, TextSize = 24, TextColor3 = C_WHITE,
+		TextXAlignment = Enum.TextXAlignment.Left, Text = q.title or q.id or "",
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	}, content)
+	stroke(titleLbl, C_BLACK, 1.5)
+	--[[ Высоту описания меряем ПОСЛЕ отрисовки, по факту: ширина колонки зависит
+	     от ширины панели и полосы прокрутки, и считать её числом здесь значило бы
+	     завести ещё одну копию вёрстки, которая разъедется при первой правке. ]]
+	local bodyLbl = new("TextLabel", {
+		Position = UDim2.fromOffset(0, BODY_TOP), Size = UDim2.new(1, 0, 0, BODY_LINE_H),
+		AutomaticSize = Enum.AutomaticSize.Y,
+		TextWrapped = true,
+		BackgroundTransparency = 1, Font = FONTB, TextSize = 16, TextColor3 = C_SUB,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		TextYAlignment = Enum.TextYAlignment.Top, Text = q.body or "",
+		TextTruncate = Enum.TextTruncate.AtEnd,
+	}, content)
+	-- потолок: три строки, дальше подрезаем многоточием
+	new("UISizeConstraint", {
+		MaxSize = Vector2.new(math.huge, BODY_LINE_H * BODY_MAX_LINES),
+	}, bodyLbl)
+
+	-- ряд наград съезжает вниз ровно на добавленные строки
+	local rewardsY = 60
+	local rewardShift = 0
+	new("TextLabel", {
+		Position = UDim2.fromOffset(0, rewardsY + 17), Size = UDim2.fromOffset(72, 16),
+		BackgroundTransparency = 1, Font = FONT, TextSize = 13, TextColor3 = C_MUTED,
+		TextXAlignment = Enum.TextXAlignment.Left, Text = "НАГРАДА",
+	}, content)
+	if q.reward and q.reward.count then
+		local rare = isRareReward(q.reward)
+		if rare then
+			-- диагностика: видно в Output, что редкость ДОШЛА до клиента
+			print("[QuestMenu] rare reward:", q.id, q.reward.name)
+			-- АУРА за слотом (halo из эталона: 0 0 16px) — «дышит» размером и яркостью
+			local aura = new("Frame", {
+				AnchorPoint = Vector2.new(0.5, 0.5),
+				Position = UDim2.fromOffset(82 + 25, rewardsY + 25),
+				Size = UDim2.fromOffset(60, 60), BackgroundColor3 = C_RARE_GLOW2,
+				BackgroundTransparency = 0.55, BorderSizePixel = 0, ZIndex = 1,
+			}, content)
+			new("UICorner", { CornerRadius = UDim.new(0, 8) }, aura)
+			addLoop(TweenService:Create(aura,
+				TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+				{ BackgroundTransparency = 0.15, Size = UDim2.fromOffset(68, 68) }))
+		end
+		local slot = new("Frame", {
+			Position = UDim2.fromOffset(82, rewardsY), Size = UDim2.fromOffset(50, 50),
+			BackgroundColor3 = rare and C_RARE_SLOT or C_DARK, BorderSizePixel = 0,
+			ZIndex = 2,
+		}, content)
+		local slotStroke = borderStroke(slot, rare and C_RARE_GLOW2 or C_BLACK, 2)
+		if rare then -- rareGlow: яркая пульсирующая рамка поверх ауры
+			addLoop(TweenService:Create(slotStroke,
+				TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+				{ Color = C_RARE, Thickness = 4 }))
+		end
+		-- иконка НАГРАДЫ приоритетнее иконки квеста (у сундуков в каталоге своя картинка)
+		local rewardIcon = (q.reward.icon and q.reward.icon ~= "" and q.reward.icon) or q.icon
+		if rewardIcon and rewardIcon ~= "" then
+			new("ImageLabel", {
+				AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromScale(0.5, 0.5),
+				Size = UDim2.fromOffset(36, 36), BackgroundTransparency = 1,
+				Image = rewardIcon, ScaleType = Enum.ScaleType.Fit,
+			}, slot)
+		else
+			new("TextLabel", {
+				Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+				Font = FONT, Text = "🎁", TextSize = 22, TextColor3 = rare and C_RARE or C_SUB,
+			}, slot)
+		end
+		local cnt = new("TextLabel", {
+			AnchorPoint = Vector2.new(1, 1), Position = UDim2.new(1, 7, 1, 7),
+			AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 17),
+			BackgroundColor3 = C_GOLD, Font = FONT, TextSize = 12, TextColor3 = C_GOLD_TEXT,
+			Text = " x" .. tostring(q.reward.count) .. " ", ZIndex = 2,
+		}, slot)
+		borderStroke(cnt, C_BLACK, 2)
+		if rare then
+			local rs = new("TextLabel", {
+				Position = UDim2.new(0, -8, 0, -9), Size = UDim2.fromOffset(16, 16),
+				BackgroundTransparency = 1, Font = FONT, Text = "★",
+				TextSize = 15, TextColor3 = C_RARE, ZIndex = 3,
+			}, slot)
+			stroke(rs, C_BLACK, 1.5)
+		end
+	end
+
+	-- ── кнопка действия ──
+	local label, bg, fg, border, action
+	if q.rewardPending then
+		label, bg, fg, border, action = "Забрать награду", C_GOLD, C_GOLD_TEXT, C_BLACK, "claimReward"
+	elseif q.completed then
+		label, bg, fg, border, action = "Выполнено", C_DARK, C_MUTED, C_BLACK, nil
+	elseif tracked then
+		label, bg, fg, border, action = "✓ Отслеживается", C_DARK, C_GREEN_TXT, C_GREEN, "untrack"
+	elseif q.kind == "challenge" and not q.startedAt then
+		label, bg, fg, border, action = "Начать", C_BLUE, C_WHITE, C_BLACK, "startChallenge"
 	else
-		tile.BackgroundColor3       = COLOR_PAPER
-		tile.BackgroundTransparency = 0.45
-		if h.stroke then h.stroke.Color = COLOR_WOOD_DARK end
-		if label    then label.TextColor3 = COLOR_PAPER_LIGHT end
-		if glyph    then glyph.TextColor3 = COLOR_PAPER_LIGHT end
-		if dot      then dot.Visible      = false             end
+		label, bg, fg, border, action = "Отслеживать", C_GREEN, C_WHITE, C_BLACK, "track"
 	end
-end
-
-local function repaintAllTabs()
-	if not tabHandles then return end
-	for id in pairs(tabHandles) do
-		paintTab(id)
+	local btn = new("TextButton", {
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -16, 0.5, 0),
+		Size = UDim2.fromOffset(180, 52), BackgroundColor3 = bg,
+		Font = FONT, TextSize = 18, TextColor3 = fg, Text = label,
+		AutoButtonColor = action ~= nil,
+	}, card)
+	borderStroke(btn, border, 3)
+	if action then
+		btn.MouseButton1Click:Connect(function()
+			if questStateEvent then questStateEvent:FireServer(action, q.id) end
+			-- Claim запускает анимацию выдачи (RewardReveal) поверх экрана — закрываем
+			-- меню, чтобы reveal не проигрывался ВНУТРИ открытой панели квестов.
+			if action == "claimReward" and closeQuestMenu then closeQuestMenu() end
+		end)
 	end
-end
 
--- ─── Tab cross-fade (B9) ────────────────────────────────────────────
--- Visible content swap when the active tab changes. ContentPages is
--- a per-tab Frame parented to the contentRoot in B6; only the
--- active page is Visible at any time, plus a brief out-going fade
--- on the previous one for a soft transition.
-local TweenService = game:GetService("TweenService")
-local CONTENT_FADE_TIME = 0.15
-
-local function fadePage(page, toTransparency, makeInvisibleAtEnd)
-	if not page then return end
-	-- We tween BackgroundTransparency on the page itself + every
-	-- visible descendant Frame / Text / Image / UIStroke so the
-	-- whole subtree fades in/out together. Cheap to do because
-	-- contentPages are mostly empty in Phase B; later phases that
-	-- mount heavier content can override this if needed.
-	local function visit(node)
-		if node:IsA("Frame") and node.BackgroundTransparency < 1 then
-			TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
-				{ BackgroundTransparency = toTransparency }):Play()
-		elseif node:IsA("TextLabel") or node:IsA("TextButton") then
-			TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
-				{ TextTransparency = toTransparency }):Play()
-			if node.BackgroundTransparency < 1 then
-				TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
-					{ BackgroundTransparency = toTransparency }):Play()
+	--[[ ⚠️ ПОДГОНЯЕМ КАРТОЧКУ ПОД ТЕКСТ ПОСЛЕ ОТРИСОВКИ, А НЕ СЧИТАЕМ ЗАРАНЕЕ.
+	     Сколько строк займёт описание, зависит от ширины колонки, а она — от
+	     ширины панели и полосы прокрутки. Считать это числом здесь значило бы
+	     держать вторую копию вёрстки, которая разъедется при первой же правке.
+	     Поэтому спрашиваем у самой надписи, сколько она заняла, и на столько же
+	     опускаем ряд наград и растим карточку.
+	     Двигаем ВСЁ, что лежит ниже наград, и на РАЗНИЦУ с прошлым разом: иначе
+	     повторный пересчёт (смена языка, перестройка списка) сдвинул бы элементы
+	     второй раз. ]]
+	local grownBy = 0
+	local function fitToBody()
+		local extra = math.max(0, bodyLbl.AbsoluteSize.Y - BODY_LINE_H)
+		local delta = extra - grownBy
+		if delta == 0 then return end
+		for _, ch in ipairs(content:GetChildren()) do
+			if ch:IsA("GuiObject") and ch ~= bodyLbl
+				and ch.Position.Y.Offset >= rewardsY + grownBy then
+				ch.Position = ch.Position + UDim2.fromOffset(0, delta)
 			end
-		elseif node:IsA("ImageLabel") or node:IsA("ImageButton") then
-			TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
-				{ ImageTransparency = toTransparency }):Play()
-		elseif node:IsA("UIStroke") then
-			TweenService:Create(node, TweenInfo.new(CONTENT_FADE_TIME),
-				{ Transparency = toTransparency }):Play()
 		end
+		grownBy = extra
+		card.Size = UDim2.new(1, -4, 0, CARD_H + extra)
 	end
-	visit(page)
-	for _, child in ipairs(page:GetDescendants()) do
-		visit(child)
-	end
-	if makeInvisibleAtEnd then
-		task.delay(CONTENT_FADE_TIME, function()
-			-- Don't hide if the player flipped back to this tab
-			-- mid-fade. Re-check before destroying visibility.
-			if activeTabId ~= page:GetAttribute("TabId") then
-				page.Visible = false
-			end
-		end)
-	end
+	bodyLbl:GetPropertyChangedSignal("AbsoluteSize"):Connect(fitToBody)
+	fitToBody()
+
+	return card
 end
 
-local function setActiveTab(id)
-	if not tabHandles or not tabHandles[id] then return end
-	if activeTabId == id then return end
-
-	local outgoingId = activeTabId
-	activeTabId = id
-	repaintAllTabs()
-
-	-- Cross-fade the per-tab content. The new page is shown
-	-- immediately at full transparency and tweens to opaque; the
-	-- old one tweens to fully transparent then hides itself.
-	if contentPages then
-		local incoming = contentPages[id]
-		local outgoing = outgoingId and contentPages[outgoingId]
-		if incoming then
-			incoming:SetAttribute("TabId", id)
-			incoming.Visible = true
-			fadePage(incoming, 0, false)
-		end
-		if outgoing then
-			outgoing:SetAttribute("TabId", outgoingId)
-			fadePage(outgoing, 1, true)
-		end
+local function rebuildList()
+	if not listFrame then return end
+	stopLoops()
+	for _, c in ipairs(listFrame:GetChildren()) do
+		if c:IsA("Frame") then c:Destroy() end
 	end
-end
-
--- ─── Tab rail (B3) ───────────────────────────────────────────────────
--- Vertical strip on the left side of the panel content. Each tab is a
--- TextButton holding a label; visual states (active vs inactive
--- fills, the leading dot indicator) layer on in B4 / B5. Click
--- handlers are stubbed for B3 — the real "swap content" path lands
--- in B9.
-local function buildTabRail(parent)
-	tabRail = Instance.new("Frame")
-	tabRail.Name = "TabRail"
-	tabRail.AnchorPoint = Vector2.new(0, 0)
-	-- Pushed below the title bar so the QUESTS title sits above all
-	-- tabs, matching the reference mockup.
-	tabRail.Position = UDim2.fromOffset(0, TITLE_BAR_H + TITLE_BAR_GAP)
-	tabRail.Size = UDim2.new(0, TAB_RAIL_W, 1, -(TITLE_BAR_H + TITLE_BAR_GAP))
-	tabRail.BackgroundTransparency = 1
-	tabRail.BorderSizePixel = 0
-	tabRail.ZIndex = 4
-	tabRail.Parent = parent
-
-	tabHandles = {}
-
-	for i, tab in ipairs(TABS) do
-		local y = TAB_LIST_TOP + (i - 1) * (TAB_HEIGHT + TAB_GAP)
-
-		-- Outer click target. Text on the button itself stays empty —
-		-- the visual content (glyph + label + dot) lives as children
-		-- so they paint independently and don't fight the button's
-		-- own auto-text-color behaviour.
-		local tile = Instance.new("TextButton")
-		tile.Name = "Tab_" .. tab.id
-		tile.AnchorPoint = Vector2.new(0, 0)
-		tile.Position = UDim2.fromOffset(0, y)
-		tile.Size = UDim2.new(1, 0, 0, TAB_HEIGHT)
-		tile.AutoButtonColor = false
-		tile.BackgroundTransparency = 1
-		tile.BorderSizePixel = 0
-		tile.Text = ""
-		tile.ZIndex = 5
-		tile.Parent = tabRail
-
-		local tCorner = Instance.new("UICorner")
-		tCorner.CornerRadius = UDim.new(0, TAB_RADIUS)
-		tCorner.Parent = tile
-
-		-- Stroke gives every tile a defined edge so even the inactive
-		-- ones read as a button instead of a tinted rectangle. paintTab
-		-- swaps the colour between wood-dark / wood-darkest for the
-		-- active state.
-		local tStroke = Instance.new("UIStroke")
-		tStroke.Color = COLOR_WOOD_DARK
-		tStroke.Thickness = 1.5
-		tStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-		tStroke.Parent = tile
-
-		-- Glyph icon on the left of the tile. Sized to fit a 14-pt
-		-- bold font's cap height + a little headroom so the emoji-style
-		-- characters render at the same vertical centre as the label.
-		local glyph = Instance.new("TextLabel")
-		glyph.Name = "Glyph"
-		glyph.AnchorPoint = Vector2.new(0, 0.5)
-		glyph.Position = UDim2.new(0, 12, 0.5, 0)
-		glyph.Size = UDim2.fromOffset(20, 20)
-		glyph.BackgroundTransparency = 1
-		glyph.Font = Enum.Font.GothamBold
-		glyph.TextSize = 16
-		glyph.TextColor3 = COLOR_PAPER_LIGHT
-		glyph.TextXAlignment = Enum.TextXAlignment.Center
-		glyph.TextYAlignment = Enum.TextYAlignment.Center
-		glyph.Text = tab.glyph or ""
-		glyph.ZIndex = tile.ZIndex + 1
-		glyph.Parent = tile
-
-		-- Label sits to the right of the glyph and stretches to the
-		-- dot's reserve area, so a long label (e.g. "Challenges")
-		-- can't push past the dot.
-		local label = Instance.new("TextLabel")
-		label.Name = "Label"
-		label.AnchorPoint = Vector2.new(0, 0.5)
-		label.Position = UDim2.new(0, 38, 0.5, 0)
-		label.Size = UDim2.new(1, -38 - (TAB_DOT_INSET + TAB_DOT_SIZE + 4), 1, 0)
-		label.BackgroundTransparency = 1
-		label.Font = Enum.Font.GothamBold
-		label.TextSize = 14
-		label.TextColor3 = COLOR_PAPER_LIGHT
-		label.TextXAlignment = Enum.TextXAlignment.Left
-		label.TextYAlignment = Enum.TextYAlignment.Center
-		label.TextTruncate = Enum.TextTruncate.AtEnd
-		label.Text = tab.label
-		label.ZIndex = tile.ZIndex + 1
-		label.Parent = tile
-
-		-- Active-tab dot indicator pinned to the right edge. Reads as
-		-- a "you are here" marker, matching the reference design where
-		-- the active tile shows a small dot on the right.
-		local dot = Instance.new("Frame")
-		dot.Name = "ActiveDot"
-		dot.AnchorPoint = Vector2.new(1, 0.5)
-		dot.Position = UDim2.new(1, -TAB_DOT_INSET, 0.5, 0)
-		dot.Size = UDim2.fromOffset(TAB_DOT_SIZE, TAB_DOT_SIZE)
-		dot.BackgroundColor3 = COLOR_WOOD_DARK
-		dot.BorderSizePixel = 0
-		dot.Visible = false
-		dot.ZIndex = tile.ZIndex + 2
-		dot.Parent = tile
-		local dotCorner = Instance.new("UICorner")
-		dotCorner.CornerRadius = UDim.new(1, 0)
-		dotCorner.Parent = dot
-
-		tabHandles[tab.id] = {
-			tile   = tile,
-			glyph  = glyph,
-			label  = label,
-			dot    = dot,
-			stroke = tStroke,
-		}
-
-		tile.MouseButton1Click:Connect(function()
-			setActiveTab(tab.id)
-		end)
-
-		-- Inactive-tab hover feedback: brighten the paper fill so the
-		-- player gets affordance without it being mistaken for the
-		-- active tab. paintTab() snaps it back on MouseLeave.
-		tile.MouseEnter:Connect(function()
-			if tab.id == activeTabId then return end
-			tile.BackgroundColor3       = COLOR_PAPER_LIGHT
-			tile.BackgroundTransparency = 0.15
-		end)
-		tile.MouseLeave:Connect(function()
-			paintTab(tab.id)
-		end)
+	local active = 0
+	for i, q in ipairs(lastQuests) do
+		buildCard(q, i)
+		if not q.completed then active += 1 end
 	end
-
-	-- Seed the default active tab. paintTab requires tabHandles[id]
-	-- to exist, which it now does.
-	activeTabId = TABS[1].id
-	repaintAllTabs()
-
-	return tabRail
+	if countLabel then countLabel.Text = " Активно: " .. active .. " " end
 end
 
--- ─── Right-side content root (B6) ───────────────────────────────────
--- Single container that stays put while tabs swap their inner Frames.
--- Phase D / E / F / G mount per-tab page Frames into contentPages
--- keyed by tab id; B9 toggles their .Visible based on activeTabId.
--- Today the placeholder per-tab Frame is empty so the menu shell is
--- visually complete on its own and Phase B is independently shippable.
-local function buildContentRoot(parent)
-	contentRoot = Instance.new("Frame")
-	contentRoot.Name = "Content"
-	contentRoot.AnchorPoint = Vector2.new(0, 0)
-	-- Below the title bar; same horizontal layout as before
-	-- (content sits to the right of the tab rail with CONTENT_GAP
-	-- between).
-	contentRoot.Position = UDim2.fromOffset(TAB_RAIL_W + CONTENT_GAP, TITLE_BAR_H + TITLE_BAR_GAP)
-	contentRoot.Size = UDim2.new(1, -(TAB_RAIL_W + CONTENT_GAP), 1, -(TITLE_BAR_H + TITLE_BAR_GAP))
-	contentRoot.BackgroundColor3 = COLOR_PAPER
-	contentRoot.BackgroundTransparency = 0.15
-	contentRoot.BorderSizePixel = 0
-	contentRoot.ClipsDescendants = true
-	contentRoot.ZIndex = 4
-	contentRoot.Parent = parent
-
-	local cCorner = Instance.new("UICorner")
-	cCorner.CornerRadius = UDim.new(0, CONTENT_RADIUS)
-	cCorner.Parent = contentRoot
-
-	local cStroke = Instance.new("UIStroke")
-	cStroke.Color = COLOR_WOOD_DARK
-	cStroke.Thickness = 2
-	cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	cStroke.Parent = contentRoot
-
-	contentPages = {}
-	for _, tab in ipairs(TABS) do
-		local page = Instance.new("Frame")
-		page.Name = "Page_" .. tab.id
-		page.Size = UDim2.fromScale(1, 1)
-		page.BackgroundTransparency = 1
-		page.BorderSizePixel = 0
-		page.Visible = (tab.id == activeTabId)
-		page.ZIndex = 5
-		page.Parent = contentRoot
-		contentPages[tab.id] = page
-	end
-
-	return contentRoot
-end
-
--- ─── QUESTS header (B7) ─────────────────────────────────────────────
--- Top-left of the panel content: scroll/parchment glyph (the supplied
--- quest icon asset, shrunk) + "QUESTS" label. Same on every tab.
--- Lives inside the tab rail's column so the label sits flush above
--- the first tab; the dot indicator aligns with the QUESTS column.
-local function buildHeader(parent)
-	-- Full-width title bar pinned to the top of the panel. Reserves
-	-- room on the right for the close button so the title and X
-	-- never collide on narrow widths.
-	local header = Instance.new("Frame")
-	header.Name = "TitleBar"
-	header.AnchorPoint = Vector2.new(0, 0)
-	header.Position = UDim2.fromOffset(0, 0)
-	header.Size = UDim2.new(1, -(CLOSE_BTN_SIZE + 12), 0, TITLE_BAR_H)
-	header.BackgroundTransparency = 1
-	header.BorderSizePixel = 0
-	header.ZIndex = 5
-	header.Parent = parent
-
-	-- Scroll glyph on the very left, sized to dominate the bar.
-	local glyph = Instance.new("ImageLabel")
-	glyph.Name = "Glyph"
-	glyph.AnchorPoint = Vector2.new(0, 0.5)
-	glyph.Position = UDim2.new(0, 0, 0.5, 0)
-	glyph.Size = UDim2.fromOffset(TITLE_GLYPH_SIZE, TITLE_GLYPH_SIZE)
-	glyph.BackgroundTransparency = 1
-	glyph.BorderSizePixel = 0
-	glyph.Image = QUEST_ICON_ASSET
-	glyph.ScaleType = Enum.ScaleType.Fit
-	glyph.ZIndex = 6
-	glyph.Parent = header
-
-	local label = Instance.new("TextLabel")
-	label.Name = "Label"
-	label.AnchorPoint = Vector2.new(0, 0.5)
-	label.Position = UDim2.new(0, TITLE_GLYPH_SIZE + TITLE_GLYPH_GAP, 0.5, 0)
-	label.Size = UDim2.new(1, -(TITLE_GLYPH_SIZE + TITLE_GLYPH_GAP), 1, 0)
-	label.BackgroundTransparency = 1
-	label.BorderSizePixel = 0
-	label.Font = Enum.Font.GothamBold
-	label.TextSize = 22
-	label.TextColor3 = COLOR_PAPER_LIGHT
-	label.TextXAlignment = Enum.TextXAlignment.Left
-	label.TextYAlignment = Enum.TextYAlignment.Center
-	label.Text = "QUESTS"
-	label.ZIndex = 6
-	label.Parent = header
-
-	return header
-end
-
--- ─── Close button (B8) ──────────────────────────────────────────────
--- 26x26 wood-mid X anchored to the panel's top-right. Same recipe as
--- the OnboardingTooltip's close button — hover darkens to wood-dark.
--- AnchorPoint (1, 0) with positive offset moves it past the parent
--- UIPadding so the button kisses the visual edge instead of the
--- padded box.
-local CLOSE_BTN_ASSET = "rbxassetid://76127527205295"
-
-local function buildCloseButton(parent)
-	-- ImageButton instead of TextButton + glyph: the close art the
-	-- user supplied is a fully self-contained illustration (wood
-	-- bezel + cream X), so we just render the asset and skip the
-	-- BackgroundColor / corner / stroke chrome we used to draw.
-	local close = Instance.new("ImageButton")
-	close.Name = "CloseButton"
-	close.AnchorPoint = Vector2.new(1, 0)
-	-- (PANEL_PAD - 8) lifts the button past the parent's 14-px
-	-- UIPadding by 6 px so the visible 8-px margin from the panel's
-	-- outer rect matches the mockup's `top: 8px; right: 8px`.
-	close.Position = UDim2.new(1, PANEL_PAD - 8, 0, -(PANEL_PAD - 8))
-	close.Size = UDim2.fromOffset(CLOSE_BTN_SIZE, CLOSE_BTN_SIZE)
-	close.BackgroundTransparency = 1
-	close.BorderSizePixel = 0
-	close.AutoButtonColor = false
-	close.Image = CLOSE_BTN_ASSET
-	close.ScaleType = Enum.ScaleType.Fit
-	close.ZIndex = 7
-	close.Parent = parent
-
-	close.MouseEnter:Connect(function()
-		close.ImageTransparency = 0.15
-	end)
-	close.MouseLeave:Connect(function()
-		close.ImageTransparency = 0
-	end)
-
-	close.MouseButton1Click:Connect(function()
-		-- closeQuestMenu is declared at module-bottom; capture by
-		-- name resolves at call time so the upvalue is valid by the
-		-- time the button is clicked.
-		if typeof(_G.CloseQuestMenu) == "function" then
-			_G.CloseQuestMenu()
-		end
-	end)
-
-	return close
-end
-
+-- ── сборка панели ──
 local function buildPanel(parent)
-	-- Outer wood panel: same recipe as the onboarding tooltip's
-	-- panel — wood-base fill, 3 px wood-dark border, inner 1 px
-	-- white-18% inset highlight stroke. Centred in the screen via
-	-- AnchorPoint (0.5, 0.5).
-	panel = Instance.new("Frame")
-	panel.Name = "Panel"
-	panel.AnchorPoint = Vector2.new(0.5, 0.5)
-	panel.Position = UDim2.fromScale(0.5, 0.5)
-	panel.Size = UDim2.fromOffset(PANEL_W, PANEL_H)
-	panel.BackgroundColor3 = COLOR_WOOD_BASE
-	panel.BorderSizePixel = 0
-	panel.ZIndex = 2
-	panel.Parent = parent
+	panel = new("Frame", {
+		Name = "Panel", AnchorPoint = Vector2.new(0.5, 0.5),
+		Position = UDim2.fromScale(0.5, 0.5), Size = UDim2.fromOffset(PANEL_W, PANEL_H),
+		BackgroundColor3 = C_PANEL, BorderSizePixel = 0, ZIndex = 2,
+	}, parent)
+	borderStroke(panel, C_BLACK, 4)
+	panelScale = new("UIScale", { Scale = 1 }, panel)
 
-	local pCorner = Instance.new("UICorner")
-	pCorner.CornerRadius = UDim.new(0, PANEL_RADIUS)
-	pCorner.Parent = panel
+	-- шапка
+	local header = new("Frame", {
+		Size = UDim2.new(1, 0, 0, HEADER_H), BackgroundColor3 = C_HEADER,
+		BorderSizePixel = 0, ClipsDescendants = true, ZIndex = 3,
+	}, panel)
+	-- точечный паттерн эталона («кружки»): сетка полупрозрачных белых точек 30×30
+	for row = 0, 2 do
+		for col = 0, math.floor(PANEL_W / 30) do
+			local dot = new("Frame", {
+				Position = UDim2.fromOffset(9 + col * 30, 9 + row * 30),
+				Size = UDim2.fromOffset(7, 7), BackgroundColor3 = C_WHITE,
+				BackgroundTransparency = 0.93, BorderSizePixel = 0, ZIndex = 3,
+			}, header)
+			new("UICorner", { CornerRadius = UDim.new(1, 0) }, dot)
+		end
+	end
+	local bang = new("TextLabel", {
+		Position = UDim2.fromOffset(20, 15), Size = UDim2.fromOffset(54, 54),
+		BackgroundColor3 = C_GOLD, Font = FONT, TextSize = 32, TextColor3 = C_GOLD_TEXT,
+		Text = "!", ZIndex = 4,
+	}, header)
+	borderStroke(bang, C_BLACK, 3)
+	local titleL = new("TextLabel", {
+		Position = UDim2.fromOffset(88, 10), Size = UDim2.fromOffset(300, 38),
+		BackgroundTransparency = 1, Font = FONT, TextSize = 34, TextColor3 = C_WHITE,
+		TextXAlignment = Enum.TextXAlignment.Left, Text = "Квесты", ZIndex = 4,
+	}, header)
+	stroke(titleL, C_BLACK, 2)
+	new("TextLabel", {
+		Position = UDim2.fromOffset(88, 50), Size = UDim2.fromOffset(360, 20),
+		BackgroundTransparency = 1, Font = FONTB, TextSize = 15, TextColor3 = C_SUB,
+		TextXAlignment = Enum.TextXAlignment.Left,
+		Text = "Выполняй задания и получай награды", ZIndex = 4,
+	}, header)
+	countLabel = new("TextLabel", {
+		AnchorPoint = Vector2.new(1, 0.5), Position = UDim2.new(1, -84, 0.5, 0),
+		AutomaticSize = Enum.AutomaticSize.X, Size = UDim2.fromOffset(0, 34),
+		BackgroundColor3 = C_DARK, Font = FONT, TextSize = 16, TextColor3 = C_GOLD,
+		Text = " Активно: 0 ", ZIndex = 4,
+	}, header)
+	borderStroke(countLabel, C_BLACK, 2)
 
-	local pStroke = Instance.new("UIStroke")
-	pStroke.Color = COLOR_WOOD_DARK
-	pStroke.Thickness = 3
-	pStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-	pStroke.Parent = panel
+	-- золотая полоса
+	local band = new("Frame", {
+		Position = UDim2.fromOffset(0, HEADER_H), Size = UDim2.new(1, 0, 0, BAND_H),
+		BackgroundColor3 = C_BLACK, BorderSizePixel = 0, ZIndex = 3,
+	}, panel)
+	local bandCore = new("Frame", {
+		AnchorPoint = Vector2.new(0, 0.5), Position = UDim2.new(0, 0, 0.5, 0),
+		Size = UDim2.new(1, 0, 0, 6), BackgroundColor3 = C_GOLD, BorderSizePixel = 0, ZIndex = 4,
+	}, band)
+	new("UIGradient", {
+		Color = ColorSequence.new({
+			ColorSequenceKeypoint.new(0, C_GOLD_LIGHT),
+			ColorSequenceKeypoint.new(0.4, C_GOLD),
+			ColorSequenceKeypoint.new(1, C_GOLD_DARK),
+		}),
+	}, bandCore)
 
-	local pPad = Instance.new("UIPadding")
-	pPad.PaddingTop    = UDim.new(0, PANEL_PAD)
-	pPad.PaddingBottom = UDim.new(0, PANEL_PAD)
-	pPad.PaddingLeft   = UDim.new(0, PANEL_PAD)
-	pPad.PaddingRight  = UDim.new(0, PANEL_PAD)
-	pPad.Parent = panel
+	-- жёлоб скроллбара, как в эталоне: тёмный, с чёрной кромкой слева (рисуем ПОД списком)
+	local trackGutter = new("Frame", {
+		AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, HEADER_H + BAND_H),
+		Size = UDim2.fromOffset(SCROLLBAR_W, LIST_H), BackgroundColor3 = C_DARK,
+		BorderSizePixel = 0, ZIndex = 2,
+	}, panel)
+	new("Frame", {
+		Size = UDim2.new(0, 3, 1, 0), BackgroundColor3 = C_BLACK, BorderSizePixel = 0, ZIndex = 3,
+	}, trackGutter)
 
-	-- Inner highlight (mockup's `.tip::before` trick): 1 px white-18%
-	-- inset stroke 2 px from the outer border so the panel feels
-	-- raised. Sized to overlap the parent's UIPadding so it kisses
-	-- the visible edge instead of the padded box.
-	local highlight = Instance.new("Frame")
-	highlight.Name = "InnerHighlight"
-	highlight.AnchorPoint = Vector2.new(0.5, 0.5)
-	highlight.Position = UDim2.fromScale(0.5, 0.5)
-	highlight.Size = UDim2.new(1, (PANEL_PAD - 2) * 2, 1, (PANEL_PAD - 2) * 2)
-	highlight.BackgroundTransparency = 1
-	highlight.BorderSizePixel = 0
-	highlight.ZIndex = 3
-	highlight.Parent = panel
-	local hCorner = Instance.new("UICorner")
-	hCorner.CornerRadius = UDim.new(0, PANEL_RADIUS - 4)
-	hCorner.Parent = highlight
-	local hStroke = Instance.new("UIStroke")
-	hStroke.Color = Color3.fromRGB(255, 255, 255)
-	hStroke.Thickness = 1
-	hStroke.Transparency = 0.82
-	hStroke.Parent = highlight
+	-- скролл-список; бегунок — ПЛОСКИЙ прямоугольник (все три сегмента = middle-текстура)
+	listFrame = new("ScrollingFrame", {
+		Position = UDim2.fromOffset(0, HEADER_H + BAND_H), Size = UDim2.new(1, 0, 0, LIST_H),
+		BackgroundTransparency = 1, BorderSizePixel = 0, ZIndex = 3,
+		AutomaticCanvasSize = Enum.AutomaticSize.Y, CanvasSize = UDim2.new(0, 0, 0, 0),
+		ScrollBarThickness = SCROLLBAR_W, ScrollBarImageColor3 = C_BLUE,
+		ScrollBarImageTransparency = 0,
+		TopImage    = "rbxasset://textures/ui/Scroll/scroll-middle.png",
+		MidImage    = "rbxasset://textures/ui/Scroll/scroll-middle.png",
+		BottomImage = "rbxasset://textures/ui/Scroll/scroll-middle.png",
+		VerticalScrollBarInset = Enum.ScrollBarInset.Always,
+		ScrollingDirection = Enum.ScrollingDirection.Y,
+	}, panel)
+	new("UIPadding", {
+		PaddingTop = UDim.new(0, 20), PaddingBottom = UDim.new(0, 16),
+		PaddingLeft = UDim.new(0, 18), PaddingRight = UDim.new(0, 14),
+	}, listFrame)
+	new("UIListLayout", {
+		FillDirection = Enum.FillDirection.Vertical,
+		SortOrder = Enum.SortOrder.LayoutOrder,
+		Padding = UDim.new(0, 18),
+	}, listFrame)
 
-	buildHeader(panel)
-	buildTabRail(panel)
-	buildContentRoot(panel)
-	buildCloseButton(panel)
+	-- подвал
+	local footer = new("Frame", {
+		Position = UDim2.fromOffset(0, HEADER_H + BAND_H + LIST_H),
+		Size = UDim2.new(1, 0, 0, FOOTER_H), BackgroundColor3 = C_DARK,
+		BorderSizePixel = 0, ZIndex = 3,
+	}, panel)
+	new("Frame", {
+		Size = UDim2.new(1, 0, 0, 3), BackgroundColor3 = C_BLACK, BorderSizePixel = 0, ZIndex = 4,
+	}, footer)
+	new("TextLabel", {
+		Size = UDim2.fromScale(1, 1), BackgroundTransparency = 1,
+		Font = FONTB, TextSize = 14, TextColor3 = C_MUTED,
+		Text = "Отслеживаемый квест показан на экране", ZIndex = 4,
+	}, footer)
+
+	--[[ ⚠️ КРЕСТИК БЕРЁМ ИЗ UITheme, А НЕ РИСУЕМ СВОЙ.
+	     Игрок видит кнопку закрытия во всех меню океана как один и тот же элемент
+	     управления, поэтому разнобой в ней читается как небрежность. Эталоном
+	     владелец назвал инвентарь, и UITheme.closeButton — это ровно его крестик.
+	     Здесь стояла своя копия: картинка 62 px, которая росла на наведении, —
+	     из-за неё меню квестов выглядело чужим рядом с остальными.
+	     Размер сюда НЕ передаём и передать нельзя: он живёт в UITheme.CLOSE_SIZE,
+	     иначе меню снова разъедутся, ровно так это и вышло в прошлый раз.
+	     Посадку тоже не передаём — умолчание модуля повторяет инвентарь. ]]
+	local close = UITheme.closeButton({ parent = panel, zIndex = 6 })
+	close.MouseButton1Click:Connect(function()
+		if typeof(_G.CloseQuestMenu) == "function" then _G.CloseQuestMenu() end
+	end)
 
 	return panel
 end
 
--- ─── Backdrop click-catcher (B10) ────────────────────────────────────
--- Full-screen TextButton sits behind the panel so the player can
--- click anywhere outside the panel to dismiss the menu. Doubles as
--- a soft dim layer.
-local backdrop
-
 local function buildBackdrop(parent)
-	backdrop = Instance.new("TextButton")
-	backdrop.Name = "Backdrop"
-	backdrop.Size = UDim2.fromScale(1, 1)
-	backdrop.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
-	backdrop.BackgroundTransparency = 0.55
-	backdrop.BorderSizePixel = 0
-	backdrop.AutoButtonColor = false
-	backdrop.Text = ""
-	backdrop.ZIndex = 1
-	backdrop.Parent = parent
-
+	backdrop = new("TextButton", {
+		Name = "Backdrop", Size = UDim2.fromScale(1, 1),
+		BackgroundColor3 = C_BLACK, BackgroundTransparency = 0.55,
+		BorderSizePixel = 0, AutoButtonColor = false, Text = "", ZIndex = 1,
+	}, parent)
 	backdrop.MouseButton1Click:Connect(function()
-		if typeof(_G.CloseQuestMenu) == "function" then
-			_G.CloseQuestMenu()
-		end
+		if typeof(_G.CloseQuestMenu) == "function" then _G.CloseQuestMenu() end
 	end)
-
 	return backdrop
 end
 
 local function ensureScreenGui()
 	if screenGui and screenGui.Parent then return screenGui end
-	screenGui = Instance.new("ScreenGui")
-	screenGui.Name = "QuestMenuGui"
-	screenGui.ResetOnSpawn = false
-	-- IgnoreGuiInset=true so the backdrop tween covers the entire
-	-- screen, including the topbar inset area. Without this, the
-	-- top ~36px stripe shows through bright while the rest of the
-	-- screen is dimmed.
-	screenGui.IgnoreGuiInset = true
-	screenGui.DisplayOrder = SCREENGUI_DISPLAY_ORDER
-	screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
-	screenGui.Enabled = false   -- shown only after openQuestMenu()
-	screenGui.Parent = playerGui
+	screenGui = new("ScreenGui", {
+		Name = "QuestMenuGui", ResetOnSpawn = false, IgnoreGuiInset = true,
+		DisplayOrder = SCREENGUI_DISPLAY_ORDER, ZIndexBehavior = Enum.ZIndexBehavior.Sibling,
+		Enabled = false,
+	}, playerGui)
 
 	buildBackdrop(screenGui)
 	buildPanel(screenGui)
+
+	-- совместимость: старые вкладочные скрипты монтируются в скрытые заглушки
+	local legacy = new("Folder", { Name = "LegacyPages" }, screenGui)
+	local pages = {}
+	for _, id in ipairs({ "quests", "story", "challenges", "history" }) do
+		pages[id] = new("Frame", {
+			Name = "Page_" .. id, Size = UDim2.fromOffset(10, 10),
+			BackgroundTransparency = 1, Visible = false,
+		}, legacy)
+	end
+	_G.QuestMenuContentPages = pages
+	_G.QuestMenuScreenGui = screenGui
+
 	return screenGui
 end
 
--- ─── Open / close animations (B10) ──────────────────────────────────
--- Mirrors the OnboardingTooltip's approach: capture every fade-able
--- property under the panel + tween from invisible (1) to rest on
--- open, and back to invisible on close. Plus a UIScale bounce on the
--- panel root so the menu pops into view rather than hard-popping.
+-- ── открытие/закрытие ──
 local OPEN_INFO  = TweenInfo.new(0.32, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local CLOSE_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
 
-local panelScale         -- UIScale on the panel for the open/close bounce
-local fadeTargets        -- list of { inst, prop, rest } captured on first build
-local backdropFadeTarget -- the backdrop's BackgroundTransparency rest = 0.55
-local isOpen = false
+-- ⚠️ МОБИЛЬНЫЙ МАСШТАБ ВСТРАИВАЕМ В АНИМАЦИЮ, А НЕ ПОВЕРХ НЕЁ.
+-- Панель 720px на телефоне занимала почти весь экран. Но просто выставить UIScale
+-- нельзя: этот же UIScale уже занят анимацией открытия (0.94 → 1) и закрытия.
+-- Второй UIScale на том же объекте с ним бы спорил, а сброс в 1 в конце анимации
+-- стёр бы наш масштаб. Поэтому единица «раскрытого» состояния — это теперь не 1, а
+-- коэффициент HudScale, и все три числа считаются от него.
+local Hud = require(game:GetService("ReplicatedStorage"):WaitForChild("HudScale"))
 
-local function captureFadeTargets()
-	fadeTargets = {}
-	local function visit(node)
-		if not node then return end
-		if node:IsA("Frame") and node.BackgroundTransparency < 1 then
-			table.insert(fadeTargets, {
-				inst = node, prop = "BackgroundTransparency",
-				rest = node.BackgroundTransparency,
-			})
-		elseif node:IsA("TextLabel") or node:IsA("TextButton") then
-			table.insert(fadeTargets, {
-				inst = node, prop = "TextTransparency",
-				rest = node.TextTransparency,
-			})
-			if node.BackgroundTransparency < 1 then
-				table.insert(fadeTargets, {
-					inst = node, prop = "BackgroundTransparency",
-					rest = node.BackgroundTransparency,
-				})
-			end
-		elseif node:IsA("ImageLabel") or node:IsA("ImageButton") then
-			table.insert(fadeTargets, {
-				inst = node, prop = "ImageTransparency",
-				rest = node.ImageTransparency,
-			})
-			if node.BackgroundTransparency < 1 then
-				table.insert(fadeTargets, {
-					inst = node, prop = "BackgroundTransparency",
-					rest = node.BackgroundTransparency,
-				})
-			end
-		elseif node:IsA("UIStroke") and node.Transparency < 1 then
-			table.insert(fadeTargets, {
-				inst = node, prop = "Transparency",
-				rest = node.Transparency,
-			})
-		end
-	end
-	visit(panel)
-	for _, child in ipairs(panel:GetDescendants()) do
-		visit(child)
-	end
-end
+--[[ ⚠️ МЕНЮ УЖИМАЕТСЯ И ПОД РАЗМЕР ОКНА, А НЕ ТОЛЬКО ПОД ТЕЛЕФОН.
+     Hud.factor() отвечает на вопрос «это телефон?» и на компьютере всегда равен
+     единице. Но панель 720×PANEL_H не влезает и в маленькое окно Studio: у неё
+     обрезался верх с крестиком, а список уезжал за нижнюю кромку — выйти можно
+     было только по Esc.
+     Считаем, сколько панель занимает от окна, и берём меньший из двух
+     множителей: телефонный и «чтобы влезло». Запас по краям — чтобы панель не
+     упиралась в самые границы экрана.
+     Ниже 0.45 не опускаемся: дальше текст в карточках нечитаем, и правильнее
+     показать панель с прокруткой, чем нечитаемую целиком. ]]
+local FIT_PAD = 48
+local FIT_MIN = 0.45
 
-local function setFadeAll(value)
-	if not fadeTargets then return end
-	for _, t in ipairs(fadeTargets) do
-		if t.inst.Parent then t.inst[t.prop] = value end
-	end
+--[[ ⚠️ КВЕСТАМ ОБЩЕГО ТЕЛЕФОННОГО МНОЖИТЕЛЯ МАЛОВАТО.
+     Hud.factor() = 0.55 подобран под панели, где содержимое крупное. У
+     квестов внутри карточка с текстом задания, наградой и кнопкой слежения,
+     и на этом множителе окно выглядит меньше, чем ему нужно.
+     Поднимаем только ЗДЕСЬ: общий множитель трогать нельзя, по нему живут
+     остальные меню. Ограничение «чтобы влезло» ниже никуда не делось и
+     по-прежнему главнее — окно не вылезет за экран. ]]
+local PHONE_BUMP = 1.35
+
+--[[ ⚠️ ПОТОЛОК ВЫШЕ ЕДИНИЦЫ — БЕЗ ЭТОГО ПРОШЛАЯ ПРАВКА НЕ ДАЛА НИЧЕГО.
+     Единица — это «как нарисовано», 720×536 пикселей макета. И в fit, и в
+     clamp стояла именно она, то есть окно физически не могло стать больше
+     макета: сколько ни поднимай телефонный множитель, минимум брал единицу.
+     Ровно поэтому «сделай побольше» дважды не сработало.
+     Теперь окно тянется, пока помещается в экран с полями FIT_PAD, но не
+     больше PANEL_MAX: у карточек фиксированный кегль, и на большом экране
+     раздутое окно выглядит уже не солидно, а неаккуратно. ]]
+-- ⚠️ НА КОМПЬЮТЕРЕ НЕ УВЕЛИЧИВАЕМ. 1.35 растил меню на большом мониторе до
+-- тысячи пикселей в ширину (владелец: «слишком здоровое, в студии меньше»).
+-- Эталонный размер 720×536 — и есть правильный; ужиматься на малом экране
+-- меню по-прежнему может, расти — нет.
+local PANEL_MAX = 1.0
+
+local function fitFactor()
+	local cam = workspace.CurrentCamera
+	local vp = cam and cam.ViewportSize or Vector2.new(1280, 720)
+	local fit = math.min(vp.X / (PANEL_W + FIT_PAD), vp.Y / (PANEL_H + FIT_PAD))
+	return math.clamp(math.min(Hud.factor() * PHONE_BUMP, fit), FIT_MIN, PANEL_MAX)
 end
 
 local function openQuestMenu()
 	local gui = ensureScreenGui()
 	if isOpen then return end
 	isOpen = true
-
-	-- One-time setup the first time we open: UIScale, fadeTargets,
-	-- backdrop fade target. Done lazily so a player who never opens
-	-- the menu doesn't pay for the descendant walk.
-	if not panelScale then
-		panelScale = Instance.new("UIScale")
-		panelScale.Scale = 1
-		panelScale.Parent = panel
-		captureFadeTargets()
-		backdropFadeTarget = backdrop and backdrop.BackgroundTransparency or 0.55
-	end
-
-	-- Snap to invisible / pre-bounce state, then tween to rest.
+	rebuildList()
+	if questStateEvent then questStateEvent:FireServer("getState") end
 	gui.Enabled = true
-	setFadeAll(1)
-	if backdrop then backdrop.BackgroundTransparency = 1 end
-	panelScale.Scale = 0.94
-
-	for _, t in ipairs(fadeTargets) do
-		if t.inst.Parent then
-			TweenService:Create(t.inst, OPEN_INFO,
-				{ [t.prop] = t.rest }):Play()
-		end
-	end
-	if backdrop then
-		TweenService:Create(backdrop, OPEN_INFO,
-			{ BackgroundTransparency = backdropFadeTarget }):Play()
-	end
-	TweenService:Create(panelScale, OPEN_INFO, { Scale = 1.0 }):Play()
+	backdrop.BackgroundTransparency = 1
+	local full = fitFactor()
+	panelScale.Scale = 0.94 * full
+	TweenService:Create(backdrop, OPEN_INFO, { BackgroundTransparency = 0.55 }):Play()
+	TweenService:Create(panelScale, OPEN_INFO, { Scale = full }):Play()
 end
 
-local function closeQuestMenu()
+function closeQuestMenu()
 	if not screenGui or not isOpen then return end
 	isOpen = false
-
-	for _, t in ipairs(fadeTargets or {}) do
-		if t.inst.Parent then
-			TweenService:Create(t.inst, CLOSE_INFO,
-				{ [t.prop] = 1 }):Play()
-		end
-	end
-	if backdrop then
-		TweenService:Create(backdrop, CLOSE_INFO,
-			{ BackgroundTransparency = 1 }):Play()
-	end
-	if panelScale then
-		TweenService:Create(panelScale, CLOSE_INFO, { Scale = 0.96 }):Play()
-	end
-
-	-- Hide the GUI after the fade completes so input can pass through
-	-- again. Re-check isOpen so a re-open mid-fade doesn't leave us
-	-- with a hidden screenGui mid-tween.
+	TweenService:Create(backdrop, CLOSE_INFO, { BackgroundTransparency = 1 }):Play()
+	TweenService:Create(panelScale, CLOSE_INFO, { Scale = 0.96 * fitFactor() }):Play()
 	task.delay(CLOSE_INFO.Time + 0.02, function()
-		if not isOpen and screenGui then
-			screenGui.Enabled = false
-		end
+		if not isOpen and screenGui then screenGui.Enabled = false end
 	end)
+end
+
+--[[ Окно изменили при открытом меню (свернули Studio, повернули телефон) —
+     пересчитываем сразу: иначе панель останется в прежнем масштабе и вылезет
+     за экран ровно тогда, когда игрок на неё смотрит. ]]
+do
+	local cam = workspace.CurrentCamera
+	if cam then
+		cam:GetPropertyChangedSignal("ViewportSize"):Connect(function()
+			if isOpen and panelScale then panelScale.Scale = fitFactor() end
+		end)
+	end
 end
 
 _G.OpenQuestMenu  = openQuestMenu
 _G.CloseQuestMenu = closeQuestMenu
 
--- Publish the screenGui so other client UIs (e.g. the QuestEntryButton)
--- can hide while the menu is open. The reference is set lazily after
--- ensureScreenGui() runs, so listeners that check on script init may
--- find it nil — they should poll until it appears, the same way the
--- entry button polls _G.PhoneScreenGui.
-local function publishMenuRefs()
-	if screenGui then
-		_G.QuestMenuScreenGui = screenGui
-	end
-	if contentPages then
-		-- Per-tab content frames keyed by tab id. Phase D / E / F / G
-		-- mount their cards / lists into these without QuestMenu having
-		-- to know about them. The reference stays stable across menu
-		-- open/close (we only toggle screenGui.Enabled, not destroy).
-		_G.QuestMenuContentPages = contentPages
-	end
-end
--- Build + publish on script init so listeners don't have to wait
--- for the player's first openQuestMenu() click.
 ensureScreenGui()
-publishMenuRefs()
 
--- ─── ESC key + entry-button toggle ───────────────────────────────────
--- Pressing ESC while the menu is open closes it (gameProcessed-aware
--- so chat / text-input ESCs don't trip the path).
-local UserInputService = game:GetService("UserInputService")
+-- ── данные: живой снапшот QuestState ──
+task.spawn(function()
+	local deadline = os.clock() + 30
+	while os.clock() < deadline do
+		local evt = ReplicatedStorage:FindFirstChild("QuestState")
+		if evt and evt:IsA("RemoteEvent") then
+			questStateEvent = evt
+			break
+		end
+		task.wait(0.1)
+	end
+	if not questStateEvent then
+		warn("[QuestMenu] QuestState RemoteEvent missing; список пуст")
+		return
+	end
+	questStateEvent.OnClientEvent:Connect(function(action, payload)
+		if action ~= "state" or type(payload) ~= "table" then return end
+		lastQuests = payload.quests or {}
+		if isOpen then rebuildList() end
+	end)
+	questStateEvent:FireServer("getState")
+end)
+
+-- ── ESC / J ──
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
 	if input.KeyCode == Enum.KeyCode.Escape and isOpen then
 		closeQuestMenu()
+	elseif input.KeyCode == Enum.KeyCode.J then
+		if isOpen then
+			closeQuestMenu()
+		else
+			for _, key in ipairs({ "PhoneScreenGui", "BuildingScreenGui" }) do
+				local gui = _G[key]
+				if gui and gui:IsA("ScreenGui") and gui.Enabled then
+					return
+				end
+			end
+			openQuestMenu()
+		end
 	end
 end)

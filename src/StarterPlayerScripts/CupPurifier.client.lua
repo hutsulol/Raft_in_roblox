@@ -1,3 +1,4 @@
+local print, warn = (function() local RS = game:GetService("RunService") if RS:IsServer() then return print, warn end local P, W, Pl = print, warn, game:GetService("Players") local function ok() local p = Pl.LocalPlayer return p ~= nil and p:GetAttribute("DevLogs") == true end return function(...) if ok() then P(...) end end, function(...) if ok() then W(...) end end end)() -- DevLogs: клиентские логи видят только админы (флаг ставит DevLogFlag.server)
 local Players = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local UserInputService = game:GetService("UserInputService")
@@ -6,6 +7,8 @@ local SoundService = game:GetService("SoundService")
 
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
+-- ⚠️ Геймпад: что считать кликом и клавишей — одно правило на все файлы (GamepadInput).
+local GamepadInput = require(game:GetService("ReplicatedStorage"):WaitForChild("GamepadInput"))
 local camera = workspace.CurrentCamera
 
 local cupActionEvent = ReplicatedStorage:WaitForChild("CupAction")
@@ -13,7 +16,63 @@ local bushActionEvent = ReplicatedStorage:WaitForChild("BushAction")
 local gardenActionEvent = ReplicatedStorage:WaitForChild("GardenAction")
 local sawmillActionEvent = ReplicatedStorage:WaitForChild("SawmillAction")
 
+--[[ ⚠️ ПОСТАНОВКА НА ТЕЛЕФОНЕ ИДЁТ ЧЕРЕЗ ОБЩИЙ МОДУЛЬ.
+     Этот файл ставит СЕМЬ предметов — очиститель, куст, верстак, грядку,
+     древесную грядку, кровать и лесопилку, — и все они целятся одной строкой:
+     лучом из курсора. Курсора на телефоне нет, поэтому там прицел даёт тап, а
+     подтверждает кнопка. Вся эта механика лежит в TouchPlace, здесь только три
+     точки подключения: луч, начало сеанса и конец. На компьютере модуль не
+     делает ничего. ]]
+--[[ ⚠️ МЕХАНИКУ БЕРЁМ ИЗ HudScale, А ЖДЁМ — С ТАЙМАУТОМ. ДВЕ ЛОВУШКИ РАЗОМ.
+     Первая: WaitForChild без второго аргумента ждёт ВЕЧНО, и не доехавший
+     модуль остановил бы ВЕСЬ этот скрипт — предмет в руках есть, а поставить
+     нельзя ничем и нигде, причём молча.
+     Вторая, из-за которой правка и не работала на телефоне: НОВЫЙ файл до
+     запущенной сессии Rojo доезжает не всегда. Правки существующих файлов
+     синкаются, а новый инстанс появляется в плейсе только после
+     переподключения — и ставилки честно откатывались на мышь, то есть на то
+     самое поведение, от которого уходили.
+     Поэтому спрашиваем сначала HudScale: он в плейсе давно и синкается штатно,
+     а вся механика постановки живёт теперь в нём (HudScale.Place). Отдельный
+     TouchPlace остаётся запасным именем — кто его нашёл, получит то же самое.
+     Не нашли ни того, ни другого — работаем по-старому, мышью. ]]
+-- касание без мыши = телефон. Считаем сами: запрет ставить пальцем не
+-- должен зависеть от того, поднялся ли общий модуль
+local IS_TOUCH = game:GetService("UserInputService").TouchEnabled
+	and not game:GetService("UserInputService").MouseEnabled
+
+local TouchPlace do
+	local rs = game:GetService("ReplicatedStorage")
+	local function grab(name, field)
+		local mod = rs:FindFirstChild(name) or rs:WaitForChild(name, 5)
+		if not mod then return nil end
+		local ok, res = pcall(require, mod)
+		if not ok then return nil end
+		if field then res = (type(res) == "table") and res[field] or nil end
+		return (type(res) == "table") and res or nil
+	end
+
+	TouchPlace = grab("HudScale", "Place") or grab("TouchPlace") or {
+		isPhone = function() return false end,
+		ray = function(m)
+			local cam = workspace.CurrentCamera
+			if not (cam and m) then return nil end
+			return cam:ViewportPointToRay(m.X, m.Y)
+		end,
+		setHit = function() end,
+		begin  = function() end,
+		finish = function() end,
+		active = function() return false end,
+	}
+	if not TouchPlace.begin or TouchPlace.isPhone() == nil then
+		warn("[Установка] механика постановки не найдена — ставим по-старому, мышью")
+	end
+end
+
 -- ─── State ───
+-- объявлены заранее: их зовёт createGhost, а определены они ниже по файлу
+local onPlaceClick, rotatePlacement
+
 local ghost = nil
 local currentTool = nil
 local placingPurifier = false
@@ -39,6 +98,7 @@ local rotationAngle = 0 -- radians, incremented by R key
 local playerGui = player:WaitForChild("PlayerGui")
 local hintGui = Instance.new("ScreenGui")
 hintGui.Name = "CupHint"
+hintGui.ResetOnSpawn = false   -- иначе Roblox удаляет окно при смерти, а скрипт живёт дальше с мёртвым объектом
 hintGui.DisplayOrder = 50
 hintGui.IgnoreGuiInset = true
 hintGui.Parent = playerGui
@@ -47,7 +107,16 @@ local hintLabel = Instance.new("TextLabel")
 hintLabel.Name = "HintText"
 hintLabel.AnchorPoint = Vector2.new(0.5, 1)
 hintLabel.Position = UDim2.new(0.5, 0, 0.85, 0)
-hintLabel.Size = UDim2.new(0, 300, 0, 40)
+--[[ ⚠️ ПОДЛОЖКА РАСТЁТ ПО ТЕКСТУ, А НЕ ДЕРЖИТ 300 ПИКСЕЛЕЙ.
+     Ширина была прибита гвоздями, а строка «Кликни по плоту, чтобы поставить
+     грядку | [R] Поворот» при кегле 18 занимает под четыреста пикселей — текст
+     торчал за края чёрной плашки с обеих сторон. На мониторе это выглядело
+     небрежно, на телефоне — сломано.
+     Растём по содержимому и упираемся в ширину экрана: длинная подсказка
+     переносится на вторую строку вместо того, чтобы уезжать за край. ]]
+hintLabel.Size = UDim2.new(0, 0, 0, 40)
+hintLabel.AutomaticSize = Enum.AutomaticSize.XY
+hintLabel.TextWrapped = true
 hintLabel.BackgroundColor3 = Color3.fromRGB(0, 0, 0)
 hintLabel.BackgroundTransparency = 0.4
 hintLabel.Text = ""
@@ -57,11 +126,159 @@ hintLabel.Font = Enum.Font.GothamBold
 hintLabel.Visible = false
 hintLabel.Parent = hintGui
 
+-- ⚠️ Подсказка уступает диалогу: пока собеседник говорит, она поднимается
+-- над его окном. Правило одно на всю игру — см. ReplicatedStorage/HudDock.
+local HudDock = require(game:GetService("ReplicatedStorage"):WaitForChild("HudDock"))
+-- Второй аргумент-препятствие — ряд «Выпить/Вылить»: на низком экране он
+-- стоял ровно там же, где подсказка, и текст ложился на кнопки. Ряд создаётся
+-- ниже по файлу, поэтому вызов отложен до его появления (см. cupBtnRow).
+
+-- воздух по бокам: без него текст упирается прямо в край плашки
+local hintPad = Instance.new("UIPadding")
+hintPad.PaddingLeft = UDim.new(0, 14)
+hintPad.PaddingRight = UDim.new(0, 14)
+hintPad.PaddingTop = UDim.new(0, 6)
+hintPad.PaddingBottom = UDim.new(0, 6)
+hintPad.Parent = hintLabel
+
+local hintCap = Instance.new("UISizeConstraint")
+hintCap.MinSize = Vector2.new(0, 40)
+hintCap.Parent = hintLabel
+do
+	local function fitHint()
+		local cam = workspace.CurrentCamera
+		local w = (cam and cam.ViewportSize.X > 0) and cam.ViewportSize.X or 1280
+		hintCap.MaxSize = Vector2.new(math.max(w - 40, 220), math.huge)
+	end
+	fitHint()
+	if workspace.CurrentCamera then
+		workspace.CurrentCamera:GetPropertyChangedSignal("ViewportSize"):Connect(fitHint)
+	end
+end
+
 local hintCorner = Instance.new("UICorner")
 hintCorner.CornerRadius = UDim.new(0, 8)
 hintCorner.Parent = hintLabel
 
+--[[ ⚠️ ТЕКСТ ПОДСКАЗКИ РАЗНЫЙ У МЫШИ И У ПАЛЬЦА, И ЭТО НЕ КОСМЕТИКА.
+     На телефоне тап больше НЕ ставит предмет — он выбирает место, а ставит
+     кнопка (см. TouchPlace). Оставь здесь «Кликни по плоту, чтобы поставить» —
+     и подсказка учила бы ровно тому, что не работает. Клавиша R там тоже
+     недоступна, вместо неё круглая кнопка со стрелкой. ]]
+local function placeHint(what)
+	if TouchPlace.isPhone() then
+		return ("Тапни, куда поставить %s, потом нажми молоток. Кнопка рядом — поворот"):format(what)
+	end
+	return ("Кликни по плоту, чтобы поставить %s | [R] Поворот"):format(what)
+end
+
+-- ⚠️ ЗДЕСЬ БЫЛА ВРЕМЕННАЯ СТРОКА СОСТОЯНИЯ (модуль/сеанс/окно/кнопка).
+-- Она писалась поверх кадра на телефоне, пока мы разбирались, где рвётся
+-- постановка с пальца. Постановка работает — строка убрана: игроку она
+-- показывала отладку прямо в игре и налезала на подсказку.
+
+-- ─── Кнопки кружки над хотбаром ───
+-- «Выпить» и «Вылить» — единственные действия кружки, у которых нет цели в мире:
+-- их не на что навести, поэтому клавиш им мало (на телефоне их нет), а клик по
+-- пустому месту был бы угадайкой. Кнопки нажимаются и мышью, и пальцем.
+local cupBtnGui = Instance.new("ScreenGui")
+cupBtnGui.Name = "CupActions"
+cupBtnGui.ResetOnSpawn = false
+cupBtnGui.IgnoreGuiInset = true
+cupBtnGui.DisplayOrder = 16   -- над хотбаром (15), под инвентарём
+cupBtnGui.Enabled = false
+cupBtnGui.Parent = playerGui
+
+local cupBtnRow = Instance.new("Frame")
+cupBtnRow.AnchorPoint = Vector2.new(0.5, 1)
+cupBtnRow.Position = UDim2.new(0.5, 0, 1, -112)   -- над полосой хотбара
+cupBtnRow.Size = UDim2.fromOffset(10, 40)
+cupBtnRow.AutomaticSize = Enum.AutomaticSize.X
+cupBtnRow.BackgroundTransparency = 1
+cupBtnRow.Parent = cupBtnGui
+HudDock.keepAbove(hintLabel, 12, cupBtnRow)
+
+local cupBtnLayout = Instance.new("UIListLayout")
+cupBtnLayout.FillDirection = Enum.FillDirection.Horizontal
+cupBtnLayout.HorizontalAlignment = Enum.HorizontalAlignment.Center
+cupBtnLayout.VerticalAlignment = Enum.VerticalAlignment.Center
+cupBtnLayout.SortOrder = Enum.SortOrder.LayoutOrder
+cupBtnLayout.Padding = UDim.new(0, 10)
+cupBtnLayout.Parent = cupBtnRow
+
+local function makeCupButton(order, text, colour, onClick)
+	local b = Instance.new("TextButton")
+	b.LayoutOrder = order
+	b.AutomaticSize = Enum.AutomaticSize.X
+	b.Size = UDim2.fromOffset(0, 38)
+	b.BackgroundColor3 = colour
+	b.BorderSizePixel = 0
+	b.Font = Enum.Font.GothamBlack
+	b.TextSize = 17
+	b.TextColor3 = Color3.new(1, 1, 1)
+	b.Text = text
+	b.AutoButtonColor = true
+	b.Visible = false
+	b.Parent = cupBtnRow
+
+	local pad = Instance.new("UIPadding")
+	pad.PaddingLeft = UDim.new(0, 16)
+	pad.PaddingRight = UDim.new(0, 16)
+	pad.Parent = b
+
+	local corner = Instance.new("UICorner")
+	corner.CornerRadius = UDim.new(0, 10)
+	corner.Parent = b
+
+	-- ⚠️ Border: по умолчанию ApplyStrokeMode обводит БУКВЫ, и надпись превращается
+	-- в кашу. Рамка нужна вокруг кнопки.
+	local stroke = Instance.new("UIStroke")
+	stroke.Thickness = 2
+	stroke.Color = Color3.new(0, 0, 0)
+	stroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+	stroke.Parent = b
+
+	b.Activated:Connect(onClick)
+	return b
+end
+
+local drinkBtn = makeCupButton(1, "Выпить воду", Color3.fromRGB(58, 150, 220), function()
+	if not currentTool then return end
+	if currentTool:GetAttribute("CupState") ~= "fresh" then return end
+	cupActionEvent:FireServer("drink")
+end)
+
+local dumpBtn = makeCupButton(2, "Вылить воду", Color3.fromRGB(150, 160, 175), function()
+	if not currentTool then return end
+	local st = currentTool:GetAttribute("CupState")
+	if st ~= "salty" and st ~= "fresh" then return end
+	cupActionEvent:FireServer("dumpWater")
+end)
+
+local function updateCupButtons()
+	local st = currentTool and currentTool:GetAttribute("CupState")
+	drinkBtn.Visible = (st == "fresh")
+	dumpBtn.Visible  = (st == "salty" or st == "fresh")
+	cupBtnGui.Enabled = drinkBtn.Visible or dumpBtn.Visible
+end
+
+--[[ ⚠️ ПРИ ОТКРЫТОМ ДИАЛОГЕ КНОПКИ УХОДЯТ ВЫШЕ.
+     Окно диалога (DialogueUI) само встаёт вплотную над хотбаром — ровно туда
+     же, где стоят «Выпить/Вылить», и накрывало их собой.
+     Меряем НЕ фиксированную высоту диалога, а верх его колонки: она растёт по
+     длине реплики и по числу вариантов ответа, поэтому любое заранее вписанное
+     число разъехалось бы на первой же длинной фразе.
+     ⚠️ РАНЬШЕ ЗДЕСЬ БЫЛ СВОЙ ЗАМЕР col.AbsolutePosition.Y — и кнопки уезжали
+     на сотню пикселей выше окна: у колонки с AutomaticSize и UIScale эта
+     координата врёт (см. HudDock и DialogueUI.VisualTop). Теперь ряд ведёт
+     тот же HudDock, что и подсказки: верх окна считает сам диалог, зазор и
+     системы координат учтены в одном месте. Родная позиция ряда (1, -112) —
+     это его же место над хотбаром, когда диалога нет. ]]
+HudDock.keepAbove(cupBtnRow, 10)
+HudDock.registerObstacle(cupBtnRow)   -- остальные подсказки встают над этим рядом
+
 local function updateHint()
+	updateCupButtons()
 	if not currentTool then
 		hintLabel.Visible = false
 		return
@@ -69,52 +286,54 @@ local function updateHint()
 
 	-- Bush placement hint
 	if placingBush then
-		hintLabel.Text = "Click on garden bed to plant bush | [R] Rotate"
+		hintLabel.Text = TouchPlace.isPhone()
+			and "Тапни по грядке, потом нажми молоток"
+			or "Кликни по грядке, чтобы посадить куст | [R] Поворот"
 		hintLabel.Visible = true
 		return
 	end
 
 	-- Garden placement hint
 	if placingGarden then
-		hintLabel.Text = "Click on raft to place garden bed | [R] Rotate"
+		hintLabel.Text = placeHint("грядку")
 		hintLabel.Visible = true
 		return
 	end
 
 	if placingBedGardenForTree then
-		hintLabel.Text = "Click on raft to place tree garden bed | [R] Rotate"
+		hintLabel.Text = placeHint("грядку под дерево")
 		hintLabel.Visible = true
 		return
 	end
 
 	-- Placement hints
 	if placingPurifier then
-		hintLabel.Text = "Click on raft to place purifier | [R] Rotate"
+		hintLabel.Text = placeHint("очиститель")
 		hintLabel.Visible = true
 		return
 	end
 
 	if placingWorkbench then
-		hintLabel.Text = "Click on raft to place workbench | [R] Rotate"
+		hintLabel.Text = placeHint("верстак")
 		hintLabel.Visible = true
 		return
 	end
 
 	if placingBed then
-		hintLabel.Text = "Click on raft to place bed | [R] Rotate"
+		hintLabel.Text = placeHint("лежанку")
 		hintLabel.Visible = true
 		return
 	end
 
 	if placingSawmill then
-		hintLabel.Text = "Click on raft to place sawmill | [R] Rotate"
+		hintLabel.Text = placeHint("пилораму")
 		hintLabel.Visible = true
 		return
 	end
 
 	-- Grape tool hint
 	if currentTool.Name == "[GRAPES]" or currentTool.Name == "Grapes" then
-		hintLabel.Text = "Click to eat grapes"
+		hintLabel.Text = "Кликни, чтобы съесть виноград"
 		hintLabel.Visible = true
 		return
 	end
@@ -124,20 +343,20 @@ local function updateHint()
 	-- at a watered bed. Matches the user's expectation that the
 	-- prompt is visible while the seed is in hand.
 	if placingSeed then
-		hintLabel.Text = "Click on watered tree garden bed to plant"
+		hintLabel.Text = "Кликни по политой грядке под дерево, чтобы посадить"
 		hintLabel.Visible = true
 		return
 	end
 
 	local cupState = currentTool:GetAttribute("CupState")
 	if cupState == "empty" then
-		hintLabel.Text = "[Q] Fill with saltwater (aim at water)"
+		hintLabel.Text = "Кликни по воде, чтобы зачерпнуть"
 		hintLabel.Visible = true
 	elseif cupState == "salty" then
-		hintLabel.Text = "Click purifier to pour | [Q] Dump into ocean"
+		hintLabel.Text = "Кликни по очистителю, чтобы залить"
 		hintLabel.Visible = true
 	elseif cupState == "fresh" then
-		hintLabel.Text = "Click to drink | [E] Water garden bed"
+		hintLabel.Text = "Кликни по грядке, чтобы полить"
 		hintLabel.Visible = true
 	else
 		hintLabel.Visible = false
@@ -173,6 +392,32 @@ local function createGhost(templateName)
 	ghost = template:Clone()
 	ghost.Name = "PlacementGhost"
 
+	-- ⚠️ ГРЯДКУ ВЫПРЯМЛЯЕМ ПРЯМО В ПРИЗРАКЕ.
+	-- Модель приезжает из FBX с собственным поворотом, и PivotTo его сохраняет:
+	-- призрак показывал ящик, стоящий на ребро, — ровно то же, что потом
+	-- вставало на плот. Сервер при установке всё равно приводит грядку к «лежит
+	-- плашмя, поворот только вокруг вертикали», поэтому и превью обязано
+	-- показывать именно это, иначе оно врёт.
+	if templateName == "Raft_planter" then
+		-- В призраке — ТОЛЬКО ЯЩИК Base. Если в шаблоне ещё лежат стадии
+		-- (политая база, ростки, урожай — сервер не успел вычистить или в
+		-- плейсе дубликат шаблона), предпросмотр показывал их все стопкой.
+		local base = ghost:FindFirstChild("Base", true)
+		if base and base:IsA("BasePart") then
+			for _, p in ipairs(ghost:GetDescendants()) do
+				if p:IsA("BasePart") and p ~= base then p:Destroy() end
+			end
+		end
+		for _, p in ghost:GetDescendants() do
+			if p:IsA("BasePart") then
+				p.CFrame = CFrame.new(p.Position)
+			end
+		end
+		if ghost:IsA("Model") and ghost.PrimaryPart then
+			ghost.WorldPivot = ghost.PrimaryPart.CFrame
+		end
+	end
+
 	-- Reset WorldPivot to bounding box center with identity rotation
 	local bbCF, bbSize = ghost:GetBoundingBox()
 	ghost.WorldPivot = CFrame.new(bbCF.Position)
@@ -207,13 +452,32 @@ local function createGhost(templateName)
 	highlight.Name                = "GhostHighlight"
 	highlight.DepthMode           = Enum.HighlightDepthMode.AlwaysOnTop
 	highlight.FillColor           = Color3.fromRGB(80, 255, 80)
-	highlight.FillTransparency    = 0.3
+	highlight.FillTransparency    = 0.15
 	highlight.OutlineColor        = Color3.fromRGB(80, 255, 80)
 	highlight.OutlineTransparency = 0
 	highlight.Adornee             = ghost
 	highlight.Parent              = ghost
 
 	ghost.Parent = workspace
+	--[[ ⚠️ ПОМЕЧАЕМ ПРИЗРАК, ЧТОБЫ ЕГО НЕ ПРИНЯЛИ ЗА ПОСТРОЙКУ.
+	     Призрак — полная копия модели, с тем же именем. Чужие системы ищут свои
+	     объекты именно по имени и находили его: подсказка плавильни начиналась,
+	     когда печь ещё в руках, а не на плоту. Метка стоит копейки и снимает
+	     целый класс таких путаниц. ]]
+	ghost:SetAttribute("PlacementGhost", true)
+
+	--[[ ⚠️ СЕАНС УСТАНОВКИ НАЧИНАЕМ ЗДЕСЬ, А НЕ В СЕМИ ВЕТКАХ ЭКИПИРОВКИ.
+	     Призрак создаётся ровно в тот момент, когда игрок взял ставящийся
+	     предмет, — какой бы из семи это ни был. Одна точка вместо семи, и
+	     новый предмет получит телефонную схему даром.
+	     Функции подтверждения и поворота определены ниже по файлу, поэтому
+	     зовём их через обёртки: к моменту нажатия они уже на месте. ]]
+	TouchPlace.begin({
+		confirm = function() if onPlaceClick then onPlaceClick() end end,
+		rotate  = function() if rotatePlacement then rotatePlacement() end end,
+		-- призрак заслоняет палубу: без этого тап упирался бы в него самого
+		ignore  = function() return ghost end,
+	})
 end
 
 local function destroyGhost()
@@ -225,6 +489,8 @@ local function destroyGhost()
 	lastGhostCF = nil
 	lastGhostRaftOffset = nil
 	lastTargetGarden = nil
+	-- сеанс установки закончился: убрать кнопки телефона и забыть точку тапа
+	TouchPlace.finish()
 end
 
 local function setGhostColor(valid)
@@ -235,9 +501,14 @@ local function setGhostColor(valid)
 	-- Per-part BasePart.Color tint — works on plain-colour primitives
 	-- (berry bush parts); no-op on textured MeshParts where the
 	-- Highlight below picks up the slack.
+	--[[ ⚠️ ГАСИМ И МАТЕРИАЛ, А НЕ ТОЛЬКО ЦВЕТ.
+	     У грядки и верстака поверхность текстурная: заливка цветом по ней почти
+	     не читается, и призрак выглядел обычным деревянным — «подсветки нет».
+	     Гладкий пластик отдаёт цвет честно, а призраку фактура и не нужна. ]]
 	for _, part in ghost:GetDescendants() do
 		if part:IsA("BasePart") then
 			part.Color = color
+			part.Material = Enum.Material.SmoothPlastic
 		end
 	end
 
@@ -256,7 +527,7 @@ local function setGhostColor(valid)
 	end
 	highlight.FillColor           = color
 	highlight.OutlineColor        = color
-	highlight.FillTransparency    = 0.3
+	highlight.FillTransparency    = 0.15
 	highlight.OutlineTransparency = 0
 
 	-- Tidy up any SelectionBox leftovers from the previous approach
@@ -309,10 +580,26 @@ local function isPlacementBlocked(placeCF, ghostSize)
 	local parts = workspace:GetPartBoundsInBox(placeCF, checkSize, overlapParams)
 
 	-- Known placed object names to check against
+	--[[ ⚠️ ИМЕНА ЗДЕСЬ — ИМЕНА МОДЕЛЕЙ В МИРЕ, А НЕ ТУЛОВ, И СПИСОК ОТСТАЛ.
+	     Проверка занятости была, но не находила почти ничего: грядка давно
+	     ставится моделью Raft_planter, кровать — Raft_bed_leaf, а монолита,
+	     ремонтной станции, плавильни, мангала, костра и печи в списке не было
+	     вовсе. Что не названо — то не «занято», поэтому грядка спокойно вставала
+	     внутрь монолита: подсветка оставалась зелёной, и сервер получал согласие
+	     клиента.
+	     Добавляя новую постройку, впиши сюда ИМЯ ЕЁ МОДЕЛИ — иначе рядом с ней
+	     можно будет строить внахлёст. ]]
 	local placedObjectNames = {
-		WorkBench = true, Purifier = true, Garden = true,
-		Bed_T = true,
+		-- старые имена: часть моделей ещё встречается в сохранениях
+		WorkBench = true, Purifier = true, Garden = true, Bed_T = true,
 		Bed = true, Destitalor = true, bush = true, Sawmill = true,
+		-- нынешние модели построек плота
+		Raft_planter = true, Raft_bed_leaf = true, Raft_smelter = true, Raft_scarecrow = true,
+		Raft_chair = true, Raft_chair_leaf = true, Raft_table_leaves = true,   -- декор (DecorPlace)
+		Raft_grill = true, Raft_grill_barrel = true, FireCamp = true,
+		Furnace = true,
+		-- переносимые: их тоже нельзя перекрывать
+		Monolit_Aquamen = true, Raft_repair_station = true,
 	}
 
 	for _, part in parts do
@@ -341,8 +628,13 @@ local function updateGhost()
 		return
 	end
 
-	-- Raycast from mouse
-	local unitRay = camera:ViewportPointToRay(mouse.X, mouse.Y)
+	-- Луч прицела: на компьютере из курсора, на телефоне — в точку тапа (TouchPlace)
+	local unitRay = TouchPlace.ray(mouse)
+	if not unitRay then
+		-- телефон, места ещё не выбрали: показывать призрак негде
+		setGhostColor(false)
+		return
+	end
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
 	params.FilterDescendantsInstances = {ghost, player.Character}
@@ -396,6 +688,36 @@ local function updateGhost()
 
 			local placeCF = CFrame.new(hitPos.X, hitPos.Y + ghostSize.Y / 2, hitPos.Z) * CFrame.Angles(0, restYaw + rotationAngle, 0) * ghostTemplateRotation
 			ghost:PivotTo(placeCF)
+
+			-- ⚠️ ГРЯДКА: ВЫРАВНИВАЕМ ПОСЛЕ PivotTo, А НЕ ДО.
+			-- Выпрямления шаблона и клона оказалось мало — поворот возвращался
+			-- уже здесь, через пивот. Сервер при установке приводит грядку к
+			-- «лежит плашмя, поворот только вокруг вертикали», и превью обязано
+			-- показывать ровно это, иначе оно врёт про результат.
+			--
+			-- Заодно чинится и высота: подъём считается как половина
+			-- ghostSize.Y, а у наклонённого ящика в Y попадала ШИРИНА (3.9
+			-- вместо 1.2) — грядка вставала в воздухе выше палубы.
+			if placingGarden then
+				local parts = {}
+				for _, p in ghost:GetDescendants() do
+					if p:IsA("BasePart") then table.insert(parts, p) end
+				end
+				-- Только если ящик — ОДНА деталь. Так и должно быть после
+				-- раскладки ассетов; если деталей больше, значит раскладка не
+				-- отработала, и сводить их в один CFrame нельзя — модель
+				-- схлопнется в точку.
+				if #parts == 1 then
+					local yaw = restYaw + rotationAngle
+					local box = parts[1]
+					box.CFrame = CFrame.new(box.Position) * CFrame.Angles(0, yaw, 0)
+					-- Подъём считаем по УЖЕ выпрямленному ящику.
+					box.CFrame = CFrame.new(hitPos.X, hitPos.Y + box.Size.Y / 2, hitPos.Z)
+						* CFrame.Angles(0, yaw, 0)
+					placeCF = box.CFrame
+				end
+			end
+
 			lastGhostCF = placeCF
 			lastGhostRaftOffset = raft.PrimaryPart.CFrame:ToObjectSpace(placeCF)
 
@@ -483,7 +805,9 @@ local function onToolEquipped(tool)
 		placingWorkbench = false
 		placingBed = false
 		placingBedGardenForTree = false
-		createGhost("Garden")
+		-- Призрак строится по НОВОЙ модели грядки: старая Garden заменена
+		-- на Raft_planter, поведение даёт PlanterService.
+		createGhost("Raft_planter")
 	elseif tool.Name == "Bed_T" then
 		placingBedGardenForTree = true
 		placingGarden = false
@@ -501,7 +825,12 @@ local function onToolEquipped(tool)
 		placingGarden = false
 		placingBedGardenForTree = false
 		placingSawmill = false
-		createGhost("Bed")
+		-- ⚠️ ПРИЗРАК СТРОИМ ИЗ ТОЙ ЖЕ МОДЕЛИ, ЧТО СТАВИТ СЕРВЕР.
+		-- Тул называется "Bed" по-прежнему, а модель сменилась на Raft_bed_leaf
+		-- (BedCrafting). Пока здесь стояло имя тула, предпросмотр показывал старую
+		-- кровать — и не только выглядел не тем: у старой другая высота, поэтому и
+		-- место под установку считалось не то.
+		createGhost("Raft_bed_leaf")
 	elseif tool.Name == "Sawmill" then
 		placingSawmill = true
 		placingPurifier = false
@@ -585,17 +914,26 @@ end)
 -- ─── R key to rotate placement ───
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if UserInputService:GetFocusedTextBox() then return end
-	if input.KeyCode == Enum.KeyCode.R and (placingPurifier or placingWorkbench or placingGarden or placingBedGardenForTree or placingBed or placingBush or placingSawmill) then
-		rotationAngle = rotationAngle + math.rad(90)
+	if GamepadInput.isKey(input, Enum.KeyCode.R) and (placingPurifier or placingWorkbench or placingGarden or placingBedGardenForTree or placingBed or placingBush or placingSawmill) then
+		rotatePlacement()
 	end
 end)
 
--- ─── Mouse Click Handler ───
-mouse.Button1Down:Connect(function()
+-- поворот на четверть — общий для клавиши R и для экранной кнопки на телефоне
+function rotatePlacement()
+	rotationAngle = rotationAngle + math.rad(90)
+end
+
+-- Определена ниже по файлу, но нужна уже в обработчике клика.
+local isCursorOverWater
+
+-- ─── Клик мышью / подтверждение постановки ───
+-- Тело общее: на компьютере его зовёт ЛКМ, на телефоне — кнопка «ПОСТАВИТЬ».
+function onPlaceClick()
 	if not currentTool then return end
 
 	local function playPlaceSound()
-		local folder = SoundService:FindFirstChild("Building")
+		local folder = (SoundService:FindFirstChild("Building") or SoundService:FindFirstChild("Building", true))
 		local snd = folder and folder:FindFirstChild("Place_Block")
 		if snd then snd:Play() end
 	end
@@ -633,7 +971,7 @@ mouse.Button1Down:Connect(function()
 	-- Garden placement
 	if placingGarden and ghost then
 		if not lastGhostValid or not lastGhostRaftOffset then return end
-		gardenActionEvent:FireServer("placeGarden", lastGhostRaftOffset)
+		gardenActionEvent:FireServer("placePlanter", lastGhostRaftOffset)
 		playPlaceSound()
 		destroyGhost()
 		placingGarden = false
@@ -711,6 +1049,13 @@ mouse.Button1Down:Connect(function()
 	local target = mouse.Target
 	local purifier = target and findPurifier(target)
 
+	-- ⚠️ ВСЯ КРУЖКА — НА ОДНОМ ЛКМ.
+	-- Раньше набор воды висел на Q, а глоток случался от любого клика. На телефоне
+	-- клавиши Q нет вовсе, то есть набрать воду было нельзя в принципе; глоток же
+	-- срабатывал случайно — щёлкнул по плоту с полной кружкой и выпил. Теперь
+	-- КЛИК = «применить кружку к тому, на что смотрю»: по воде — зачерпнуть, по
+	-- очистителю — залить или набрать готовую. Питьё и слив переехали на кнопки
+	-- над хотбаром (они одинаково нажимаются мышью и пальцем).
 	if cupState == "empty" then
 		if purifier then
 			local waterType = purifier:GetAttribute("WaterType")
@@ -718,18 +1063,43 @@ mouse.Button1Down:Connect(function()
 			if waterType == "fresh" and waterLevel > 0 then
 				cupActionEvent:FireServer("collectWater", target)
 			end
+		elseif isCursorOverWater() then
+			cupActionEvent:FireServer("scoopSaltwater")
 		end
 	elseif cupState == "salty" then
 		if purifier then
 			cupActionEvent:FireServer("fillPurifier", target)
 		end
-	elseif cupState == "fresh" then
-		cupActionEvent:FireServer("drink")
 	end
+	-- cupState == "fresh": клик ничего не делает сам по себе. Полив грядки идёт
+	-- через её собственный клик (PlanterInteract), глоток — через кнопку.
+end
+
+--[[ ⚠️ НА ТЕЛЕФОНЕ ТАП НЕ СТАВИТ — ОН ВЫБИРАЕТ МЕСТО.
+     Roblox превращает касание экрана в тот же Button1Down, поэтому раньше первый
+     же тап мгновенно ставил предмет по координатам ПРЕДЫДУЩЕГО касания: игрок
+     целился, а вещь уже стояла не там. Пока идёт сеанс установки, тап отдаём
+     модулю (он двигает прицел), а ставит кнопка «ПОСТАВИТЬ».
+     Условие именно про сеанс, а не про телефон вообще: с кружкой в руках сеанса
+     нет, и все её действия — набрать, вылить, залить очиститель — тап выполняет
+     как прежде. ]]
+GamepadInput.onPrimary(mouse, function()
+	--[[ ⚠️ ПАЛЕЦ НЕ СТАВИТ НИКОГДА, ПОКА ВИСИТ ПРИЗРАК.
+	     Здесь стояла проверка через модуль (isPhone и active). Она верна по
+	     смыслу, но зависит от того, что модуль поднялся и сеанс открылся, — а
+	     если хоть одно не сложилось, тап снова ставил предмет. Игрок крутит
+	     камеру пальцем, и КАЖДЫЙ поворот превращался в постройку.
+	     Поэтому спрашиваем СВОЁ состояние: висит призрак — значит идёт установка,
+	     и палец в ней только целится. Ставит кнопка, она зовёт onPlaceClick
+	     напрямую и мимо этой проверки. Хуже возможного исхода нет: не поднялся
+	     модуль — предмет не поставится, но и не встанет туда, куда не целились. ]]
+	if IS_TOUCH and ghost then return end
+	onPlaceClick()
 end)
 
 -- ─── Check if cursor is hovering over water ───
-local function isCursorOverWater()
+-- (объявлена выше — обработчик клика зовёт её раньше этого места в файле)
+function isCursorOverWater()
 	local unitRay = camera:ViewportPointToRay(mouse.X, mouse.Y)
 	local params = RaycastParams.new()
 	params.FilterType = Enum.RaycastFilterType.Exclude
@@ -755,44 +1125,12 @@ local function isCursorOverWater()
 	return true
 end
 
--- ─── Find garden bed from raycast at cursor ───
-local function findGardenAtCursor()
-	local unitRay = camera:ViewportPointToRay(mouse.X, mouse.Y)
-	local params = RaycastParams.new()
-	params.FilterType = Enum.RaycastFilterType.Exclude
-	local filterList = {}
-	if player.Character then table.insert(filterList, player.Character) end
-	if ghost then table.insert(filterList, ghost) end
-	params.FilterDescendantsInstances = filterList
+-- (findGardenAtCursor убрана вместе с клавишей E: поиск грядки под курсором теперь
+-- живёт в PlanterInteract, который и обрабатывает клик по ней.)
 
-	local result = workspace:Raycast(unitRay.Origin, unitRay.Direction * 200, params)
-	if not result or not result.Instance then return nil end
-	return findGardenBed(result.Instance)
-end
-
--- ─── Q Key Handler (scoop saltwater from ocean, cursor must be over water) ───
--- ─── E Key Handler (water garden bed with fresh water cup) ───
-UserInputService.InputBegan:Connect(function(input, gameProcessed)
-	if gameProcessed then return end
-	if not currentTool then return end
-
-	if input.KeyCode == Enum.KeyCode.Q then
-		local cupState = currentTool:GetAttribute("CupState")
-		if cupState == "empty" then
-			if not isCursorOverWater() then return end
-			cupActionEvent:FireServer("scoopSaltwater")
-		elseif cupState == "salty" then
-			cupActionEvent:FireServer("dumpWater")
-		end
-
-	elseif input.KeyCode == Enum.KeyCode.E then
-		local cupState = currentTool:GetAttribute("CupState")
-		if cupState ~= "fresh" then return end
-
-		local garden = findGardenAtCursor()
-		if not garden then return end
-		if garden:GetAttribute("IsWatered") == true then return end
-
-		gardenActionEvent:FireServer("waterGarden", garden)
-	end
-end)
+-- ⚠️ КЛАВИШ Q И E У КРУЖКИ БОЛЬШЕ НЕТ.
+-- Q набирала воду и сливала её, E поливала грядку. На телефоне ни той, ни другой
+-- не существует — половина механики была недоступна с телефона вовсе, а игрок за
+-- ПК и игрок с телефона играли в разные игры. Всё переехало на то, что работает
+-- одинаково: набор и заливка — клик по цели (см. обработчик выше), полив — клик
+-- по самой грядке (PlanterInteract), питьё и слив — кнопки над хотбаром (ниже).

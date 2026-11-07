@@ -8,6 +8,8 @@
 local rs                = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 
+local AssetFind = require(rs:WaitForChild("AssetFind"))
+
 local TEMPLATE_NAME      = "Infected Military"
 local SPAWN_INTERVAL     = 240
 local FIRST_SPAWN_DELAY  = 60
@@ -18,7 +20,7 @@ local function getBoat()
 end
 
 local function spawnGuard()
-	local template = rs:FindFirstChild(TEMPLATE_NAME)
+	local template = AssetFind.find(TEMPLATE_NAME)
 	if not template then
 		-- Template missing in this build — quietly skip rather than spam.
 		return

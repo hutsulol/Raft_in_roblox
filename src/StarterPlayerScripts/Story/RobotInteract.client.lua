@@ -1,3 +1,4 @@
+local print, warn = (function() local RS = game:GetService("RunService") if RS:IsServer() then return print, warn end local P, W, Pl = print, warn, game:GetService("Players") local function ok() local p = Pl.LocalPlayer return p ~= nil and p:GetAttribute("DevLogs") == true end return function(...) if ok() then P(...) end end, function(...) if ok() then W(...) end end end)() -- DevLogs: клиентские логи видят только админы (флаг ставит DevLogFlag.server)
 -- RobotInteract.client.lua
 -- Hover highlight + "E - Interact" prompt on the broken Robot.
 -- Press E to open a dialogue menu with typewriter text and a Claim
@@ -14,6 +15,8 @@ local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local camera    = workspace.CurrentCamera
 local mouse     = player:GetMouse()
+-- ⚠️ Геймпад: что считать кликом и клавишей — одно правило на все файлы (GamepadInput).
+local GamepadInput = require(game:GetService("ReplicatedStorage"):WaitForChild("GamepadInput"))
 
 local storyEvent = ReplicatedStorage:WaitForChild("StoryAction")
 
@@ -130,7 +133,7 @@ local function showHighlight()
 	local lbl = Instance.new("TextLabel")
 	lbl.Size                 = UDim2.new(1, 0, 1, 0)
 	lbl.BackgroundTransparency = 1
-	lbl.Text                 = "E - Interact"
+	lbl.Text                 = "E — Взаимодействие"
 	lbl.TextColor3           = COLOR_ACCENT
 	lbl.TextStrokeTransparency = 0.3
 	lbl.TextStrokeColor3     = Color3.fromRGB(0, 0, 0)
@@ -294,7 +297,7 @@ local function buildDialogueShell(fullText)
 	speakerLbl.Font           = FONT_TITLE
 	speakerLbl.TextSize       = 17
 	speakerLbl.TextColor3     = COLOR_ACCENT
-	speakerLbl.Text           = "Broken Robot"
+	speakerLbl.Text           = "Сломанный робот"
 	speakerLbl.TextXAlignment = Enum.TextXAlignment.Left
 	speakerLbl.Parent         = textBg
 
@@ -321,7 +324,7 @@ local function buildDialogueShell(fullText)
 	actionBtn.Font     = FONT_TITLE
 	actionBtn.TextSize = 17
 	actionBtn.TextColor3       = COLOR_TEXT_DIM
-	actionBtn.Text             = "Skip"
+	actionBtn.Text             = "Пропустить"
 	actionBtn.AutoButtonColor  = true
 	actionBtn.Parent           = panel
 	corner(actionBtn, 8)
@@ -420,7 +423,7 @@ local function openDialogue()
 		local dialogueLbl, actionBtn, closeDialogue = buildDialogueShell(idleText)
 		local textFinished = false
 
-		actionBtn.Text       = "Skip"
+		actionBtn.Text       = "Пропустить"
 		actionBtn.TextColor3 = COLOR_TEXT_DIM
 
 		SOUND_IDLE:Play()
@@ -450,7 +453,7 @@ local function openDialogue()
 			if not textFinished then
 				textFinished = true
 				dialogueLbl.Text     = idleText
-				actionBtn.Text       = "Close"
+				actionBtn.Text       = "Закрыть"
 				actionBtn.TextColor3 = COLOR_ACCENT
 			end
 		end)
@@ -460,7 +463,7 @@ local function openDialogue()
 				textFinished = true
 				SOUND_IDLE:Stop()
 				dialogueLbl.Text     = idleText
-				actionBtn.Text       = "Close"
+				actionBtn.Text       = "Закрыть"
 				actionBtn.TextColor3 = COLOR_ACCENT
 			else
 				SOUND_IDLE:Stop()
@@ -518,7 +521,7 @@ local function openDialogue()
 			if not textFinished then
 				textFinished = true
 				dialogueLbl.Text     = fullText
-				actionBtn.Text       = "Claim"
+				actionBtn.Text       = "Забрать"
 				actionBtn.TextColor3 = COLOR_ACCENT
 			end
 		end)
@@ -528,7 +531,7 @@ local function openDialogue()
 				textFinished = true
 				SOUND_QUEST:Stop()
 				dialogueLbl.Text     = fullText
-				actionBtn.Text       = "Claim"
+				actionBtn.Text       = "Забрать"
 				actionBtn.TextColor3 = COLOR_ACCENT
 			else
 				SOUND_QUEST:Stop()
@@ -541,7 +544,7 @@ end
 
 -- ─── E-key handler ───────────────────────────────────────────────────────
 UserInputService.InputBegan:Connect(function(input, processed)
-	if input.KeyCode == Enum.KeyCode.E and isHovering and not dialogueOpen then
+	if GamepadInput.isKey(input, Enum.KeyCode.E) and isHovering and not dialogueOpen then
 		openDialogue()
 	end
 end)

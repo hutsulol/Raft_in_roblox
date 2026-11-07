@@ -1,6 +1,9 @@
 local Players = game:GetService("Players")
 local rs = game:GetService("ReplicatedStorage")
 local TweenService = game:GetService("TweenService")
+local PlaceCheck = require(game:GetService("ReplicatedStorage"):WaitForChild("PlaceCheck"))   -- «место занято» — общая проверка
+
+local RaftShake = require(rs:WaitForChild("RaftShake"))
 
 -- ─── Config ───
 local WATER_DRY_TIME = 60 -- seconds before watered garden dries out
@@ -277,6 +280,8 @@ local function swapBedModelChildren(garden, templateName, opts)
 		if raftPrimary then
 			raftPrimary.AssemblyLinearVelocity  = linVel
 			raftPrimary.AssemblyAngularVelocity = angVel
+			-- игрока на палубе сервером не удержать — просим его клиент (RaftShake)
+			RaftShake.notify()
 		end
 
 		for _, bush in bushes do
@@ -343,6 +348,7 @@ local function swapBedModelChildren(garden, templateName, opts)
 		end
 		raftPrimary.AssemblyLinearVelocity  = linVel
 		raftPrimary.AssemblyAngularVelocity = angVel
+		RaftShake.notify()
 	end
 
 	for _, bush in bushes do
@@ -448,7 +454,7 @@ _G.GrowTreeFromSeed = function(garden)
 		"[GardenSystem] GrowTreeFromSeed: %s (PlantedSeed=%s)",
 		garden:GetFullName(),
 		tostring(garden:GetAttribute("PlantedSeed"))
-	))
+		))
 	growTree(garden, 1)
 end
 
@@ -516,7 +522,7 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 				toolName,
 				toolName,
 				tool and tool.Name or "<none>"
-			))
+				))
 			return
 		end
 
@@ -569,6 +575,7 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 		end
 
 		placed:PivotTo(worldCF)
+		if PlaceCheck.refuseIfBlocked(placed, raft, player) then return end   -- в предмет ставить нельзя
 		placed.Parent = raft
 
 		-- Stamp the player's original placement pose as a raft-relative
@@ -610,11 +617,16 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		primary.AssemblyLinearVelocity  = linVel
 		primary.AssemblyAngularVelocity = angVel
+		RaftShake.notify()
 
 		-- Remove tool from player
 		tool:Destroy()
 	end
 
+	-- ⚠️ "placeGarden" БОЛЬШЕ НЕ ШЛЁТСЯ КЛИЕНТОМ.
+	-- Обычная грядка заменена на Raft_planter, её ставит PlanterService по
+	-- действию "placePlanter". Ветку оставляю рабочей ради грядок из старых
+	-- сохранений и на случай отката — она просто перестала вызываться.
 	if action == "placeGarden" then
 		placeBedTemplate("Garden", "Garden", "Garden", {
 			IsGarden     = true,
@@ -673,6 +685,15 @@ gardenActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		if _G.RemoveResourceFromInventory then
 			_G.RemoveResourceFromInventory(player, seedName, 1)
+			-- списание не рисует себя само: без этого посаженное семя оставалось
+			-- на экране в рюкзаке до следующего пересчёта инвентаря
+			if _G.SendInventory then _G.SendInventory(player) end
+		end
+
+		-- Квест «Свой огород» слушает именно посадку: событие по названию семени,
+		-- чтобы одна грядка не закрывала задание про другую культуру.
+		if _G.OnQuestEvent then
+			pcall(_G.OnQuestEvent, player, "planted:" .. seedName, 1)
 		end
 
 		target:SetAttribute("PlantedSeed", seedName)

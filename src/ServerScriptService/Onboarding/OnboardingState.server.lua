@@ -46,7 +46,7 @@ end
 -- ─── State cache + dirty tracking ─────────────────────────────────────
 local states = {}    -- [player] = state table
 local dirty  = {}    -- [player] = true when the in-memory state has
-                     -- diverged from the last persisted snapshot
+-- diverged from the last persisted snapshot
 
 local function freshState()
 	return {

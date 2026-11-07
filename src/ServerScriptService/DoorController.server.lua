@@ -135,21 +135,20 @@ local function setupDoor(doorModel, raft)
 	-- closed (Identity) and open (±90° around Y) poses.
 	local prompt = base:FindFirstChildWhichIsA("ProximityPrompt")
 	if not prompt then return end
-	prompt.ActionText = "Open"
+	prompt.ActionText = "Открыть"
 	local tweenInfo = TweenInfo.new(0.5, Enum.EasingStyle.Quad, Enum.EasingDirection.Out)
 	local closedCF = CFrame.new()
 	local openCF = CFrame.Angles(0, math.rad(90), 0)
 
+	-- Состояние держим В ПЕРЕМЕННОЙ, а не в тексте подсказки: текст —
+	-- это перевод, он меняется вместе с языком игрока, и сравнение с
+	-- английским словом сломало бы дверь на любом другом языке.
+	local isOpen = false
 	prompt.Triggered:Connect(function()
-		local target
-		if prompt.ActionText == "Close" then
-			target = closedCF
-			prompt.ActionText = "Open"
-		else
-			target = openCF
-			prompt.ActionText = "Close"
-		end
-		TweenService:Create(motor, tweenInfo, {Transform = target}):Play()
+		isOpen = not isOpen
+		prompt.ActionText = isOpen and "Закрыть" or "Открыть"
+		TweenService:Create(motor, tweenInfo,
+			{Transform = isOpen and openCF or closedCF}):Play()
 	end)
 end
 

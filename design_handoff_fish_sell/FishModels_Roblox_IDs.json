@@ -1,0 +1,67 @@
+[
+  {
+    "Name": "Fish_Sardine",
+    "MeshId": "rbxassetid://73300241629768",
+    "PreviousMeshId": "rbxassetid://77393943113310"
+  },
+  {
+    "Name": "Fish_Mackerel",
+    "MeshId": "rbxassetid://131845230711747",
+    "PreviousMeshId": "rbxassetid://120997269997474"
+  },
+  {
+    "Name": "Fish_Seabass",
+    "MeshId": "rbxassetid://80856200061842",
+    "PreviousMeshId": "rbxassetid://70781283840412"
+  },
+  {
+    "Name": "Fish_Dorado",
+    "MeshId": "rbxassetid://117431141006156",
+    "PreviousMeshId": "rbxassetid://132266268232891"
+  },
+  {
+    "Name": "Fish_Bream",
+    "MeshId": "rbxassetid://127094266416940",
+    "PreviousMeshId": "rbxassetid://135179271751947"
+  },
+  {
+    "Name": "Fish_Barracuda",
+    "MeshId": "rbxassetid://81373765751359",
+    "PreviousMeshId": "rbxassetid://129191054186772"
+  },
+  {
+    "Name": "Fish_Tuna",
+    "MeshId": "rbxassetid://95998266360573",
+    "PreviousMeshId": "rbxassetid://140300855102958"
+  },
+  {
+    "Name": "Fish_Swordfish",
+    "MeshId": "rbxassetid://124877935390302",
+    "PreviousMeshId": "rbxassetid://108703870169734"
+  },
+  {
+    "Name": "Fish_GoldFugu",
+    "MeshId": "rbxassetid://77585859097471",
+    "PreviousMeshId": "rbxassetid://128715536993690"
+  },
+  {
+    "Name": "Fish_Marlin",
+    "MeshId": "rbxassetid://104475141586956",
+    "PreviousMeshId": "rbxassetid://89575681383522"
+  },
+  {
+    "Name": "Fish_GhostRay",
+    "MeshId": "rbxassetid://111226973382504",
+    "PreviousMeshId": "rbxassetid://96282500612595"
+  },
+  {
+    "Name": "Fish_Krakenling",
+    "MeshId": "rbxassetid://96698305869357",
+    "PreviousMeshId": "rbxassetid://115776467702691"
+  },
+  {
+    "Name": "Fish_Leviathan",
+    "MeshId": "rbxassetid://87457518046211",
+    "PreviousMeshId": "rbxassetid://127636309022009"
+  }
+]

@@ -19,31 +19,76 @@ local RunService = game:GetService("RunService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 
--- Names of ScreenGuis that need a free cursor when open. HUDs (HotbarGui,
--- BuildingGui, health/hunger bars, etc.) are intentionally excluded — they
--- coexist with normal gameplay and must NOT unlock the mouse.
+-- Меню, которым нужен свободный курсор. HUD'ы (хотбар, стройка, полоски, тосты)
+-- сюда НЕ входят намеренно: они живут поверх обычной игры, и разблокировка мыши
+-- отобрала бы у игрока обзор от первого лица.
+--
+-- ⚠️ СПИСОК БЫЛ НЕПОЛНЫМ, и это ровно то, из-за чего в меню монолита нельзя было
+-- двигать курсором от первого лица: имени MonolithMenuGui здесь просто не было.
+-- Ниже перечислены ВСЕ клик-меню проекта; для новых есть два способа не трогать
+-- этот файл — атрибут ModalUI = true на ScreenGui или вызов _G.RegisterModalUI(gui).
 local MODAL_UI_NAMES = {
+	-- станки и хранилища
 	WorkbenchGui = true,
 	FurnaceGui = true,
 	InventoryGui = true,
+	ContainerGui = true,
+	-- монолит: и починка, и апгрейды — это одно окно
+	MonolithMenuGui = true,
+	-- лобби и сейвы
 	LobbyCreateGui = true,
 	LobbyWaitGui = true,
 	LobbyJoinGui = true,
 	ContinuePromptGui = true,
 	NoSaveGui = true,
+	RaftGameOverGui = true,
+	-- наёмники, квесты, телефон
+	RecruitmentGui = true,
+	MercInventory = true,
+	MercCommandMenu = true,
+	QuestMenuGui = true,
+	BrainMazeGui = true,
+	PhoneMenu = true,
+	-- прочее с кнопками
+	EggCaseGui = true,
+	SettingsMenu = true,
+	--[[ ⚠️ DialogueGui здесь НЕТ намеренно. Кнопка с Modal = true не только
+	     отпускает курсор, но и запрещает вращать камеру правой кнопкой мыши —
+	     а реплика висит подолгу, и игрок в это время хочет оглядываться
+	     («не могу повернуть камеру ПКМ при диалоге»). Курсор в диалоге и так
+	     свободен: плашка и кнопки ответов — обычные TextButton. ]]
+	AnchorUI = true,
 }
 
-local activeModalGuis = {}
+local MODAL_ATTRIBUTE = "ModalUI"
+
+local UNLOCK_NAME = "__ModalUnlock"
+local activeModalGuis = {}   -- [ScreenGui] = кнопка Modal
+
+-- ОТКРЫТО ЛИ ОКНО. Проверять один только Enabled НЕЛЬЗЯ: половина меню проекта
+-- (наёмники, вербовка, приказы, диалог) висит всегда включённой, а прячется через
+-- Visible на своём корневом фрейме. Если считать такие меню открытыми, мышь
+-- разблокируется навсегда и игрок теряет обзор от первого лица.
+local function isOpen(gui)
+	if not gui.Parent or not gui.Enabled then return false end
+	for _, c in ipairs(gui:GetChildren()) do
+		-- собственная кнопка-разблокировщик не в счёт, она видима всегда
+		if c.Name ~= UNLOCK_NAME and c:IsA("GuiObject") and c.Visible then return true end
+	end
+	return false
+end
 
 local function attachModal(screenGui)
-	if screenGui:FindFirstChild("__ModalUnlock") then return end
+	if activeModalGuis[screenGui] then return end
+	local existing = screenGui:FindFirstChild(UNLOCK_NAME)
+	if existing then activeModalGuis[screenGui] = existing return end
 
-	-- An invisible GuiButton with Modal = true is enough — the camera
-	-- script checks for any visible Modal button in PlayerGui and
-	-- releases the mouse when it finds one.
+	-- Невидимой кнопки с Modal = true достаточно: скрипт камеры ищет в PlayerGui
+	-- любую видимую Modal-кнопку и отпускает мышь, найдя её. Само значение Modal
+	-- держим в такт с открытостью окна — см. цикл ниже.
 	local btn = Instance.new("TextButton")
-	btn.Name = "__ModalUnlock"
-	btn.Modal = true
+	btn.Name = UNLOCK_NAME
+	btn.Modal = false
 	btn.Visible = true
 	btn.Active = true
 	btn.BackgroundTransparency = 1
@@ -55,18 +100,26 @@ local function attachModal(screenGui)
 	btn.ZIndex = 1
 	btn.Parent = screenGui
 
-	activeModalGuis[screenGui] = true
+	activeModalGuis[screenGui] = btn
 	screenGui.AncestryChanged:Connect(function(_, parent)
-		if not parent then
-			activeModalGuis[screenGui] = nil
-		end
+		if not parent then activeModalGuis[screenGui] = nil end
 	end)
 end
 
+local function isModal(gui)
+	return MODAL_UI_NAMES[gui.Name] == true or gui:GetAttribute(MODAL_ATTRIBUTE) == true
+end
+
 local function checkChild(child)
-	if child:IsA("ScreenGui") and MODAL_UI_NAMES[child.Name] then
+	if not child:IsA("ScreenGui") then return end
+	if isModal(child) then
 		attachModal(child)
+		return
 	end
+	-- Атрибут может проставиться уже после появления окна (окно строится лениво).
+	child:GetAttributeChangedSignal(MODAL_ATTRIBUTE):Connect(function()
+		if child:GetAttribute(MODAL_ATTRIBUTE) == true then attachModal(child) end
+	end)
 end
 
 for _, child in playerGui:GetChildren() do
@@ -75,14 +128,24 @@ end
 
 playerGui.ChildAdded:Connect(checkChild)
 
--- Backup: force unlock cursor each frame while a modal UI exists.
+-- Способ для нового меню не трогать этот файл: позвать отсюда свой ScreenGui.
+-- Второй способ — атрибут ModalUI = true, он же работает и из Studio.
+_G.RegisterModalUI = function(gui)
+	if typeof(gui) == "Instance" and gui:IsA("ScreenGui") then attachModal(gui) end
+end
+
+-- ОДИН ЦИКЛ НА ВСЁ. Здесь и Modal у кнопок держится в такт с открытостью окон, и
+-- страхуется сама мышь: если какой-то чужой скрипт снова запрёт её в центре, на
+-- следующем кадре она освободится. Подписываться на Visible каждого фрейма меню
+-- смысла нет — окон два десятка, а проверка стоит копейки.
 RunService.RenderStepped:Connect(function()
-	for gui in pairs(activeModalGuis) do
-		if gui.Parent then
-			if UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
-				UserInputService.MouseBehavior = Enum.MouseBehavior.Default
-			end
-			return
-		end
+	local anyOpen = false
+	for gui, btn in pairs(activeModalGuis) do
+		local open = isOpen(gui)
+		if btn.Modal ~= open then btn.Modal = open end   -- пишем только на смене
+		anyOpen = anyOpen or open
+	end
+	if anyOpen and UserInputService.MouseBehavior ~= Enum.MouseBehavior.Default then
+		UserInputService.MouseBehavior = Enum.MouseBehavior.Default
 	end
 end)

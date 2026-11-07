@@ -11,8 +11,8 @@ if not openWorkbenchEvent then
 end
 
 local prompt = Instance.new("ProximityPrompt")
-prompt.ActionText = "Craft"
-prompt.ObjectText = "WorkBench"
+prompt.ActionText = "Создать"
+prompt.ObjectText = "Верстак"
 prompt.KeyboardKeyCode = Enum.KeyCode.E
 prompt.HoldDuration = 0.5
 prompt.MaxActivationDistance = 10

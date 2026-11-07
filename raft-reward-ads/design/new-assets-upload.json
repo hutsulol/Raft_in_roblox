@@ -1,0 +1,17 @@
+{
+  "uploadedAt": "2026-09-24",
+  "creator": "hutsulG",
+  "type": "Image",
+  "assets": [
+    {
+      "file": "icons/check.png",
+      "id": "83933527175920",
+      "sha256": "c00f70de0b4f3a24129c61b9462b6ca85a1aa307ea4cbb01aa446e74bf3a46f2"
+    },
+    {
+      "file": "icons/crown.png",
+      "id": "87007656843998",
+      "sha256": "8bfd80cbd669714e1a2b41f45e7911ccdd2b947551a0a10e9b8bcefd3ba0e3e4"
+    }
+  ]
+}

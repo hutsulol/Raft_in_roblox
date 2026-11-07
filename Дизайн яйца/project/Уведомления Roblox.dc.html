@@ -1,0 +1,269 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Montserrat:wght@500;600;700;800;900&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; background: #e9e6e0; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="font-family: 'Montserrat', sans-serif; color: #2b2620; padding: 48px 40px 80px 40px; max-width: 1440px; margin: 0 auto;">
+
+  <!-- ======================= HEADER ======================= -->
+  <div style="max-width: 880px; margin-bottom: 44px;">
+    <div style="font-size: 13px; font-weight: 800; letter-spacing: 2px; text-transform: uppercase; color: #8a7a5e; margin-bottom: 10px;">Roblox UI · Pirate Island</div>
+    <h1 style="font-size: 34px; font-weight: 900; margin: 0 0 14px 0; line-height: 1.15;">Уведомления по центру экрана</h1>
+    <p style="font-size: 15px; font-weight: 500; line-height: 1.65; color: #5a5247; margin: 0 0 10px 0;">
+      Три варианта дизайна для анонсов в центре экрана: «Жителей: +5», «Древний монолит» и «Телепортация на остров».
+      Уведомления выезжают сбоку, держатся несколько секунд и исчезают сами — без кнопок и крестиков.
+    </p>
+    <p style="font-size: 14px; font-weight: 500; line-height: 1.6; color: #8a7f6e; margin: 0;">
+      Допущения: позиция — верхняя треть экрана по центру (чтобы не закрывать лагерь и инвентарь);
+      шрифт в Studio — Builder Sans Bold или GothamSSm; размеры даны под разрешение 1920×1080.
+    </p>
+  </div>
+
+  <!-- ======================= VARIANT A ======================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Вариант A — Дерево и золото</h2>
+    <span style="font-size: 13px; font-weight: 600; color: #8a7f6e;">в стиле вашего HUD: плашка «Day 1», панель «Жители»</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 36px; margin-bottom: 48px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <div style="background: linear-gradient(180deg, #7ec0e6 0%, #a9d6ec 70%, #c4b58a 100%); border-radius: 12px; padding: 44px 20px; display: flex; flex-direction: column; align-items: center; gap: 22px;">
+
+      <!-- A1: Жители +5 -->
+      <div style="width: 460px; display: flex; align-items: center; gap: 14px; background: linear-gradient(180deg, #92704a 0%, #75593a 100%); border: 3px solid #43321f; border-radius: 14px; padding: 12px 20px; box-shadow: inset 0 0 0 2px rgba(246,205,106,0.5), 0 8px 20px rgba(0,0,0,0.35);">
+        <div style="width: 46px; height: 46px; flex: none; background: linear-gradient(180deg, #f0d496 0%, #d9b270 100%); border: 2px solid #43321f; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; overflow: hidden;">
+          <div style="width: 14px; height: 14px; border-radius: 50%; background: #5a4327; margin-bottom: 2px;"></div>
+          <div style="width: 26px; height: 14px; border-radius: 12px 12px 0 0; background: #5a4327;"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <div style="font-size: 18px; font-weight: 900; color: #f6cd6a; letter-spacing: 0.4px; text-shadow: 0 2px 3px rgba(0,0,0,0.45);">Жителей: +5</div>
+          <div style="font-size: 13px; font-weight: 700; color: #f4ead2; text-shadow: 0 1px 2px rgba(0,0,0,0.4);">Освобождённые жители присоединились к лагерю</div>
+        </div>
+      </div>
+
+      <!-- A2: Древний монолит -->
+      <div style="width: 460px; display: flex; align-items: center; gap: 14px; background: linear-gradient(180deg, #92704a 0%, #75593a 100%); border: 3px solid #43321f; border-radius: 14px; padding: 12px 20px; box-shadow: inset 0 0 0 2px rgba(246,205,106,0.5), 0 8px 20px rgba(0,0,0,0.35);">
+        <div style="width: 46px; height: 46px; flex: none; background: linear-gradient(180deg, #f0d496 0%, #d9b270 100%); border: 2px solid #43321f; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 16px; height: 28px; border-radius: 5px 5px 3px 3px; background: linear-gradient(180deg, #8c8f9a 0%, #5c5f6b 100%); border: 1.5px solid #3c3e47; box-shadow: 0 0 8px rgba(120,180,255,0.8);"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <div style="font-size: 12px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase; color: #f4ead2; opacity: 0.85; text-shadow: 0 1px 2px rgba(0,0,0,0.4);">Древний монолит</div>
+          <div style="font-size: 18px; font-weight: 900; color: #f6cd6a; letter-spacing: 0.4px; text-shadow: 0 2px 3px rgba(0,0,0,0.45);">Открыто новое: Лесорубы</div>
+        </div>
+      </div>
+
+      <!-- A3: Телепортация -->
+      <div style="width: 460px; display: flex; align-items: center; gap: 14px; background: linear-gradient(180deg, #92704a 0%, #75593a 100%); border: 3px solid #43321f; border-radius: 14px; padding: 12px 20px; box-shadow: inset 0 0 0 2px rgba(246,205,106,0.5), 0 8px 20px rgba(0,0,0,0.35);">
+        <div style="width: 46px; height: 46px; flex: none; background: linear-gradient(180deg, #f0d496 0%, #d9b270 100%); border: 2px solid #43321f; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 26px; height: 26px; border-radius: 50%; border: 4px solid #3b6fd4; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 8px; height: 8px; border-radius: 50%; background: #3b6fd4;"></div>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <div style="font-size: 18px; font-weight: 900; color: #f6cd6a; letter-spacing: 0.4px; text-shadow: 0 2px 3px rgba(0,0,0,0.45);">Остров исследован!</div>
+          <div style="font-size: 13px; font-weight: 700; color: #f4ead2; text-shadow: 0 1px 2px rgba(0,0,0,0.4);">Теперь на остров можно телепортироваться</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ======================= VARIANT B ======================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Вариант B — Классический Roblox</h2>
+    <span style="font-size: 13px; font-weight: 600; color: #8a7f6e;">тёмная полупрозрачная панель, как системные уведомления платформы</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 36px; margin-bottom: 48px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <div style="background: linear-gradient(180deg, #7ec0e6 0%, #a9d6ec 70%, #c4b58a 100%); border-radius: 12px; padding: 44px 20px; display: flex; flex-direction: column; align-items: center; gap: 22px;">
+
+      <!-- B1 -->
+      <div style="width: 440px; display: flex; align-items: center; gap: 14px; background: rgba(24,26,34,0.92); border: 1px solid rgba(255,255,255,0.10); border-radius: 12px; padding: 13px 18px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);">
+        <div style="width: 42px; height: 42px; flex: none; background: #2c63c8; border-radius: 10px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; overflow: hidden;">
+          <div style="width: 13px; height: 13px; border-radius: 50%; background: #ffffff; margin-bottom: 2px;"></div>
+          <div style="width: 24px; height: 13px; border-radius: 12px 12px 0 0; background: #ffffff;"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <div style="font-size: 17px; font-weight: 800; color: #ffffff;">Жителей: +5</div>
+          <div style="font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.65);">Освобождённые жители присоединились к лагерю</div>
+        </div>
+      </div>
+
+      <!-- B2 -->
+      <div style="width: 440px; display: flex; align-items: center; gap: 14px; background: rgba(24,26,34,0.92); border: 1px solid rgba(255,255,255,0.10); border-radius: 12px; padding: 13px 18px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);">
+        <div style="width: 42px; height: 42px; flex: none; background: #2c63c8; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 14px; height: 26px; border-radius: 4px 4px 3px 3px; background: linear-gradient(180deg, #dfe3ee 0%, #9aa1b4 100%); box-shadow: 0 0 8px rgba(255,255,255,0.7);"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <div style="font-size: 11px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase; color: #7da4f0;">Древний монолит</div>
+          <div style="font-size: 17px; font-weight: 800; color: #ffffff;">Открыто новое: Лесорубы</div>
+        </div>
+      </div>
+
+      <!-- B3 -->
+      <div style="width: 440px; display: flex; align-items: center; gap: 14px; background: rgba(24,26,34,0.92); border: 1px solid rgba(255,255,255,0.10); border-radius: 12px; padding: 13px 18px; box-shadow: 0 8px 24px rgba(0,0,0,0.4);">
+        <div style="width: 42px; height: 42px; flex: none; background: #2c63c8; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 24px; height: 24px; border-radius: 50%; border: 4px solid #ffffff; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 7px; height: 7px; border-radius: 50%; background: #ffffff;"></div>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <div style="font-size: 17px; font-weight: 800; color: #ffffff;">Остров исследован!</div>
+          <div style="font-size: 13px; font-weight: 600; color: rgba(255,255,255,0.65);">Теперь на остров можно телепортироваться</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ======================= VARIANT C ======================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Вариант C — Пергамент с тёмным заголовком</h2>
+    <span style="font-size: 13px; font-weight: 600; color: #8a7f6e;">микс: пиратский пергамент + контраст системной панели</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 36px; margin-bottom: 48px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <div style="background: linear-gradient(180deg, #7ec0e6 0%, #a9d6ec 70%, #c4b58a 100%); border-radius: 12px; padding: 44px 20px; display: flex; flex-direction: column; align-items: center; gap: 22px;">
+
+      <!-- C1 -->
+      <div style="width: 460px; border: 3px solid #43321f; border-radius: 14px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.35);">
+        <div style="background: #2e2417; padding: 7px 18px; display: flex; align-items: center; gap: 10px;">
+          <div style="width: 10px; height: 10px; border-radius: 50%; background: #f6cd6a;"></div>
+          <div style="font-size: 12px; font-weight: 800; letter-spacing: 1.8px; text-transform: uppercase; color: #f6cd6a;">Лагерь</div>
+        </div>
+        <div style="background: linear-gradient(180deg, #f0dcae 0%, #e3c98f 100%); padding: 12px 18px; display: flex; align-items: center; gap: 14px;">
+          <div style="width: 42px; height: 42px; flex: none; background: #fdf3da; border: 2px solid #8a6d44; border-radius: 50%; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; overflow: hidden;">
+            <div style="width: 13px; height: 13px; border-radius: 50%; background: #6b4f2c; margin-bottom: 2px;"></div>
+            <div style="width: 24px; height: 13px; border-radius: 12px 12px 0 0; background: #6b4f2c;"></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 1px;">
+            <div style="font-size: 18px; font-weight: 900; color: #4a3520;">Жителей: +5</div>
+            <div style="font-size: 13px; font-weight: 700; color: #7d6240;">Освобождённые жители присоединились к лагерю</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- C2 -->
+      <div style="width: 460px; border: 3px solid #43321f; border-radius: 14px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.35);">
+        <div style="background: #2e2417; padding: 7px 18px; display: flex; align-items: center; gap: 10px;">
+          <div style="width: 10px; height: 10px; border-radius: 50%; background: #7da4f0;"></div>
+          <div style="font-size: 12px; font-weight: 800; letter-spacing: 1.8px; text-transform: uppercase; color: #7da4f0;">Древний монолит</div>
+        </div>
+        <div style="background: linear-gradient(180deg, #f0dcae 0%, #e3c98f 100%); padding: 12px 18px; display: flex; align-items: center; gap: 14px;">
+          <div style="width: 42px; height: 42px; flex: none; background: #fdf3da; border: 2px solid #8a6d44; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 14px; height: 26px; border-radius: 4px 4px 3px 3px; background: linear-gradient(180deg, #8c8f9a 0%, #5c5f6b 100%); box-shadow: 0 0 8px rgba(100,160,255,0.9);"></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 1px;">
+            <div style="font-size: 18px; font-weight: 900; color: #4a3520;">Открыто новое: Лесорубы</div>
+            <div style="font-size: 13px; font-weight: 700; color: #7d6240;">Монолит раскрыл древнее знание</div>
+          </div>
+        </div>
+      </div>
+
+      <!-- C3 -->
+      <div style="width: 460px; border: 3px solid #43321f; border-radius: 14px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.35);">
+        <div style="background: #2e2417; padding: 7px 18px; display: flex; align-items: center; gap: 10px;">
+          <div style="width: 10px; height: 10px; border-radius: 50%; background: #6fd49a;"></div>
+          <div style="font-size: 12px; font-weight: 800; letter-spacing: 1.8px; text-transform: uppercase; color: #6fd49a;">Исследование</div>
+        </div>
+        <div style="background: linear-gradient(180deg, #f0dcae 0%, #e3c98f 100%); padding: 12px 18px; display: flex; align-items: center; gap: 14px;">
+          <div style="width: 42px; height: 42px; flex: none; background: #fdf3da; border: 2px solid #8a6d44; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 24px; height: 24px; border-radius: 50%; border: 4px solid #3b6fd4; display: flex; align-items: center; justify-content: center;">
+              <div style="width: 7px; height: 7px; border-radius: 50%; background: #3b6fd4;"></div>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 1px;">
+            <div style="font-size: 18px; font-weight: 900; color: #4a3520;">Остров исследован!</div>
+            <div style="font-size: 13px; font-weight: 700; color: #7d6240;">Теперь на остров можно телепортироваться</div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ======================= IN-CONTEXT ======================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">В контексте игры</h2>
+    <span style="font-size: 13px; font-weight: 600; color: #8a7f6e;">вариант C поверх вашего скриншота — позиция: центр, верхняя треть</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 24px; margin-bottom: 48px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <div style="position: relative; border-radius: 10px; overflow: hidden; line-height: 0;">
+      <img src="uploads/pasted-1781092991670-0.png" alt="Скриншот игры" style="width: 100%; display: block;">
+      <div data-comment-anchor="c8ff8289:109" style="position: absolute; top: 13%; left: 50%; transform: translateX(-50%); width: 420px; border: 3px solid #43321f; border-radius: 13px; overflow: hidden; box-shadow: 0 8px 20px rgba(0,0,0,0.35); line-height: 1.3;">
+        <div style="background: #2e2417; padding: 6px 16px; display: flex; align-items: center; gap: 9px;">
+          <div style="width: 9px; height: 9px; border-radius: 50%; background: #7da4f0;"></div>
+          <div style="font-size: 11px; font-weight: 800; letter-spacing: 1.6px; text-transform: uppercase; color: #7da4f0;">Древний монолит</div>
+        </div>
+        <div style="background: linear-gradient(180deg, #f0dcae 0%, #e3c98f 100%); padding: 10px 16px; display: flex; align-items: center; gap: 13px;">
+          <div style="width: 40px; height: 40px; flex: none; background: #fdf3da; border: 2px solid #8a6d44; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 13px; height: 24px; border-radius: 4px 4px 3px 3px; background: linear-gradient(180deg, #8c8f9a 0%, #5c5f6b 100%); box-shadow: 0 0 8px rgba(100,160,255,0.9);"></div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 1px;">
+            <div style="font-size: 16px; font-weight: 900; color: #4a3520;">Открыто новое: Лесорубы</div>
+            <div style="font-size: 12px; font-weight: 700; color: #7d6240;">Монолит раскрыл древнее знание</div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ======================= SPECS ======================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Спеки для Roblox Studio</h2>
+    <span style="font-size: 13px; font-weight: 600; color: #8a7f6e;">размеры под 1920×1080, шрифт — Builder Sans Bold / GothamSSm</span>
+  </div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
+
+    <div style="background: #ffffff; border-radius: 16px; padding: 26px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 14px;">Размеры и позиция</div>
+      <div style="font-size: 13px; font-weight: 600; line-height: 2; color: #5a5247;">
+        Frame: 460 × 76 px<br>
+        AnchorPoint: 0.5, 0<br>
+        Position: {0.5, 0}{0.13, 0}<br>
+        UICorner: 14 px<br>
+        UIStroke: 3 px, цвет рамки<br>
+        Иконка: 46 × 46, круг<br>
+        Стек из 2+: UIListLayout, Padding 12
+      </div>
+    </div>
+
+    <div style="background: #ffffff; border-radius: 16px; padding: 26px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 14px;">Цвета</div>
+      <div style="display: flex; flex-direction: column; gap: 9px; font-size: 13px; font-weight: 600; color: #5a5247;">
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #82603e; flex: none;"></div>A: дерево #92704A → #75593A</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #43321f; flex: none;"></div>Рамка #43321F</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #f6cd6a; flex: none;"></div>Золото заголовка #F6CD6A</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: rgba(24,26,34,0.92); flex: none;"></div>B: панель #181A22, 92%</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #2c63c8; flex: none;"></div>B: акцент-иконка #2C63C8</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #e9d09a; flex: none;"></div>C: пергамент #F0DCAE → #E3C98F</div>
+      </div>
+    </div>
+
+    <div style="background: #ffffff; border-radius: 16px; padding: 26px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 14px;">Анимация (TweenService)</div>
+      <div style="font-size: 13px; font-weight: 600; line-height: 2; color: #5a5247;">
+        Въезд: справа за экраном → центр<br>
+        X: {0.5, 700} → {0.5, 0}<br>
+        0.4 c, Back / Out (лёгкий перелёт)<br>
+        Пауза: 4 c на экране<br>
+        Уход: fade прозрачности 0.3 c, Quad / In<br>
+        Несколько подряд — очередь, не больше 3 одновременно
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

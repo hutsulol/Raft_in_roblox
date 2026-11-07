@@ -4,6 +4,20 @@ local CollectionService = game:GetService("CollectionService")
 local PICKUP_TAG = "PickupHint"
 local PICKUP_DISTANCE = 12
 
+-- Map model-name → inventory-resource-name for tagged pickups. The
+-- workspace ships several different junk meshes (a propeller, a
+-- jerry can, a muffler, …) under the names "Rubbish" and "Rabbish"
+-- (a typo'd variant) — they all hand the player a single Rubbish
+-- resource. Falls back to target.Name when the model isn't listed
+-- here, and a per-model PickupItemName attribute still overrides
+-- everything when set.
+local PICKUP_NAME_REMAP = {
+	Rubbish = "Rubbish",
+	rubbish = "Rubbish",
+	Rabbish = "Rubbish",
+	rabbish = "Rubbish",
+}
+
 local pickupEvent = ReplicatedStorage:FindFirstChild("TaggedPickupRequest")
 if not pickupEvent then
 	pickupEvent = Instance.new("RemoteEvent")
@@ -51,7 +65,9 @@ pickupEvent.OnServerEvent:Connect(function(player, target)
 	if not hrp or not pos then return end
 	if (pos - hrp.Position).Magnitude > PICKUP_DISTANCE then return end
 
-	local itemName = target:GetAttribute("PickupItemName") or target.Name
+	local itemName = target:GetAttribute("PickupItemName")
+		or PICKUP_NAME_REMAP[target.Name]
+		or target.Name
 	local amount = tonumber(target:GetAttribute("PickupAmount")) or 1
 	if amount < 1 then amount = 1 end
 

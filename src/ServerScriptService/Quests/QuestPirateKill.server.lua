@@ -17,10 +17,10 @@ local CollectionService = game:GetService("CollectionService")
 local Players           = game:GetService("Players")
 
 local KILL_CREDIT_RANGE = 80   -- studs; pirates and rafts cluster
-                                -- close enough that 80 covers the
-                                -- whole engagement area without
-                                -- crediting a player on a different
-                                -- raft.
+-- close enough that 80 covers the
+-- whole engagement area without
+-- crediting a player on a different
+-- raft.
 
 local function pirateRoot(model)
 	return model:FindFirstChild("HumanoidRootPart") or model:FindFirstChild("Torso")
@@ -50,7 +50,7 @@ local function creditClosestPlayer(pirate)
 end
 
 local handled = setmetatable({}, { __mode = "k" })   -- weak so dead pirate
-                                                      -- models don't pin
+-- models don't pin
 
 local function watch(pirate)
 	if handled[pirate] then return end

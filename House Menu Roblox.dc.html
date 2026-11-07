@@ -1,0 +1,261 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; height: 100%; }
+  body { font-family: 'M PLUS Rounded 1c', sans-serif; background: #0a1622; }
+  a, a:hover { color: #ffd23a; }
+  button { font-family: 'M PLUS Rounded 1c', sans-serif; }
+  @keyframes popIn { 0% { transform: scale(0.8); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+</style>
+</helmet>
+<div style="width: 100vw; min-height: 100vh; box-sizing: border-box; padding: 24px 0; display: flex; align-items: safe center; justify-content: center; overflow: auto; background: radial-gradient(ellipse at 50% 30%, #16374f 0%, #0c2236 55%, #061421 100%);">
+  <div style="width: min(880px, 92vw); background: #12283c; border: 4px solid #000; box-shadow: 0 10px 0 rgba(0,0,0,0.55); animation: popIn 0.35s cubic-bezier(0.2, 0.9, 0.3, 1.1);">
+    <!-- header -->
+    <div style="display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 16px; background: linear-gradient(180deg, #1b3a59 0%, #142d44 100%); border-bottom: 4px solid #000;">
+      <div style="display: flex; align-items: center; gap: 12px;">
+        <div>
+          <div style="font-weight: 900; font-size: 20px; color: #ffffff; text-shadow: 0 2px 0 #000;">{{ houseName }} — уровень {{ houseLevelLabel }}</div>
+          <div style="font-weight: 800; font-size: 13px; color: #7fa8c9; text-shadow: 0 1px 0 #000;">Жители: {{ occupancy }} • Комфорт: +{{ comfortLabel }}% к работе</div>
+        </div>
+      </div>
+      <div style="display: flex; align-items: center; gap: 10px;">
+        <button onClick="{{ onClose }}" style="width: 36px; height: 36px; background: linear-gradient(180deg, #d9453f 0%, #a8302b 100%); border: 3px solid #000; box-shadow: 0 4px 0 rgba(0,0,0,0.55); font-weight: 900; font-size: 16px; color: #ffffff; text-shadow: 0 1.5px 0 #000; cursor: pointer;" style-hover="filter: brightness(1.12);" style-active="transform: translateY(3px); box-shadow: 0 1px 0 rgba(0,0,0,0.55);">✕</button>
+      </div>
+    </div>
+    <div style="display: flex; min-height: 430px;">
+      <!-- residents list -->
+      <div style="width: 300px; flex: none; border-right: 4px solid #000; background: rgba(0,0,0,0.18); display: flex; flex-direction: column;">
+        <div style="padding: 9px 14px; border-bottom: 3px solid #000; background: rgba(0,0,0,0.3); font-weight: 900; font-size: 13px; color: #ffffff; text-shadow: 0 1.5px 0 #000;">Жители дома</div>
+        <div style="flex: 1; overflow-y: auto; max-height: 388px;">
+          <sc-for list="{{ residents }}" as="r" hint-placeholder-count="4">
+            <button onClick="{{ r.onSelect }}" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; background: {{ r.rowBg }}; border: none; border-bottom: 2.5px solid #000; cursor: pointer; text-align: left;" style-hover="background: rgba(255,255,255,0.08);">
+              <div style="flex: none; width: 38px; height: 38px; background: {{ r.skin }}; border: 3px solid {{ r.rowBorder }}; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 15px; color: rgba(0,0,0,0.55);">{{ r.initial }}</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="display: flex; align-items: baseline; gap: 6px; min-width: 0;">
+                  <div style="font-weight: 900; font-size: 14px; color: #ffffff; text-shadow: 0 1px 0 #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ r.name }}</div>
+                  <div style="flex: none; font-size: 11px; color: #ffd23a; text-shadow: 0 1px 0 #000; letter-spacing: 1px;">{{ r.stars }}</div>
+                </div>
+                <div style="font-weight: 800; font-size: 11.5px; color: {{ r.jobColor }}; text-shadow: 0 1px 0 #000;">{{ r.jobLabel }}</div>
+              </div>
+              <div style="flex: none; padding: 2px 8px; background: rgba(0,0,0,0.4); border: 2px solid #000; font-weight: 900; font-size: 11px; color: {{ r.typeColor }}; text-shadow: 0 1px 0 #000;">{{ r.typeLabel }}</div>
+            </button>
+          </sc-for>
+          <sc-if value="{{ hasFreeSlots }}" hint-placeholder-val="{{ true }}">
+            <button onClick="{{ onAddResident }}" style="display: flex; align-items: center; gap: 10px; width: 100%; padding: 10px 12px; background: transparent; border: none; border-bottom: 2.5px solid #000; cursor: pointer; text-align: left;" style-hover="background: rgba(69,204,69,0.12);">
+              <div style="flex: none; width: 38px; height: 38px; border: 3px dashed #45cc45; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 20px; color: #45cc45;">+</div>
+              <div style="flex: 1; min-width: 0;">
+                <div style="font-weight: 900; font-size: 14px; color: #45cc45; text-shadow: 0 1px 0 #000;">Добавить жителя</div>
+                <div style="font-weight: 800; font-size: 11.5px; color: #6f97b8; text-shadow: 0 1px 0 #000;">Цена: 1 житель</div>
+              </div>
+            </button>
+          </sc-if>
+        </div>
+        <div style="padding: 8px 12px; border-top: 3px solid #000; background: rgba(0,0,0,0.3); font-weight: 800; font-size: 11.5px; color: #6f97b8; text-shadow: 0 1px 0 #000;">Свободных мест: {{ freeSlots }}</div>
+      </div>
+      <!-- detail -->
+      <div style="flex: 1; padding: 16px; display: flex; flex-direction: column; gap: 14px;">
+        <div style="display: flex; align-items: center; gap: 14px;">
+          <div style="flex: none; width: 64px; height: 64px; background: {{ selSkin }}; border: 4px solid #000; border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 26px; color: rgba(0,0,0,0.55);">{{ selInitial }}</div>
+          <div style="flex: 1;">
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <div style="font-weight: 900; font-size: 20px; color: #ffffff; text-shadow: 0 2px 0 #000;">{{ selName }}</div>
+              <div style="font-size: 15px; color: #ffd23a; text-shadow: 0 1.5px 0 #000; letter-spacing: 1.5px;">{{ selStars }}</div>
+            </div>
+            <div style="display: flex; gap: 8px; margin-top: 5px; flex-wrap: wrap;">
+              <div style="padding: 3px 10px; background: rgba(0,0,0,0.4); border: 2.5px solid #000; font-weight: 900; font-size: 12px; color: {{ selTypeColor }}; text-shadow: 0 1px 0 #000;">{{ selTypeLabel }}</div>
+              <div style="padding: 3px 10px; background: rgba(0,0,0,0.4); border: 2.5px solid #000; font-weight: 900; font-size: 12px; color: #9fd0ee; text-shadow: 0 1px 0 #000;">{{ selAgeLabel }}</div>
+              <div style="padding: 3px 10px; background: rgba(0,0,0,0.4); border: 2.5px solid #000; font-weight: 900; font-size: 12px; color: #ffd23a; text-shadow: 0 1px 0 #000;">Эффективность: {{ selEff }}%</div>
+            </div>
+          </div>
+          <button onClick="{{ onEvict }}" style="flex: none; height: 32px; padding: 0 12px; background: linear-gradient(180deg, #2c4d68 0%, #1d3750 55%, #132638 100%); border: 3px solid #000; box-shadow: 0 3px 0 rgba(0,0,0,0.55); font-weight: 900; font-size: 12px; color: #cfe3f2; text-shadow: 0 1px 0 #000; cursor: pointer;" style-hover="filter: brightness(1.15);" style-active="transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,0.55);">Выселить</button>
+        </div>
+        <div style="font-weight: 800; font-size: 12.5px; color: #7fa8c9; text-shadow: 0 1px 0 #000; line-height: 1.5;">{{ selBonusLine }}</div>
+        <!-- job grid -->
+        <div>
+          <div style="font-weight: 900; font-size: 14px; color: #ffffff; text-shadow: 0 1.5px 0 #000; margin-bottom: 8px;">Профессия</div>
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+            <sc-for list="{{ jobs }}" as="j" hint-placeholder-count="6">
+              <button onClick="{{ j.onPick }}" style="display: flex; flex-direction: column; gap: 4px; padding: 9px 10px; background: {{ j.bg }}; border: 3px solid {{ j.border }}; box-shadow: 0 3px 0 rgba(0,0,0,0.45); cursor: {{ j.cursor }}; text-align: left; opacity: {{ j.dim }}; position: relative;" style-hover="filter: brightness(1.12);" style-active="transform: translateY(2px); box-shadow: 0 1px 0 rgba(0,0,0,0.45);">
+                <div style="display: flex; align-items: center; gap: 7px;">
+                  <div style="flex: none; width: 18px; height: 18px; background: {{ j.iconBg }}; border: 2px solid #000; border-radius: 50%;"></div>
+                  <div style="font-weight: 900; font-size: 13px; color: {{ j.nameColor }}; text-shadow: 0 1px 0 #000;">{{ j.name }}</div>
+                </div>
+                <div style="font-weight: 800; font-size: 11px; color: {{ j.subColor }}; text-shadow: 0 1px 0 #000;">{{ j.sub }}</div>
+                <sc-if value="{{ j.lockIcon }}" hint-placeholder-val="{{ false }}">
+                  <div style="position: absolute; top: 7px; right: 8px; width: 14px; height: 11px; background: #8fa5b5; border: 2px solid #000; border-radius: 2px;">
+                    <div style="position: absolute; left: 2px; top: -7px; width: 6px; height: 6px; border: 2px solid #8fa5b5; border-bottom: none; border-radius: 5px 5px 0 0;"></div>
+                  </div>
+                </sc-if>
+              </button>
+            </sc-for>
+          </div>
+        </div>
+        <!-- house bonuses -->
+        <div style="margin-top: auto; padding: 10px 12px; background: rgba(0,0,0,0.25); border: 3px solid #000;">
+          <div style="font-weight: 900; font-size: 13px; color: #ffd23a; text-shadow: 0 1px 0 #000; margin-bottom: 4px;">Бонусы дома</div>
+          <div style="font-weight: 800; font-size: 12px; color: #cfe3f2; text-shadow: 0 1px 0 #000; line-height: 1.55;">{{ houseBonusLine }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position: fixed; bottom: 7vh; left: 50%; transform: translateX(-50%); padding: 8px 18px; background: rgba(0,0,0,0.6); border: 2px solid #ffd23a; font-weight: 900; font-size: 14px; color: #ffd23a; text-shadow: 0 1px 0 #000; z-index: 20;">{{ toast }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;houseName&quot;: { &quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;Дом на острове&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Дом&quot; },
+  &quot;houseLevel&quot;: { &quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 2, &quot;min&quot;: 1, &quot;max&quot;: 5, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Дом&quot; },
+  &quot;capacity&quot;: { &quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 2, &quot;min&quot;: 1, &quot;max&quot;: 10, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Дом&quot; }
+}">
+class Component extends DCLogic {
+  state = {
+    sel: 'r1',
+    toast: '',
+    jobsByRes: { r1: 'fisher', r2: 'lumber', r3: 'none', r4: 'guard' },
+    added: [],
+    removed: []
+  };
+
+  flash(msg) {
+    clearTimeout(this._toastT);
+    this.setState({ toast: msg });
+    this._toastT = setTimeout(() => this.setState({ toast: '' }), 2200);
+  }
+
+  base() {
+    return [
+      { id: 'r1', name: 'Борис', type: 'worker', age: 34, stars: 2, skin: 'linear-gradient(180deg, #e8b478 0%, #c98f52 100%)' },
+      { id: 'r2', name: 'Марта', type: 'craft',  age: 27, stars: 3, skin: 'linear-gradient(180deg, #f0c890 0%, #d1a468 100%)' },
+      { id: 'r3', name: 'Тимка', type: 'worker', age: 12, stars: 1, skin: 'linear-gradient(180deg, #f3d5a4 0%, #d9b276 100%)' },
+      { id: 'r4', name: 'Старый Юн', type: 'fighter', age: 61, stars: 2, skin: 'linear-gradient(180deg, #d8a97a 0%, #b3854f 100%)' }
+    ];
+  }
+
+  jobDefs() {
+    return {
+      none:   { name: 'Без работы', icon: '#5b6d78', sub: 'отдыхает', color: '#8fa5b5' },
+      fisher: { name: 'Рыбак', icon: '#3f8fc4', sub: '+еда', color: '#9fd0ee' },
+      lumber: { name: 'Лесоруб', icon: '#7a4f2a', sub: '+дерево', color: '#d8a468' },
+      miner:  { name: 'Рудокоп', icon: '#6f7480', sub: '+железо', color: '#c3c9d4' },
+      oil:    { name: 'Нефтяник', icon: '#1d1d1d', sub: '+нефть', color: '#ffd23a' },
+      guard:  { name: 'Стражник', icon: '#b5432f', sub: '+защита острова', color: '#ff9d8f' },
+      builder:{ name: 'Строитель', icon: '#c9a94e', sub: 'быстрее стройка', color: '#ffe08a' }
+    };
+  }
+
+  typeInfo(t) {
+    return {
+      worker:  { label: 'Работяга', color: '#9fd0ee', bonus: 'Тип «Работяга»: +15% к добыче ресурсов (рыба, дерево, железо, нефть).' },
+      craft:   { label: 'Мастер', color: '#ffd23a', bonus: 'Тип «Мастер»: +25% к скорости строительства и улучшений.' },
+      fighter: { label: 'Боец', color: '#ff9d8f', bonus: 'Тип «Боец»: +3 к защите острова на посту стражника.' }
+    }[t];
+  }
+
+  ageInfo(age) {
+    if (age < 16) return { label: 'Ребёнок, ' + age, eff: 50 };
+    if (age > 55) return { label: 'Старик, ' + age, eff: 70 };
+    return { label: 'Взрослый, ' + age, eff: 100 };
+  }
+
+  renderVals() {
+    const houseLevel = this.props.houseLevel ?? 2;
+    const capacity = this.props.capacity ?? 5;
+    const comfort = houseLevel * 5;
+    const defs = this.jobDefs();
+    const base = this.base().slice(0, capacity).concat(this.state.added).filter(r => !this.state.removed.includes(r.id)).slice(0, capacity);
+    const sel = base.find(r => r.id === this.state.sel) ?? base[0] ?? { id: '_none', name: '—', type: 'worker', age: 30, skin: '#1a3550' };
+    const selJob = this.state.jobsByRes[sel.id] ?? 'none';
+    const selType = this.typeInfo(sel.type);
+    const selAge = this.ageInfo(sel.age);
+
+    const residents = base.map(r => {
+      const job = defs[this.state.jobsByRes[r.id] ?? 'none'];
+      const active = r.id === sel.id;
+      return {
+        name: r.name, skin: r.skin, initial: r.name[0],
+        stars: '★'.repeat(r.stars ?? 1),
+        rowBg: active ? 'rgba(255,210,58,0.12)' : 'transparent',
+        rowBorder: active ? '#ffd23a' : '#000',
+        jobLabel: job.name, jobColor: job.color,
+        typeLabel: this.typeInfo(r.type).label, typeColor: this.typeInfo(r.type).color,
+        onSelect: () => this.setState({ sel: r.id })
+      };
+    });
+
+    const unlocked = ['none', 'oil'];
+    const jobs = Object.keys(defs).map(k => {
+      const d = defs[k], active = k === selJob, locked = !unlocked.includes(k);
+      return {
+        name: d.name, iconBg: locked ? '#3a4a58' : d.icon,
+        sub: locked ? 'Заблокировано' : d.sub,
+        subColor: locked ? '#5b6d78' : (active ? '#ffe9a0' : '#7fa8c9'),
+        nameColor: locked ? '#8fa5b5' : '#ffffff',
+        bg: locked ? '#152a3e' : (active ? 'linear-gradient(180deg, #45cc45 0%, #2fa32f 60%, #1f7d1f 100%)' : '#1a3550'),
+        border: '#000',
+        lockIcon: locked,
+        dim: locked ? 0.75 : 1,
+        cursor: locked ? 'not-allowed' : 'pointer',
+        onPick: () => {
+          if (locked) { this.flash('Профессия «' + d.name + '» пока заблокирована'); return; }
+          this.setState({ jobsByRes: { ...this.state.jobsByRes, [sel.id]: k } });
+          this.flash(sel.name + ' — теперь ' + d.name.toLowerCase());
+        }
+      };
+    });
+
+    return {
+      houseName: this.props.houseName ?? 'Дом на острове',
+      houseLevelLabel: String(houseLevel),
+      comfortLabel: String(comfort),
+      occupancy: base.length + ' / ' + capacity,
+      freeSlots: String(Math.max(0, capacity - base.length)),
+      residents, jobs,
+      selName: sel.name, selSkin: sel.skin, selInitial: sel.name[0],
+      selStars: '★'.repeat(sel.stars ?? 1),
+      selTypeLabel: selType.label, selTypeColor: selType.color,
+      selAgeLabel: selAge.label,
+      selEff: String(Math.round(selAge.eff * (1 + comfort / 100))),
+      selBonusLine: selType.bonus + ' Возраст влияет на эффективность: дети 50%, взрослые 100%, старики 70%.',
+      houseBonusLine: 'Уровень ' + houseLevel + ': +' + comfort + '% к эффективности жителей • Вместимость ' + capacity + ' • Следующий уровень: +' + ((houseLevel + 1) * 5) + '% и +1 место.',
+      toast: this.state.toast,
+      hasFreeSlots: base.length < capacity,
+      onAddResident: () => {
+        if (base.length >= capacity) return;
+        const pool = [
+          { name: 'Гретта', type: 'craft' }, { name: 'Оскар', type: 'worker' },
+          { name: 'Руфус', type: 'fighter' }, { name: 'Ива', type: 'worker' }
+        ];
+        const p = pool[this.state.added.length % pool.length];
+        const id = 'a' + (this.state.added.length + 1);
+        const nr = { id, name: p.name, type: p.type, age: 18 + (this.state.added.length * 9) % 40, stars: 1 + this.state.added.length % 3, skin: 'linear-gradient(180deg, #e8c088 0%, #c99a5c 100%)' };
+        this.setState({
+          added: [...this.state.added, nr],
+          jobsByRes: { ...this.state.jobsByRes, [id]: 'none' },
+          sel: id
+        });
+        this.flash(p.name + ' заселяется в дом (−1 житель)');
+      },
+      onUpgrade: () => this.flash('Улучшение дома до уровня ' + (houseLevel + 1) + ' — 200 дерева'),
+      onEvict: () => {
+        const rest = base.filter(r => r.id !== sel.id);
+        this.setState({ removed: [...this.state.removed, sel.id], sel: rest.length ? rest[0].id : null });
+        this.flash(sel.name + ' выселен из дома');
+      },
+      onClose: () => this.flash('Закрытие меню (в игре — скрытие ScreenGui)')
+    };
+  }
+}
+</script>
+</body>
+</html>

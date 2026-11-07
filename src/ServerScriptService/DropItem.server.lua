@@ -1,4 +1,5 @@
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local ServerStorage = game:GetService("ServerStorage")
 local CollectionService = game:GetService("CollectionService")
 
 local dropEvent = Instance.new("RemoteEvent")
@@ -26,7 +27,10 @@ local RESOURCE_TEMPLATES = {
 	-- may not have dedicated 3D models yet; if the named template can't
 	-- be found, the lookup silently falls back to FALLBACK_TEMPLATE so
 	-- they still drop as a generic box until proper art is added.
-	Rope       = "Rope",
+	-- ⚠️ ВЕРЁВКА — В КОРОБКЕ. Своей модели у неё нет, а поиск по имени «Rope»
+	-- находил чужую деталь (длинный канат из другой модели) — на плоту
+	-- выброшенная верёвка висела палкой через полкарты.
+	Rope       = "box_model",
 	Sand       = "Sand",
 	Clay       = "Clay",
 	Wet_Brick  = "Wet_Brick",
@@ -42,6 +46,30 @@ local RESOURCE_TEMPLATES = {
 	Seabass_Fish    = "Seabass Fish",
 	Tilapia_Fish    = "Tilapia Fish",
 	Meat            = "Meat",
+	-- Овощи с грядки: 3D-модели названы с префиксом Raft_, ключ ресурса — без
+	-- него. Без этой пары выброшенная свёкла падала бы обычной коробкой-заглушкой.
+	-- Держать равным FOOD_MODEL_NAMES в FoodSystem и FOOD_TEMPLATES в GrillSystem.
+	Potato          = "Raft_potato",
+	Beet            = "Raft_beet",
+	-- Inventory resource is spelled correctly ("Rubbish") but the
+	-- 3D template in ServerStorage.Resourses is named "Rubbsih"
+	-- (author typo). Map through here instead of renaming the asset.
+	Rubbish         = "Rubbsih",
+	-- Новые ресурсы: имена моделей как у их спавнеров/крафта. Чего нет в
+	-- ReplicatedStorage — упадёт коробкой-заглушкой, но ВЫБРОСИТСЯ.
+	Compost         = "compost",
+	Seaweed         = "Seaweed",
+	Glue            = "Glue",
+	Nail            = "Nail",
+	Wool            = "Wool",
+	Banana          = "Banana",
+	Coconut         = "Coconut",
+	Pineapple       = "Pineapple",
+	Pineapple_Bush_Seed = "Pineapple_Bush_Seed",
+	Chicken_drumstick = "Chicken_drumstick",
+	Chicken_feather = "Chicken_feather",
+	Cow_Hide        = "Cow_Hide",
+	DivingMask      = "DivingMask",
 }
 -- Cooked fish ("<fish>_Cooked") re-drop using the same fish model as
 -- their raw counterpart, so dropping a cooked fish from the inventory
@@ -82,6 +110,7 @@ local RESOURCE_ITEMS = {
 	Seabass_Fish    = true,
 	Tilapia_Fish    = true,
 	Meat            = true,
+	Rubbish         = true,
 }
 -- Cooked fish behave as stackable resources just like their raw form.
 setmetatable(RESOURCE_ITEMS, {
@@ -100,11 +129,44 @@ local FALLBACK_TEMPLATE = "box_model"
 -- recursively. Mirrors InventoryCrafting.server.lua so tools stored
 -- inside subfolders (e.g. ReplicatedStorage.MainModule.FishingRod) are
 -- picked up for both the physical drop and the pickup restore.
+-- true if `inst` sits inside one of the WORLD-EVENT templates (Island_1/2/3, Radiation_event live
+-- in ReplicatedStorage for WorldEventSpawner and are full of DECOR named like resources — a broken
+-- ocean "Leaves" used to spawn its overflow drop as the ISLAND's decor leaves picked up by the old
+-- recursive search)
+local function insideWorldTemplate(inst)
+	local p = inst.Parent
+	while p and p ~= ReplicatedStorage and p ~= ServerStorage do
+		if p.Name:match("^Island") or p.Name == "Radiation_event" then return true end
+		p = p.Parent
+	end
+	return false
+end
+
 local function findTemplate(name)
 	if type(name) ~= "string" or name == "" then return nil end
 	local t = ReplicatedStorage:FindFirstChild(name)
 	if not t then
-		t = ReplicatedStorage:FindFirstChild(name, true)
+		-- recursive + case-insensitive, but NEVER grab decor from inside the island/event templates
+		local lower = name:lower()
+		for _, d in ipairs(ReplicatedStorage:GetDescendants()) do
+			if d.Name:lower() == lower and (d:IsA("Model") or d:IsA("BasePart") or d:IsA("Tool"))
+				and not insideWorldTemplate(d) then
+				t = d
+				break
+			end
+		end
+	end
+	-- Some resource templates live in ServerStorage.Resourses (e.g. the
+	-- Rubbish model). Server-side drops can clone from anywhere, so
+	-- fall through to that folder before giving up.
+	if not t then
+		local resourcesFolder = ServerStorage:FindFirstChild("Resourses")
+		if resourcesFolder then
+			t = resourcesFolder:FindFirstChild(name, true)
+		end
+	end
+	if not t then
+		t = ServerStorage:FindFirstChild(name, true)
 	end
 	return t
 end
@@ -356,7 +418,36 @@ _G.GiveToolOrDrop = function(player, tool, dropPosition)
 	return false
 end
 
+--[[ ⚠️ ИНСТРУМЕНТ ИЩЕМ ПО БАЗОВОМУ ИМЕНИ, А НЕ ТОЛЬКО ПО ТОЧНОМУ.
+     Кружка при наполнении переименовывается: «Cup» → «Cup (Fresh Water)» /
+     «Cup (Saltwater)» (ThirstSystem.setCupState), а слот хотбара шлёт серверу
+     базовое «Cup». Строгий FindFirstChild не находил тул — сервер молча
+     выходил, кружка оставалась в руках, иконка возвращалась в инвентарь.
+     Совпадением считаем: точное имя, атрибут CupBase, либо имя вида
+     «<имя> (…)». Сначала смотрим в руках, потом в рюкзаке. ]]
+local function toolMatches(tool, itemName)
+	if not (tool and tool:IsA("Tool")) then return false end
+	if tool.Name == itemName then return true end
+	if tool:GetAttribute("CupBase") == itemName then return true end
+	return tool.Name:sub(1, #itemName + 2) == itemName .. " ("
+end
+local function findOwnedTool(player, char, itemName)
+	if char then
+		for _, t in ipairs(char:GetChildren()) do
+			if toolMatches(t, itemName) then return t end
+		end
+	end
+	local backpack = player:FindFirstChild("Backpack")
+	if backpack then
+		for _, t in ipairs(backpack:GetChildren()) do
+			if toolMatches(t, itemName) then return t end
+		end
+	end
+	return nil
+end
+
 dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPosition)
+	local droppedTool = nil   -- тул, который уедет внутри дропа (см. ниже)
 	if type(itemName) ~= "string" then return end
 	if type(dropCount) ~= "number" then return end
 	if typeof(dropPosition) ~= "Vector3" then dropPosition = nil end
@@ -373,7 +464,21 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 	local hrp = char:FindFirstChild("HumanoidRootPart")
 	if not hrp then return end
 
-	local isResource = RESOURCE_ITEMS[itemName]
+	--[[ ⚠️ ИНСТРУМЕНТ С ТАКИМ ИМЕНЕМ ВАЖНЕЕ РЕСУРСА. «Cup» — и предмет-ресурс
+	     в списке крафта, и имя тула кружки (с водой или без). Запрос на выброс
+	     кружки из рук уходил в ветку ресурса, ресурса «Cup» в инвентаре нет — и
+	     сервер молча выходил: кружка оставалась в руках, иконка возвращалась.
+	     Если у игрока есть Tool с этим именем — выбрасываем именно его. ]]
+	local ownedTool = findOwnedTool(player, char, itemName)
+	--[[ ⚠️ РЕСУРС — ЭТО ТО, ЧТО ЛЕЖИТ СЧЁТЧИКОМ В ИНВЕНТАРЕ, А НЕ ТОЛЬКО СПИСОК ВЫШЕ.
+	     Список RESOURCE_ITEMS отставал от InventoryManager на каждый новый ресурс:
+	     водоросли, картошка, свёкла, компост, клей, гвозди, фрукты, шерсть шли в
+	     ветку тулов, тула с таким именем нет — и сервер молча выходил, предмет
+	     «не выкидывался». Теперь спрашиваем сам инвентарь: есть счётчик по этому
+	     имени — ресурс. Список остаётся запасным на случай нулевого счётчика. ]]
+	local invNow = _G.GetInventory and _G.GetInventory(player)
+	local counted = invNow and type(invNow[itemName]) == "number"
+	local isResource = (RESOURCE_ITEMS[itemName] or counted) and not ownedTool
 
 	if isResource then
 		local inv = _G.GetInventory and _G.GetInventory(player)
@@ -386,21 +491,33 @@ dropEvent.OnServerEvent:Connect(function(player, itemName, dropCount, dropPositi
 		end
 	else
 		-- Tool drop: find and remove the tool from backpack or character
-		local tool = nil
-		local backpack = player:FindFirstChild("Backpack")
-		if backpack then
-			tool = backpack:FindFirstChild(itemName)
+		local tool = ownedTool or findOwnedTool(player, char, itemName)
+		if not tool then
+			print(("[DropItem] %s: тул «%s» не найден ни в руках, ни в рюкзаке — выброс отменён"):format(player.Name, itemName))
+			return
 		end
-		if not tool and char then
-			tool = char:FindFirstChild(itemName)
-			if tool and not tool:IsA("Tool") then tool = nil end
-		end
-		if not tool then return end
-		tool:Destroy()
+		--[[ ⚠️ НЕ УНИЧТОЖАЕМ — ПРИКРЕПЛЯЕМ К ДРОПУ. Раньше тул удалялся, а подбор
+		     клонировал его заново по шаблону из ReplicatedStorage. У ставящихся
+		     построек (костёр, грядка, мангал) шаблона-тула там нет: подбор молча
+		     выходил, и предмет пропадал навсегда («выкинул костёр, подобрал —
+		     в инвентаре не появился»). Тот же приём, что у _G.GiveToolOrDrop:
+		     прячем тул внутри дропа, подбор возвращает ровно его. ]]
+		droppedTool = tool
 	end
 
-	spawnPhysicalDrop(player, itemName, dropCount, not isResource, dropPosition)
-
+	local drop = spawnPhysicalDrop(player, itemName, dropCount, not isResource, dropPosition)
+	if droppedTool then
+		if not drop then return end   -- дропа не вышло — тул остаётся в рюкзаке
+		local attached = drop:FindFirstChild("AttachedTools")
+		if not attached then
+			attached = Instance.new("Folder")
+			attached.Name = "AttachedTools"
+			attached.Parent = drop
+		end
+		hideAttachedTool(droppedTool)
+		droppedTool.Parent = attached
+		drop:SetAttribute("HasAttachedTool", true)
+	end
 	-- Sync inventory to client
 	if _G.SendInventory then
 		_G.SendInventory(player)
@@ -564,3 +681,47 @@ end)
 game:GetService("Players").PlayerRemoving:Connect(function(player)
 	lastDropTime[player] = nil
 end)
+
+--[[ ⚠️ ВЫБРОШЕННЫЙ ПРЕДМЕТ УПАЛ В ВОДУ — НЕ ДАЁМ ЕМУ ВЫСТРЕЛИТЬ ВВЕРХ.
+     У дропа все детали Massless (так он не давит на плот). Но вода террейна
+     выталкивает каждую деталь по её ОБЪЁМУ, а массы у «невесомых» деталей нет:
+     сила огромная, вес почти нулевой — коробку, столкнутую с плота, подбрасывало
+     высоко вверх. Как только дроп оказался у воды (ниже WaterY + 1.5), детали
+     получают обычную массу и плотность 0.5 — предмет мягко всплывает и качается,
+     как поплавок. Скорость вверх в момент перехода срезаем, чтобы не было рывка.
+     Спрятанный прицепленный инструмент (AttachedTools, заякорен) не трогаем. ]]
+do
+	local FLOAT_PROPS = PhysicalProperties.new(0.5, 0.3, 0.2)
+	local MAX_UP = 4
+	local acc = 0
+	game:GetService("RunService").Heartbeat:Connect(function(dt)
+		acc += dt
+		if acc < 0.1 then return end
+		acc = 0
+		local waterY = workspace:GetAttribute("WaterY")
+		if type(waterY) ~= "number" then return end
+		for _, drop in CollectionService:GetTagged("DroppedItem") do
+			if drop.Parent and not drop:GetAttribute("WaterFloat") then
+				local root = drop:IsA("BasePart") and drop or (drop:IsA("Model") and drop.PrimaryPart)
+				if root and not root.Anchored and root.Position.Y < waterY + 1.5 then
+					drop:SetAttribute("WaterFloat", true)
+					local attached = drop:FindFirstChild("AttachedTools")
+					local parts = drop:IsA("BasePart") and { drop } or {}
+					for _, d in drop:GetDescendants() do
+						if d:IsA("BasePart") then table.insert(parts, d) end
+					end
+					for _, p in parts do
+						if not p.Anchored and not (attached and p:IsDescendantOf(attached)) then
+							p.Massless = false
+							p.CustomPhysicalProperties = FLOAT_PROPS
+						end
+					end
+					local v = root.AssemblyLinearVelocity
+					if v.Y > MAX_UP then
+						root.AssemblyLinearVelocity = Vector3.new(v.X, MAX_UP, v.Z)
+					end
+				end
+			end
+		end
+	end)
+end

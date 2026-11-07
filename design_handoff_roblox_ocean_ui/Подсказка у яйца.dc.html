@@ -1,0 +1,142 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; background: #e9e6e0; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="font-family: 'Nunito', sans-serif; color: #2b2620; padding: 44px 40px 80px 40px; max-width: 1320px; margin: 0 auto;">
+
+  <!-- header -->
+  <div style="max-width: 880px; margin-bottom: 36px;">
+    <div style="font-size: 13px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #8a7a5e; margin-bottom: 10px;">Roblox UI · Pet Egg · Тема «Океан»</div>
+    <h1 style="font-size: 32px; font-weight: 900; margin: 0 0 12px 0; line-height: 1.15;">Подсказка при подходе к яйцу</h1>
+    <p style="font-size: 15px; font-weight: 700; line-height: 1.6; color: #5a5247; margin: 0;">
+      ProximityPrompt: появляется, когда игрок подходит к яйцу. Клавиша «E», действие и цена в синем стиле.
+      Ниже — две версии (десктоп и мобайл) и состояние «не хватает монет».
+    </p>
+  </div>
+
+  <!-- ============ DESKTOP + MOBILE ON STAGE ============ -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px;">
+    <h2 style="font-size: 19px; font-weight: 900; margin: 0;">Подсказка</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">клавиша E (ПК) · кнопка-тап (мобайл)</span>
+  </div>
+  <div style="background: linear-gradient(180deg, #6fb0dc 0%, #4f93c8 100%); border-radius: 16px; padding: 52px 36px; margin-bottom: 44px; display: flex; justify-content: center; align-items: center; gap: 64px; flex-wrap: wrap;">
+
+    <!-- DESKTOP prompt -->
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+      <div style="display: flex; align-items: center; gap: 14px; padding: 12px 22px 12px 12px; background: linear-gradient(180deg, rgba(31,79,143,0.78) 0%, rgba(20,58,107,0.78) 100%); border: 3px solid rgba(169,214,247,0.9); border-radius: 18px; box-shadow: inset 0 2px 0 rgba(255,255,255,0.25), 0 10px 26px rgba(0,0,0,0.32); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);">
+        <!-- E key -->
+        <div style="width: 62px; height: 62px; flex: none; background: linear-gradient(180deg, #eaf5ff 0%, #c4e1f7 100%); border: 3px solid #1c4f8f; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 900; color: #1c4f8f; box-shadow: inset 0 -5px 0 rgba(28,79,143,0.25), 0 4px 0 rgba(20,58,107,0.6);">E</div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <div style="font-size: 20px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.35); line-height: 1.1;">Открыть яйцо</div>
+          <div style="display: flex; align-items: center; gap: 7px;">
+            <div style="width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2px solid #b07a14; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: #b07a14;">$</div>
+            <div style="font-size: 17px; font-weight: 900; color: #ffd95a; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">35</div>
+          </div>
+        </div>
+      </div>
+      <div style="font-size: 13px; font-weight: 900; color: rgba(255,255,255,0.85); text-shadow: 0 1px 0 rgba(0,0,0,0.25);">ПК — нажмите E</div>
+    </div>
+
+    <!-- MOBILE prompt -->
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 12px;">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 10px; padding: 16px 18px; background: linear-gradient(180deg, rgba(31,79,143,0.78) 0%, rgba(20,58,107,0.78) 100%); border: 3px solid rgba(169,214,247,0.9); border-radius: 18px; box-shadow: inset 0 2px 0 rgba(255,255,255,0.25), 0 10px 26px rgba(0,0,0,0.32); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);">
+        <div style="font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">Открыть яйцо</div>
+        <!-- big tap button -->
+        <div style="display: flex; align-items: center; gap: 10px; padding: 12px 26px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 3px solid #1c4f8f; border-radius: 14px; box-shadow: inset 0 -5px 0 rgba(0,0,0,0.22), 0 5px 12px rgba(0,0,0,0.25); cursor: pointer;">
+          <div style="width: 24px; height: 24px; border-radius: 50%; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2px solid #b07a14; display: flex; align-items: center; justify-content: center; font-size: 12px; font-weight: 900; color: #b07a14;">$</div>
+          <div style="font-size: 22px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">35</div>
+        </div>
+      </div>
+      <div style="font-size: 13px; font-weight: 900; color: rgba(255,255,255,0.85); text-shadow: 0 1px 0 rgba(0,0,0,0.25);">Мобайл — тап по кнопке</div>
+    </div>
+
+  </div>
+
+  <!-- ============ NOT ENOUGH COINS ============ -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px;">
+    <h2 style="font-size: 19px; font-weight: 900; margin: 0;">Состояние «не хватает монет»</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">приглушённая, красная цена, клавиша заблокирована</span>
+  </div>
+  <div style="background: linear-gradient(180deg, #6fb0dc 0%, #4f93c8 100%); border-radius: 16px; padding: 46px 36px; margin-bottom: 44px; display: flex; justify-content: center;">
+    <div style="display: flex; align-items: center; gap: 14px; padding: 12px 22px 12px 12px; background: linear-gradient(180deg, rgba(60,72,92,0.78) 0%, rgba(40,50,66,0.78) 100%); border: 3px solid rgba(180,190,205,0.7); border-radius: 18px; box-shadow: inset 0 2px 0 rgba(255,255,255,0.12), 0 10px 26px rgba(0,0,0,0.32); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);">
+      <div style="width: 62px; height: 62px; flex: none; background: linear-gradient(180deg, #c9ccd3 0%, #a3a8b2 100%); border: 3px solid #6b6f78; border-radius: 14px; display: flex; align-items: center; justify-content: center; font-size: 32px; font-weight: 900; color: #6b6f78; box-shadow: inset 0 -5px 0 rgba(0,0,0,0.15);">E</div>
+      <div style="display: flex; flex-direction: column; gap: 2px;">
+        <div style="font-size: 20px; font-weight: 900; color: rgba(255,255,255,0.85); text-shadow: 0 2px 0 rgba(0,0,0,0.35); line-height: 1.1;">Открыть яйцо</div>
+        <div style="display: flex; align-items: center; gap: 7px;">
+          <div style="width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2px solid #b07a14; display: flex; align-items: center; justify-content: center; font-size: 11px; font-weight: 900; color: #b07a14;">$</div>
+          <div style="font-size: 17px; font-weight: 900; color: #ff6b5e; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">35 — не хватает</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ IN CONTEXT ============ -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px;">
+    <h2 style="font-size: 19px; font-weight: 900; margin: 0;">В контексте игры</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">подсказка под яйцом, у ног игрока</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 22px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 44px;">
+    <div style="position: relative; border-radius: 10px; overflow: hidden; line-height: 0;">
+      <img src="uploads/pasted-1781538143064-0.png" alt="Скриншот игры" style="width: 100%; display: block;">
+
+      <!-- overlaid prompt over the player -->
+      <div style="position: absolute; top: 56%; left: 47%; transform: translateX(-50%);">
+        <div style="display: flex; align-items: center; gap: 9px; padding: 7px 14px 7px 7px; background: linear-gradient(180deg, rgba(31,79,143,0.82) 0%, rgba(20,58,107,0.82) 100%); border: 2px solid rgba(169,214,247,0.9); border-radius: 12px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), 0 6px 16px rgba(0,0,0,0.4); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);">
+          <div style="width: 40px; height: 40px; flex: none; background: linear-gradient(180deg, #eaf5ff, #c4e1f7); border: 2px solid #1c4f8f; border-radius: 9px; display: flex; align-items: center; justify-content: center; font-size: 21px; font-weight: 900; color: #1c4f8f; box-shadow: 0 3px 0 rgba(20,58,107,0.6);">E</div>
+          <div style="display: flex; flex-direction: column; gap: 1px; line-height: 1.15;">
+            <div style="font-size: 14px; font-weight: 900; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.5);">Открыть яйцо</div>
+            <div style="display: flex; align-items: center; gap: 5px;">
+              <div style="width: 15px; height: 15px; border-radius: 50%; background: linear-gradient(180deg, #ffd95a, #f5b73c); border: 1.5px solid #b07a14;"></div>
+              <div style="font-size: 13px; font-weight: 900; color: #ffd95a; text-shadow: 0 1px 0 rgba(0,0,0,0.5);">35</div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============ SPECS ============ -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div style="background: #ffffff; border-radius: 16px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 12px;">Реализация (Roblox Studio)</div>
+      <div style="font-size: 13px; font-weight: 700; line-height: 2; color: #5a5247;">
+        ProximityPrompt на яйце, кастомный GUI<br>
+        ActivationDistance ≈ 10, HoldDuration 0<br>
+        KeyboardKeyCode = E, ShowOnGamepad — кнопка ⓨ<br>
+        Появление: fade + scale 0.85→1 за 0.15 c<br>
+        Клавиша «нажата»: scale 0.92 + сдвиг вниз 3 px<br>
+        Мобайл — большая тап-кнопка вместо клавиши
+      </div>
+    </div>
+    <div style="background: #ffffff; border-radius: 16px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 12px;">Цвета</div>
+      <div style="display: flex; flex-direction: column; gap: 9px; font-size: 13px; font-weight: 700; color: #5a5247;">
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(180deg, rgba(31,79,143,0.85), rgba(20,58,107,0.85)); flex: none;"></div>Стекло #1F4F8F, прозрачность 0.22</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #a9d6f7; flex: none;"></div>Рамка #A9D6F7</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(180deg, #eaf5ff, #c4e1f7); border: 1px solid #1c4f8f; flex: none;"></div>Клавиша E — светлая, текст #1C4F8F</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #ffd95a; flex: none;"></div>Цена — #FFD95A</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #ff6b5e; flex: none;"></div>Не хватает монет — #FF6B5E</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

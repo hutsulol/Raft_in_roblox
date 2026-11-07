@@ -1,0 +1,63 @@
+{
+  "canvas": [
+    1000,
+    633
+  ],
+  "splitY": 406,
+  "hero": {
+    "x": 640,
+    "y": 211,
+    "width": 300,
+    "height": 315
+  },
+  "button": {
+    "x": 645,
+    "y": 475,
+    "width": 310,
+    "height": 100
+  },
+  "currency": {
+    "x": 693,
+    "y": 513,
+    "width": 29,
+    "height": 29
+  },
+  "font": "Nunito Black, outlines embedded in SVG",
+  "texts": [
+    {
+      "key": "title",
+      "text": "Pirate Coin Bag",
+      "font": "Nunito Black",
+      "size": 34,
+      "width": 257.89000000000004
+    },
+    {
+      "key": "offer",
+      "text": "20 COINS / ROBUX",
+      "font": "Nunito Black",
+      "size": 32,
+      "width": 297.088
+    },
+    {
+      "key": "reward-label",
+      "text": "COINS",
+      "font": "Nunito Black",
+      "size": 26,
+      "width": 83.616
+    },
+    {
+      "key": "amount",
+      "text": "2,000",
+      "font": "Nunito Black",
+      "size": 51,
+      "width": 136.272
+    },
+    {
+      "key": "price",
+      "text": "100",
+      "font": "Nunito Black",
+      "size": 47,
+      "width": 84.6
+    }
+  ]
+}

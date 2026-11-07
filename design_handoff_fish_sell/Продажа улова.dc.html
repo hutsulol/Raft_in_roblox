@@ -1,0 +1,232 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; background: #e9e6e0; }
+    * { box-sizing: border-box; }
+    a { color: #2e6bb4; } a:hover { color: #1c4f8f; }
+    @keyframes fishSpin { to { transform: rotate(360deg); } }
+    @keyframes fishPulse { 0%, 100% { transform: scale(0.82); opacity: 0.55; } 50% { transform: scale(1.12); opacity: 1; } }
+    @keyframes fishTurn { 0% { transform: perspective(500px) rotateY(0deg) translateY(0); } 50% { transform: perspective(500px) rotateY(180deg) translateY(-6px); } 100% { transform: perspective(500px) rotateY(360deg) translateY(0); } }
+    @keyframes fishPop { 0% { transform: scale(0.3); opacity: 0; } 100% { transform: scale(1); opacity: 1; } }
+  </style>
+</helmet>
+
+<div style="font-family: 'Nunito', sans-serif; color: #2b2620; padding: 44px 40px 80px 40px; max-width: 1320px; margin: 0 auto;">
+
+  <div style="max-width: 880px; margin-bottom: 32px;">
+    <div style="font-size: 13px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #8a7a5e; margin-bottom: 10px;">Roblox UI · Pirate Island · Тема «Океан»</div>
+    <h1 style="font-size: 32px; font-weight: 900; margin: 0 0 12px 0; line-height: 1.15;">Продажа улова</h1>
+    <p style="font-size: 15px; font-weight: 700; line-height: 1.6; color: #5a5247; margin: 0;">
+      Без подложки: рыба на вращающемся и пульсирующем свечении цвета редкости. Название тем же цветом, рядом вес, под весом прибыль.
+    </p>
+  </div>
+
+  <!-- ============ STAGE ============ -->
+  <div style="background: linear-gradient(180deg, #7ec0e6 0%, #5fa8d6 100%); border-radius: 16px; padding: 40px 24px 32px 24px; margin-bottom: 44px; display: flex; flex-direction: column; align-items: center; gap: 24px;">
+
+    <div style="display: flex; flex-direction: column; align-items: center; gap: 2px;">
+      <div style="position: relative; width: 240px; height: 180px; display: flex; align-items: center; justify-content: center;">
+        {{ glowBig }}
+        {{ fishBig }}
+      </div>
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 4px;">
+        <div ref="{{ nameRefB }}" style="order: 1; white-space: nowrap; font-size: 30px; font-weight: 900; color: {{ fColor }}; -webkit-text-stroke: 5px #0d2a4f; paint-order: stroke fill; text-shadow: 0 3px 0 #0d2a4f; line-height: 1;">{{ fName }}</div>
+        <div style="display: contents;">
+          <div style="background: #ffffff; border: 3px solid #0d2a4f; border-radius: 999px; padding: 3px 12px; font-size: 22px; font-weight: 900; color: #0d2a4f; line-height: 1; box-shadow: 0 3px 0 #0d2a4f; white-space: nowrap;">{{ fWeight }} кг</div>
+          <div ref="{{ payRefB }}" style="order: 2; display: flex; align-items: center; gap: 6px;">
+            <span style="font-size: 42px; font-weight: 900; color: #ffd95a; -webkit-text-stroke: 6px #0d2a4f; paint-order: stroke fill; text-shadow: 0 4px 0 #0d2a4f; line-height: 1;">+{{ fPay }}</span>
+            <img src="uploads/pasted-1791407355537-0.png" alt="pirate" style="width: 40px; height: 40px; border-radius: 50%; border: 3px solid #ffd95a; box-shadow: 0 3px 0 #0d2a4f; display: block; flex: none;">
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <div style="display: flex; gap: 12px; flex-wrap: wrap; justify-content: center;">
+      <div onClick="{{ roll }}" style="background: linear-gradient(180deg, #5ee07a 0%, #34b84e 100%); border: 3px solid #1f7a33; border-radius: 12px; padding: 11px 26px; font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18); cursor: pointer;" style-active="transform: translateY(2px);">Поймать рыбу</div>
+      <div onClick="{{ sim }}" style="background: #2e6bb4; border: 3px solid #1c4f8f; border-radius: 12px; padding: 11px 22px; font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18); cursor: pointer;" style-hover="background: #3776c2;" style-active="transform: translateY(2px);">Симуляция ×10 000</div>
+    </div>
+
+    <sc-if value="{{ hasSim }}" hint-placeholder-val="{{ false }}">
+      <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(130px, 1fr)); gap: 8px; width: min(640px, 100%);">
+        <sc-for list="{{ simStats }}" as="s" hint-placeholder-count="5">
+          <div style="background: #1c4f8f; border-radius: 12px; padding: 8px 10px; text-align: center; display: flex; flex-direction: column; gap: 1px;">
+            <div style="font-size: 11px; font-weight: 900; color: #a9d6f7; text-transform: uppercase;">{{ s.label }}</div>
+            <div style="font-size: 18px; font-weight: 900; color: #ffd95a; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">{{ s.value }}</div>
+          </div>
+        </sc-for>
+      </div>
+    </sc-if>
+  </div>
+
+  <!-- ============ IN CONTEXT ============ -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px;">
+    <h2 style="font-size: 19px; font-weight: 900; margin: 0;">В контексте игры</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">без подложки, прямо поверх мира</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 22px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 44px;">
+    <div style="position: relative; border-radius: 10px; overflow: hidden; line-height: 0; max-width: 900px; margin: 0 auto;">
+      <img src="uploads/pasted-1781168587919-0.png" alt="Скриншот игры" style="width: 100%; display: block;">
+      <div style="position: absolute; left: 10%; top: 42%; display: flex; flex-direction: column; align-items: center; gap: 0; line-height: 1;">
+        <div style="position: relative; width: 150px; height: 112px; display: flex; align-items: center; justify-content: center;">
+          {{ glowSmall }}
+          {{ fishSmall }}
+        </div>
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 3px;">
+          <div ref="{{ nameRefS }}" style="order: 1; white-space: nowrap; font-size: 19px; font-weight: 900; color: {{ fColor }}; -webkit-text-stroke: 4px #0d2a4f; paint-order: stroke fill; text-shadow: 0 2px 0 #0d2a4f; line-height: 1;">{{ fName }}</div>
+          <div style="display: contents;">
+            <div style="background: #ffffff; border: 2px solid #0d2a4f; border-radius: 999px; padding: 2px 8px; font-size: 14px; font-weight: 900; color: #0d2a4f; box-shadow: 0 2px 0 #0d2a4f; white-space: nowrap;">{{ fWeight }} кг</div>
+            <div ref="{{ payRefS }}" style="order: 2; display: flex; align-items: center; gap: 4px; line-height: 1;">
+              <span style="font-size: 26px; font-weight: 900; color: #ffd95a; -webkit-text-stroke: 5px #0d2a4f; paint-order: stroke fill; text-shadow: 0 3px 0 #0d2a4f;">+{{ fPay }}</span>
+              <img src="uploads/pasted-1791407355537-0.png" alt="pirate" style="width: 25px; height: 25px; border-radius: 50%; border: 2px solid #ffd95a; display: block; flex: none;">
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ FISH TABLE ============ -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px; flex-wrap: wrap;">
+    <h2 style="font-size: 19px; font-weight: 900; margin: 0;">Массив рыб</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">выручка = вес × коэф. Вес внутри диапазона смещён к лёгкому (r²), поэтому крупный экземпляр выпадает реже</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 10px 22px 18px 22px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 20px; overflow-x: auto;">
+    <div style="min-width: 760px;">
+      <div style="display: grid; grid-template-columns: 1.6fr 1.3fr 0.9fr 1.2fr 1fr 1.2fr; gap: 12px; padding: 12px 0; border-bottom: 2px solid #e9e6e0; font-size: 11px; font-weight: 900; color: #8a7f6e; text-transform: uppercase; letter-spacing: 1px;">
+        <div>Рыба</div><div>Редкость</div><div>Шанс</div><div>Вес, кг</div><div>Коэф. / кг</div><div>Выручка</div>
+      </div>
+      <sc-for list="{{ table }}" as="t" hint-placeholder-count="13">
+        <div style="display: grid; grid-template-columns: 1.6fr 1.3fr 0.9fr 1.2fr 1fr 1.2fr; gap: 12px; padding: 10px 0; border-bottom: 1px solid #f0ede7; font-size: 14px; font-weight: 800; align-items: center;">
+          <div style="font-weight: 900;">{{ t.name }}</div>
+          <div><span style="background: {{ t.color }}; border-radius: 999px; padding: 2px 10px; font-size: 11px; font-weight: 900; color: #ffffff; white-space: nowrap;">{{ t.rarity }}</span></div>
+          <div style="color: #5a5247;">{{ t.chance }}</div>
+          <div style="color: #5a5247;">{{ t.wRange }}</div>
+          <div style="color: #5a5247;">{{ t.coef }}</div>
+          <div style="color: #b07a14; font-weight: 900;">{{ t.payRange }}</div>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+  <p style="font-size: 13px; font-weight: 700; color: #8a7f6e; margin: 0 0 44px 0; line-height: 1.6;">
+    Цвет свечения: Обычная — серый · Необычная и Редкая — синий · Эпическая — фиолетовый · Легендарная и Мифическая — золотой (у мифической вращение быстрее).
+    Шансы: 70% · 20% · 7,4% · 2% · 0,5% · 0,1%. Модуль для Roblox — <a href="FishData.lua">FishData.lua</a>.
+  </p>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  RAR = {
+    common:    { name: 'Обычная',     chance: 70,  color: '#7b8a99', glow: '#c9d2dc', text: '#e3ebf3', spin: 9 },
+    uncommon:  { name: 'Необычная',   chance: 20,  color: '#34b84e', glow: '#6cc0ff', text: '#8fd0ff', spin: 8 },
+    rare:      { name: 'Редкая',      chance: 7.4, color: '#2e6bb4', glow: '#3f9bff', text: '#5aaeff', spin: 7 },
+    epic:      { name: 'Эпическая',   chance: 2,   color: '#9b5fe0', glow: '#b26cff', text: '#c792ff', spin: 6 },
+    legendary: { name: 'Легендарная', chance: 0.5, color: '#e8902a', glow: '#ffc83a', text: '#ffd95a', spin: 5 },
+    mythic:    { name: 'Мифическая',  chance: 0.1, color: '#e0407a', glow: '#ffc83a', text: '#ffd95a', spin: 2.5 }
+  };
+  FISH = [
+    { name: 'Сардина',          r: 'common',    min: 0.25, max: 0.6,  coef: 2.0 },
+    { name: 'Скумбрия',         r: 'common',    min: 0.45, max: 1.0,  coef: 1.2 },
+    { name: 'Морской окунь',    r: 'common',    min: 0.65, max: 1.5,  coef: 0.8 },
+    { name: 'Дорадо',           r: 'uncommon',  min: 1.0,  max: 2.5,  coef: 0.8 },
+    { name: 'Морской лещ',      r: 'uncommon',  min: 0.8,  max: 2.0,  coef: 1.0 },
+    { name: 'Барракуда',        r: 'rare',      min: 2.0,  max: 4.6,  coef: 0.75 },
+    { name: 'Тунец',            r: 'rare',      min: 5.0,  max: 12.0, coef: 0.3 },
+    { name: 'Рыба-меч',         r: 'epic',      min: 12.0, max: 20.0, coef: 0.25 },
+    { name: 'Золотая фугу',     r: 'epic',      min: 1.0,  max: 1.6,  coef: 3.1 },
+    { name: 'Синий марлин',     r: 'legendary', min: 50.0, max: 62.5, coef: 0.08 },
+    { name: 'Призрачный скат',  r: 'legendary', min: 8.0,  max: 10.0, coef: 0.5 },
+    { name: 'Кракенёнок',       r: 'mythic',    min: 30.0, max: 75.0, coef: 0.2 },
+    { name: 'Левиафан',         r: 'mythic',    min: 60.0, max: 150.0, coef: 0.1 }
+  ];
+  state = { cur: null, sim: null, n: 0 };
+  fmt(n, d) { return n.toFixed(d).replace('.', ','); }
+  catchFish() {
+    let x = Math.random() * 100, key = 'common';
+    for (const k of Object.keys(this.RAR)) { if (x < this.RAR[k].chance) { key = k; break; } x -= this.RAR[k].chance; }
+    const pool = this.FISH.filter(f => f.r === key);
+    const f = pool[Math.floor(Math.random() * pool.length)];
+    const w = f.min + (f.max - f.min) * Math.pow(Math.random(), 2);
+    return { f, w, pay: Math.max(0.5, Math.min(15, w * f.coef)) };
+  }
+  glow(size, R, key) {
+    const h = React.createElement;
+    return h('div', { key, style: { position: 'absolute', inset: 0, display: 'flex', alignItems: 'center', justifyContent: 'center', pointerEvents: 'none', animation: 'fishPop 0.45s cubic-bezier(.3,1.6,.5,1)' } },
+      h('div', { style: { position: 'absolute', width: size, height: size, borderRadius: '50%',
+        background: `repeating-conic-gradient(${R.glow}cc 0deg 9deg, transparent 9deg 30deg)`,
+        WebkitMaskImage: 'radial-gradient(circle, #000 18%, transparent 68%)', maskImage: 'radial-gradient(circle, #000 18%, transparent 68%)',
+        animation: `fishSpin ${R.spin}s linear infinite` } }),
+      h('div', { style: { position: 'absolute', width: size * 0.75, height: size * 0.75, borderRadius: '50%',
+        background: `radial-gradient(circle, ${R.glow} 0%, ${R.glow}88 30%, transparent 68%)`,
+        animation: 'fishPulse 1.6s ease-in-out infinite' } })
+    );
+  }
+  fish(w, hgt, fs, b) {
+    const h = React.createElement;
+    return h('div', { style: { position: 'relative', width: w, height: hgt, borderRadius: '50%', background: '#a9d6f7', border: `${b}px dashed #1c4f8f`, display: 'flex', alignItems: 'center', justifyContent: 'center', animation: 'fishTurn 3.2s ease-in-out infinite' } },
+      fs ? h('span', { style: { fontFamily: 'monospace', fontSize: fs, color: '#1c4f8f' } }, 'рендер рыбы') : null);
+  }
+  nameRefB = React.createRef(); payRefB = React.createRef();
+  nameRefS = React.createRef(); payRefS = React.createRef();
+  fitOne(n, p, base) {
+    if (!n || !p) return;
+    n.style.fontSize = base + 'px';
+    const nw = n.scrollWidth, pw = p.getBoundingClientRect().width;
+    if (!nw || !pw) return;
+    n.style.fontSize = Math.max(10, Math.min(base * 2, base * pw / nw)) + 'px';
+  }
+  fit() {
+    requestAnimationFrame(() => {
+      this.fitOne(this.nameRefB.current, this.payRefB.current, 30);
+      this.fitOne(this.nameRefS.current, this.payRefS.current, 19);
+    });
+  }
+  componentDidMount() { this.fit(); document.fonts && document.fonts.ready.then(() => this.fit()); }
+  componentDidUpdate() { this.fit(); }
+  renderVals() {
+    const c = this.state.cur || { f: this.FISH[5], w: 3.19, pay: 2.39 };
+    const R = this.RAR[c.f.r];
+    const sim = this.state.sim;
+    return {
+      fName: c.f.name, fColor: R.text, fWeight: this.fmt(c.w, 2), fPay: this.fmt(c.pay, 2),
+      glowBig: this.glow(260, R, 'b' + this.state.n),
+      glowSmall: this.glow(160, R, 's' + this.state.n),
+      nameRefB: this.nameRefB, payRefB: this.payRefB, nameRefS: this.nameRefS, payRefS: this.payRefS,
+      fishBig: this.fish(150, 84, 11, 3),
+      fishSmall: this.fish(92, 52, 0, 2),
+      roll: () => this.setState(s => ({ cur: this.catchFish(), n: s.n + 1 })),
+      sim: () => {
+        const N = 10000; let a = 0, b = 0, d = 0, sum = 0, mx = 0;
+        for (let i = 0; i < N; i++) { const p = this.catchFish().pay; sum += p; mx = Math.max(mx, p); if (p <= 2) a++; else if (p <= 5) b++; else d++; }
+        this.setState({ sim: [
+          { label: '0,5 – 2', value: this.fmt(a / N * 100, 1) + '%' },
+          { label: '2 – 5', value: this.fmt(b / N * 100, 1) + '%' },
+          { label: 'выше 5', value: this.fmt(d / N * 100, 2) + '%' },
+          { label: 'Средняя', value: this.fmt(sum / N, 2) },
+          { label: 'Максимум', value: this.fmt(mx, 2) }
+        ] });
+      },
+      hasSim: !!sim, simStats: sim || [],
+      table: this.FISH.map(f => {
+        const r = this.RAR[f.r], n = this.FISH.filter(x => x.r === f.r).length;
+        return { name: f.name, rarity: r.name, color: r.color, chance: this.fmt(r.chance / n, r.chance / n < 1 ? 2 : 1) + '%',
+          wRange: this.fmt(f.min, 2) + ' – ' + this.fmt(f.max, 1), coef: this.fmt(f.coef, 2),
+          payRange: this.fmt(f.min * f.coef, 2) + ' – ' + this.fmt(f.max * f.coef, 2) };
+      })
+    };
+  }
+}
+</script>
+</body>
+</html>

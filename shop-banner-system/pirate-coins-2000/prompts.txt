@@ -1,0 +1,10 @@
+Generated with the built-in image_gen tool; transparent_background=true.
+References: supplied Pirate logo and original-banner.png from the saved template.
+
+HERO PROMPT
+Create ONLY a standalone hero game item illustration: a lavish bulging golden ochre leather pirate coin sack, open at top overflowing with black / dark gunmetal Pirate coins with polished gold edges. Match precisely the white gothic P above crossed curved swords emblem in image 1 on the largest front-facing coins and a black fabric medallion on front of sack. Image 2 is only STYLE reference: glossy highly polished cartoon mobile Roblox shop item, bold dark outlines, strong bright highlights, saturated golden yellow, warm light upper left, clean compact silhouette. Portrait composition tightly filling canvas, whole sack visible, a few coins at its base. Hero will occupy 350x435 on a UI card, so keep detail readable. Actual transparent background, no backdrop, no card, no UI, no lettering other than supplied emblem, no numerals, no buttons, no prices. Do not depict the pirate woman.
+
+REWARD ICON PROMPT
+Standalone game currency reward icon, ONLY one large slightly tilted front-facing dark gunmetal Pirate coin with polished gold rim, with two partially visible stacked coins behind it. The main coin face must bear the EXACT white emblem from image 1: gothic capital P above two crossed curved pirate swords. Logo occupies most coin face and remains legible small. Image 2 is illustration STYLE reference only: bold dark outlines, glossy saturated cartoon treasure, sparkling polished gold edge, crisp clean mobile game inventory art, light from upper left. Compact square composition, fill 90 percent of canvas. Genuine transparent background. NO UI, no frame, no title, no quantity, no price, no other text. No bag, no human.
+
+The banner's text, frame, two-color background, layout and price were composed deterministically with the saved template, not generated in the images. Offer wording shortened to fit its fixed slot: ВЫГОДНЫЙ НАБОР. Amount 2 000; price 100 Robux.

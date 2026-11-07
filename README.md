@@ -1,94 +1,74 @@
-# AI Development Guidelines for Claude Code
+# Handoff: Anchor HUD (Roblox)
 
-## Project Overview
+## Overview
+Экранный UI управления якорем на плоту. Появляется, когда игрок входит в зону якоря, исчезает при выходе. Содержит текст текущей высоты якоря (в %) и две кнопки-тапа: **ВВЕРХ** (поднять) и **ВНИЗ** (опустить).
 
-This project is a Roblox game inspired by Raft. The game includes ocean survival mechanics, player-owned islands, resource collection, crafting, UI systems, and multiplayer synchronization.
+## About the Design Files
+`Anchor HUD.dc.html` — **дизайн-референс в HTML**, не продакшн-код. Задача — воссоздать его в Roblox (ScreenGui + Frame/TextButton/TextLabel, управление через LocalScript), следуя существующему стилю игрового HUD (пилюли с тёмной обводкой, глянцевый блик, градиенты — как у полос уровня/здоровья).
 
-The codebase is large and consists of many interconnected files. You must treat this project as a multi-file production system, not a single-script prototype.
+## Fidelity
+**High-fidelity.** Цвета, размеры, шрифт и поведение финальные. В Roblox использовать `UICorner`, `UIStroke`, `UIGradient`; шрифт — Rubik/GothamBlack-подобный жирный (в игре уже используется похожий).
 
----
+## Screen: Anchor HUD
+**Purpose:** тап по кнопкам меняет высоту якоря шагом (по умолчанию 25%).
 
-## General Rules
+**Layout** (референс на канвасе 1100×610; в Roblox использовать Scale-размеры, привязка `AnchorPoint (0.5,1)`, `Position (0.5, 0, 1, -36)`):
+- Вертикальная колонка по центру внизу, отступ от низа 36 px, `gap` 12 px, выравнивание по центру.
+  1. Текст высоты.
+  2. Ряд из двух кнопок, `gap` 14 px.
 
-* Do NOT write comments in the code.
-* Write code like an experienced Roblox developer.
-* Keep code clean, minimal, and production-ready.
-* Do not explain the code unless explicitly asked.
-* Do not include debug prints unless requested.
-* Avoid unnecessary abstractions.
+### Текст высоты
+- Копия: `Высота: 100%` (значение = 100 − depth).
+- Шрифт: Rubik 900, 20 px, letter-spacing 0.02em, цвет `#FFFFFF`.
+- Тень текста: `0 2px 0 rgba(0,0,0,.6)` + `0 0 6px rgba(0,0,0,.5)`. Без подложки.
 
----
+### Кнопка «ВВЕРХ» (зелёная)
+- Размер 172×70 px, полностью скруглённая (pill, radius 999).
+- Обводка 3 px `#1A1626`.
+- Фон: вертикальный градиент `#9BE86A` (0%) → `#4DB43A` (55%) → `#2F8A2A` (100%).
+- Блик: полоса внутри, отступ 14 px слева/справа, top 5 px, высота 18 px, radius 999, `rgba(255,255,255,.35)`.
+- Тень: `0 5px 0 #143D1A` (объём) + `0 9px 16px rgba(0,0,0,.35)`.
+- Контент по центру, `gap` 12 px: треугольник вверх (белый, основание 22 px, высота 15 px, тень `0 2px 0 rgba(0,0,0,.45)`) + текст `ВВЕРХ`.
+- Текст: Rubik 900, 24 px, letter-spacing 0.03em, `#FFFFFF`, тень `0 2px 0 rgba(0,0,0,.45)`.
+- Pressed: сдвиг вниз на 4 px, тень `0 1px 0 #143D1A, 0 4px 8px rgba(0,0,0,.3)`; transition 80 ms.
+- Disabled (якорь полностью поднят, depth = 0): opacity 0.45, тап игнорируется.
 
-## Code Style
+### Кнопка «ВНИЗ» (синяя)
+Идентична «ВВЕРХ», кроме:
+- Градиент `#7ED0FF` → `#2F8BE6` (55%) → `#1B5FB8`.
+- Объёмная тень `#0F2F66`.
+- Треугольник вниз, текст `ВНИЗ`.
+- Disabled при depth = 100.
 
-* Use clear and simple naming (no overly complex names).
-* Follow typical Roblox Lua conventions.
-* Prefer short and readable functions.
-* Avoid deeply nested logic.
-* Do not over-engineer systems.
+## Interactions & Behavior
+- **Вход в зону** (например, `Touched`/ProximityPrompt/Region3): HUD появляется — анимация 300 ms ease-out: opacity 0→1, сдвиг Y +30 px → 0.
+- **Выход из зоны**: обратная анимация 300 ms, затем HUD скрывается.
+- **Тап ВВЕРХ**: `depth = max(0, depth − step)`.
+- **Тап ВНИЗ**: `depth = min(100, depth + step)`.
+- `step` настраиваемый: 10 / 25 / 50 / 100 (по умолчанию 25).
+- Hover-состояний нет (мобильный тап-UI).
 
----
+## State Management
+- `inZone: boolean` — виден ли HUD.
+- `depth: number` 0..100 — глубина якоря (0 = поднят, 100 = опущен). Отображаемая высота = `100 − depth`.
+- `step: number` — шаг изменения за тап.
+- Состояние якоря — серверное (RemoteEvent на тап, клиент только отображает).
 
-## File Structure Awareness
+## Design Tokens
+- Outline: `#1A1626`
+- Green: `#9BE86A`, `#4DB43A`, `#2F8A2A`, shadow `#143D1A`
+- Blue: `#7ED0FF`, `#2F8BE6`, `#1B5FB8`, shadow `#0F2F66`
+- Text: `#FFFFFF`
+- Highlight: `rgba(255,255,255,.35)`
+- Radius: 999 (pill)
+- Spacing: 12 (колонка), 14 (между кнопками), 36 (от низа)
+- Type: Rubik 900 — 20 px (высота), 24 px (кнопки)
+- Motion: 300 ms ease-out (появление/исчезание), 80 ms (нажатие)
 
-* Always assume there are many existing scripts.
-* Do NOT rewrite entire systems unless asked.
-* Only modify or extend what is necessary.
-* Respect existing architecture and naming.
+## Assets
+Никаких растровых ассетов. Треугольники — простые фигуры (в Roblox: ImageLabel с треугольником или TextLabel «▲/▼»). Скриншот игры в референсе — только фон.
 
----
-
-## Modularity
-
-* Write reusable modules when appropriate.
-* Do not duplicate logic across files.
-* Keep responsibilities separated (UI, logic, data, etc).
-
----
-
-## Multiplayer & Data
-
-* Always consider multiplayer behavior.
-* Do not write client-only logic for server systems.
-* Be careful with RemoteEvents and RemoteFunctions.
-* Assume player data must be saved and loaded properly.
-
----
-
-## Performance
-
-* Avoid heavy loops or expensive operations.
-* Be mindful of memory and replication cost.
-* Optimize only when necessary, but avoid bad practices.
-
----
-
-## UI
-
-* UI must be clean and responsive.
-* Assume UI updates dynamically.
-* Do not hardcode values if they can change.
-
----
-
-## Communication Rules
-
-* If something is unclear, ask for clarification before coding.
-* Do not make assumptions about missing systems.
-* If a feature depends on something not implemented, say it.
-
----
-
-## Output Rules
-
-* Always provide full working code.
-* Do not send partial snippets unless requested.
-* Clearly specify where the code should be placed.
-
----
-
-## Important
-
-You are working with a real project, not a tutorial.
-
-Act like a professional developer contributing to an existing codebase.
+## Files
+- `README.md` — эта спецификация.
+- `Anchor HUD.dc.html` — интерактивный референс (тап по кнопкам меняет высоту); открывать в браузере, требует `support.js` рядом.
+- `uploads/pasted-1788422425004-0.png` — скриншот сцены, использованный как фон в референсе.

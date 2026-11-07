@@ -1,3 +1,4 @@
+local print, warn = (function() local RS = game:GetService("RunService") if RS:IsServer() then return print, warn end local P, W, Pl = print, warn, game:GetService("Players") local function ok() local p = Pl.LocalPlayer return p ~= nil and p:GetAttribute("DevLogs") == true end return function(...) if ok() then P(...) end end, function(...) if ok() then W(...) end end end)() -- DevLogs: клиентские логи видят только админы (флаг ставит DevLogFlag.server)
 -- QuestEntryButton.client.lua
 -- Left-side HUD button that opens the Quest menu. Builds incrementally
 -- across A1 → A10 so each commit is testable on its own.
@@ -14,7 +15,9 @@
 --   _G.OpenQuestMenu()         -- A8: stub-warns until Phase B lands
 --   J keypress                 -- A10: also fires _G.OpenQuestMenu()
 
-local Players = game:GetService("Players")
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local TweenService      = game:GetService("TweenService")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
@@ -31,20 +34,39 @@ local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
 -- so the click-target is a plain ImageButton — no UICorner / UIStroke
 -- / paper fill / inner highlight on our side. Larger than the original
 -- 56-px chrome'd version so the baked-in frame reads at HUD distance.
-local BTN_SIZE      = 78
--- Anchored to the LEFT EDGE, vertically centred. Centring along the
--- mid-Y keeps us clear of the Roblox top-bar (chat / menu / Roblox
--- icon at the top-left) and the player stat bars (HP / hunger / XP
--- pinned at the bottom-left in this game's HUD), regardless of
--- viewport height — the button always sits in the empty slab of
--- screen between them. 16-px X margin matches the inventory tooltip
--- gap so the left HUD reads consistently.
-local BTN_MARGIN_X  = 16
-local BTN_ANCHOR_Y  = 0.5   -- scale; mid-screen vertically
+-- ⚠️ РАЗМЕРЫ ПРОПУСКАЕМ ЧЕРЕЗ HudScale.
+-- Числа подбирались на мониторе. На телефоне экран у́же в два-три раза, а кнопки
+-- оставались прежними — левый столбец занимал пол-экрана и налезал на трекер
+-- квеста. Коэффициент один на весь HUD, живёт в HudScale; свой множитель здесь
+-- заводить нельзя, иначе кнопки разъедутся между собой.
+-- ⚠️ Именно через размер, а НЕ через UIScale на кнопке: UIScale здесь уже занят
+-- наведением и нажатием (см. ниже), второй бы с ним спорил.
+local Hud = require(game:GetService("ReplicatedStorage"):WaitForChild("HudScale"))
+
+local BTN_SIZE      = Hud.px(78)
+-- ЛЕВЫЙ край, НАД иконкой инвентаря (тот же столбик слева-по-центру). Инвентарь
+-- (InventoryUI bpHolder) стоит по вертикали в центре экрана; квесты — над ним, с
+-- подписью «Квесты» под иконкой, ровно как «Инвентарь» под рюкзаком. Иконку 78px
+-- центрируем по оси инвентаря (её иконка центрируется на ~58px от левого края).
+-- Отступы масштабируются вместе с иконкой: иначе на телефоне кнопка сжимается, а
+-- расстояния между ней и соседями остаются прежними, и столбик рассыпается.
+local BTN_MARGIN_X  = Hud.gap(19)     -- левый отступ: воздух, режем сильнее
+local BTN_ANCHOR_Y  = 0.5             -- scale; середина экрана по вертикали
+-- ⚠️ ШАГ ВНИЗ — ЧЕРЕЗ step(), А НЕ gap(): иначе иконка с подписью станет выше
+-- отведённого ей шага и кнопки наедут друг на друга (см. HudScale.step).
+local BTN_OFFSET_Y  = -Hud.step(128)  -- выше центра: стоит НАД холдером инвентаря
 
 local screenGui = Instance.new("ScreenGui")
 screenGui.Name = "QuestEntryGui"
 screenGui.ResetOnSpawn = false
+--[[ ⚠️ ЗДЕСЬ false, И ТРОГАТЬ ЭТО НЕЛЬЗЯ.
+     Я менял на true, чтобы весь столбик считал высоту от одной точки: у
+     Инвентаря, Карты и Настроек стоит true, и «половина высоты» у соседей
+     расходится на высоту топбара. Но флаг действует на ВСЕ платформы, и на
+     компьютере он сдвинул выверенную раскладку — кнопки поехали вверх и
+     наложились там, где раньше всё стояло ровно.
+     Разницу в системе отсчёта надо лечить смещениями на телефоне, а не сменой
+     флага у половины столбика. ]]
 screenGui.IgnoreGuiInset = false
 screenGui.DisplayOrder = SCREENGUI_DISPLAY_ORDER
 screenGui.ZIndexBehavior = Enum.ZIndexBehavior.Sibling
@@ -55,12 +77,12 @@ screenGui.Parent = playerGui
 -- emerald are baked in), so we render it as a plain ImageButton with
 -- no surrounding chrome. Hover / press feel comes from UIScale + Y
 -- offset only — there's no fill colour to brighten anymore.
-local QUEST_ICON_ASSET = "rbxassetid://121862782555497"
+local QUEST_ICON_ASSET = "rbxassetid://119074861532109"
 
 local button = Instance.new("ImageButton")
 button.Name = "QuestButton"
 button.AnchorPoint = Vector2.new(0, 0.5)
-button.Position = UDim2.new(0, BTN_MARGIN_X, BTN_ANCHOR_Y, 0)
+button.Position = UDim2.new(0, BTN_MARGIN_X, BTN_ANCHOR_Y, BTN_OFFSET_Y)
 button.Size = UDim2.fromOffset(BTN_SIZE, BTN_SIZE)
 button.BackgroundTransparency = 1
 button.BorderSizePixel = 0
@@ -73,8 +95,7 @@ button.Parent = screenGui
 -- ─── Hover / pressed state animation (A5 + A6) ──────────────────────
 -- UIScale drives the bounce; UIScale composes cleanly with the
 -- Position offset added in the press path so the two states don't
--- fight over the same property.
-local TweenService = game:GetService("TweenService")
+-- fight over the same property. (TweenService уже взят наверху файла.)
 
 local btnScale = Instance.new("UIScale")
 btnScale.Scale = 1
@@ -133,60 +154,98 @@ end)
 -- label inside it for >1 claimable rewards. Driven by the global
 -- _G.SetQuestBadgeCount(n) setter so the Phase C server flow can
 -- bump it without reaching into this file. n=0 hides the badge.
-local BADGE_SIZE  = 18
-local BADGE_INSET = 4
-local COLOR_BADGE_FILL    = Color3.fromRGB(220,  72,  62)
-local COLOR_BADGE_OUTLINE = Color3.fromRGB(140,  36,  30)
+-- ⚠️ ВОСКЛИЦАТЕЛЬНЫЙ ЗНАК — ТЕПЕРЬ КАРТИНКА, А НЕ КРУЖОК С БУКВОЙ.
+-- Раньше значок собирался кодом: красный Frame, скругление, белая обводка и
+-- TextLabel «!» поверх. Смысл тот же — «есть что-то новое, загляни», — но вид
+-- задавался пятью объектами и тремя цветами прямо здесь, мимо рисованного стиля
+-- остального HUD. Один ImageLabel заменяет всё это, и правка вида больше не
+-- требует лезть в код.
+-- Размер чуть больше прежнего: у рисованного знака есть собственные поля внутри
+-- картинки, и в 22 пикселя он выглядел мельче старого кружка.
+local BADGE_SIZE  = Hud.gap(28)   -- значок «!» — не кнопка, палец сюда не нужен
+local BADGE_INSET = Hud.gap(4)
 
-local badge = Instance.new("Frame")
+local badge = Instance.new("ImageLabel")
 badge.Name = "Badge"
-badge.AnchorPoint = Vector2.new(1, 0)
-badge.Position = UDim2.new(1, BADGE_INSET, 0, -BADGE_INSET)
+-- ⚠️ ЯКОРЬ В ЦЕНТРЕ, ИНАЧЕ ПУЛЬСАЦИЯ РАСТЁТ ВБОК.
+-- Значок висел на якоре (1, 0) — за свой верхний правый угол. UIScale ниже
+-- увеличивает РАЗМЕР, а точка якоря при этом остаётся прибитой: значок разбухал
+-- влево-вниз, наползая на иконку квестов, вместо того чтобы дышать вокруг себя.
+-- Ставим якорь в центр и на столько же сдвигаем позицию — стоит там же, где
+-- стоял, но растёт теперь во все стороны одинаково.
+badge.AnchorPoint = Vector2.new(0.5, 0.5)
+badge.Position = UDim2.new(1, BADGE_INSET - BADGE_SIZE / 2, 0, BADGE_SIZE / 2 - BADGE_INSET)
 badge.Size = UDim2.fromOffset(BADGE_SIZE, BADGE_SIZE)
-badge.BackgroundColor3 = COLOR_BADGE_FILL
+badge.BackgroundTransparency = 1
 badge.BorderSizePixel = 0
+badge.Image = "rbxassetid://127581807351214"
+badge.ScaleType = Enum.ScaleType.Fit
 badge.Visible = false
 badge.ZIndex = 5
 badge.Parent = button
-local badgeCorner = Instance.new("UICorner")
-badgeCorner.CornerRadius = UDim.new(1, 0)
-badgeCorner.Parent = badge
-local badgeStroke = Instance.new("UIStroke")
-badgeStroke.Color = COLOR_BADGE_OUTLINE
-badgeStroke.Thickness = 1.5
-badgeStroke.Parent = badge
 
-local badgeLabel = Instance.new("TextLabel")
-badgeLabel.Name = "Count"
-badgeLabel.Size = UDim2.fromScale(1, 1)
-badgeLabel.BackgroundTransparency = 1
-badgeLabel.BorderSizePixel = 0
-badgeLabel.Font = Enum.Font.GothamBold
-badgeLabel.TextSize = 11
-badgeLabel.TextColor3 = Color3.fromRGB(255, 245, 230)
-badgeLabel.TextXAlignment = Enum.TextXAlignment.Center
-badgeLabel.TextYAlignment = Enum.TextYAlignment.Center
-badgeLabel.Text = ""
-badgeLabel.ZIndex = 6
-badgeLabel.Parent = badge
+-- лёгкая пульсация: значок должен ловить взгляд, но не мигать назойливо
+local badgeScale = Instance.new("UIScale")
+badgeScale.Parent = badge
+local badgePulse = TweenService:Create(badgeScale,
+	TweenInfo.new(0.85, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+	{ Scale = 1.18 })
 
--- Public API: callers update the badge by count. 0 = hide. 1 = empty
--- red dot (no number). 2..9 = digit. 10+ = "9+".
-_G.SetQuestBadgeCount = function(n)
-	n = tonumber(n) or 0
-	if n <= 0 then
-		badge.Visible = false
-		badgeLabel.Text = ""
-		return
-	end
-	badge.Visible = true
-	if n <= 1 then
-		badgeLabel.Text = ""
-	elseif n < 10 then
-		badgeLabel.Text = tostring(n)
+local function setBadge(on)
+	if badge.Visible == on then return end
+	badge.Visible = on
+	if on then
+		badgeScale.Scale = 1
+		badgePulse:Play()
 	else
-		badgeLabel.Text = "9+"
+		badgePulse:Cancel()
+		badgeScale.Scale = 1
 	end
+end
+
+-- Совместимость: прежняя ручка осталась, но теперь это просто «показать/скрыть».
+_G.SetQuestBadgeCount = function(n)
+	setBadge((tonumber(n) or 0) > 0)
+end
+
+-- ─── Что считается «новым» ──────────────────────────────────────────
+-- ⚠️ ДВА РАЗНЫХ ПОВОДА, И ГАСНУТ ОНИ ПО-РАЗНОМУ.
+--   • НАГРАДА ЖДЁТ (rewardPending) — горит, пока её не заберут. Открыть меню и
+--     не забрать не должно гасить значок: награда-то на месте.
+--   • НОВЫЙ КВЕСТ — тот, чей id игрок ещё не видел в меню. Гаснет, как только
+--     меню открыли: он его увидел, дальше напоминать не о чем.
+-- Отсюда и два отдельных флага вместо одного «есть что-то».
+local seenQuests = {}      -- [id] = true, если игрок уже открывал меню при нём
+local rewardWaiting = false
+local unseenQuest = false
+local lastQuests = {}      -- последний снимок: по нему помечаем «увидел»
+
+local function refreshBadge()
+	setBadge(rewardWaiting or unseenQuest)
+end
+
+local questStateEvent = ReplicatedStorage:WaitForChild("QuestState", 30)
+if questStateEvent then
+	questStateEvent.OnClientEvent:Connect(function(action, payload)
+		if action ~= "state" or type(payload) ~= "table" then return end
+		lastQuests = payload.quests or {}
+		rewardWaiting, unseenQuest = false, false
+		for _, q in ipairs(lastQuests) do
+			if q.rewardPending then rewardWaiting = true end
+			-- выполненный и закрытый квест новым не считается
+			if not seenQuests[q.id] and not q.completed then unseenQuest = true end
+		end
+		refreshBadge()
+	end)
+end
+
+-- Меню открыли — всё, что в нём сейчас лежит, считается увиденным.
+local function markSeen()
+	for _, q in ipairs(lastQuests) do
+		seenQuests[q.id] = true
+	end
+	unseenQuest = false
+	refreshBadge()
 end
 
 -- ─── Click: open the quest menu (A8) ────────────────────────────────
@@ -245,7 +304,13 @@ local function bindGuiHandshake(globalKey)
 		while os.clock() < deadline do
 			local gui = _G[globalKey]
 			if gui and gui:IsA("ScreenGui") then
-				gui:GetPropertyChangedSignal("Enabled"):Connect(syncVisibility)
+				gui:GetPropertyChangedSignal("Enabled"):Connect(function()
+					syncVisibility()
+					-- меню квестов открыли — квесты в нём считаются увиденными
+					if globalKey == "QuestMenuScreenGui" and gui.Enabled then
+						markSeen()
+					end
+				end)
 				syncVisibility()
 				return
 			end
@@ -272,55 +337,43 @@ syncVisibility()
 -- click — gameProcessed-aware so typing 'j' in chat doesn't trip it.
 local UserInputService = game:GetService("UserInputService")
 
-local TOOLTIP_LABEL_TEXT = "Quests (J)"
-local TOOLTIP_GAP_X      = 10  -- distance from the button's right edge
-
-local labelGui = Instance.new("Frame")
-labelGui.Name = "HoverLabel"
-labelGui.AnchorPoint = Vector2.new(0, 0.5)
-labelGui.Position = UDim2.new(1, TOOLTIP_GAP_X, 0.5, 0)
-labelGui.AutomaticSize = Enum.AutomaticSize.XY
-labelGui.BackgroundColor3 = COLOR_WOOD_DARKEST
-labelGui.BackgroundTransparency = 0.15
-labelGui.BorderSizePixel = 0
-labelGui.Visible = false
-labelGui.ZIndex = 4
-labelGui.Parent = button
-local lblCorner = Instance.new("UICorner")
-lblCorner.CornerRadius = UDim.new(0, 6)
-lblCorner.Parent = labelGui
-local lblPad = Instance.new("UIPadding")
-lblPad.PaddingTop    = UDim.new(0, 4)
-lblPad.PaddingBottom = UDim.new(0, 4)
-lblPad.PaddingLeft   = UDim.new(0, 8)
-lblPad.PaddingRight  = UDim.new(0, 8)
-lblPad.Parent = labelGui
-
+-- ПОСТОЯННАЯ подпись «Квесты» ПОД иконкой — 1-в-1 стиль подписи «Инвентарь»
+-- (InventoryUI: GothamBold 16, белый, обводка 0.3, наезжает на низ иконки).
 local labelText = Instance.new("TextLabel")
+labelText.Name = "CaptionLabel"
+labelText.AnchorPoint = Vector2.new(0.5, 0.5)
+labelText.Position = UDim2.new(0.5, 0, 1, -6) -- наезжает на низ иконки, как у рюкзака
+-- ⚠️ Подпись тоже сжимается: сырые 120×20 на телефоне шире самой кнопки в
+-- два с половиной раза и наезжают на соседний столбец.
+labelText.Size = UDim2.new(1, Hud.px(6), 0, Hud.px(20))
+labelText.TextScaled = true
+Instance.new("UITextSizeConstraint", labelText).MaxTextSize = Hud.text(16)
+--[[ ⚠️ ПОДПИСЬ НЕ ДОЛЖНА БЫТЬ ШИРЕ ШАГА МЕЖДУ КНОПКАМИ.
+     120 пикселей задумывались под монитор, где иконки крупные и стоят просторно.
+     На телефоне иконка ужимается сильно (px), а зазор между колонками — ещё
+     сильнее (gap, это воздух), и подпись оказывалась заметно шире собственной
+     кнопки: «Квесты» налезали на «Магазин», «Инвентарь» на «Карту».
+     Привязываем ширину к самой кнопке и разрешаем шрифту ужиматься: слово
+     останется целым, а за свою колонку не вылезет. ]]
 labelText.BackgroundTransparency = 1
 labelText.BorderSizePixel = 0
-labelText.AutomaticSize = Enum.AutomaticSize.XY
 labelText.Font = Enum.Font.GothamBold
-labelText.TextSize = 12
-labelText.TextColor3 = COLOR_PAPER_LIGHT
-labelText.Text = TOOLTIP_LABEL_TEXT
-labelText.ZIndex = 5
-labelText.Parent = labelGui
+labelText.TextSize = Hud.text(16)
+labelText.TextColor3 = Color3.new(1, 1, 1)
+labelText.TextStrokeColor3 = Color3.fromRGB(0, 0, 0)
+labelText.TextStrokeTransparency = 0.3
+labelText.Text = "Квесты"
+labelText.AutoLocalize = true
+labelText.ZIndex = 4
+labelText.Parent = button
 
-button.MouseEnter:Connect(function()
-	labelGui.Visible = true
-end)
-button.MouseLeave:Connect(function()
-	labelGui.Visible = false
-end)
-
--- J keybind. Skip when the input was already consumed (chat, text
+-- N keybind. Skip when the input was already consumed (chat, text
 -- box) and when the entry button is hidden — typically because the
--- phone menu has its own menu open and J shouldn't ALSO open the
+-- phone menu has its own menu open and N shouldn't ALSO open the
 -- quest UI on top.
 UserInputService.InputBegan:Connect(function(input, gameProcessed)
 	if gameProcessed then return end
-	if input.KeyCode ~= Enum.KeyCode.J then return end
+	if input.KeyCode ~= Enum.KeyCode.N then return end
 	if not screenGui.Enabled then return end
 	openQuestMenu()
 end)

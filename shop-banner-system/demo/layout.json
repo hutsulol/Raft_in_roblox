@@ -1,0 +1,71 @@
+{
+  "canvas": {
+    "width": 1000,
+    "height": 633
+  },
+  "splitY": 406,
+  "button": {
+    "x": 645,
+    "y": 475,
+    "width": 310,
+    "height": 100
+  },
+  "currency": {
+    "x": 671,
+    "y": 505,
+    "width": 33,
+    "height": 33
+  },
+  "textNodes": [
+    {
+      "key": "title",
+      "text": "Master of sword",
+      "x": 105,
+      "y": 60,
+      "width": 435,
+      "height": 58,
+      "fontSize": 42,
+      "color": "#FFFFFF"
+    },
+    {
+      "key": "offer",
+      "text": "NEWBUY OFFER",
+      "x": 65,
+      "y": 416,
+      "width": 519,
+      "height": 66,
+      "fontSize": 40,
+      "color": "#FFFFFF"
+    },
+    {
+      "key": "price",
+      "text": "400",
+      "x": 710,
+      "y": 493,
+      "width": 220,
+      "height": 62,
+      "fontSize": 48,
+      "color": "#FFFFFF"
+    },
+    {
+      "key": "reward1",
+      "text": "×1",
+      "x": 70,
+      "y": 346,
+      "width": 248.5,
+      "height": 42,
+      "fontSize": 30,
+      "color": "#794619"
+    },
+    {
+      "key": "reward2",
+      "text": "2 500",
+      "x": 330.5,
+      "y": 346,
+      "width": 248.5,
+      "height": 42,
+      "fontSize": 30,
+      "color": "#794619"
+    }
+  ]
+}

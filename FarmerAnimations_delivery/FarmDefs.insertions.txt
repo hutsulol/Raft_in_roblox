@@ -1,0 +1,58 @@
+В Farm.CLIPS:
+	HoeEnter = "Farm_HoeEnter",
+	HoeLoop = "Farm_HoeLoop",
+	HoeExit = "Farm_HoeExit",
+	WalkHoe = "Farm_WalkHoe",
+	HayShoulderWalk = "Farm_HayShoulderWalk",
+	HayShoulderIdle = "Farm_HayShoulderIdle",
+	BucketsWalk = "Farm_BucketsWalk",
+	BucketsIdle = "Farm_BucketsIdle",
+	HeavyCarryWalk = "Farm_HeavyCarryWalk",
+	Sow = "Farm_SowLoop",
+	Water = "Farm_WaterLoop",
+	Pluck = "Farm_Pluck",
+	FeedHand = "Farm_FeedHand",
+	Scoop = "Farm_Scoop",
+	Herd = "Farm_Herd",
+	Shoo = "Farm_Shoo",
+	CatchSheep = "Farm_CatchSheep",
+	CarrySheep = "Farm_CarrySheep",
+	Wave = "Farm_Wave",
+	Talk = "Farm_TalkLoop",
+	Point = "Farm_Point",
+	Shrug = "Farm_Shrug",
+	Nod = "Farm_Nod",
+	ThumbUp = "Farm_ThumbUp",
+	IdleLook = "Farm_IdleLook",
+	WipeBrow = "Farm_WipeBrow",
+	StretchBack = "Farm_StretchBack",
+	LeanTool = "Farm_LeanTool",
+
+В Farm.CLIP_LEN:
+	HoeEnter = 0.8,
+	HoeExit = 0.8,
+	Pluck = 1.4,
+	FeedHand = 2.2,
+	Scoop = 1.6,
+	Shoo = 1,
+	CatchSheep = 1.5,
+	Wave = 1.6,
+	Point = 1.4,
+	Shrug = 1.2,
+	Nod = 0.8,
+	ThumbUp = 1.2,
+	IdleLook = 3,
+	WipeBrow = 2,
+	StretchBack = 2.4,
+
+Рядом с POUR_AT:
+Farm.HOE_HIT_AT = 0.7
+Farm.PLUCK_AT = 0.8
+Farm.SCOOP_AT = 0.9
+
+В Farm.GRIP:
+	hoe = CFrame.new(0, -0.9, -0.2) * CFrame.Angles(math.rad(-70), 0, 0),
+	watering = CFrame.new(0, -1.1, -0.3),
+	seedbag = CFrame.new(0, -1.0, -0.2),
+
+Второе ведро: Left Arm, тот же Farm.GRIP.bucket. holdProp сейчас поддерживает только правую руку; сервер в этом этапе не изменён.

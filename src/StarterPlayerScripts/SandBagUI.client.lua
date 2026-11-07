@@ -1,3 +1,4 @@
+local print, warn = (function() local RS = game:GetService("RunService") if RS:IsServer() then return print, warn end local P, W, Pl = print, warn, game:GetService("Players") local function ok() local p = Pl.LocalPlayer return p ~= nil and p:GetAttribute("DevLogs") == true end return function(...) if ok() then P(...) end end, function(...) if ok() then W(...) end end end)() -- DevLogs: клиентские логи видят только админы (флаг ставит DevLogFlag.server)
 -- SandBagUI.client.lua
 -- "Sand Bag" Tool interaction. Holding the bag and pressing E opens
 -- a wood-palette inspection panel that shows the current bag visual,
@@ -18,10 +19,15 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
+-- ⚠️ Геймпад: что считать кликом и клавишей — одно правило на все файлы (GamepadInput).
+local GamepadInput = require(game:GetService("ReplicatedStorage"):WaitForChild("GamepadInput"))
 local TweenService      = game:GetService("TweenService")
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+
+-- общий дизайн-модуль: отсюда берётся кнопка закрытия, единая для всех меню
+local UITheme = require(ReplicatedStorage:WaitForChild("UITheme"))
 
 local sandBagEvent = ReplicatedStorage:WaitForChild("SandBagAction")
 local pickupEvent  = ReplicatedStorage:WaitForChild("PickupDroppedItem")
@@ -62,10 +68,11 @@ end
 -- before any "show" event has arrived.
 local FILL_STAGES = STAGES_BY_CONTENT.Sand
 
--- Stage textures + close art are preloaded from
+-- Stage textures are preloaded from
 -- ReplicatedFirst/AssetPreload.client.lua during the loading screen,
 -- so they're already in ContentProvider's cache by the time any of
--- this UI is built.
+-- this UI is built. (The close button no longer uses an image asset —
+-- UITheme draws it from primitives.)
 
 -- Wood palette (matches every other in-world UI)
 local COLOR_WOOD_DARKEST = Color3.fromRGB( 61,  40,  23)
@@ -102,9 +109,14 @@ hintLabel.BackgroundTransparency = 0.4
 hintLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
 hintLabel.Font                   = Enum.Font.GothamBold
 hintLabel.TextSize               = 16
-hintLabel.Text                   = "[E] Open Sand Bag"
+hintLabel.Text                   = "[E] Открыть мешок с песком"
 hintLabel.Visible                = false
 hintLabel.Parent                 = hintGui
+
+-- ⚠️ Подсказка уступает диалогу: пока собеседник говорит, она поднимается
+-- над его окном. Правило одно на всю игру — см. ReplicatedStorage/HudDock.
+local HudDock = require(game:GetService("ReplicatedStorage"):WaitForChild("HudDock"))
+HudDock.keepAbove(hintLabel, 12)
 do
 	local c = Instance.new("UICorner")
 	c.CornerRadius = UDim.new(0, 8)
@@ -206,9 +218,6 @@ do
 	s.Parent    = panel
 end
 
--- Close button image (same wood-X asset used by the quests panel).
-local CLOSE_BTN_ASSET = "rbxassetid://76127527205295"
-
 -- ── Body: left bag visual, right info panel ─────────────────
 -- The body now fills the whole panel (the title-bar header was removed
 -- on the user's request — Sand label + a small inline close button at
@@ -299,7 +308,7 @@ sandName.AnchorPoint            = Vector2.new(0.5, 0)
 sandName.Position               = UDim2.new(0.5, 0, 0.03, 0)
 sandName.Size                   = UDim2.new(0.78, 0, 0.16, 0)
 sandName.BackgroundTransparency = 1
-sandName.Text                   = "Sand"
+sandName.Text                   = "Песок"
 sandName.TextColor3             = COLOR_WOOD_DARKEST
 sandName.Font                   = Enum.Font.GothamBold
 sandName.TextScaled             = true
@@ -311,26 +320,29 @@ do
 	sc.Parent      = sandName
 end
 
--- Inline close button (top-right of the info column, next to "Sand").
--- Uses the same wood-X art as the quests panel so the close affordance
--- is consistent across every menu.
-local closeBtn = Instance.new("ImageButton")
-closeBtn.AnchorPoint            = Vector2.new(1, 0)
-closeBtn.Position               = UDim2.new(1, 0, 0.03, 0)
-closeBtn.Size                   = UDim2.new(0.13, 0, 0.13, 0)
-closeBtn.BackgroundTransparency = 1
-closeBtn.BorderSizePixel        = 0
-closeBtn.AutoButtonColor        = false
-closeBtn.Image                  = CLOSE_BTN_ASSET
-closeBtn.ScaleType              = Enum.ScaleType.Fit
-closeBtn.Parent                 = infoPanel
-do
-	local ar = Instance.new("UIAspectRatioConstraint")
-	ar.AspectRatio = 1
-	ar.Parent      = closeBtn
-end
-closeBtn.MouseEnter:Connect(function() closeBtn.ImageTransparency = 0.15 end)
-closeBtn.MouseLeave:Connect(function() closeBtn.ImageTransparency = 0    end)
+--[[ ⚠️ КРЕСТИК ЗАКРЫТИЯ — ОДИН НА ВСЕ МЕНЮ ОКЕАНА, И СТРОИТ ЕГО UITheme.
+     Крестики разъехались по окнам: здесь была своя ImageButton с деревянным
+     «иксом» (CLOSE_BTN_ASSET), размер 0.13 от колонки при AspectRatio 1, а
+     наведение приглушало ImageTransparency до 0.15; в инвентаре — красный
+     скруглённый квадрат 30 px. Игрок читает их как один и тот же элемент
+     управления, и разнобой выглядит небрежностью.
+     Эталоном владелец назвал инвентарь, поэтому кнопку целиком отдаём фабрике:
+     размер живёт в UITheme.CLOSE_SIZE и передать свой отсюда намеренно нельзя —
+     ровно так меню и разъехались в прошлый раз. Посадку тоже не передаём:
+     умолчание модуля (правый верхний угол родителя) — это и есть посадка
+     инвентаря; прежняя кнопка стояла в том же углу, просто вплотную к кромке.
+     Родитель — infoPanel, ровно как было у прежней кнопки: крестик задуман
+     инлайновым, в шапке правой колонки рядом с названием ресурса.
+     ZIndex 1 — тоже как было: у прежней кнопки ZIndex не выставлялся вовсе,
+     то есть оставался дефолтной единицей, наравне с остальным содержимым
+     колонки. Передаём число явно, потому что умолчание модуля — 20, и без
+     этого параметра слой молча поменялся бы.
+     Обрезки нет: ClipsDescendants в этом файле стоит только на overlayClip
+     мешка — ни infoPanel, ни body, ни panel, ни pickerGui его не включают. ]]
+local closeBtn = UITheme.closeButton({
+	parent = infoPanel,
+	zIndex = 1,
+})
 
 local fillBox = Instance.new("Frame")
 fillBox.AnchorPoint            = Vector2.new(0.5, 0)
@@ -351,7 +363,7 @@ fillLevelLabel.AnchorPoint            = Vector2.new(0.5, 0)
 fillLevelLabel.Position               = UDim2.new(0.5, 0, 0.08, 0)
 fillLevelLabel.Size                   = UDim2.new(0.9, 0, 0.18, 0)
 fillLevelLabel.BackgroundTransparency = 1
-fillLevelLabel.Text                   = "Fill Level"
+fillLevelLabel.Text                   = "Наполнение"
 fillLevelLabel.TextColor3             = COLOR_WOOD_DARKEST
 fillLevelLabel.Font                   = Enum.Font.GothamBold
 fillLevelLabel.TextScaled             = true
@@ -428,7 +440,7 @@ closeBigBtn.AnchorPoint            = Vector2.new(0.5, 1)
 closeBigBtn.Position               = UDim2.new(0.5, 0, 0.97, 0)
 closeBigBtn.Size                   = UDim2.new(0.85, 0, 0.16, 0)
 closeBigBtn.BackgroundColor3       = COLOR_WOOD_MID
-closeBigBtn.Text                   = "Close"
+closeBigBtn.Text                   = "Закрыть"
 closeBigBtn.TextColor3             = COLOR_PAPER_LIGHT
 closeBigBtn.Font                   = Enum.Font.GothamBold
 closeBigBtn.TextScaled             = true
@@ -527,11 +539,11 @@ local function paintFill(fill, max, content)
 	-- Empty bags show a neutral label so the player knows they can
 	-- choose between sand and clay for the next fill.
 	if content == "Clay" then
-		sandName.Text = "Clay"
+		sandName.Text = "Глина"
 	elseif content == "Sand" then
-		sandName.Text = "Sand"
+		sandName.Text = "Песок"
 	else
-		sandName.Text = "Empty"
+		sandName.Text = "Пусто"
 	end
 
 	-- Resource-type switch (Sand ↔ Clay, or empty ↔ filled) forces a
@@ -578,7 +590,7 @@ renderStageFlat(1)
 percentLabel.Text = "0%"
 barFill.Size      = UDim2.new(0, 0, 1, 0)
 countLabel.Text   = "0 / 100"
-sandName.Text     = "Empty"
+sandName.Text     = "Пусто"
 
 local function closePicker()
 	pickerGui.Enabled = false
@@ -617,7 +629,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		closePicker()
 		return
 	end
-	if input.KeyCode ~= Enum.KeyCode.E then return end
+	if not GamepadInput.isKey(input, Enum.KeyCode.E) then return end
 	if pickerGui.Enabled then
 		closePicker()
 		return

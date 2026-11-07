@@ -1,0 +1,212 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&family=Fredoka:wght@500;600;700&family=Caveat:wght@600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; background: #16181d; font-family: 'Fredoka', 'Baloo 2', sans-serif; }
+  a { color: #7fb4ff; } a:hover { color: #a8ccff; }
+  @keyframes tpFadeIn { 0% { opacity: 0; } 100% { opacity: 1; } }
+  @keyframes tpFadeOut { 0% { opacity: 1; } 100% { opacity: 0; } }
+  @keyframes tpBob { 0%, 100% { transform: translateY(0) rotate(-1.5deg); } 50% { transform: translateY(-10px) rotate(1.5deg); } }
+  @keyframes tpGlow { 0%, 100% { opacity: 0.45; } 50% { opacity: 1; } }
+  @keyframes tpRise { 0% { transform: translateY(24px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+  @keyframes tpSail { 0% { transform: translate(0, 0) rotate(-2deg); } 25% { transform: translate(28px, -3px) rotate(2deg); } 50% { transform: translate(56px, 1px) rotate(-1.5deg); } 75% { transform: translate(84px, -3px) rotate(2deg); } 100% { transform: translate(112px, 0) rotate(-2deg); } }
+  @keyframes tpSlideL { 0% { transform: translate3d(0,0,0); } 100% { transform: translate3d(-50%,0,0); } }
+  @keyframes tpSlideR { 0% { transform: translate3d(-50%,0,0); } 100% { transform: translate3d(0,0,0); } }
+  @keyframes tpShimmer { 0% { background-position-x: -200px; } 100% { background-position-x: 400px; } }
+  @keyframes tpBoatBob { 0%, 100% { margin-bottom: 0; rotate: -3deg; } 50% { margin-bottom: 4px; rotate: 3deg; } }
+</style>
+<script src="./image-slot.js"></script>
+</helmet>
+<div style="min-height: 100vh; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 16px; padding: 30px;">
+  <div style="width: 720px; height: 420px; border-radius: 14px; overflow: hidden; position: relative; background: linear-gradient(180deg, #7ec8e8 0%, #3d92c4 30%, #1d6ba0 60%, #14517d 100%);">
+    <div style="position: absolute; inset: 0; background-image: repeating-linear-gradient(115deg, rgba(255,255,255,0.06) 0 6px, transparent 6px 14px, rgba(255,255,255,0.06) 14px 20px, transparent 20px 64px); background-size: 90px 90px;"></div>
+    <!-- teleport button (game world) -->
+    <sc-if value="{{ idle }}" hint-placeholder-val="{{ true }}">
+      <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;">
+        <button onClick="{{ startTp }}" style="font-family: inherit; font-weight: 700; font-size: 22px; color: #fff; background: linear-gradient(180deg, #7ae04d 0%, #48b428 100%); border: 4px solid #14261a; border-radius: 16px; padding: 12px 28px; cursor: pointer; display: flex; align-items: center; gap: 10px; box-shadow: inset 0 3px 0 rgba(255,255,255,0.45), 0 5px 0 rgba(0,0,0,0.4); text-shadow: -2px 0 0 #2a6e14, 2px 0 0 #2a6e14, 0 -2px 0 #2a6e14, 0 2px 0 #2a6e14, 0 3px 0 rgba(0,0,0,0.35);">🏝️ Переместиться к острову</button>
+      </div>
+    </sc-if>
+    <!-- loading screen -->
+    <sc-if value="{{ loading }}" hint-placeholder-val="{{ false }}">
+      <div style="position: absolute; inset: 0; z-index: 5; background: radial-gradient(ellipse at center, #0d0f12 0%, #050607 100%); display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 22px; animation: {{ overlayAnim }};">
+        <span style="font-family: 'Caveat', cursive; color: #fff; font-weight: 700; font-size: 54px; line-height: 1; animation: tpRise 0.5s ease-out 0.3s both;">{{ loadingText }}</span>
+        <!-- boat progress bar: boat sails the wave line to the island -->
+        <div style="width: 440px; animation: tpRise 0.5s ease-out 0.45s both;">
+          <div style="position: relative; height: 74px;">
+            <!-- island on the shore past the track -->
+            <div style="position: absolute; right: -66px; bottom: 6px; width: 64px; height: 44px; filter: drop-shadow(0 0 10px rgba(255,255,255,0.55)); animation: tpGlow 2.4s ease-in-out infinite;">
+              <svg viewBox="0 0 64 44" width="64" height="44" style="display:block; overflow: visible;">
+                <g fill="#fff" stroke="#fff" stroke-linecap="round" stroke-linejoin="round">
+                  <sc-if value="{{ isl0 }}" hint-placeholder-val="{{ true }}">
+                    <!-- palm island -->
+                    <path d="M6 40 Q32 26 58 40 Z" stroke="none"></path>
+                    <path d="M30 38 Q29 24 33 12" fill="none" stroke-width="3"></path>
+                    <path d="M33 12 Q22 10 16 17 Q26 12 33 14 Z" stroke="none"></path>
+                    <path d="M33 12 Q42 6 50 12 Q42 10 33 14 Z" stroke="none"></path>
+                    <path d="M33 12 Q24 4 20 6 Q28 6 33 12 Z" stroke="none"></path>
+                    <path d="M33 12 Q40 2 46 4 Q38 6 33 12 Z" stroke="none"></path>
+                    <circle cx="37" cy="15" r="1.8" stroke="none"></circle><circle cx="33" cy="17" r="1.8" stroke="none"></circle>
+                  </sc-if>
+                  <sc-if value="{{ isl1 }}" hint-placeholder-val="{{ false }}">
+                    <!-- volcano island: base, cone with crater, lava tongue, smoke puffs -->
+                    <path d="M2 40 Q32 30 62 40 Z" stroke="none"></path>
+                    <path d="M8 40 L26 14 L38 14 L56 40 Z" stroke="none"></path>
+                    <path d="M26 14 Q32 18 38 14" fill="#000" stroke="none"></path>
+                    <path d="M30 15 L31 24 L34 21 L35 30" fill="none" stroke="#000" stroke-width="2.2"></path>
+                    <circle cx="32" cy="9" r="3" stroke="none" opacity="0.9"></circle>
+                    <circle cx="37" cy="5" r="2.4" stroke="none" opacity="0.7"></circle>
+                    <circle cx="41" cy="2" r="1.6" stroke="none" opacity="0.5"></circle>
+                  </sc-if>
+                  <sc-if value="{{ isl2 }}" hint-placeholder-val="{{ false }}">
+                    <!-- lighthouse island -->
+                    <path d="M4 40 Q32 28 60 40 Z" stroke="none"></path>
+                    <path d="M28 34 L30 12 L36 12 L38 34 Z" stroke="none"></path>
+                    <rect x="29" y="6" width="8" height="6" rx="1" stroke="none"></rect>
+                    <path d="M33 2 L33 6" stroke-width="2"></path>
+                    <path d="M37 9 L52 4 M37 9 L52 14" stroke-width="2" opacity="0.6"></path>
+                    <path d="M31 20 L35 20 M30 26 L36 26" stroke="#000" stroke-width="1.6" opacity="0.9"></path>
+                  </sc-if>
+                  <sc-if value="{{ isl3 }}" hint-placeholder-val="{{ false }}">
+                    <!-- jungle island: round tree canopies + hut -->
+                    <path d="M2 40 Q32 28 62 40 Z" stroke="none"></path>
+                    <circle cx="14" cy="24" r="7" stroke="none"></circle>
+                    <circle cx="20" cy="18" r="8" stroke="none"></circle>
+                    <circle cx="26" cy="25" r="6" stroke="none"></circle>
+                    <path d="M20 26 L20 36" stroke-width="2.4"></path>
+                    <circle cx="46" cy="22" r="7" stroke="none"></circle>
+                    <circle cx="52" cy="27" r="5" stroke="none"></circle>
+                    <path d="M46 29 L46 36" stroke-width="2.4"></path>
+                    <path d="M28 36 L35 26 L42 36 Z" stroke="none"></path>
+                    <rect x="31" y="36" width="8" height="4" stroke="none"></rect>
+                    <rect x="34" y="37" width="2.4" height="3" fill="#000" stroke="none"></rect>
+                  </sc-if>
+                  <sc-if value="{{ isl4 }}" hint-placeholder-val="{{ false }}">
+                    <!-- military base: bunker, radar dish, watchtower, flag -->
+                    <path d="M2 40 Q32 30 62 40 Z" stroke="none"></path>
+                    <path d="M12 36 Q12 24 26 24 Q40 24 40 36 Z" stroke="none"></path>
+                    <rect x="22" y="30" width="8" height="6" fill="#000" stroke="none"></rect>
+                    <path d="M14 34 L38 34" stroke="#000" stroke-width="1.4" opacity="0.7"></path>
+                    <rect x="46" y="22" width="8" height="14" stroke="none"></rect>
+                    <rect x="44" y="18" width="12" height="5" rx="1" stroke="none"></rect>
+                    <rect x="48" y="26" width="4" height="3" fill="#000" stroke="none"></rect>
+                    <path d="M50 18 L50 8" stroke-width="2"></path>
+                    <path d="M50 8 L58 10 L50 12 Z" stroke="none"></path>
+                    <path d="M30 24 L30 16" stroke-width="2"></path>
+                    <path d="M22 12 Q30 22 38 12 Z" stroke="none"></path>
+                    <path d="M30 16 L34 8" stroke-width="1.6"></path>
+                  </sc-if>
+                  <sc-if value="{{ isl5 }}" hint-placeholder-val="{{ false }}">
+                    <!-- pirate base: beached ship hull with mast + skull flag, palm, chest -->
+                    <path d="M2 40 Q32 30 62 40 Z" stroke="none"></path>
+                    <!-- ship hull tilted on sand -->
+                    <path d="M14 38 Q12 30 20 28 L44 26 Q48 32 42 38 Z" stroke="none"></path>
+                    <path d="M18 33 L42 31" stroke="#000" stroke-width="1.4" opacity="0.8"></path>
+                    <circle cx="24" cy="35.5" r="1.1" fill="#000" stroke="none"></circle><circle cx="30" cy="35" r="1.1" fill="#000" stroke="none"></circle><circle cx="36" cy="34.5" r="1.1" fill="#000" stroke="none"></circle>
+                    <!-- mast + boom -->
+                    <path d="M30 27 L31 4" stroke-width="2.4"></path>
+                    <path d="M22 22 L40 20" stroke-width="1.6"></path>
+                    <!-- jolly roger flag -->
+                    <path d="M31 5 L47 8 L31 15 Z" stroke="none"></path>
+                    <circle cx="37" cy="9.6" r="2.2" fill="#000" stroke="none"></circle>
+                    <circle cx="36.2" cy="9.3" r="0.6" stroke="none"></circle><circle cx="37.8" cy="9.3" r="0.6" stroke="none"></circle>
+                    <path d="M34.6 12.6 L39.4 10.2 M34.6 10.4 L39.4 12.8" stroke="#000" stroke-width="1.1"></path>
+                    <!-- palm behind -->
+                    <path d="M52 36 Q53 28 51 20" fill="none" stroke-width="2.2"></path>
+                    <path d="M51 20 Q44 18 42 23 Q48 20 51 22 Z" stroke="none"></path>
+                    <path d="M51 20 Q58 16 61 21 Q56 19 51 22 Z" stroke="none"></path>
+                    <path d="M51 20 Q46 13 44 15 Q49 14 51 20 Z" stroke="none"></path>
+                    <path d="M51 20 Q55 12 58 14 Q54 15 51 20 Z" stroke="none"></path>
+                    <!-- treasure chest on sand -->
+                    <rect x="4" y="34" width="9" height="6" rx="1.2" stroke="none"></rect>
+                    <path d="M4 36.5 L13 36.5" stroke="#000" stroke-width="1.1"></path>
+                    <rect x="7.8" y="35.8" width="1.6" height="2.2" fill="#000" stroke="none"></rect>
+                  </sc-if>
+                </g>
+              </svg>
+            </div>
+            <!-- waves only: ahead = faint, travelled = bright. SVG strips slid with transform (smooth) -->
+            <div style="position: absolute; left: 0; right: 0; bottom: 4px; height: 26px; overflow: hidden;">
+              <!-- faint ahead -->
+              <div style="position: absolute; left: 0; bottom: 11px; width: 200%; height: 12px; opacity: 0.22; animation: tpSlideL 9s linear infinite; will-change: transform;">
+                <svg width="100%" height="12" preserveAspectRatio="none" style="display:block"><defs><pattern id="wB" width="34" height="12" patternUnits="userSpaceOnUse"><path d="M0 10 Q8.5 1 17 10 T34 10" fill="none" stroke="#fff" stroke-width="2.4" stroke-linecap="round"></path></pattern></defs><rect width="100%" height="12" fill="url(#wB)"></rect></svg>
+              </div>
+              <div style="position: absolute; left: 0; bottom: 0; width: 200%; height: 14px; opacity: 0.28; animation: tpSlideL 6s linear infinite; will-change: transform;">
+                <svg width="100%" height="14" preserveAspectRatio="none" style="display:block"><defs><pattern id="wC" width="38" height="14" patternUnits="userSpaceOnUse"><path d="M0 12 Q9.5 2 19 12 T38 12" fill="none" stroke="#fff" stroke-width="2.6" stroke-linecap="round"></path></pattern></defs><rect width="100%" height="14" fill="url(#wC)"></rect></svg>
+              </div>
+              <!-- bright travelled, clipped to progress -->
+              <div style="position: absolute; left: 0; top: 0; bottom: 0; overflow: hidden; width: {{ fillW }}; transition: width 0.4s linear; mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 28px), transparent 100%); -webkit-mask-image: linear-gradient(90deg, #000 0, #000 calc(100% - 28px), transparent 100%);">
+                <div style="position: absolute; left: 0; bottom: 11px; width: 880px; height: 12px; opacity: 0.85; animation: tpSlideL 9s linear infinite; will-change: transform;">
+                  <svg width="880" height="12" style="display:block"><rect width="880" height="12" fill="url(#wB)"></rect></svg>
+                </div>
+                <div style="position: absolute; left: 0; bottom: 0; width: 880px; height: 14px; opacity: 1; animation: tpSlideL 6s linear infinite; will-change: transform;">
+                  <svg width="880" height="14" style="display:block"><rect width="880" height="14" fill="url(#wC)"></rect></svg>
+                </div>
+              </div>
+              <div style="position: absolute; inset: 0; pointer-events: none; box-shadow: inset 0 0 0 0 transparent;"></div>
+            </div>
+            <!-- boat riding the wave -->
+            <div style="position: absolute; left: -6px; bottom: 18px; font-size: 32px; line-height: 1; transform: translateX({{ boatX }}px); transition: transform 0.4s linear;">
+              <div style="filter: grayscale(1) brightness(3) drop-shadow(0 0 10px rgba(255,255,255,0.6)); animation: tpBoatBob 1.4s ease-in-out infinite;">⛵</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </sc-if>
+  </div>
+  <button onClick="{{ startTp }}" style="font-family: inherit; font-weight: 700; font-size: 15px; color: #fff; background: linear-gradient(180deg, #4a5578, #323a54); border: 3px solid #14261a; border-radius: 12px; padding: 7px 16px; cursor: pointer; box-shadow: inset 0 2px 0 rgba(255,255,255,0.35), 0 4px 0 rgba(0,0,0,0.4); text-shadow: 0 2px 0 rgba(0,0,0,0.4);">▶ Проиграть анимацию</button>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: {&quot;width&quot;: 780, &quot;height&quot;: 540},
+  &quot;holdSeconds&quot;: {&quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 3, &quot;min&quot;: 1, &quot;max&quot;: 8, &quot;step&quot;: 0.5, &quot;unit&quot;: &quot;с&quot;, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Тайминг&quot;},
+  &quot;island&quot;: {&quot;editor&quot;: &quot;enum&quot;, &quot;default&quot;: &quot;случайный&quot;, &quot;options&quot;: [&quot;случайный&quot;, &quot;пальма&quot;, &quot;вулкан&quot;, &quot;маяк&quot;, &quot;джунгли&quot;, &quot;военная база&quot;, &quot;пиратская база&quot;], &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Остров&quot;}
+}">
+class Component extends DCLogic {
+  state = { phase: 'idle', dots: 1, progress: 0, island: 0 }; // idle | in | hold | out
+  componentWillUnmount() { clearInterval(this._dotsT); clearInterval(this._progT); this._timers?.forEach(clearTimeout); }
+  renderVals() {
+    const { phase, dots, progress, island } = this.state;
+    const holdMs = (this.props.holdSeconds ?? 3) * 1000;
+    const isl = this.props.island ?? 'случайный';
+    const idx = isl === 'случайный' ? island : ['пальма', 'вулкан', 'маяк', 'джунгли', 'военная база', 'пиратская база'].indexOf(isl);
+    return {
+      isl0: idx === 0, isl1: idx === 1, isl2: idx === 2, isl3: idx === 3, isl4: idx === 4, isl5: idx === 5,
+      idle: phase === 'idle',
+      loading: phase !== 'idle',
+      overlayAnim: phase === 'out' ? 'tpFadeOut 0.6s ease-in forwards' : 'tpFadeIn 0.45s ease-out both',
+      loadingText: 'Перемещаемся' + '.'.repeat(dots),
+      boatX: Math.round(progress * 416), // boat sails the full track, island sits past its end
+      fillW: Math.round(progress * 100) + '%',
+      pct: Math.round(progress * 100) + '%',
+      startTp: () => {
+        if (this.state.phase !== 'idle') return;
+        this.setState({ phase: 'in', dots: 1, progress: 0, island: (this.state.island + 1) % 6 });
+        clearInterval(this._dotsT); clearInterval(this._progT);
+        this._dotsT = setInterval(() => this.setState(s => ({ dots: s.dots % 3 + 1 })), 450);
+        const t0 = performance.now();
+        this._progT = setInterval(() => {
+          const p = Math.min((performance.now() - t0) / (450 + holdMs), 1);
+          this.setState({ progress: p });
+          if (p >= 1) clearInterval(this._progT);
+        }, 380);
+        this._timers = [
+          setTimeout(() => this.setState({ phase: 'out' }), 450 + holdMs),
+          setTimeout(() => { clearInterval(this._dotsT); this.setState({ phase: 'idle' }); }, 450 + holdMs + 600)
+        ];
+      }
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -73,7 +73,7 @@ storyEvent.OnServerEvent:Connect(function(player, action)
 	end
 
 	if tool.TextureId == "" then
-		tool.TextureId = "rbxassetid://122333372049252"
+		tool.TextureId = "rbxassetid://123703470055474"
 	end
 
 	tool.Parent = backpack

@@ -4,13 +4,16 @@
 
 local rs = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
+local PlaceCheck = require(game:GetService("ReplicatedStorage"):WaitForChild("PlaceCheck"))   -- «место занято» — общая проверка
+
+local AssetFind = require(rs:WaitForChild("AssetFind"))
 
 local DRY_TIME = 10 -- seconds
 local PICKUP_RANGE = 10
 local WET_COLOR = Color3.fromRGB(96, 70, 50)
 local DRY_COLOR = Color3.fromRGB(180, 130, 90)
 local BRICK_SIZE = Vector3.new(3, 1.4, 2)
-local DRY_BRICK_ICON = "rbxassetid://129896663405682"
+local DRY_BRICK_ICON = "rbxassetid://97322022540143"
 
 local wetBrickAction = rs:FindFirstChild("WetBrickAction")
 if not wetBrickAction then
@@ -22,7 +25,7 @@ end
 -- ─── Helpers ────────────────────────────────────────────────
 local function findOrCreateBrickModel(stage)
 	local templateName = stage == "dry" and "Dry_Brick" or "Wet_Brick"
-	local template = rs:FindFirstChild(templateName)
+	local template = AssetFind.find(templateName)
 	if template then
 		local clone = template:Clone()
 		clone.Name = templateName
@@ -134,7 +137,7 @@ local function transitionToDry(brickModel)
 		label.Size = UDim2.new(1, 0, 1, 0)
 		label.BackgroundTransparency = 0.3
 		label.BackgroundColor3 = Color3.fromRGB(30, 30, 30)
-		label.Text = "Dry! [E]"
+		label.Text = "Высох! [E]"
 		label.TextColor3 = Color3.fromRGB(255, 220, 100)
 		label.Font = Enum.Font.GothamBold
 		label.TextScaled = true
@@ -147,8 +150,8 @@ local function transitionToDry(brickModel)
 
 		-- Proximity prompt for pickup (E)
 		local prompt = Instance.new("ProximityPrompt")
-		prompt.ActionText = "Pick up"
-		prompt.ObjectText = "Dry Brick"
+		prompt.ActionText = "Подобрать"
+		prompt.ObjectText = "Сухой кирпич"
 		prompt.KeyboardKeyCode = Enum.KeyCode.E
 		prompt.HoldDuration = 0
 		prompt.MaxActivationDistance = PICKUP_RANGE
@@ -194,6 +197,7 @@ wetBrickAction.OnServerEvent:Connect(function(player, action, target)
 		wetModel.WorldPivot = CFrame.new(bbCF.Position)
 	end
 	wetModel:PivotTo(worldCF)
+	if PlaceCheck.refuseIfBlocked(wetModel, raft, player) then return end   -- в предмет ставить нельзя
 	wetModel.Parent = raft
 	weldToRaft(wetModel, raft)
 	wetModel:SetAttribute("IsWetBrick", true)

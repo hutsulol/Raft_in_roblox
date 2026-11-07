@@ -1,0 +1,194 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Fredoka:wght@500;600;700&display=swap" rel="stylesheet">
+<style>
+  body { margin: 0; font-family: 'Fredoka', sans-serif; background: #14384a; }
+  a, a:hover { color: #7fd0ee; }
+  button { font-family: 'Fredoka', sans-serif; }
+  @keyframes tipIn { from { opacity: 0; transform: translate(-50%, 6px); } to { opacity: 1; transform: translate(-50%, 0); } }
+  @keyframes barIn { from { opacity: 0; transform: translateY(18px); } to { opacity: 1; transform: translateY(0); } }
+  @keyframes exitPulse { 0%, 100% { box-shadow: 0 5px 0 #8f1d16, 0 0 0 3px rgba(201,41,31,0.35), inset 0 2px 0 rgba(255,255,255,0.4); } 50% { box-shadow: 0 5px 0 #8f1d16, 0 0 0 8px rgba(239,74,58,0.28), inset 0 2px 0 rgba(255,255,255,0.4); } }
+</style>
+</helmet>
+
+<div style="position: relative; width: 100%; min-height: 100vh; background: linear-gradient(180deg, #4fa3c7 0%, #3d86a8 38%, #2c6480 60%, #7b5a34 60%, #6b4c2a 100%); overflow: hidden; box-sizing: border-box;">
+
+  <div style="position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 20%, rgba(255,255,255,0.14), transparent 60%);"></div>
+
+  <div style="position: absolute; left: 0; right: 0; bottom: 0; padding: 0 18px 18px; display: flex; flex-direction: column; align-items: center; gap: 10px; animation: barIn 0.35s ease;">
+
+    <div style="display: flex; align-items: flex-end; gap: 10px;">
+
+      <div style="display: flex; flex-direction: column; gap: 6px; padding-bottom: 4px;">
+        <sc-for list="{{ cats }}" as="cat" hint-placeholder-count="4">
+          <button onClick="{{ cat.onPick }}" style="display: flex; align-items: center; gap: 7px; padding: 6px 10px 6px 7px; background: {{ cat.bg }}; border: none; border-radius: 10px; box-shadow: {{ cat.shadow }}; cursor: pointer; text-align: left;" style-hover="filter: brightness(1.08);">
+            <span style="font-size: 17px; line-height: 1;">{{ cat.icon }}</span>
+            <span style="font-family: 'Russo One', sans-serif; font-size: 11px; letter-spacing: 0.3px; color: {{ cat.color }}; white-space: nowrap;">{{ cat.name }}</span>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="position: relative; padding: 8px; background: #2f8fd6; border-radius: 14px; box-shadow: 0 4px 0 #1f6ba8;">
+
+        <div style="position: absolute; left: 50%; bottom: calc(100% + 8px); transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 3px; animation: tipIn 0.18s ease;">
+          <div style="padding: 4px 14px; background: #2f8fd6; border-radius: 8px; font-family: 'Russo One', sans-serif; font-size: 13px; letter-spacing: 0.3px; color: #ffffff; box-shadow: 0 3px 0 #1f6ba8; white-space: nowrap;">{{ hoverName }}</div>
+          <div style="font-weight: 600; font-size: 10.5px; color: #dff1fb; text-shadow: 0 1px 2px rgba(20,60,90,0.6); white-space: nowrap;">{{ hoverHint }}</div>
+        </div>
+
+        <div style="display: flex; gap: 6px;">
+          <sc-for list="{{ items }}" as="it" hint-placeholder-count="6">
+            <button onClick="{{ it.onPick }}" onMouseEnter="{{ it.onHover }}" onMouseLeave="{{ onLeave }}" style="position: relative; width: 74px; height: 74px; padding: 0; background: {{ it.bg }}; border: none; border-radius: 10px; box-shadow: {{ it.shadow }}; cursor: pointer; overflow: hidden;" style-hover="filter: brightness(1.06);">
+              <div style="position: absolute; inset: 4px; border-radius: 7px; background: {{ it.slotBg }}; display: flex; align-items: center; justify-content: center; font-size: 40px; line-height: 1;">{{ it.icon }}</div>
+              <div style="position: absolute; left: 4px; right: 4px; bottom: 4px; padding: 2px 0; background: {{ it.costBg }}; border-radius: 0 0 7px 7px; display: flex; align-items: center; justify-content: center; gap: 3px;">
+                <span style="font-size: 9px; line-height: 1;">{{ it.resIcon }}</span>
+                <span style="font-family: 'Russo One', sans-serif; font-size: 10px; color: {{ it.costColor }};">{{ it.cost }}</span>
+              </div>
+              <sc-if value="{{ it.locked }}" hint-placeholder-val="{{ false }}">
+                <div style="position: absolute; inset: 0; background: rgba(20,70,110,0.6); display: flex; align-items: center; justify-content: center; font-size: 22px;">🔒</div>
+              </sc-if>
+            </button>
+          </sc-for>
+        </div>
+      </div>
+
+      <div style="display: flex; flex-direction: column; gap: 6px; padding-bottom: 4px;">
+        <button onClick="{{ onExit }}" style="display: flex; align-items: center; justify-content: center; gap: 8px; margin-bottom: 4px; padding: 10px 14px; background: linear-gradient(180deg, #ff8f74 0%, #ef4a3a 52%, #c9291f 100%); border: 3px solid #ffffff; border-radius: 12px; box-shadow: 0 5px 0 #8f1d16, 0 0 0 3px rgba(201,41,31,0.35), inset 0 2px 0 rgba(255,255,255,0.4); cursor: pointer; animation: exitPulse 1.9s ease-in-out infinite;" style-hover="filter: brightness(1.1);" style-active="transform: translateY(3px); box-shadow: 0 2px 0 #8f1d16, inset 0 2px 0 rgba(255,255,255,0.4);">
+          <span style="font-family: 'Russo One', sans-serif; font-size: 15px; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.35); line-height: 1;">✕</span>
+          <span style="font-family: 'Russo One', sans-serif; font-size: 13px; letter-spacing: 0.4px; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.35); white-space: nowrap;">Выйти</span>
+        </button>
+        <sc-for list="{{ stock }}" as="s" hint-placeholder-count="3">
+          <div style="display: flex; align-items: center; gap: 6px; padding: 5px 10px; background: #2f8fd6; border-radius: 10px; box-shadow: 0 3px 0 #1f6ba8;">
+            <span style="font-size: 14px; line-height: 1;">{{ s.icon }}</span>
+            <span style="font-family: 'Russo One', sans-serif; font-size: 11px; color: {{ s.color }};">{{ s.amount }}</span>
+          </div>
+        </sc-for>
+      </div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 14px; padding: 4px 14px; background: rgba(47,143,214,0.85); border-radius: 999px; box-shadow: 0 3px 0 rgba(31,107,168,0.7);">
+      <sc-for list="{{ hints }}" as="h" hint-placeholder-count="3">
+        <div style="display: flex; align-items: center; gap: 5px;">
+          <span style="padding: 1px 6px; background: rgba(255,255,255,0.28); border-radius: 5px; font-family: 'Russo One', sans-serif; font-size: 9.5px; color: #ffffff;">{{ h.key }}</span>
+          <span style="font-weight: 600; font-size: 10px; color: #eaf7ff; white-space: nowrap;">{{ h.label }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </div>
+
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; left: 50%; top: 24px; transform: translateX(-50%); padding: 6px 16px; background: #2f8fd6; border-radius: 8px; box-shadow: 0 3px 0 #1f6ba8; font-weight: 700; font-size: 12.5px; color: #ffd23a; white-space: nowrap;">{{ toast }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;wood&quot;: { &quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 128, &quot;min&quot;: 0, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Ресурсы&quot; },
+  &quot;iron&quot;: { &quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 46, &quot;min&quot;: 0, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Ресурсы&quot; },
+  &quot;leaves&quot;: { &quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 73, &quot;min&quot;: 0, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Ресурсы&quot; }
+}">
+class Component extends DCLogic {
+  state = { cat: 'walls', sel: 'wall', hover: null, toast: '' };
+
+  flash(t) { clearTimeout(this._t); this.setState({ toast: t }); this._t = setTimeout(() => this.setState({ toast: '' }), 1800); }
+
+  catalog() {
+    return {
+      floors: [
+        { id: 'plank', name: 'Настил', icon: '🟫', cost: 2, res: 'wood', hint: 'Базовый пол плота' },
+        { id: 'ramp', name: 'Пандус', icon: '📐', cost: 3, res: 'wood', hint: 'Подъём на второй уровень' },
+        { id: 'grate', name: 'Решётка', icon: '🕸️', cost: 2, res: 'iron', hint: 'Вода проходит сквозь пол' },
+        { id: 'ladder', name: 'Лестница', icon: '🪜', cost: 3, res: 'wood', hint: 'Вертикальный подъём' },
+        { id: 'roof', name: 'Крыша', icon: '🏠', cost: 4, res: 'wood', hint: 'Защита от дождя' },
+        { id: 'deck2', name: 'Второй ярус', icon: '🧱', cost: 6, res: 'wood', hint: 'Расширение вверх', locked: true }
+      ],
+      walls: [
+        { id: 'wall', name: 'Стена', icon: '🟤', cost: 3, res: 'wood', hint: 'Глухая деревянная стена' },
+        { id: 'window', name: 'Окно', icon: '🪟', cost: 3, res: 'wood', hint: 'Пропускает свет' },
+        { id: 'half', name: 'Полустена', icon: '➖', cost: 2, res: 'wood', hint: 'Низкое ограждение' },
+        { id: 'leaf', name: 'Листва', icon: '🌿', cost: 3, res: 'leaves', hint: 'Маскировка от пиратов' },
+        { id: 'fence', name: 'Ограда', icon: '🚧', cost: 2, res: 'wood', hint: 'Не даёт упасть за борт' },
+        { id: 'door', name: 'Дверь', icon: '🚪', cost: 4, res: 'wood', hint: 'Проход внутрь' }
+      ],
+      island: [
+        { id: 'house', name: 'Дом', icon: '🏚️', cost: 12, res: 'wood', hint: 'Жильё для 2 жителей' },
+        { id: 'rig', name: 'Нефтевышка', icon: '🛢️', cost: 10, res: 'iron', hint: '+нефть в день' },
+        { id: 'saw', name: 'Лесопилка', icon: '🪵', cost: 8, res: 'wood', hint: '+дерево в день' },
+        { id: 'tower', name: 'Башня', icon: '🗼', cost: 14, res: 'iron', hint: '+6 к защите острова' },
+        { id: 'dock', name: 'Причал', icon: '⚓', cost: 6, res: 'wood', hint: 'Швартовка лодки' },
+        { id: 'depot', name: 'Склад', icon: '📦', cost: 9, res: 'wood', hint: '+вместимость ресурсов', locked: true }
+      ],
+      defense: [
+        { id: 'cannon', name: 'Пушка', icon: '💥', cost: 8, res: 'iron', hint: 'Бьёт по кораблям пиратов' },
+        { id: 'spike', name: 'Шипы', icon: '🔻', cost: 4, res: 'iron', hint: 'Урон при абордаже' },
+        { id: 'net', name: 'Сеть', icon: '🕳️', cost: 3, res: 'leaves', hint: 'Замедляет врагов' },
+        { id: 'watch', name: 'Пост стражи', icon: '🛡️', cost: 6, res: 'wood', hint: 'Место для бойца' },
+        { id: 'mortar', name: 'Мортира', icon: '🎯', cost: 16, res: 'iron', hint: 'Дальний залп', locked: true }
+      ]
+    };
+  }
+
+  renderVals() {
+    const cats = [
+      { id: 'floors', name: 'Полы', icon: '🟫' },
+      { id: 'walls', name: 'Стены', icon: '🧱' },
+      { id: 'island', name: 'Остров', icon: '🏝️' },
+      { id: 'defense', name: 'Защита', icon: '⚔️' }
+    ];
+    const resMeta = { wood: { icon: '🪵', color: '#ffffff' }, iron: { icon: '⚙️', color: '#ffffff' }, leaves: { icon: '🌿', color: '#ffffff' } };
+    const list = this.catalog()[this.state.cat] || [];
+    const sel = list.find(i => i.id === this.state.sel);
+    const hov = list.find(i => i.id === this.state.hover) || sel || list[0];
+
+    return {
+      cats: cats.map(c => ({
+        ...c,
+        bg: c.id === this.state.cat ? 'linear-gradient(180deg, #ffd96a 0%, #f0b41e 100%)' : '#2f8fd6',
+        color: c.id === this.state.cat ? '#5a3d00' : '#ffffff',
+        shadow: c.id === this.state.cat ? '0 3px 0 #b8830b' : '0 3px 0 #1f6ba8',
+        onPick: () => this.setState({ cat: c.id, sel: (this.catalog()[c.id][0] || {}).id, hover: null })
+      })),
+      items: list.map(i => {
+        const active = i.id === this.state.sel;
+        const rm = resMeta[i.res];
+        return {
+          ...i,
+          resIcon: rm.icon,
+          costColor: i.locked ? '#8fa5b5' : (active ? '#5a3d00' : rm.color),
+          costBg: active ? 'rgba(255,210,58,0.9)' : 'rgba(31,107,168,0.85)',
+          bg: active ? 'linear-gradient(180deg, #ffd96a 0%, #f0b41e 100%)' : '#4aa3e0',
+          slotBg: active ? '#cfe9f8' : '#a9d8f2',
+          shadow: active ? '0 3px 0 #b8830b' : '0 3px 0 #1f6ba8',
+          locked: !!i.locked,
+          onHover: () => this.setState({ hover: i.id }),
+          onPick: () => i.locked ? this.flash('«' + i.name + '» ещё не открыт') : this.setState({ sel: i.id })
+        };
+      }),
+      onLeave: () => this.setState({ hover: null }),
+      onExit: () => this.flash('Выход из режима строительства — обычный инвентарь'),
+      hoverName: hov ? hov.name : '',
+      hoverHint: hov ? hov.hint : '',
+      stock: [
+        { icon: '🪵', amount: String(this.props.wood ?? 128), color: '#ffffff' },
+        { icon: '⚙️', amount: String(this.props.iron ?? 46), color: '#ffffff' },
+        { icon: '🌿', amount: String(this.props.leaves ?? 73), color: '#ffffff' }
+      ],
+      hints: [
+        { key: 'ЛКМ', label: 'построить' },
+        { key: 'R', label: 'повернуть' },
+        { key: 'X', label: 'снести' },
+        { key: 'Q', label: 'закрыть' }
+      ],
+      toast: this.state.toast
+    };
+  }
+}
+</script>
+</body>
+</html>

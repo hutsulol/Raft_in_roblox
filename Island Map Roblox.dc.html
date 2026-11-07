@@ -1,0 +1,558 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; }
+  a { color: #7fc6e8; } a:hover { color: #aadcf2; }
+  @keyframes raftPulse { 0% { transform: translate(-50%, -50%) scale(0.6); opacity: 0.9; } 100% { transform: translate(-50%, -50%) scale(2.4); opacity: 0; } }
+  @keyframes attackPulse { 0%, 100% { transform: scale(1); opacity: 0.95; } 50% { transform: scale(1.12); opacity: 0.5; } }
+  @keyframes shipBob { 0% { transform: translateY(0) rotate(-2deg); } 100% { transform: translateY(-4px) rotate(2deg); } }
+  @keyframes bannerBlink { 0%, 100% { opacity: 1; } 50% { opacity: 0.55; } }
+  @keyframes fogDrift { 0%, 100% { transform: translate(0, 0); } 50% { transform: translate(4px, -3px); } }
+  @keyframes capShake { 0%, 100% { transform: translate(-50%, -50%) rotate(0deg); } 25% { transform: translate(calc(-50% + 3px), calc(-50% - 2px)) rotate(1.5deg); } 75% { transform: translate(calc(-50% - 3px), calc(-50% + 2px)) rotate(-1.5deg); } }
+  .map-scroll { scrollbar-width: thin; scrollbar-color: #ffd23a rgba(7,20,32,0.9); }
+  .map-scroll::-webkit-scrollbar { width: 10px; }
+  .map-scroll::-webkit-scrollbar-track { background: rgba(7,20,32,0.9); border: 2px solid #000; }
+  .map-scroll::-webkit-scrollbar-thumb { background: linear-gradient(180deg, #ffd96a 0%, #f0b41e 100%); border: 2px solid #000; }
+  .map-scroll::-webkit-scrollbar-thumb:hover { background: linear-gradient(180deg, #ffe58f 0%, #ffc42c 100%); }
+  .map-scroll::-webkit-scrollbar-button { display: none; }
+  @keyframes captureRing { 0% { transform: scale(0.6); opacity: 1; } 100% { transform: scale(1.7); opacity: 0; } }
+</style>
+</helmet>
+
+<div data-screen-label="Island Map" style="position: relative; min-height: 100vh; overflow: hidden; background: radial-gradient(ellipse at 50% 20%, #0d2b45 0%, #071c30 45%, #02090f 100%); font-family: 'M PLUS Rounded 1c', sans-serif;">
+  <div style="position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 50%, transparent 40%, rgba(0,0,0,0.65) 100%); pointer-events: none;"></div>
+
+  <!-- open button (game scene) -->
+  <sc-if value="{{ showOpenBtn }}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 14px;">
+      <div style="font-weight: 900; font-size: 26px; color: #7fa8c9; text-shadow: 0 2px 0 #000;">Вы у штурвала плота</div>
+      <button onClick="{{ onOpen }}" style="padding: 13px 26px; background: linear-gradient(180deg, #2c4d68 0%, #1d3750 55%, #132638 100%); border: 4px solid #000; box-shadow: 0 6px 0 rgba(0,0,0,0.55); font-family: 'M PLUS Rounded 1c', sans-serif; font-weight: 900; font-size: 20px; color: #ffffff; text-shadow: 0 2px 0 #000, 1.5px 0 0 #000, -1.5px 0 0 #000; cursor: pointer;" style-hover="filter: brightness(1.15);" style-active="transform: translateY(3px); box-shadow: 0 3px 0 rgba(0,0,0,0.55);">Открыть карту</button>
+    </div>
+  </sc-if>
+
+  <!-- dim -->
+  <div style="position: absolute; inset: 0; background: rgba(0,5,10,0.6); opacity: {{ dimOpacity }}; transition: opacity 0.5s ease; pointer-events: none;"></div>
+
+  <!-- map -->
+  <div style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; gap: 22px; padding: 0 26px; perspective: 1500px; pointer-events: {{ mapPE }}; box-sizing: border-box;">
+      <!-- left overlay column -->
+      <div class="map-scroll" style="flex: none; width: 268px; max-height: min(70vh, 740px); overflow-y: auto; padding-right: 4px; display: flex; flex-direction: column; gap: 8px; opacity: {{ mapOpacity }}; transition: opacity 0.45s ease; box-sizing: border-box;">
+
+        <sc-if value="{{ attackBanner }}" hint-placeholder-val="{{ false }}">
+          <div style="flex: none; padding: 7px 11px; background: rgba(96,14,10,0.97); border: 3px solid #e14b4b; font-weight: 900; font-size: 12.5px; color: #ffd6d2; text-shadow: 0 1.5px 0 #000; line-height: 1.35; animation: bannerBlink 1.4s ease-in-out infinite;">{{ attackBanner }}</div>
+        </sc-if>
+
+        <div style="flex: none; display: flex; flex-direction: column; gap: 6px;">
+          <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; box-sizing: border-box; background: rgba(7,20,32,0.96); border: 3px solid #000;">
+            <div style="flex: none; width: 12px; height: 12px; background: #1d1d1d; border: 2px solid #ffd23a; border-radius: 50% 50% 50% 0; transform: rotate(-45deg);"></div>
+            <div style="font-weight: 900; font-size: 13px; color: #ffd23a; text-shadow: 0 1.5px 0 #000;">Нефть: +{{ oilPerDayLabel }}/день</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; box-sizing: border-box; background: rgba(7,20,32,0.96); border: 3px solid #000;">
+            <div style="flex: none; width: 12px; height: 12px; background: linear-gradient(180deg, #ffd23a 0%, #d9a410 100%); border: 2px solid #000; border-radius: 50%;"></div>
+            <div style="font-weight: 900; font-size: 13px; color: #ffd23a; text-shadow: 0 1.5px 0 #000;">Прибыль: +{{ incomePerDayLabel }}/день</div>
+          </div>
+          <div style="display: flex; align-items: center; gap: 8px; height: 34px; padding: 0 12px; box-sizing: border-box; background: rgba(7,20,32,0.96); border: 3px solid #000;">
+            <div style="flex: none; display: flex; flex-direction: column; align-items: center; gap: 1px;">
+              <div style="width: 6px; height: 6px; background: #9fd0ee; border: 1.5px solid #000; border-radius: 50%;"></div>
+              <div style="width: 10px; height: 6px; background: #9fd0ee; border: 1.5px solid #000; border-radius: 4px 4px 0 0;"></div>
+            </div>
+            <div style="font-weight: 900; font-size: 13px; color: #9fd0ee; text-shadow: 0 1.5px 0 #000;">Жители: {{ populationLabel }}</div>
+          </div>
+        </div>
+
+        <!-- fleet / captured islands list -->
+        <div style="flex: none; background: rgba(7,20,32,0.96); border: 3px solid #000; display: flex; flex-direction: column;">
+          <button onClick="{{ onToggleFleet }}" style="display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 7px 12px; background: rgba(0,0,0,0.3); border: none; border-bottom: {{ fleetDivider }}; font-family: 'M PLUS Rounded 1c', sans-serif; font-weight: 900; font-size: 13px; color: #ffffff; text-shadow: 0 1.5px 0 #000; cursor: pointer; text-align: left;" style-hover="background: rgba(255,255,255,0.08);">
+            <span>Ваши владения</span>
+            <span style="font-size: 11px; color: #7fa8c9;">{{ fleetArrow }}</span>
+          </button>
+          <sc-if value="{{ fleetOpen }}" hint-placeholder-val="{{ false }}">
+            <div class="map-scroll" style="display: flex; flex-direction: column; max-height: 168px; overflow-y: auto;">
+              <button onClick="{{ onGoRaft }}" style="display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: transparent; border: none; border-bottom: 2px solid rgba(0,0,0,0.5); font-family: 'M PLUS Rounded 1c', sans-serif; cursor: pointer; text-align: left;" style-hover="background: rgba(255,255,255,0.08);">
+                <div style="flex: none; width: 10px; height: 10px; background: #45cc45; border: 2px solid #000; border-radius: 50%;"></div>
+                <div style="flex: 1; font-weight: 900; font-size: 13px; color: #45cc45; text-shadow: 0 1px 0 #000;">Наш плот</div>
+              </button>
+              <sc-for list="{{ myIslands }}" as="mi" hint-placeholder-count="2">
+                <button onClick="{{ mi.onGo }}" style="display: flex; align-items: center; gap: 8px; padding: 7px 12px; background: transparent; border: none; border-bottom: 2px solid rgba(0,0,0,0.5); font-family: 'M PLUS Rounded 1c', sans-serif; cursor: pointer; text-align: left;" style-hover="background: rgba(255,255,255,0.08);">
+                  <div style="flex: none; width: 0; height: 0; border-left: 10px solid #ffd23a; border-top: 4px solid transparent; border-bottom: 4px solid transparent;"></div>
+                  <div style="flex: 1; font-weight: 800; font-size: 13px; color: #e8f2f8; text-shadow: 0 1px 0 #000; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ mi.name }}</div>
+                  <div style="flex: none; font-weight: 900; font-size: 12px; color: {{ mi.tagColor }}; text-shadow: 0 1px 0 #000;">{{ mi.tag }}</div>
+                </button>
+              </sc-for>
+            </div>
+          </sc-if>
+        </div>
+
+        <!-- island card -->
+        <sc-if value="{{ selVisible }}" hint-placeholder-val="{{ false }}">
+          <div style="flex: none; background: #12283c; border: 4px solid #000; box-shadow: 0 6px 0 rgba(0,0,0,0.55); display: flex; flex-direction: column; box-sizing: border-box;">
+            <div style="padding: 8px 14px 6px; border-bottom: 3px solid #000; background: rgba(0,0,0,0.25); flex: none;">
+              <div style="font-weight: 900; font-size: 17px; color: #ffffff; text-shadow: 0 2px 0 #000;">{{ selName }}</div>
+              <div style="font-weight: 900; font-size: 13px; color: {{ selStatusColor }}; text-shadow: 0 1.5px 0 #000;">{{ selStatus }}</div>
+            </div>
+            <div style="padding: 8px 14px; display: flex; flex-direction: column; gap: 6px; flex: none;">
+              <div style="font-weight: 800; font-size: 13px; color: #7fa8c9; text-shadow: 0 1px 0 #000;">{{ selType }}</div>
+              <div style="font-weight: 800; font-size: 13px; color: #ffd23a; text-shadow: 0 1px 0 #000;">{{ selIncomeLine }}</div>
+              <sc-if value="{{ selSources }}" hint-placeholder-val="{{ false }}">
+                <div style="font-weight: 800; font-size: 12px; color: #9fb7c9; text-shadow: 0 1px 0 #000; line-height: 1.4;">Приносит прибыль: <span style="color: #e8f2f8;">{{ selSources }}</span></div>
+              </sc-if>
+              <div style="font-weight: 800; font-size: 13px; color: #9fd0ee; text-shadow: 0 1px 0 #000;">Жители: <span style="color: #e8f2f8;">{{ selPop }}</span></div>
+              <div style="font-weight: 800; font-size: 13px; color: #7fa8c9; text-shadow: 0 1px 0 #000;">Защита: <span style="color: #e8f2f8;">{{ selDef }}</span></div>
+              <sc-if value="{{ selAtkLine }}" hint-placeholder-val="{{ false }}">
+                <div style="font-weight: 800; font-size: 13px; color: #ff7a6a; text-shadow: 0 1px 0 #000;">{{ selAtkLine }}</div>
+              </sc-if>
+              <sc-if value="{{ selNote }}" hint-placeholder-val="{{ false }}">
+                <div style="font-weight: 800; font-size: 12px; color: #9fb7c9; text-shadow: 0 1px 0 #000; line-height: 1.4;">{{ selNote }}</div>
+              </sc-if>
+            </div>
+            <div style="padding: 0 14px 10px; display: flex; flex-direction: column; gap: 6px; flex: none;">
+              <sc-for list="{{ selActions }}" as="act" hint-placeholder-count="2">
+                <button onClick="{{ act.onClick }}" style="flex: none; padding: 7px 12px; background: {{ act.bg }}; border: 3px solid #000; box-shadow: 0 4px 0 rgba(0,0,0,0.55); font-family: 'M PLUS Rounded 1c', sans-serif; font-weight: 900; font-size: 14px; color: #ffffff; text-shadow: 0 1.5px 0 #000, 1px 0 0 #000, -1px 0 0 #000; cursor: pointer; text-align: center;" style-hover="filter: brightness(1.12);" style-active="transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,0.55);">{{ act.label }}</button>
+              </sc-for>
+            </div>
+          </div>
+        </sc-if>
+      </div>
+
+    <div style="position: relative; flex: none; width: min(62vw, 1020px); height: min(70vh, 740px); transform: {{ mapTransform }}; opacity: {{ mapOpacity }}; transition: transform 0.6s cubic-bezier(0.2, 0.9, 0.3, 1.05), opacity 0.45s ease; filter: drop-shadow(3px 0 0 #000) drop-shadow(-3px 0 0 #000) drop-shadow(0 3px 0 #000) drop-shadow(0 -3px 0 #000) drop-shadow(0 18px 24px rgba(0,0,0,0.7));">
+<button onClick="{{ onClose }}" style="position: absolute; top: 24px; right: 26px; z-index: 12; width: 32px; height: 32px; background: linear-gradient(180deg, #d9453f 0%, #a8302b 100%); border: 3px solid #000; box-shadow: 0 4px 0 rgba(0,0,0,0.55); font-family: 'M PLUS Rounded 1c', sans-serif; font-weight: 900; font-size: 15px; color: #ffffff; text-shadow: 0 1.5px 0 #000; cursor: pointer;" style-hover="filter: brightness(1.15);" style-active="transform: translateY(2px); box-shadow: 0 2px 0 rgba(0,0,0,0.55);">✕</button>
+      <!-- torn parchment -->
+      <div style="position: absolute; inset: 0; background: radial-gradient(ellipse at 18% 12%, rgba(255,250,229,0.9) 0%, transparent 52%), radial-gradient(ellipse at 84% 88%, rgba(138,101,48,0.32) 0%, transparent 48%), radial-gradient(ellipse at 92% 10%, rgba(138,101,48,0.2) 0%, transparent 40%), linear-gradient(150deg, #efdfb4 0%, #e2cf99 46%, #cbb27c 100%); clip-path: polygon(1% 3%, 6% 1%, 13% 3%, 20% 0%, 28% 2%, 36% 1%, 44% 3%, 52% 0%, 60% 2%, 68% 1%, 76% 3%, 84% 0%, 92% 2%, 99% 4%, 98% 12%, 100% 20%, 98% 28%, 99% 37%, 97% 45%, 100% 54%, 98% 62%, 99% 71%, 97% 79%, 100% 88%, 97% 96%, 90% 99%, 82% 97%, 74% 100%, 66% 98%, 58% 100%, 50% 97%, 42% 99%, 34% 97%, 26% 100%, 18% 98%, 10% 100%, 3% 97%, 0% 90%, 2% 82%, 0% 74%, 2% 66%, 0% 58%, 2% 50%, 0% 42%, 1% 34%, 0% 26%, 2% 18%, 0% 10%);">
+        <!-- ocean -->
+        <div ref="{{ oceanRef }}" onMouseDown="{{ onPanStart }}" style="position: absolute; inset: 34px; overflow: hidden; cursor: grab; background-color: #1c7f9c; background-image: repeating-linear-gradient(0deg, rgba(232,246,250,0.20) 0 1.5px, transparent 1.5px 128px), repeating-linear-gradient(90deg, rgba(232,246,250,0.20) 0 1.5px, transparent 1.5px 128px), radial-gradient(ellipse at 50% 45%, rgba(86,196,214,0.55) 0%, transparent 62%), linear-gradient(170deg, #2a9ab4 0%, #1c7f9c 45%, #115f79 100%); background-position: {{ panX }}px {{ panY }}px, {{ panX }}px {{ panY }}px, 0 0, 0 0; clip-path: polygon(0.8% 2%, 10% 0.5%, 22% 2%, 34% 0.5%, 46% 2%, 58% 0.5%, 70% 2%, 82% 0.5%, 94% 2%, 99.4% 4%, 98.6% 16%, 99.6% 30%, 98.4% 44%, 99.6% 58%, 98.4% 72%, 99.6% 86%, 98.4% 97%, 88% 99.4%, 76% 98%, 64% 99.5%, 52% 98%, 40% 99.5%, 28% 98%, 16% 99.5%, 5% 98%, 0.6% 94%, 1.6% 80%, 0.4% 66%, 1.6% 52%, 0.4% 38%, 1.6% 24%, 0.4% 10%);">
+        <div style="position: absolute; inset: 0; z-index: 6; pointer-events: none; box-shadow: inset 0 0 42px rgba(6,38,50,0.55), inset 0 0 8px rgba(6,38,50,0.4);"></div>
+        <!-- pannable world -->
+        <div style="position: absolute; left: {{ panX }}px; top: {{ panY }}px; width: 170%; height: 170%; transition: {{ panTransition }};">
+
+          <!-- compass -->
+          <div style="position: absolute; right: 3%; bottom: 5%; width: 74px; height: 74px; border: 2px solid rgba(240,250,252,0.55); border-radius: 50%; display: flex; align-items: center; justify-content: center; opacity: 0.85;">
+            <div style="position: absolute; inset: 9px; border: 1.5px dashed rgba(240,250,252,0.4); border-radius: 50%;"></div>
+            <div style="position: absolute; top: -9px; left: 50%; transform: translateX(-50%); font-weight: 900; font-size: 12px; color: rgba(245,233,198,0.95);">N</div>
+            <div style="position: absolute; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-bottom: 30px solid rgba(226,86,66,0.85); top: 8px;"></div>
+            <div style="position: absolute; width: 0; height: 0; border-left: 6px solid transparent; border-right: 6px solid transparent; border-top: 30px solid rgba(240,250,252,0.6); bottom: 8px;"></div>
+            <div style="position: absolute; width: 46px; height: 2px; background: rgba(240,250,252,0.5);"></div>
+            <div style="width: 8px; height: 8px; background: rgba(245,233,198,0.9); border-radius: 50%;"></div>
+          </div>
+
+          <!-- course line -->
+          <sc-if value="{{ courseVisible }}" hint-placeholder-val="{{ false }}">
+            <svg viewBox="0 0 100 100" preserveAspectRatio="none" style="position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none;">
+              <path d="{{ routeD }}" fill="none" stroke="#f5e9c6" stroke-width="3" stroke-dasharray="10 8" opacity="{{ routeOpacity }}" vector-effect="non-scaling-stroke"></path>
+            </svg>
+          </sc-if>
+
+          <!-- islands -->
+          <sc-for list="{{ islands }}" as="isl" hint-placeholder-count="4">
+            <div onClick="{{ isl.onSelect }}" style="position: absolute; left: {{ isl.x }}%; top: {{ isl.y }}%; width: {{ isl.size }}px; height: {{ isl.size }}px; transform: translate(-50%, -50%) scale({{ isl.capScale }}); opacity: {{ isl.capOpacity }}; transition: {{ isl.capTransition }}; animation: {{ isl.shakeAnim }}; cursor: pointer; z-index: 2;">
+              <sc-if value="{{ isl.ghost }}" hint-placeholder-val="{{ false }}">
+                <div style="position: absolute; inset: 0; border: 3px dashed rgba(35,50,60,0.55); border-radius: 50%; display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 18px; color: rgba(35,50,60,0.65);">?</div>
+                <div style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 8px; font-weight: 900; font-size: 12px; color: #5b6d78; text-shadow: 0 1px 0 rgba(255,255,255,0.25); white-space: nowrap; animation: bannerBlink 1.6s ease-in-out infinite;">Сигнал потерян</div>
+              </sc-if>
+              <sc-if value="{{ isl.visible }}" hint-placeholder-val="{{ true }}">
+              <sc-if value="{{ isl.attacked }}" hint-placeholder-val="{{ false }}">
+                <div style="position: absolute; inset: -26%; border: 3px dashed #e14b4b; border-radius: 50%; animation: attackPulse 1.2s ease-in-out infinite; pointer-events: none;"></div>
+              </sc-if>
+              <sc-if value="{{ isl.capturing }}" hint-placeholder-val="{{ false }}">
+                <div style="position: absolute; inset: -35%; border: 3px solid rgba(225,75,75,0.9); border-radius: 50%; animation: captureRing 0.7s ease-out infinite; pointer-events: none;"></div>
+              </sc-if>
+              <div style="position: absolute; inset: -46%; border-radius: 50%; background: radial-gradient(circle, rgba(150,232,240,0.5) 0%, rgba(120,214,226,0.22) 52%, transparent 72%); pointer-events: none;"></div>
+              <div style="position: absolute; inset: -26%; border: 2px dotted rgba(232,250,252,0.45); border-radius: 52% 48% 50% 50% / 48% 52% 48% 52%; pointer-events: none;"></div>
+              <div style="position: absolute; inset: -13%; border: 2px dashed rgba(232,250,252,0.3); border-radius: 48% 52% 54% 46% / 52% 48% 46% 54%; pointer-events: none;"></div>
+              <div style="position: absolute; inset: 0; background: {{ isl.sandBg }}; border: 3px solid {{ isl.outline }}; border-radius: {{ isl.shapeSand }}; box-sizing: border-box; box-shadow: inset 0 -5px 0 rgba(140,101,46,0.22), 0 4px 0 rgba(6,38,50,0.35); transform: rotate({{ isl.spin }}deg); filter: {{ isl.blobFilter }};" style-hover="filter: brightness(1.07);">
+                <div style="position: absolute; inset: {{ isl.landInset }}; background: {{ isl.landBg }}; border: 2px solid {{ isl.landLine }}; border-radius: {{ isl.shapeLand }}; box-sizing: border-box; box-shadow: inset 0 -4px 0 rgba(46,72,24,0.28);"></div>
+                <sc-if value="{{ isl.hasPeak }}" hint-placeholder-val="{{ true }}">
+                  <div style="position: absolute; left: {{ isl.peakX }}; top: {{ isl.peakY }}; width: {{ isl.peakW }}; height: {{ isl.peakH }}; background: {{ isl.peakBg }}; border: 2px solid rgba(46,52,44,0.45); border-radius: {{ isl.shapePeak }}; box-sizing: border-box;"></div>
+                </sc-if>
+                <sc-if value="{{ isl.hasLagoon }}" hint-placeholder-val="{{ false }}">
+                  <div style="position: absolute; left: 36%; top: 40%; width: 30%; height: 26%; background: radial-gradient(circle, #4fd0dc 0%, #2aa5bb 70%, #1c7f9c 100%); border: 2px solid rgba(20,70,88,0.5); border-radius: 58% 42% 50% 50% / 46% 54% 46% 54%; box-sizing: border-box;"></div>
+                </sc-if>
+              </div>
+              <sc-if value="{{ isl.fogged }}" hint-placeholder-val="{{ false }}">
+                <div style="position: absolute; inset: -28%; background: radial-gradient(circle, rgba(208,218,224,0.95) 0%, rgba(208,218,224,0.65) 55%, transparent 78%); border-radius: 50%; animation: fogDrift 4s ease-in-out infinite; pointer-events: none;"></div>
+              </sc-if>
+              <!-- type badge -->
+              <div style="position: absolute; right: -8px; bottom: -8px; width: 22px; height: 22px; background: {{ isl.badgeBg }}; border: 2.5px solid #10323e; border-radius: 7px; box-shadow: 0 2px 0 rgba(16,50,62,0.45); display: flex; align-items: center; justify-content: center; font-weight: 900; font-size: 11px; color: #ffffff; text-shadow: 0 1px 0 #000;">{{ isl.badge }}</div>
+              <!-- flag -->
+              <sc-if value="{{ isl.mine }}" hint-placeholder-val="{{ false }}">
+                <div style="position: absolute; left: 50%; top: -18px; width: 2.5px; height: 18px; background: #1d1d1d;">
+                  <div style="position: absolute; left: 2.5px; top: 0; width: 0; height: 0; border-left: 12px solid #ffd23a; border-top: 4.5px solid transparent; border-bottom: 4.5px solid transparent;"></div>
+                </div>
+              </sc-if>
+              <!-- ships when attacked -->
+              <sc-if value="{{ isl.attacked }}" hint-placeholder-val="{{ false }}">
+                <div style="position: absolute; left: -62%; top: 4%; animation: shipBob 2.1s ease-in-out infinite alternate; pointer-events: none;">
+                  <div style="width: 0; height: 0; border-bottom: 14px solid #3a3a3a; border-left: 5px solid transparent; border-right: 5px solid transparent; margin-left: 7px;"></div>
+                  <div style="width: 26px; height: 9px; background: #5a3a22; border: 2px solid #000; border-radius: 0 0 8px 8px;"></div>
+                </div>
+                <div style="position: absolute; left: 102%; top: 58%; animation: shipBob 1.8s ease-in-out 0.4s infinite alternate; pointer-events: none;">
+                  <div style="width: 0; height: 0; border-bottom: 12px solid #3a3a3a; border-left: 4px solid transparent; border-right: 4px solid transparent; margin-left: 6px;"></div>
+                  <div style="width: 22px; height: 8px; background: #5a3a22; border: 2px solid #000; border-radius: 0 0 7px 7px;"></div>
+                </div>
+              </sc-if>
+              <!-- name + income -->
+              <div style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 8px; display: flex; flex-direction: column; align-items: center; gap: 3px; white-space: nowrap; pointer-events: none;">
+                <div style="padding: 2px 10px; background: linear-gradient(180deg, #fdf3d6 0%, #f0e2ba 100%); border: 2px solid #123240; border-radius: 3px; box-shadow: 0 2px 0 rgba(6,38,50,0.45); font-weight: 900; font-size: 12px; letter-spacing: 0.4px; color: #16323d; text-transform: uppercase;">{{ isl.name }}</div>
+                <sc-if value="{{ isl.mine }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding: 1px 8px; background: #1b3a2a; border: 2px solid #0f2419; border-radius: 4px; font-weight: 900; font-size: 11px; color: #ffd23a;">+{{ isl.income }}/мин</div>
+                </sc-if>
+                <sc-if value="{{ isl.attacked }}" hint-placeholder-val="{{ false }}">
+                  <div style="padding: 1px 8px; background: #6a120e; border: 2px solid #e14b4b; border-radius: 4px; font-weight: 900; font-size: 11px; color: #ffd6d2;">Атака: {{ isl.atk }}</div>
+                </sc-if>
+              </div>
+              </sc-if>
+            </div>
+          </sc-for>
+
+          <!-- raft -->
+          <div style="position: absolute; left: {{ raftX }}%; top: {{ raftY }}%; transform: translate(-50%, -50%); z-index: 3; pointer-events: none;">
+            <div style="position: absolute; left: 50%; top: 50%; width: 26px; height: 26px; box-sizing: border-box; border: 3px solid rgba(78,217,78,0.8); border-radius: 50%; animation: raftPulse 1.8s ease-out infinite;"></div>
+            <div style="width: 20px; height: 20px; background: radial-gradient(circle at 34% 28%, #b6ff9c 0%, #4ed94e 52%, #23842b 100%); border: 3px solid #0d2b1c; border-radius: 50%; box-shadow: 0 0 0 4px rgba(78,217,78,0.25), 0 3px 0 rgba(6,38,50,0.45);"></div>
+            <div style="position: absolute; top: 100%; left: 50%; transform: translateX(-50%); margin-top: 7px; padding: 2px 9px; background: #1b3a2a; border: 2px solid #0f2419; border-radius: 4px; font-weight: 900; font-size: 12px; color: #8dfa7d; white-space: nowrap;">Наш плот</div>
+          </div>
+
+        </div>
+
+
+
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- toast -->
+  <sc-if value="{{ toast }}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; bottom: 5vh; left: 50%; transform: translateX(-50%); z-index: 10; padding: 7px 16px; background: rgba(0,0,0,0.6); border: 2px solid #ffd23a; font-weight: 900; font-size: 14px; color: #ffd23a; text-shadow: 0 1px 0 #000; white-space: nowrap;">{{ toast }}</div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;oilAmount&quot;: { &quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 340, &quot;min&quot;: 0, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Ресурсы&quot; },
+  &quot;population&quot;: { &quot;editor&quot;: &quot;int&quot;, &quot;default&quot;: 12, &quot;min&quot;: 0, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Ресурсы&quot; },
+  &quot;attackWave&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Состояние&quot; },
+  &quot;captureDemo&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Состояние&quot; },
+  &quot;startOpen&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: true, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Состояние&quot; }
+}">
+class Component extends DCLogic {
+  state = { open: null, sel: null, toast: '', raft: { x: 46, y: 46 }, oilSpent: 0, panX: null, panY: null, fogRevealed: false, cap: 0, fleetOpen: false, docked: null };
+
+  componentDidUpdate(prevProps) {
+    const demo = this.props.captureDemo ?? false, prev = prevProps.captureDemo ?? false;
+    if (!prev && demo) this.startCapture();
+    if (prev && !demo) this.resetCapture();
+  }
+
+  startCapture() {
+    if (this.state.cap > 0) return;
+    this.setState({ cap: 1 });
+    this.flash('Чужаки штурмуют «Железный кряж»!');
+    clearTimeout(this._capT1); clearTimeout(this._capT2);
+    this._capT1 = setTimeout(() => {
+      this.setState({ cap: 2 });
+      this.flash('Остров захвачен! Сигнал потерян…');
+      this._capT2 = setTimeout(() => this.setState({ cap: 3 }), 1450);
+    }, 1600);
+  }
+
+  resetCapture() {
+    clearTimeout(this._capT1); clearTimeout(this._capT2); clearTimeout(this._forgetT);
+    this._forgetT = null;
+    this.setState({ cap: 0 });
+  }
+
+  componentDidMount() {
+    this._onMove = (e) => {
+      if (!this._drag) return;
+      const dx = e.clientX - this._drag.sx, dy = e.clientY - this._drag.sy;
+      if (Math.abs(dx) + Math.abs(dy) > 5) this._dragMoved = true;
+      this.setState({ panX: this._drag.px + dx, panY: this._drag.py + dy });
+    };
+    this._onUp = () => { this._drag = null; setTimeout(() => { this._dragMoved = false; }, 0); };
+    window.addEventListener('mousemove', this._onMove);
+    window.addEventListener('mouseup', this._onUp);
+  }
+
+  componentWillUnmount() {
+    window.removeEventListener('mousemove', this._onMove);
+    window.removeEventListener('mouseup', this._onUp);
+    cancelAnimationFrame(this._sailRaf);
+    cancelAnimationFrame(this._fadeRaf);
+  }
+
+  centerOn(x, y) {
+    if (!this._ocean) return;
+    const w = this._ocean.clientWidth, h = this._ocean.clientHeight;
+    this._panAnim = true;
+    this.setState({ panX: w * 0.5 - w * 1.7 * (x / 100), panY: h * 0.5 - h * 1.7 * (y / 100) });
+    clearTimeout(this._panT);
+    this._panT = setTimeout(() => { this._panAnim = false; this.forceUpdate(); }, 650);
+  }
+
+  dockPoint(isl) {
+    // swim right up to the island edge, approaching from the raft's side
+    const r = this.state.raft;
+    const dx = r.x - isl.x, dy = r.y - isl.y, len = Math.hypot(dx, dy) || 1;
+    const w = this._ocean ? this._ocean.clientWidth * 1.7 : 1400;
+    const h = this._ocean ? this._ocean.clientHeight * 1.7 : 900;
+    const gapPx = isl.size / 2 + 14;
+    return { x: isl.x + dx / len * (gapPx / w * 100), y: isl.y + dy / len * (gapPx / h * 100) };
+  }
+
+  routeCtrl(a, b) {
+    const mx = (a.x + b.x) / 2, my = (a.y + b.y) / 2;
+    const dx = b.x - a.x, dy = b.y - a.y, len = Math.hypot(dx, dy) || 1;
+    const k = Math.min(8, len * 0.18);
+    return { x: mx - dy / len * k, y: my + dx / len * k };
+  }
+
+  routePath(a, b) {
+    const c = this.routeCtrl(a, b);
+    return { d: 'M ' + a.x.toFixed(2) + ' ' + a.y.toFixed(2) + ' Q ' + c.x.toFixed(2) + ' ' + c.y.toFixed(2) + ' ' + b.x.toFixed(2) + ' ' + b.y.toFixed(2) };
+  }
+
+  sailTo(sel, cost) {
+    if (this._sailing) return;
+    this._sailing = true;
+    const from = { ...this.state.raft }, to = this.dockPoint(sel);
+    const c = this.routeCtrl(from, to);
+    this._sail = { from, to, c, d: this.routePath(from, to).d };
+    this._sailT = 0;
+    this.setState({ oilSpent: this.state.oilSpent + cost, docked: null });
+    this.flash('Плот идёт к «' + sel.name + '» (−' + cost + ' нефти)');
+    const t0 = performance.now(), dur = 3400;
+    const step = (now) => {
+      const t = Math.min(1, (now - t0) / dur), u = 1 - t;
+      this._sailT = t;
+      this.setState({ raft: {
+        x: u * u * from.x + 2 * u * t * c.x + t * t * to.x,
+        y: u * u * from.y + 2 * u * t * c.y + t * t * to.y
+      } });
+      if (t < 1) this._sailRaf = requestAnimationFrame(step);
+      else { this._sailing = false; this._sailT = 1; this.setState({ docked: sel.id }); this.fadeRoute(); }
+    };
+    this._sailRaf = requestAnimationFrame(step);
+  }
+
+  fadeRoute() {
+    const t0 = performance.now(), dur = 500;
+    const step = (now) => {
+      const k = Math.min(1, (now - t0) / dur);
+      this._routeAlpha = 0.85 * (1 - k);
+      if (k < 1) { this.forceUpdate(); this._fadeRaf = requestAnimationFrame(step); }
+      else { this._sail = null; this._routeAlpha = null; this.forceUpdate(); }
+    };
+    this._fadeRaf = requestAnimationFrame(step);
+  }
+
+  remainingRoute() {
+    const s = this._sail; if (!s) return '';
+    const t = Math.min(1, this._sailT || 0), r = this.state.raft;
+    // de Casteljau split: keep only the not-yet-sailed tail (raft -> destination)
+    const q1 = { x: s.c.x + (s.to.x - s.c.x) * t, y: s.c.y + (s.to.y - s.c.y) * t };
+    return 'M ' + r.x.toFixed(2) + ' ' + r.y.toFixed(2) + ' Q ' + q1.x.toFixed(2) + ' ' + q1.y.toFixed(2) + ' ' + s.to.x.toFixed(2) + ' ' + s.to.y.toFixed(2);
+  }
+
+  look(b) {
+    const seed = b.id.split('').reduce((a, c) => a + c.charCodeAt(0), 0);
+    const shapes = [
+      ['44% 56% 50% 50% / 54% 46% 54% 46%', '52% 48% 46% 54% / 46% 54% 46% 54%', '58% 42% 34% 66% / 62% 46% 54% 38%'],
+      ['62% 38% 46% 54% / 40% 60% 40% 60%', '58% 42% 52% 48% / 44% 56% 44% 56%', '46% 54% 60% 40% / 52% 40% 60% 48%'],
+      ['36% 64% 58% 42% / 62% 38% 62% 38%', '44% 56% 62% 38% / 56% 44% 56% 44%', '64% 36% 46% 54% / 40% 56% 44% 60%'],
+      ['55% 45% 38% 62% / 45% 62% 38% 55%', '48% 52% 40% 60% / 60% 42% 58% 40%', '40% 60% 56% 44% / 58% 42% 58% 42%']
+    ][seed % 4];
+    const palettes = {
+      wood: { sand: 'linear-gradient(150deg, #ffeec2 0%, #f0d79c 52%, #dcbe80 100%)', land: 'linear-gradient(155deg, #b6d966 0%, #7fb03e 50%, #52802a 100%)', line: 'rgba(50,78,28,0.5)', peak: 'linear-gradient(150deg, #9ec06a 0%, #74a044 60%, #4f7a2c 100%)' },
+      iron: { sand: 'linear-gradient(150deg, #f0e3c4 0%, #d9c9a2 52%, #bfae87 100%)', land: 'linear-gradient(155deg, #93a878 0%, #6f8759 50%, #4f6640 100%)', line: 'rgba(44,58,38,0.55)', peak: 'linear-gradient(150deg, #cdc9b8 0%, #8f8a7a 55%, #625d51 100%)' },
+      oil: { sand: 'linear-gradient(150deg, #efdcb4 0%, #d8c391 52%, #bda676 100%)', land: 'linear-gradient(155deg, #8fb85c 0%, #618f3c 50%, #3f6528 100%)', line: 'rgba(38,58,26,0.55)', peak: 'linear-gradient(150deg, #6e6a5e 0%, #4d4a41 60%, #33312b 100%)' }
+    }[b.type];
+    const big = b.size >= 60, small = b.size < 40;
+    return {
+      sandBg: palettes.sand,
+      landBg: palettes.land,
+      landLine: palettes.line,
+      peakBg: palettes.peak,
+      shapeSand: shapes[0],
+      shapeLand: shapes[1],
+      shapePeak: shapes[2],
+      spin: (seed % 7) * 11 - 33,
+      landInset: small ? '22%' : (big ? '12%' : '16%'),
+      hasPeak: !small && seed % 3 !== 0,
+      hasLagoon: small || seed % 5 === 0,
+      peakX: (seed % 2 ? 26 : 38) + '%',
+      peakY: (seed % 3 ? 20 : 30) + '%',
+      peakW: (big ? 38 : 30) + '%',
+      peakH: (big ? 34 : 26) + '%'
+    };
+  }
+
+  islandsBase() {
+    return [
+      { id: 'atoll',  name: 'Зелёный атолл',   x: 18, y: 30, size: 38, type: 'wood', owner: 'neutral', def: 0, income: 6 },
+      { id: 'ridge',  name: 'Железный кряж',   x: 63, y: 32, size: 66, type: 'iron', owner: 'mine',    def: 2, income: 18 },
+      { id: 'lagoon', name: 'Чёрная лагуна',   x: 32, y: 66, size: 50, type: 'oil',  owner: 'mine',    def: 1, income: 12 },
+      { id: 'reef',   name: 'Дальний риф',     x: 82, y: 68, size: 34, type: 'oil',  owner: 'neutral', def: 0, income: 8 },
+      { id: 'haven',  name: 'Пиратская гавань', x: 76, y: 16, size: 48, type: 'wood', owner: 'enemy',  def: 3, income: 10 },
+      { id: 'rocks',  name: 'Серые скалы',     x: 14, y: 52, size: 36, type: 'iron', owner: 'neutral', def: 0, income: 7 },
+      { id: 'fog',    name: 'Туманный остров', x: 58, y: 66, size: 44, type: 'oil',  owner: 'neutral', def: 1, income: 14 },
+      { id: 'far1',   name: 'Восточная коса',  x: 90, y: 34, size: 40, type: 'wood', owner: 'neutral', def: 0, income: 9 },
+      { id: 'far2',   name: 'Южный клык',      x: 68, y: 90, size: 52, type: 'iron', owner: 'enemy',   def: 2, income: 13 }
+    ];
+  }
+
+  flash(msg) {
+    this.setState({ toast: msg });
+    clearTimeout(this._toastT);
+    this._toastT = setTimeout(() => this.setState({ toast: '' }), 2600);
+  }
+
+  sailCost(isl) {
+    const r = this.state.raft;
+    return Math.max(4, Math.round(Math.hypot(isl.x - r.x, (isl.y - r.y) * 0.65) * 0.6));
+  }
+
+  renderVals() {
+    const attackOn = this.props.attackWave ?? true;
+    const open = this.state.open ?? (this.props.startOpen ?? true);
+    const typeNames = { wood: 'Лесной остров', iron: 'Железный остров', oil: 'Нефтяной остров' };
+    const badges = { wood: ['Л', '#7a4f2a'], iron: ['Ж', '#6f7480'], oil: ['Н', '#1d1d1d'] };
+    const sizeNames = (s) => s >= 60 ? 'большой' : (s >= 44 ? 'средний' : 'малый');
+
+    const base = this.islandsBase();
+    const islands = base.map(b => {
+      const cap = b.id === 'ridge' ? this.state.cap : 0;
+      const attacked = attackOn && b.id === 'ridge' && cap < 3;
+      const fogged = b.id === 'fog' && !this.state.fogRevealed;
+      return {
+        ...b,
+        attacked,
+        fogged,
+        visible: cap < 3,
+        ghost: cap === 3 || cap === 5,
+        removed: cap === 4,
+        capturing: cap === 1,
+        capScale: cap === 2 ? 0.45 : 1,
+        capOpacity: (cap === 2 || cap === 5) ? 0 : 1,
+        capTransition: cap >= 3 ? 'opacity 0.7s ease' : 'transform 1.2s ease, opacity 1.2s ease',
+        atk: 14,
+        defNum: b.def * 6,
+        shakeAnim: cap === 1 ? 'capShake 0.28s linear infinite' : 'none',
+        name: fogged ? 'Неизвестный остров' : b.name,
+        mine: b.owner === 'mine' && !fogged && cap < 3,
+        blobFilter: fogged ? 'grayscale(0.9) brightness(0.92)' : 'none',
+        outline: this.state.sel === b.id ? '#ffd23a' : '#3b4a3a',
+        ...this.look(b),
+        pop: b.owner === 'mine' ? (b.size >= 60 ? 6 : (b.size >= 44 ? 4 : 2)) : (b.owner === 'enemy' ? (b.size >= 60 ? 8 : 5) : 0),
+        popMax: b.size >= 60 ? 8 : (b.size >= 44 ? 6 : 3),
+        badge: fogged ? '?' : badges[b.type][0],
+        badgeBg: fogged ? '#4a5560' : badges[b.type][1],
+        onSelect: () => {
+          if (this._dragMoved) return;
+          if (b.id === 'ridge' && this.state.cap === 3) {
+            this.setState({ cap: 5 });
+            clearTimeout(this._forgetT);
+            this._forgetT = setTimeout(() => { this._forgetT = null; this.setState({ cap: 4 }); }, 750);
+            return;
+          }
+          this.setState({ sel: this.state.sel === b.id ? null : b.id });
+        }
+      };
+    }).filter(i => !i.removed);
+
+    const sel = islands.find(i => i.id === this.state.sel) || null;
+    const attackedIsl = islands.find(i => i.attacked);
+
+    let selVals = { selVisible: false, selName: '', selStatus: '', selStatusColor: '#fff', selType: '', selIncomeLine: '', selDefBars: [], selActions: [] };
+    if (sel) {
+      const cost = this.sailCost(sel);
+      const green = 'linear-gradient(180deg, #45cc45 0%, #2fa32f 55%, #1f7d1f 100%)';
+      const blue = 'linear-gradient(180deg, #2c4d68 0%, #1d3750 55%, #132638 100%)';
+      const red = 'linear-gradient(180deg, #d9453f 0%, #a8302b 100%)';
+      const docked = this.state.docked === sel.id;
+      const actions = [];
+      if (!sel.fogged && !docked) actions.push({ label: 'Плыть сюда — ' + cost + ' нефти', bg: green, onClick: () => this.sailTo(sel, cost) });
+      selVals = {
+        selVisible: true,
+        selName: sel.name,
+        selStatus: sel.fogged ? 'Скрыт туманом' : (sel.attacked ? 'ПОД АТАКОЙ!' : (sel.mine ? 'Ваш остров' : (sel.owner === 'enemy' ? 'Захвачен пиратами' : 'Нейтральный'))),
+        selStatusColor: sel.fogged ? '#aebfc9' : (sel.attacked ? '#ff7a6a' : (sel.mine ? '#45cc45' : (sel.owner === 'enemy' ? '#ff7a6a' : '#cfe3f2'))),
+        selType: sel.fogged ? '???' : typeNames[sel.type] + ', ' + sizeNames(sel.size),
+        selIncomeLine: sel.fogged ? 'Доход неизвестен' : (sel.mine ? 'Доход: +' : 'Потенциальный доход: +') + sel.income + '/мин',
+        selSources: sel.fogged ? '' : (() => {
+          const src = { oil: 'нефтевышка', wood: 'лесопилка', iron: 'рудник' }[sel.type];
+          const n = sel.size >= 60 ? 3 : (sel.size >= 44 ? 2 : 1);
+          return src + (n > 1 ? ' ×' + n : '');
+        })(),
+        selDef: sel.fogged ? '?' : String(sel.defNum),
+        selPop: sel.fogged ? '?' : (sel.mine ? sel.pop + ' / ' + sel.popMax : (sel.owner === 'enemy' ? sel.pop + ' (пираты)' : 'никого')),
+        selAtkLine: sel.attacked ? 'Атака пиратов: ' + sel.atk : '',
+        selNote: sel.fogged ? 'Остров не изучен — добраться можно только вручную, по навигации.' : (docked ? 'Плот пришвартован у этого острова.' : ''),
+        selActions: actions
+      };
+    }
+
+    const oil = Math.max(0, (this.props.oilAmount ?? 340) - this.state.oilSpent);
+    return {
+      ...selVals,
+      islands,
+      raftX: this.state.raft.x,
+      raftY: this.state.raft.y,
+      oilPerDayLabel: String(islands.filter(i => i.mine && i.type === 'oil').reduce((s, i) => s + i.income, 0) * 24),
+      incomePerDayLabel: String(islands.filter(i => i.mine).reduce((s, i) => s + i.income, 0) * 24),
+      populationLabel: String(this.props.population ?? 12),
+
+      showOpenBtn: !open,
+      dimOpacity: open ? 1 : 0,
+      mapPE: open ? 'auto' : 'none',
+      mapOpacity: open ? 1 : 0,
+      mapTransform: open ? 'scale(1) rotateX(5deg) translateY(0)' : 'scale(0.55) rotateX(45deg) translateY(16vh)',
+      attackBanner: attackedIsl ? 'Остров «' + attackedIsl.name + '» под атакой! Мощность атаки: ' + attackedIsl.atk : '',
+      cardLeft: sel && sel.x > 55 ? '14px' : 'auto',
+      cardRight: sel && sel.x > 55 ? 'auto' : '14px',
+      courseVisible: !!(this._sail || (sel && !sel.fogged && this.state.docked !== sel.id)),
+      routeD: this._sail ? this.remainingRoute() : (sel && !sel.fogged && this.state.docked !== sel.id ? this.routePath(this.state.raft, this.dockPoint(sel)).d : ''),
+      routeOpacity: this._routeAlpha ?? 0.85,
+      panX: this.state.panX ?? 0,
+      panY: this.state.panY ?? 0,
+      oceanRef: (el) => {
+        if (el && !this._ocean) {
+          this._ocean = el;
+          const w = el.clientWidth, h = el.clientHeight;
+          this.setState({ panX: w * 0.5 - w * 1.7 * 0.46, panY: h * 0.5 - h * 1.7 * 0.46 });
+        }
+      },
+      onPanStart: (e) => {
+        if (e.button !== 0) return;
+        this._drag = { sx: e.clientX, sy: e.clientY, px: this.state.panX ?? 0, py: this.state.panY ?? 0 };
+        this._dragMoved = false;
+        e.preventDefault();
+      },
+      panTransition: this._panAnim ? 'left 0.6s ease, top 0.6s ease' : 'none',
+      myIslands: islands.filter(i => i.mine).map(i => ({
+        name: i.name,
+        tag: i.attacked ? '!' : '+' + i.income,
+        tagColor: i.attacked ? '#ff7a6a' : '#ffd23a',
+        onGo: () => { this.centerOn(i.x, i.y); this.setState({ sel: i.id }); }
+      })),
+      onGoRaft: () => this.centerOn(this.state.raft.x, this.state.raft.y),
+      fleetOpen: this.state.fleetOpen,
+      fleetArrow: this.state.fleetOpen ? '▼ скрыть' : '▲ раскрыть',
+      fleetDivider: this.state.fleetOpen ? '2.5px solid #000' : 'none',
+      onToggleFleet: () => this.setState({ fleetOpen: !this.state.fleetOpen }),
+      toast: this.state.toast,
+      onOpen: () => this.setState({ open: true }),
+      onClose: () => this.setState({ open: false, sel: null })
+    };
+  }
+}
+</script>
+</body>
+</html>

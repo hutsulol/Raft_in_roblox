@@ -1,0 +1,376 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; background: #e9e6e0; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="font-family: 'Nunito', sans-serif; color: #2b2620; padding: 48px 40px 80px 40px; max-width: 1480px; margin: 0 auto;">
+
+  <!-- ================= HEADER ================= -->
+  <div style="max-width: 900px; margin-bottom: 40px;">
+    <div style="font-size: 13px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #8a7a5e; margin-bottom: 10px;">Roblox UI · Pirate Island · Cartoon Restyle</div>
+    <h1 style="font-size: 34px; font-weight: 900; margin: 0 0 14px 0; line-height: 1.15;">Инвентарь, крафт и строительство — мультяшный стиль</h1>
+    <p style="font-size: 15px; font-weight: 700; line-height: 1.65; color: #5a5247; margin: 0 0 8px 0;">
+      Стилистика популярных Roblox-игр: толстые тёмные обводки, сочные градиенты, «трёхмерные» кнопки с нижней гранью,
+      жирный белый текст с тенью, золотая активная вкладка. Структура экранов сохранена 1-в-1 с вашими скриншотами.
+    </p>
+    <p style="font-size: 14px; font-weight: 700; line-height: 1.6; color: #8a7f6e; margin: 0;">
+      На месте 3D-иконок предметов — полосатые заглушки: туда встанут ваши существующие рендеры. Выберите цветовую тему — применю её ко всем экранам.
+    </p>
+  </div>
+
+  <!-- ================= ТЕМА ОКЕАН: КРАФТ ================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Тема 1 «Океан» — Крафт</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">категории слева, рецепты справа, как на вашем скриншоте</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 32px; margin-bottom: 28px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <div style="background: linear-gradient(180deg, #7ec0e6 0%, #5fa8d6 100%); border-radius: 12px; padding: 40px 20px; display: flex; justify-content: center;">
+      <div style="display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; justify-content: center; max-width: 100%;">
+
+        <!-- Sidebar: Crafting categories -->
+        <div style="width: 210px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 4px solid #1c4f8f; border-radius: 18px; padding: 14px; box-shadow: 0 10px 24px rgba(0,0,0,0.3);">
+          <div style="font-size: 19px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); text-align: center; margin-bottom: 12px;">Crafting</div>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <div style="background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 3px solid #b07a14; border-radius: 12px; padding: 11px 0; text-align: center; font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -5px 0 rgba(0,0,0,0.18);">Tools</div>
+            <div style="background: #2e6bb4; border: 3px solid #1c4f8f; border-radius: 12px; padding: 11px 0; text-align: center; font-size: 16px; font-weight: 900; color: #cfe6fa; box-shadow: inset 0 -5px 0 rgba(0,0,0,0.18);">Technology</div>
+            <div style="background: #2e6bb4; border: 3px solid #1c4f8f; border-radius: 12px; padding: 11px 0; text-align: center; font-size: 16px; font-weight: 900; color: #cfe6fa; box-shadow: inset 0 -5px 0 rgba(0,0,0,0.18);">Misc</div>
+            <div style="background: #2e6bb4; border: 3px solid #1c4f8f; border-radius: 12px; padding: 11px 0; text-align: center; font-size: 16px; font-weight: 900; color: #cfe6fa; box-shadow: inset 0 -5px 0 rgba(0,0,0,0.18);">Resources</div>
+          </div>
+        </div>
+
+        <!-- Recipes panel -->
+        <div style="width: min(560px, 100%); background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 4px solid #1c4f8f; border-radius: 18px; padding: 16px; box-shadow: 0 10px 24px rgba(0,0,0,0.3);">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
+            <div style="background: #2e6bb4; border: 3px solid #1c4f8f; border-radius: 10px; padding: 5px 14px; font-size: 13px; font-weight: 900; color: #cfe6fa; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">&lt; Back</div>
+            <div style="font-size: 19px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Tools</div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+
+            <div style="display: flex; align-items: center; gap: 14px; background: #6fb5ee; border: 3px solid #2e6bb4; border-radius: 14px; padding: 10px 14px;">
+              <div style="width: 54px; height: 54px; flex: none; background: #a9d6f7; border: 3px solid #2e6bb4; border-radius: 12px; display: flex; align-items: center; justify-content: center; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.07) 0 6px, transparent 6px 12px);"><span style="font-family: monospace; font-size: 10px; color: #1c4f8f;">hammer</span></div>
+              <div style="display: flex; flex-direction: column; gap: 4px; flex: 1;">
+                <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Hammer</div>
+                <div style="display: flex;"><div style="background: #4cd964; border: 2px solid #2e8b3a; border-radius: 999px; padding: 2px 12px; font-size: 12px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">1 Log</div></div>
+              </div>
+              <div style="background: linear-gradient(180deg, #5ee07a 0%, #34b84e 100%); border: 3px solid #1f7a33; border-radius: 12px; padding: 9px 22px; font-size: 15px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Craft</div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 14px; background: #6fb5ee; border: 3px solid #2e6bb4; border-radius: 14px; padding: 10px 14px;">
+              <div style="width: 54px; height: 54px; flex: none; background: #a9d6f7; border: 3px solid #2e6bb4; border-radius: 12px; display: flex; align-items: center; justify-content: center; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.07) 0 6px, transparent 6px 12px);"><span style="font-family: monospace; font-size: 10px; color: #1c4f8f;">machete</span></div>
+              <div style="display: flex; flex-direction: column; gap: 4px; flex: 1;">
+                <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Machete</div>
+                <div style="display: flex;"><div style="background: #4cd964; border: 2px solid #2e8b3a; border-radius: 999px; padding: 2px 12px; font-size: 12px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">1 Log</div></div>
+              </div>
+              <div style="background: linear-gradient(180deg, #5ee07a 0%, #34b84e 100%); border: 3px solid #1f7a33; border-radius: 12px; padding: 9px 22px; font-size: 15px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Craft</div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 14px; background: #6fb5ee; border: 3px solid #2e6bb4; border-radius: 14px; padding: 10px 14px;">
+              <div style="width: 54px; height: 54px; flex: none; background: #a9d6f7; border: 3px solid #2e6bb4; border-radius: 12px; display: flex; align-items: center; justify-content: center; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.07) 0 6px, transparent 6px 12px);"><span style="font-family: monospace; font-size: 10px; color: #1c4f8f;">paddle</span></div>
+              <div style="display: flex; flex-direction: column; gap: 4px; flex: 1;">
+                <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Paddle</div>
+                <div style="display: flex;"><div style="background: #4cd964; border: 2px solid #2e8b3a; border-radius: 999px; padding: 2px 12px; font-size: 12px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">3 Plastic</div></div>
+              </div>
+              <div style="background: linear-gradient(180deg, #5ee07a 0%, #34b84e 100%); border: 3px solid #1f7a33; border-radius: 12px; padding: 9px 22px; font-size: 15px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Craft</div>
+            </div>
+
+            <div style="display: flex; align-items: center; gap: 14px; background: #5d9fd6; border: 3px solid #2e6bb4; border-radius: 14px; padding: 10px 14px; opacity: 0.92;">
+              <div style="width: 54px; height: 54px; flex: none; background: #a9d6f7; border: 3px solid #2e6bb4; border-radius: 12px; display: flex; align-items: center; justify-content: center; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.07) 0 6px, transparent 6px 12px);"><span style="font-family: monospace; font-size: 10px; color: #1c4f8f;">shovel</span></div>
+              <div style="display: flex; flex-direction: column; gap: 4px; flex: 1;">
+                <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Shovel</div>
+                <div style="display: flex;"><div style="background: #ff6b5a; border: 2px solid #b03a2e; border-radius: 999px; padding: 2px 12px; font-size: 12px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">1 Rope</div></div>
+              </div>
+              <div style="background: #8aa6c2; border: 3px solid #5d7d9e; border-radius: 12px; padding: 9px 22px; font-size: 15px; font-weight: 900; color: #e3edf6; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Craft</div>
+            </div>
+
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ТЕМА ОКЕАН: ИНВЕНТАРЬ + ХОТБАР ================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Тема 1 «Океан» — Инвентарь и хотбар</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">сетка 5×3, валюты в шапке, заблокированный ряд «Need Strength»</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 32px; margin-bottom: 48px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <div style="background: linear-gradient(180deg, #7ec0e6 0%, #5fa8d6 100%); border-radius: 12px; padding: 40px 20px; display: flex; flex-direction: column; align-items: center; gap: 28px;">
+
+      <!-- Inventory window -->
+      <div style="width: 620px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 4px solid #1c4f8f; border-radius: 18px; padding: 16px; box-shadow: 0 10px 24px rgba(0,0,0,0.3);">
+        <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
+          <div style="font-size: 19px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); flex: 1;">Inventory</div>
+          <div style="display: flex; align-items: center; gap: 6px; background: #2e6bb4; border: 2px solid #1c4f8f; border-radius: 999px; padding: 4px 12px;">
+            <div style="width: 18px; height: 12px; border-radius: 6px; background: #8b5a2b; border: 1.5px solid #5d3a18;"></div>
+            <span style="font-size: 13px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">120</span>
+          </div>
+          <div style="display: flex; align-items: center; gap: 6px; background: #2e6bb4; border: 2px solid #1c4f8f; border-radius: 999px; padding: 4px 12px;">
+            <div style="width: 16px; height: 14px; border-radius: 4px; background: #e8d3a0; border: 1.5px solid #a8854c;"></div>
+            <span style="font-size: 13px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">2</span>
+          </div>
+          <div style="width: 34px; height: 34px; background: linear-gradient(180deg, #ff7a6a 0%, #e84a3a 100%); border: 3px solid #a82e2e; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">✕</div>
+        </div>
+
+        <div style="background: #2e6bb4; border: 3px solid #1c4f8f; border-radius: 14px; padding: 12px; position: relative;">
+          <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px;">
+            <div style="aspect-ratio: 1; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 3px solid #1c4f8f; border-radius: 12px; position: relative; display: flex; align-items: center; justify-content: center;">
+              <div style="width: 34px; height: 38px; background: #e84a3a; border: 2.5px solid #a82e2e; border-radius: 45% 55% 50% 50%;"></div>
+              <div style="position: absolute; right: 6px; bottom: 3px; font-size: 13px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.45);">10</div>
+            </div>
+            <div style="aspect-ratio: 1; background: rgba(169,214,247,0.35); border: 3px solid rgba(28,79,143,0.55); border-radius: 12px;"></div>
+            <div style="aspect-ratio: 1; background: rgba(169,214,247,0.35); border: 3px solid rgba(28,79,143,0.55); border-radius: 12px;"></div>
+            <div style="aspect-ratio: 1; background: rgba(169,214,247,0.35); border: 3px solid rgba(28,79,143,0.55); border-radius: 12px;"></div>
+            <div style="aspect-ratio: 1; background: rgba(169,214,247,0.35); border: 3px solid rgba(28,79,143,0.55); border-radius: 12px;"></div>
+            <div style="aspect-ratio: 1; background: rgba(169,214,247,0.35); border: 3px solid rgba(28,79,143,0.55); border-radius: 12px;"></div>
+            <div style="aspect-ratio: 1; background: rgba(169,214,247,0.35); border: 3px solid rgba(28,79,143,0.55); border-radius: 12px;"></div>
+            <div style="aspect-ratio: 1; background: rgba(169,214,247,0.35); border: 3px solid rgba(28,79,143,0.55); border-radius: 12px;"></div>
+            <div style="aspect-ratio: 1; background: rgba(169,214,247,0.35); border: 3px solid rgba(28,79,143,0.55); border-radius: 12px;"></div>
+            <div style="aspect-ratio: 1; background: rgba(169,214,247,0.35); border: 3px solid rgba(28,79,143,0.55); border-radius: 12px;"></div>
+            <div style="aspect-ratio: 1; background: rgba(20,40,70,0.45); border: 3px solid rgba(28,79,143,0.7); border-radius: 12px; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 8px, transparent 8px 16px);"></div>
+            <div style="aspect-ratio: 1; background: rgba(20,40,70,0.45); border: 3px solid rgba(28,79,143,0.7); border-radius: 12px; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 8px, transparent 8px 16px);"></div>
+            <div style="aspect-ratio: 1; background: rgba(20,40,70,0.45); border: 3px solid rgba(28,79,143,0.7); border-radius: 12px; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 8px, transparent 8px 16px);"></div>
+            <div style="aspect-ratio: 1; background: rgba(20,40,70,0.45); border: 3px solid rgba(28,79,143,0.7); border-radius: 12px; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 8px, transparent 8px 16px);"></div>
+            <div style="aspect-ratio: 1; background: rgba(20,40,70,0.45); border: 3px solid rgba(28,79,143,0.7); border-radius: 12px; background-image: repeating-linear-gradient(45deg, rgba(255,255,255,0.05) 0 8px, transparent 8px 16px);"></div>
+          </div>
+          <div style="position: absolute; left: 50%; bottom: 34px; transform: translateX(-50%); background: linear-gradient(180deg, #ff7a6a 0%, #e84a3a 100%); border: 3px solid #a82e2e; border-radius: 999px; padding: 7px 24px; font-size: 15px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.35); box-shadow: 0 6px 14px rgba(0,0,0,0.35); white-space: nowrap;">NEED STRENGTH</div>
+        </div>
+      </div>
+
+      <!-- Hotbar -->
+      <div style="display: flex; gap: 10px; background: rgba(28,79,143,0.55); border: 3px solid #1c4f8f; border-radius: 18px; padding: 10px;">
+        <div style="width: 64px; height: 64px; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 3px solid #2e6bb4; border-radius: 12px; position: relative; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 36px; height: 22px; border-radius: 11px; background: #8b5a2b; border: 2px solid #5d3a18; position: relative;"><div style="position: absolute; right: -1px; top: 2px; width: 14px; height: 14px; border-radius: 50%; background: #d9a05b;"></div></div>
+          <div style="position: absolute; right: 5px; bottom: 2px; font-size: 12px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.45);">30</div>
+        </div>
+        <div style="width: 64px; height: 64px; background: linear-gradient(180deg, #ffe48a 0%, #f5c95c 100%); border: 3px solid #b07a14; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px rgba(255,217,90,0.45);">
+          <span style="font-family: monospace; font-size: 10px; color: #7a5510;">hammer</span>
+        </div>
+        <div style="width: 64px; height: 64px; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 3px solid #2e6bb4; border-radius: 12px; position: relative; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 32px; height: 30px; border-radius: 45% 55% 50% 48%; background: #9aa1ad; border: 2px solid #5f6671;"></div>
+          <div style="position: absolute; right: 5px; bottom: 2px; font-size: 12px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.45);">30</div>
+        </div>
+        <div style="width: 64px; height: 64px; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 3px solid #2e6bb4; border-radius: 12px; position: relative; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 30px; height: 30px; border-radius: 50% 0 50% 50%; background: #6fcf4e; border: 2px solid #3f8c28; transform: rotate(45deg);"></div>
+          <div style="position: absolute; right: 5px; bottom: 2px; font-size: 12px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.45);">30</div>
+        </div>
+        <div style="width: 64px; height: 64px; background: rgba(169,214,247,0.35); border: 3px solid rgba(28,79,143,0.55); border-radius: 12px;"></div>
+        <div style="width: 64px; height: 64px; background: rgba(169,214,247,0.35); border: 3px solid rgba(28,79,143,0.55); border-radius: 12px;"></div>
+        <div style="width: 64px; height: 64px; background: rgba(169,214,247,0.35); border: 3px solid rgba(28,79,143,0.55); border-radius: 12px;"></div>
+        <div style="width: 64px; height: 64px; background: rgba(169,214,247,0.35); border: 3px solid rgba(28,79,143,0.55); border-radius: 12px;"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= ЦВЕТОВЫЕ ТЕМЫ ================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Цветовые темы</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">тот же стиль в других палитрах — выберите, и я применю ко всем экранам</span>
+  </div>
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px; margin-bottom: 48px;">
+
+    <!-- Закат -->
+    <div style="background: #ffffff; border-radius: 16px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 15px; font-weight: 900; margin-bottom: 14px;">Тема 2 «Закат» <span style="font-weight: 700; color: #8a7f6e; font-size: 12px;">— тёплая, ближе к текущему HUD</span></div>
+      <div style="background: linear-gradient(180deg, #f2a444 0%, #dd7f20 100%); border: 4px solid #7a4310; border-radius: 18px; padding: 14px; box-shadow: 0 8px 18px rgba(0,0,0,0.25);">
+        <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); margin-bottom: 10px;">Crafting</div>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <div style="flex: 1; background: linear-gradient(180deg, #5fb6f0 0%, #3a86d0 100%); border: 3px solid #1c4f8f; border-radius: 12px; padding: 8px 0; text-align: center; font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Tools</div>
+          <div style="flex: 1; background: #b5762b; border: 3px solid #7a4310; border-radius: 12px; padding: 8px 0; text-align: center; font-size: 14px; font-weight: 900; color: #fbe3c0; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Misc</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; background: #eab363; border: 3px solid #b5762b; border-radius: 12px; padding: 8px 10px; margin-bottom: 12px;">
+          <div style="width: 44px; height: 44px; flex: none; background: #fbd9a4; border: 3px solid #b5762b; border-radius: 10px; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.07) 0 6px, transparent 6px 12px);"></div>
+          <div style="flex: 1;">
+            <div style="font-size: 15px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Hammer</div>
+            <div style="display: flex; margin-top: 3px;"><div style="background: #4cd964; border: 2px solid #2e8b3a; border-radius: 999px; padding: 1px 10px; font-size: 11px; font-weight: 900; color: #ffffff;">1 Log</div></div>
+          </div>
+          <div style="background: linear-gradient(180deg, #5ee07a 0%, #34b84e 100%); border: 3px solid #1f7a33; border-radius: 10px; padding: 7px 16px; font-size: 13px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Craft</div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <div style="width: 52px; height: 52px; background: linear-gradient(180deg, #fbd9a4 0%, #f2c57e 100%); border: 3px solid #b5762b; border-radius: 11px;"></div>
+          <div style="width: 52px; height: 52px; background: linear-gradient(180deg, #fbd9a4 0%, #f2c57e 100%); border: 3px solid #b5762b; border-radius: 11px;"></div>
+          <div style="width: 52px; height: 52px; background: rgba(251,217,164,0.4); border: 3px solid rgba(122,67,16,0.5); border-radius: 11px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Джунгли -->
+    <div style="background: #ffffff; border-radius: 16px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 15px; font-weight: 900; margin-bottom: 14px;">Тема 3 «Джунгли» <span style="font-weight: 700; color: #8a7f6e; font-size: 12px;">— сочная зелень острова</span></div>
+      <div style="background: linear-gradient(180deg, #66c25e 0%, #3f9e3f 100%); border: 4px solid #1e5c24; border-radius: 18px; padding: 14px; box-shadow: 0 8px 18px rgba(0,0,0,0.25);">
+        <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); margin-bottom: 10px;">Crafting</div>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <div style="flex: 1; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 3px solid #b07a14; border-radius: 12px; padding: 8px 0; text-align: center; font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Tools</div>
+          <div style="flex: 1; background: #2f7c33; border: 3px solid #1e5c24; border-radius: 12px; padding: 8px 0; text-align: center; font-size: 14px; font-weight: 900; color: #d2f0c4; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Misc</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; background: #7fce72; border: 3px solid #2f7c33; border-radius: 12px; padding: 8px 10px; margin-bottom: 12px;">
+          <div style="width: 44px; height: 44px; flex: none; background: #bce8a8; border: 3px solid #2f7c33; border-radius: 10px; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.07) 0 6px, transparent 6px 12px);"></div>
+          <div style="flex: 1;">
+            <div style="font-size: 15px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Hammer</div>
+            <div style="display: flex; margin-top: 3px;"><div style="background: #ffd95a; border: 2px solid #b07a14; border-radius: 999px; padding: 1px 10px; font-size: 11px; font-weight: 900; color: #6b4a08;">1 Log</div></div>
+          </div>
+          <div style="background: linear-gradient(180deg, #5fb6f0 0%, #3a86d0 100%); border: 3px solid #1c4f8f; border-radius: 10px; padding: 7px 16px; font-size: 13px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Craft</div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <div style="width: 52px; height: 52px; background: linear-gradient(180deg, #bce8a8 0%, #a4d98c 100%); border: 3px solid #2f7c33; border-radius: 11px;"></div>
+          <div style="width: 52px; height: 52px; background: linear-gradient(180deg, #bce8a8 0%, #a4d98c 100%); border: 3px solid #2f7c33; border-radius: 11px;"></div>
+          <div style="width: 52px; height: 52px; background: rgba(188,232,168,0.4); border: 3px solid rgba(30,92,36,0.5); border-radius: 11px;"></div>
+        </div>
+      </div>
+    </div>
+
+    <!-- Виноград -->
+    <div style="background: #ffffff; border-radius: 16px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 15px; font-weight: 900; margin-bottom: 14px;">Тема 4 «Виноград» <span style="font-weight: 700; color: #8a7f6e; font-size: 12px;">— фиолетовая, «премиум»</span></div>
+      <div style="background: linear-gradient(180deg, #9b6ce0 0%, #7a48c8 100%); border: 4px solid #4a2580; border-radius: 18px; padding: 14px; box-shadow: 0 8px 18px rgba(0,0,0,0.25);">
+        <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); margin-bottom: 10px;">Crafting</div>
+        <div style="display: flex; gap: 8px; margin-bottom: 12px;">
+          <div style="flex: 1; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 3px solid #b07a14; border-radius: 12px; padding: 8px 0; text-align: center; font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Tools</div>
+          <div style="flex: 1; background: #6b3fb0; border: 3px solid #4a2580; border-radius: 12px; padding: 8px 0; text-align: center; font-size: 14px; font-weight: 900; color: #e3d2fa; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Misc</div>
+        </div>
+        <div style="display: flex; align-items: center; gap: 10px; background: #a981e6; border: 3px solid #6b3fb0; border-radius: 12px; padding: 8px 10px; margin-bottom: 12px;">
+          <div style="width: 44px; height: 44px; flex: none; background: #d7c2f5; border: 3px solid #6b3fb0; border-radius: 10px; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.07) 0 6px, transparent 6px 12px);"></div>
+          <div style="flex: 1;">
+            <div style="font-size: 15px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Hammer</div>
+            <div style="display: flex; margin-top: 3px;"><div style="background: #4cd964; border: 2px solid #2e8b3a; border-radius: 999px; padding: 1px 10px; font-size: 11px; font-weight: 900; color: #ffffff;">1 Log</div></div>
+          </div>
+          <div style="background: linear-gradient(180deg, #5ee07a 0%, #34b84e 100%); border: 3px solid #1f7a33; border-radius: 10px; padding: 7px 16px; font-size: 13px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Craft</div>
+        </div>
+        <div style="display: flex; gap: 8px;">
+          <div style="width: 52px; height: 52px; background: linear-gradient(180deg, #d7c2f5 0%, #c2a6ee 100%); border: 3px solid #6b3fb0; border-radius: 11px;"></div>
+          <div style="width: 52px; height: 52px; background: linear-gradient(180deg, #d7c2f5 0%, #c2a6ee 100%); border: 3px solid #6b3fb0; border-radius: 11px;"></div>
+          <div style="width: 52px; height: 52px; background: rgba(215,194,245,0.4); border: 3px solid rgba(74,37,128,0.5); border-radius: 11px;"></div>
+        </div>
+      </div>
+    </div>
+
+  </div>
+
+  <!-- ================= СТРОИТЕЛЬСТВО ================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Строительство</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">вкладки Floors/Walls, карточка блока, подсказка — нижний левый угол</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 32px; margin-bottom: 48px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <div style="background: linear-gradient(180deg, #6b4a2e 0%, #4e3520 100%); border-radius: 12px; padding: 44px 36px; display: flex; align-items: flex-end;">
+      <div style="display: flex; flex-direction: column; gap: 12px;">
+        <div style="display: flex; align-items: flex-end; gap: 12px;">
+          <div style="display: flex; flex-direction: column; gap: 8px;">
+            <div style="width: 92px; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 3px solid #b07a14; border-radius: 12px; padding: 8px 0; text-align: center; font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Floors</div>
+            <div style="width: 92px; background: #2e6bb4; border: 3px solid #1c4f8f; border-radius: 12px; padding: 8px 0; text-align: center; font-size: 14px; font-weight: 900; color: #cfe6fa; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">Walls</div>
+          </div>
+          <div style="width: 116px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 4px solid #1c4f8f; border-radius: 16px; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 7px; box-shadow: 0 8px 18px rgba(0,0,0,0.3), 0 0 0 3px rgba(255,217,90,0.4);">
+            <div style="width: 76px; height: 58px; background: #a9d6f7; border: 3px solid #2e6bb4; border-radius: 10px; display: flex; align-items: center; justify-content: center; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.07) 0 6px, transparent 6px 12px);"><span style="font-family: monospace; font-size: 9px; color: #1c4f8f;">raft floor</span></div>
+            <div style="background: #4cd964; border: 2px solid #2e8b3a; border-radius: 999px; padding: 1px 10px; font-size: 11px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">2 Log</div>
+            <div style="font-size: 13px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Raft Floor</div>
+          </div>
+          <div style="width: 116px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 4px solid #1c4f8f; border-radius: 16px; padding: 10px; display: flex; flex-direction: column; align-items: center; gap: 7px; box-shadow: 0 8px 18px rgba(0,0,0,0.3); opacity: 0.85;">
+            <div style="width: 76px; height: 58px; background: #a9d6f7; border: 3px solid #2e6bb4; border-radius: 10px; display: flex; align-items: center; justify-content: center; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.07) 0 6px, transparent 6px 12px);"><span style="font-family: monospace; font-size: 9px; color: #1c4f8f;">wood floor</span></div>
+            <div style="background: #ff6b5a; border: 2px solid #b03a2e; border-radius: 999px; padding: 1px 10px; font-size: 11px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">4 Log</div>
+            <div style="font-size: 13px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Wood Floor</div>
+          </div>
+        </div>
+        <div style="display: flex;">
+          <div style="background: rgba(18,24,32,0.75); border: 2px solid rgba(255,255,255,0.15); border-radius: 999px; padding: 7px 18px; font-size: 13px; font-weight: 800; color: #ffffff;">Click to place&nbsp;&nbsp;·&nbsp;&nbsp;Unequip Hammer to exit</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= УВЕДОМЛЕНИЯ ================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Уведомления в новом стиле</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">те же тексты — центр экрана, выезд сбоку, авто-исчезание</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 32px; margin-bottom: 48px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <div style="background: linear-gradient(180deg, #7ec0e6 0%, #5fa8d6 100%); border-radius: 12px; padding: 44px 20px; display: flex; flex-direction: column; align-items: center; gap: 22px;">
+
+      <!-- N1 -->
+      <div style="width: 470px; display: flex; align-items: center; gap: 14px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 4px solid #1c4f8f; border-radius: 16px; padding: 12px 18px; box-shadow: 0 10px 24px rgba(0,0,0,0.35);">
+        <div style="width: 48px; height: 48px; flex: none; background: linear-gradient(180deg, #5ee07a 0%, #34b84e 100%); border: 3px solid #1f7a33; border-radius: 12px; display: flex; flex-direction: column; align-items: center; justify-content: flex-end; overflow: hidden; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">
+          <div style="width: 14px; height: 14px; border-radius: 50%; background: #ffffff; margin-bottom: 2px;"></div>
+          <div style="width: 26px; height: 14px; border-radius: 12px 12px 0 0; background: #ffffff;"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <div style="font-size: 18px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Жителей: +5</div>
+          <div style="font-size: 13px; font-weight: 800; color: #d6ebfc;">Освобождённые жители присоединились к лагерю</div>
+        </div>
+      </div>
+
+      <!-- N2 -->
+      <div style="width: 470px; display: flex; align-items: center; gap: 14px; background: linear-gradient(180deg, #9b6ce0 0%, #7a48c8 100%); border: 4px solid #4a2580; border-radius: 16px; padding: 12px 18px; box-shadow: 0 10px 24px rgba(0,0,0,0.35);">
+        <div style="width: 48px; height: 48px; flex: none; background: linear-gradient(180deg, #c2a6ee 0%, #a981e6 100%); border: 3px solid #4a2580; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">
+          <div style="width: 15px; height: 28px; border-radius: 5px 5px 3px 3px; background: linear-gradient(180deg, #f0f2f7 0%, #b8bfd0 100%); box-shadow: 0 0 10px rgba(255,255,255,0.9);"></div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <div style="font-size: 11px; font-weight: 900; letter-spacing: 1.6px; text-transform: uppercase; color: #e3d2fa;">Древний монолит</div>
+          <div style="font-size: 18px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Открыто новое: Лесорубы</div>
+        </div>
+      </div>
+
+      <!-- N3 -->
+      <div style="width: 470px; display: flex; align-items: center; gap: 14px; background: linear-gradient(180deg, #5ee07a 0%, #34b84e 100%); border: 4px solid #1f7a33; border-radius: 16px; padding: 12px 18px; box-shadow: 0 10px 24px rgba(0,0,0,0.35);">
+        <div style="width: 48px; height: 48px; flex: none; background: linear-gradient(180deg, #ffffff 0%, #d8f5de 100%); border: 3px solid #1f7a33; border-radius: 12px; display: flex; align-items: center; justify-content: center; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.12);">
+          <div style="width: 26px; height: 26px; border-radius: 50%; border: 4px solid #34b84e; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 8px; height: 8px; border-radius: 50%; background: #34b84e;"></div>
+          </div>
+        </div>
+        <div style="display: flex; flex-direction: column; gap: 2px;">
+          <div style="font-size: 18px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Остров исследован!</div>
+          <div style="font-size: 13px; font-weight: 800; color: #e3fae8;">Теперь на остров можно телепортироваться</div>
+        </div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= СПЕКИ ================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Спеки для Roblox Studio</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">общие правила стиля + палитры тем</span>
+  </div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+
+    <div style="background: #ffffff; border-radius: 16px; padding: 26px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 14px;">Правила стиля (для всех тем)</div>
+      <div style="font-size: 13px; font-weight: 700; line-height: 2; color: #5a5247;">
+        Панель: UICorner 18, UIStroke 4 px тёмным тоном темы<br>
+        Кнопка: UICorner 12, UIStroke 3 px + «грань» снизу (Frame 5 px, чёрный 18%)<br>
+        Слот: UICorner 12, UIStroke 3 px; пустой — заливка 35% прозрачности<br>
+        Активная вкладка — всегда золотая: #FFD95A → #F5B73C, рамка #B07A14<br>
+        Текст: Builder Sans Bold / GothamBlack, белый, тень 0/2 чёрная 30%<br>
+        Цена: пилюля — можно скрафтить #4CD964, не хватает #FF6B5A<br>
+        Hover кнопки: масштаб 1.05, Tween 0.1 c
+      </div>
+    </div>
+
+    <div style="background: #ffffff; border-radius: 16px; padding: 26px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 14px;">Палитры тем (панель / рамка / слот)</div>
+      <div style="display: flex; flex-direction: column; gap: 10px; font-size: 13px; font-weight: 700; color: #5a5247;">
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="display: flex; gap: 4px;"><div style="width: 20px; height: 20px; border-radius: 6px; background: #4493de;"></div><div style="width: 20px; height: 20px; border-radius: 6px; background: #1c4f8f;"></div><div style="width: 20px; height: 20px; border-radius: 6px; background: #a9d6f7;"></div></div>Океан: #54A7EC→#3A7FD0 / #1C4F8F / #A9D6F7</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="display: flex; gap: 4px;"><div style="width: 20px; height: 20px; border-radius: 6px; background: #e89232;"></div><div style="width: 20px; height: 20px; border-radius: 6px; background: #7a4310;"></div><div style="width: 20px; height: 20px; border-radius: 6px; background: #fbd9a4;"></div></div>Закат: #F2A444→#DD7F20 / #7A4310 / #FBD9A4</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="display: flex; gap: 4px;"><div style="width: 20px; height: 20px; border-radius: 6px; background: #52b04e;"></div><div style="width: 20px; height: 20px; border-radius: 6px; background: #1e5c24;"></div><div style="width: 20px; height: 20px; border-radius: 6px; background: #bce8a8;"></div></div>Джунгли: #66C25E→#3F9E3F / #1E5C24 / #BCE8A8</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="display: flex; gap: 4px;"><div style="width: 20px; height: 20px; border-radius: 6px; background: #8a5ad4;"></div><div style="width: 20px; height: 20px; border-radius: 6px; background: #4a2580;"></div><div style="width: 20px; height: 20px; border-radius: 6px; background: #d7c2f5;"></div></div>Виноград: #9B6CE0→#7A48C8 / #4A2580 / #D7C2F5</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="display: flex; gap: 4px;"><div style="width: 20px; height: 20px; border-radius: 6px; background: #ffd95a;"></div><div style="width: 20px; height: 20px; border-radius: 6px; background: #b07a14;"></div></div>Акцент (все темы): золото #FFD95A / #B07A14</div>
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

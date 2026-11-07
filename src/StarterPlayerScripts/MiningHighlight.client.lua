@@ -10,6 +10,8 @@ local TweenService = game:GetService("TweenService")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local mouse = player:GetMouse()
+-- ⚠️ Геймпад: что считать кликом и клавишей — одно правило на все файлы (GamepadInput).
+local GamepadInput = require(game:GetService("ReplicatedStorage"):WaitForChild("GamepadInput"))
 local camera = workspace.CurrentCamera
 
 local mineRockEvent = ReplicatedStorage:WaitForChild("MineRock")
@@ -17,13 +19,14 @@ local mineOreEvent = ReplicatedStorage:WaitForChild("MineOre")
 
 -- ─── Resource Icons ───
 local RESOURCE_ICONS = {
-	Stone = "rbxassetid://134781813180973",
-	Iron_Ore = "rbxassetid://73676755288746",
+	Stone = "rbxassetid://96450657403376",
+	Iron_Ore = "rbxassetid://78456892304314",
 }
 
 -- ─── Mining feedback UI ───
 local feedbackGui = Instance.new("ScreenGui")
 feedbackGui.Name = "OreMiningFeedback"
+feedbackGui.ResetOnSpawn = false   -- иначе Roblox удаляет окно при смерти, а скрипт живёт дальше с мёртвым объектом
 feedbackGui.DisplayOrder = 52
 feedbackGui.IgnoreGuiInset = true
 feedbackGui.Parent = playerGui
@@ -227,7 +230,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ─── Click to mine Iron_Ore (Rocks are handled by PickAxeClient) ───
-mouse.Button1Down:Connect(function()
+GamepadInput.onPrimary(mouse, function()
 	if not pickAxeEquipped then return end
 	if oreMiningCooldown then return end
 	if not highlightedPart then return end
@@ -280,7 +283,7 @@ mineOreEvent.OnClientEvent:Connect(function(action, value, oreType)
 			feedbackLabel.TextStrokeTransparency = 0.5
 		end)
 	elseif action == "hit" then
-		feedbackLabel.Text = "Mining... (" .. value .. " hits left)"
+		feedbackLabel.Text = "Добываю... (" .. value .. " hits left)"
 		feedbackLabel.Visible = true
 		feedbackLabel.TextTransparency = 0
 		task.spawn(function()

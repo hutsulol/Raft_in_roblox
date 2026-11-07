@@ -4,8 +4,10 @@
 -- model swap — the plastic_container model stays the same regardless
 -- of how full it is.
 
+local RaftShake = require(game:GetService("ReplicatedStorage"):WaitForChild("RaftShake"))   -- постройка без рывка плота
 local rs = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
+local PlaceCheck = require(game:GetService("ReplicatedStorage"):WaitForChild("PlaceCheck"))   -- «место занято» — общая проверка
 
 local cupActionEvent = rs:WaitForChild("CupAction")
 
@@ -60,8 +62,8 @@ local function setupContainerPrompt(model)
 	if part:FindFirstChildOfClass("ProximityPrompt") then return end
 
 	local prompt = Instance.new("ProximityPrompt")
-	prompt.ActionText = "Open"
-	prompt.ObjectText = "Container"
+	prompt.ActionText = "Открыть"
+	prompt.ObjectText = "Контейнер"
 	prompt.KeyboardKeyCode = Enum.KeyCode.E
 	prompt.HoldDuration = 0.2
 	prompt.MaxActivationDistance = CONTAINER_RANGE
@@ -203,6 +205,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	end
 
 	container:PivotTo(worldCF)
+	if PlaceCheck.refuseIfBlocked(container, raft, player) then return end   -- в предмет ставить нельзя
 	container.Parent = raft
 
 	-- T13/T15/T16: snapshot velocity, force-anchor (templates may be
@@ -218,6 +221,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	end
 	for _, part in container:GetDescendants() do
 		if part:IsA("BasePart") then
+			part.Massless = true   -- без массы: иначе сборка теряет ход (рывок плота)
 			local weld = Instance.new("WeldConstraint")
 			weld.Part0 = part
 			weld.Part1 = raft.PrimaryPart
@@ -232,6 +236,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 	primary.AssemblyLinearVelocity  = linVel
 	primary.AssemblyAngularVelocity = angVel
+	RaftShake.notify()   -- скорость ещё раз после шага физики + удержать игроков (RaftShake)
 
 	setupContainerPrompt(container)
 

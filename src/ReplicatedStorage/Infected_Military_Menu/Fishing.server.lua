@@ -1,0 +1,24 @@
+-- Fishing.script (Infected_Military_Menu — Soldier mercenary)
+--
+-- Direct copy of src/Pirate_2/Fishing.script. When the Soldier is
+-- equipped with a FishingRod, plays the Fishing animation (child of
+-- this script) on a loop and stamps an IsFishing attribute. Other
+-- weapons return early so the script is inert.
+
+local npc = script.Parent
+
+-- Only relevant for fishing-rod mercenaries
+local equippedWeapon = npc:GetAttribute("EquippedWeapon") or "Sword"
+if equippedWeapon ~= "FishingRod" then
+	return
+end
+
+local hum = npc:FindFirstChildOfClass("Humanoid")
+local anim = hum:WaitForChild("Animator")
+
+local idleAnim = anim:LoadAnimation(script:WaitForChild("Fishing"))
+
+npc:SetAttribute("IsFishing", true)
+
+idleAnim.Looped = true
+idleAnim:Play()

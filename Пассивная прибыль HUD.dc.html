@@ -1,0 +1,90 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Fredoka:wght@600;700&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0b1a2a}
+a,a:hover{color:#ffd54a}
+@keyframes hudIn{0%{opacity:0;transform:translate(-50%,-8px)}100%{opacity:1;transform:translate(-50%,0)}}
+@keyframes bump{0%{transform:scale(1)}35%{transform:scale(1.22)}100%{transform:scale(1)}}
+@keyframes coinSpin{0%{transform:rotateY(0)}100%{transform:rotateY(360deg)}}
+@keyframes gain{0%{opacity:0;transform:translate(-50%,-10px) scale(.6)}20%{opacity:1;transform:translate(-50%,0) scale(1.1)}70%{opacity:1;transform:translate(-50%,4px) scale(1)}100%{opacity:0;transform:translate(-50%,22px) scale(.9)}}
+@keyframes sparkle{0%{opacity:0;transform:translate(0,0) scale(0)}30%{opacity:1;transform:translate(var(--dx),var(--dy)) scale(1)}100%{opacity:0;transform:translate(calc(var(--dx)*1.6),calc(var(--dy)*1.6 - 8px)) scale(.2)}}
+@keyframes balFloat{0%{opacity:0;transform:translateY(6px)}25%{opacity:1;transform:translateY(0)}100%{opacity:0;transform:translateY(-22px)}}
+</style>
+</helmet>
+<div style="position:relative;width:1586px;height:820px;overflow:hidden;font-family:'Fredoka',sans-serif;">
+  <img src="uploads/pasted-1789463602362-0.png" alt="" style="position:absolute;inset:0;width:1586px;height:820px;display:block;">
+  <div data-screen-label="Время" style="position:absolute;left:817px;top:78px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;animation:hudIn .5s ease-out both;line-height:1;">
+    <div style="font-weight:700;font-size:30px;color:#fff;text-shadow:0 2px 0 rgba(0,0,0,.7),1px 0 0 rgba(0,0,0,.5),-1px 0 0 rgba(0,0,0,.5),0 -1px 0 rgba(0,0,0,.5);font-variant-numeric:tabular-nums;letter-spacing:.5px;">{{ timeLabel }}</div>
+    <div style="position:relative;width:260px;height:0;">{{ gain }}</div>
+  </div>
+  <div data-screen-label="Баланс" style="position:absolute;left:60px;top:605px;display:flex;align-items:center;gap:18px;line-height:1;">
+    <div style="position:relative;display:flex;align-items:center;height:40px;padding-right:6px;background:url('uploads/pasted-1789463602362-0.png') -230px -605px;">
+      {{ moneyBalance }}
+      {{ moneyPop }}
+    </div>
+    <div style="position:relative;display:flex;align-items:center;gap:6px;height:40px;">
+      {{ oilIcon }}
+      {{ oilBalance }}
+      {{ oilPop }}
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;moneyPerDay&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:1250,&quot;tsType&quot;:&quot;number&quot;,&quot;min&quot;:0,&quot;max&quot;:10000000,&quot;section&quot;:&quot;Прибыль&quot;},&quot;oilPerDay&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:48,&quot;tsType&quot;:&quot;number&quot;,&quot;min&quot;:0,&quot;max&quot;:100000,&quot;section&quot;:&quot;Прибыль&quot;},&quot;startMoney&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:3100000,&quot;tsType&quot;:&quot;number&quot;,&quot;min&quot;:0,&quot;max&quot;:1000000000,&quot;section&quot;:&quot;Баланс&quot;},&quot;startOil&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:120,&quot;tsType&quot;:&quot;number&quot;,&quot;min&quot;:0,&quot;max&quot;:10000000,&quot;section&quot;:&quot;Баланс&quot;},&quot;daySeconds&quot;:{&quot;editor&quot;:&quot;range&quot;,&quot;default&quot;:60,&quot;tsType&quot;:&quot;number&quot;,&quot;min&quot;:10,&quot;max&quot;:600,&quot;step&quot;:10,&quot;unit&quot;:&quot;с&quot;,&quot;section&quot;:&quot;Время&quot;}}">
+class Component extends DCLogic {
+  state = { left: 0, hourIdx: 0, gainRun: 0, gainOn: false, money: 0, oil: 0, popRun: 0, popOn: false };
+  fmt(n) { n = Math.round(n); if (n >= 1e6) return (n/1e6).toFixed(1).replace(/\.0$/,'') + 'M'; if (n >= 1e3) return (n/1e3).toFixed(1).replace(/\.0$/,'') + 'K'; return String(n); }
+  perHour() { return { m: Number(this.props.moneyPerDay ?? 1250) / 24, o: Number(this.props.oilPerDay ?? 48) / 24 }; }
+  dayMs() { return Number(this.props.daySeconds ?? 60) * 1000; }
+  accrue() {
+    const { m, o } = this.perHour();
+    this.setState(s => ({ gainOn: true, gainRun: s.gainRun + 1, money: s.money + m, oil: s.oil + o }));
+    clearTimeout(this.tg); this.tg = setTimeout(() => this.setState({ gainOn: false }), 1600);
+    clearTimeout(this.tp); this.tp = setTimeout(() => this.setState(s => ({ popOn: true, popRun: s.popRun + 1 })), 500);
+    clearTimeout(this.tp2); this.tp2 = setTimeout(() => this.setState({ popOn: false }), 1800);
+  }
+  componentDidMount() {
+    this.setState({ money: Number(this.props.startMoney ?? 3100000), oil: Number(this.props.startOil ?? 120) });
+    this.dayStart = Date.now(); this.lastHour = 0;
+    this.timer = setInterval(() => {
+      const d = this.dayMs(); let el = Date.now() - this.dayStart;
+      if (el >= d) { this.dayStart = Date.now(); el = 0; this.lastHour = -1; }
+      const hour = Math.floor(el / d * 24);
+      if (hour !== this.lastHour) { if (this.lastHour !== 0 || hour !== 0) this.accrue(); this.lastHour = hour; }
+      this.setState({ left: Math.max(0, d - el) });
+    }, 100);
+  }
+  componentWillUnmount() { clearInterval(this.timer); clearTimeout(this.tg); clearTimeout(this.tp); clearTimeout(this.tp2); }
+  renderVals() {
+    const h = React.createElement, { left, gainOn, gainRun, money, oil, popOn, popRun } = this.state, { m, o } = this.perHour();
+    const el = this.dayMs() - left, gameMin = Math.floor(el / this.dayMs() * 1440), pad = n => String(n).padStart(2, '0');
+    const timeLabel = `${pad(Math.floor(gameMin / 60) % 24)}:${pad(gameMin % 60)}`;
+    const ts = '0 2px 0 rgba(0,0,0,.7), 1px 0 0 rgba(0,0,0,.5), -1px 0 0 rgba(0,0,0,.5), 0 -1px 0 rgba(0,0,0,.5)', stroke = '0';
+    const coin = (sz, spin) => h('div', { style: { width: sz, height: sz, borderRadius: '50%', background: 'radial-gradient(circle at 35% 30%,#fff1a8,#f3c33a 55%,#b8850f)', border: '2px solid #5a3d04', boxShadow: '0 1px 0 rgba(0,0,0,.5)', display: 'grid', placeItems: 'center', fontWeight: 700, fontSize: sz * .6, color: '#6b4a05', flexShrink: 0, animation: spin ? 'coinSpin .9s ease-in-out both' : 'none' } }, 'P');
+    const drop = (w, hh) => h('div', { style: { width: w, height: hh, background: 'radial-gradient(circle at 35% 30%,#6f7f93,#1b1f27 60%)', border: '2px solid #0b0d12', borderRadius: '50% 50% 50% 50% / 30% 30% 70% 70%', transform: 'rotate(180deg)', boxShadow: '0 1px 0 rgba(0,0,0,.5)', flexShrink: 0 } });
+    const num = (txt, color, size) => h('div', { style: { fontWeight: 700, fontSize: size, color, WebkitTextStroke: stroke, textShadow: ts, whiteSpace: 'nowrap' } }, txt);
+    const sparks = Array.from({ length: 8 }, (_, i) => { const a = (i / 8) * Math.PI * 2; return h('div', { key: i, style: { position: 'absolute', left: '50%', top: 12, width: 5, height: 5, borderRadius: '50%', background: i % 2 ? '#ffd54a' : '#fff', boxShadow: '0 0 4px rgba(255,213,74,.8)', '--dx': Math.cos(a) * 70 + 'px', '--dy': Math.sin(a) * 18 + 'px', animation: `sparkle .8s ${i * .03}s ease-out both`, pointerEvents: 'none' } }); });
+    const gain = gainOn ? h('div', { key: gainRun, style: { position: 'absolute', left: '50%', top: 4, display: 'flex', alignItems: 'center', gap: 10, animation: 'gain 1.6s ease-out both', pointerEvents: 'none' } },
+      h('div', { style: { display: 'flex', alignItems: 'center', gap: 5 } }, coin(20, true), num('+' + this.fmt(m), '#ffd54a', 20)),
+      h('div', { style: { display: 'flex', alignItems: 'center', gap: 5 } }, drop(12, 16), num('+' + this.fmt(o), '#fff', 20)),
+      ...sparks) : null;
+    const balStyle = (color) => ({ fontWeight: 700, fontSize: 30, color, textShadow: ts, whiteSpace: 'nowrap', animation: popOn ? 'bump .5s cubic-bezier(.2,1.5,.5,1) both' : 'none' });
+    const moneyBalance = h('div', { key: 'mb' + popRun, style: balStyle('#f3c33a') }, this.fmt(money));
+    const oilBalance = h('div', { key: 'ob' + popRun, style: balStyle('#fff') }, this.fmt(oil));
+    const oilIcon = h('div', { key: 'oi' + popRun, style: { width: 30, height: 30, display: 'grid', placeItems: 'center', animation: popOn ? 'bump .5s cubic-bezier(.2,1.5,.5,1) both' : 'none' } }, drop(17, 23));
+    const pop = (txt, color) => popOn ? h('div', { key: 'p' + popRun, style: { position: 'absolute', left: 0, top: -14, fontWeight: 700, fontSize: 15, color, textShadow: ts, whiteSpace: 'nowrap', animation: 'balFloat 1.3s ease-out both', pointerEvents: 'none' } }, txt) : null;
+    return { timeLabel, gain, moneyBalance, oilBalance, oilIcon, moneyPop: pop('+' + this.fmt(m), '#ffd54a'), oilPop: pop('+' + this.fmt(o), '#fff') };
+  }
+}
+</script>
+</body>
+</html>

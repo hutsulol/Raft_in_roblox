@@ -298,7 +298,7 @@ seedBagEvent.OnServerEvent:Connect(function(player, action, target, slotIndex)
 		print(string.format(
 			"[SeedBag] equip-to-hand: seed=%s slot=%d (player=%s)",
 			seedName, slotIndex, player.Name
-		))
+			))
 
 		seedBagEvent:FireClient(player, "close")
 	end

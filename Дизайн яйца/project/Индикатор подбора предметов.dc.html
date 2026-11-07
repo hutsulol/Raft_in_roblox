@@ -1,0 +1,233 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; background: #e9e6e0; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="font-family: 'Nunito', sans-serif; color: #2b2620; padding: 48px 40px 80px 40px; max-width: 1480px; margin: 0 auto;">
+
+  <!-- ================= HEADER ================= -->
+  <div style="max-width: 900px; margin-bottom: 40px;">
+    <div style="font-size: 13px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #8a7a5e; margin-bottom: 10px;">Roblox UI · Pirate Island · Тема «Океан»</div>
+    <h1 style="font-size: 34px; font-weight: 900; margin: 0 0 14px 0; line-height: 1.15;">Индикатор попадания предметов в инвентарь</h1>
+    <p style="font-size: 15px; font-weight: 700; line-height: 1.65; color: #5a5247; margin: 0 0 8px 0;">
+      Тосты в правом нижнем углу: появляются при подборе предмета, складываются в стопку,
+      повторные подборы того же предмета суммируют счётчик. Палитра «Океан»: #54A7EC → #3A7FD0, рамка #1C4F8F, слот #A9D6F7.
+    </p>
+    <p style="font-size: 14px; font-weight: 700; line-height: 1.6; color: #8a7f6e; margin: 0;">
+      На месте иконок предметов — упрощённые фигуры: туда встанут ваши 3D-рендеры. Размеры даны под 1920×1080.
+    </p>
+  </div>
+
+  <!-- ================= ВАРИАНТ A ================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Вариант A — Плашки с панелью</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">как окна инвентаря: градиентная панель, толстая рамка, стопка снизу вверх</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 32px; margin-bottom: 44px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <div style="background: linear-gradient(180deg, #7ec0e6 0%, #5fa8d6 100%); border-radius: 12px; padding: 36px 32px; display: flex; justify-content: flex-end;">
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 10px;">
+
+        <!-- A: leaves, oldest, fading -->
+        <div style="display: flex; align-items: center; gap: 12px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 3px solid #1c4f8f; border-radius: 14px; padding: 8px 16px 8px 8px; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18), 0 6px 16px rgba(0,0,0,0.25); opacity: 0.55;">
+          <div style="width: 44px; height: 44px; flex: none; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 3px solid #2e6bb4; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 24px; height: 24px; border-radius: 50% 0 50% 50%; background: #6fcf4e; border: 2px solid #3f8c28; transform: rotate(45deg);"></div>
+          </div>
+          <div style="font-size: 20px; font-weight: 900; color: #ffd95a; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">+5</div>
+          <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Leaves</div>
+        </div>
+
+        <!-- A: stone -->
+        <div style="display: flex; align-items: center; gap: 12px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 3px solid #1c4f8f; border-radius: 14px; padding: 8px 16px 8px 8px; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18), 0 6px 16px rgba(0,0,0,0.25);">
+          <div style="width: 44px; height: 44px; flex: none; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 3px solid #2e6bb4; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 26px; height: 24px; border-radius: 45% 55% 50% 48%; background: #9aa1ad; border: 2px solid #5f6671;"></div>
+          </div>
+          <div style="font-size: 20px; font-weight: 900; color: #ffd95a; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">+12</div>
+          <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Stone</div>
+        </div>
+
+        <!-- A: log, newest, with pulse ring on counter -->
+        <div style="display: flex; align-items: center; gap: 12px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 3px solid #1c4f8f; border-radius: 14px; padding: 8px 16px 8px 8px; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18), 0 6px 16px rgba(0,0,0,0.25);">
+          <div style="width: 44px; height: 44px; flex: none; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 3px solid #2e6bb4; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 30px; height: 18px; border-radius: 9px; background: #8b5a2b; border: 2px solid #5d3a18; position: relative;"><div style="position: absolute; right: -2px; top: 1px; width: 10px; height: 12px; border-radius: 50%; background: #d9ab6e; border: 2px solid #5d3a18;"></div></div>
+          </div>
+          <div style="font-size: 20px; font-weight: 900; color: #ffd95a; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">+30</div>
+          <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Log</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ВАРИАНТ B ================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Вариант B — Компактные чипы</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">минимум места на экране: круглая иконка + счётчик, без названия</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 32px; margin-bottom: 44px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <div style="background: linear-gradient(180deg, #7ec0e6 0%, #5fa8d6 100%); border-radius: 12px; padding: 36px 32px; display: flex; justify-content: flex-end;">
+      <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 8px;">
+
+        <!-- B: stone chip -->
+        <div style="display: flex; align-items: center; gap: 10px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 3px solid #1c4f8f; border-radius: 999px; padding: 5px 16px 5px 6px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.18), 0 5px 12px rgba(0,0,0,0.25); opacity: 0.6;">
+          <div style="width: 34px; height: 34px; flex: none; background: #a9d6f7; border: 2.5px solid #2e6bb4; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 20px; height: 18px; border-radius: 45% 55% 50% 48%; background: #9aa1ad; border: 2px solid #5f6671;"></div>
+          </div>
+          <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">+12</div>
+        </div>
+
+        <!-- B: log chip -->
+        <div style="display: flex; align-items: center; gap: 10px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 3px solid #1c4f8f; border-radius: 999px; padding: 5px 16px 5px 6px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.18), 0 5px 12px rgba(0,0,0,0.25);">
+          <div style="width: 34px; height: 34px; flex: none; background: #a9d6f7; border: 2.5px solid #2e6bb4; border-radius: 50%; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 22px; height: 14px; border-radius: 7px; background: #8b5a2b; border: 2px solid #5d3a18;"></div>
+          </div>
+          <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">+30</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= ВАРИАНТ C ================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Вариант C — Слот как в хотбаре</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">квадратный слот инвентаря «прилетает» в угол; жёлтый бейдж — прибавка</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 32px; margin-bottom: 44px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <div style="background: linear-gradient(180deg, #7ec0e6 0%, #5fa8d6 100%); border-radius: 12px; padding: 36px 32px; display: flex; justify-content: flex-end;">
+      <div style="display: flex; align-items: flex-end; gap: 10px;">
+
+        <!-- C: stone slot -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px; opacity: 0.6;">
+          <div style="width: 64px; height: 64px; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 3px solid #1c4f8f; border-radius: 14px; position: relative; display: flex; align-items: center; justify-content: center; box-shadow: 0 6px 14px rgba(0,0,0,0.25);">
+            <div style="width: 32px; height: 30px; border-radius: 45% 55% 50% 48%; background: #9aa1ad; border: 2px solid #5f6671;"></div>
+            <div style="position: absolute; top: -10px; right: -10px; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2.5px solid #b07a14; border-radius: 999px; padding: 1px 8px; font-size: 13px; font-weight: 900; color: #6b4a08;">+12</div>
+          </div>
+          <div style="background: rgba(28,79,143,0.75); border-radius: 999px; padding: 2px 12px; font-size: 12px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">Stone</div>
+        </div>
+
+        <!-- C: log slot, newest, slightly bigger -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+          <div style="width: 72px; height: 72px; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 3px solid #1c4f8f; border-radius: 16px; position: relative; display: flex; align-items: center; justify-content: center; box-shadow: 0 0 0 3px rgba(169,214,247,0.55), 0 6px 14px rgba(0,0,0,0.25);">
+            <div style="width: 40px; height: 24px; border-radius: 12px; background: #8b5a2b; border: 2px solid #5d3a18; position: relative;"><div style="position: absolute; right: -2px; top: 2px; width: 13px; height: 16px; border-radius: 50%; background: #d9ab6e; border: 2px solid #5d3a18;"></div></div>
+            <div style="position: absolute; top: -11px; right: -11px; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2.5px solid #b07a14; border-radius: 999px; padding: 2px 9px; font-size: 14px; font-weight: 900; color: #6b4a08;">+30</div>
+          </div>
+          <div style="background: rgba(28,79,143,0.75); border-radius: 999px; padding: 2px 12px; font-size: 12px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">Log</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= НОВЫЙ ПРЕДМЕТ ================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Состояние «Новый предмет»</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">первый подбор предмета — золотая рамка и бейдж NEW (для варианта A)</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 32px; margin-bottom: 44px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <div style="background: linear-gradient(180deg, #7ec0e6 0%, #5fa8d6 100%); border-radius: 12px; padding: 36px 32px; display: flex; justify-content: flex-end;">
+
+      <div style="position: relative; display: flex; align-items: center; gap: 12px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 3px solid #b07a14; border-radius: 14px; padding: 8px 16px 8px 8px; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18), 0 0 0 3px rgba(255,217,90,0.55), 0 6px 16px rgba(0,0,0,0.25);">
+        <div style="position: absolute; top: -12px; left: 12px; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2.5px solid #b07a14; border-radius: 999px; padding: 1px 10px; font-size: 11px; font-weight: 900; letter-spacing: 1px; color: #6b4a08;">NEW!</div>
+        <div style="width: 44px; height: 44px; flex: none; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 3px solid #2e6bb4; border-radius: 10px; display: flex; align-items: center; justify-content: center;">
+          <div style="width: 24px; height: 28px; border-radius: 6px 6px 10px 10px; background: #e8d3a0; border: 2px solid #a8854c;"></div>
+        </div>
+        <div style="font-size: 20px; font-weight: 900; color: #ffd95a; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">+1</div>
+        <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Basket</div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ================= В КОНТЕКСТЕ ================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">В контексте игры</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">вариант A поверх вашего скриншота — правый нижний угол, над хотбаром</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 24px; margin-bottom: 44px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+    <div style="position: relative; border-radius: 10px; overflow: hidden; line-height: 0;">
+      <img src="uploads/pasted-1781168587919-0.png" alt="Скриншот игры" style="width: 100%; display: block;">
+      <div style="position: absolute; right: 18px; bottom: 19%; display: flex; flex-direction: column; align-items: flex-end; gap: 8px; line-height: 1.3;">
+
+        <div style="display: flex; align-items: center; gap: 10px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 3px solid #1c4f8f; border-radius: 12px; padding: 6px 14px 6px 6px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.18), 0 5px 14px rgba(0,0,0,0.3); opacity: 0.6;">
+          <div style="width: 36px; height: 36px; flex: none; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 2.5px solid #2e6bb4; border-radius: 9px; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 21px; height: 19px; border-radius: 45% 55% 50% 48%; background: #9aa1ad; border: 2px solid #5f6671;"></div>
+          </div>
+          <div style="font-size: 16px; font-weight: 900; color: #ffd95a; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">+12</div>
+          <div style="font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Stone</div>
+        </div>
+
+        <div style="display: flex; align-items: center; gap: 10px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 3px solid #1c4f8f; border-radius: 12px; padding: 6px 14px 6px 6px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.18), 0 5px 14px rgba(0,0,0,0.3);">
+          <div style="width: 36px; height: 36px; flex: none; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 2.5px solid #2e6bb4; border-radius: 9px; display: flex; align-items: center; justify-content: center;">
+            <div style="width: 25px; height: 15px; border-radius: 8px; background: #8b5a2b; border: 2px solid #5d3a18; position: relative;"><div style="position: absolute; right: -2px; top: 1px; width: 9px; height: 11px; border-radius: 50%; background: #d9ab6e; border: 2px solid #5d3a18;"></div></div>
+          </div>
+          <div style="font-size: 16px; font-weight: 900; color: #ffd95a; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">+30</div>
+          <div style="font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Log</div>
+        </div>
+
+      </div>
+    </div>
+  </div>
+
+  <!-- ================= СПЕКИ ================= -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 16px;">
+    <h2 style="font-size: 20px; font-weight: 900; margin: 0;">Спеки для Roblox Studio</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">размеры под 1920×1080, шрифт — Builder Sans Bold / FredokaOne</span>
+  </div>
+  <div style="display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 20px;">
+
+    <div style="background: #ffffff; border-radius: 16px; padding: 26px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 14px;">Размеры и позиция (вариант A)</div>
+      <div style="font-size: 13px; font-weight: 700; line-height: 2; color: #5a5247;">
+        Frame: авто-ширина × 62 px<br>
+        AnchorPoint: 1, 1<br>
+        Position: {1, −24}{1, −150} (над хотбаром)<br>
+        UICorner: 14 px · UIStroke: 3 px #1C4F8F<br>
+        Иконка-слот: 44 × 44, UICorner 10<br>
+        Стопка: UIListLayout снизу вверх, Padding 10<br>
+        Максимум 4 тоста, старые гаснут
+      </div>
+    </div>
+
+    <div style="background: #ffffff; border-radius: 16px; padding: 26px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 14px;">Цвета</div>
+      <div style="display: flex; flex-direction: column; gap: 9px; font-size: 13px; font-weight: 700; color: #5a5247;">
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); flex: none;"></div>Панель #54A7EC → #3A7FD0</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #1c4f8f; flex: none;"></div>Рамка #1C4F8F</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #a9d6f7; flex: none;"></div>Слот иконки #A9D6F7, обводка #2E6BB4</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #ffd95a; flex: none;"></div>Счётчик «+N» #FFD95A</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #ffffff; border: 1px solid #d8d2c6; flex: none;"></div>Название — белый, тень 0 2 rgba(0,0,0,0.3)</div>
+      </div>
+    </div>
+
+    <div style="background: #ffffff; border-radius: 16px; padding: 26px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 14px;">Анимация и логика (TweenService)</div>
+      <div style="font-size: 13px; font-weight: 700; line-height: 2; color: #5a5247;">
+        Въезд: справа за экраном, X +400 → 0<br>
+        0.35 c, Back / Out (мультяшный перелёт)<br>
+        Повторный подбор: счётчик +30 → +45,<br>
+        scale 1 → 1.25 → 1 за 0.2 c (Bounce)<br>
+        Пауза: 2.5 c, таймер сбрасывается при добавке<br>
+        Уход: fade + сдвиг вниз 0.25 c, Quad / In<br>
+        Один предмет = один тост (без дублей)
+      </div>
+    </div>
+
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

@@ -1,3 +1,4 @@
+local print, warn = (function() local RS = game:GetService("RunService") if RS:IsServer() then return print, warn end local P, W, Pl = print, warn, game:GetService("Players") local function ok() local p = Pl.LocalPlayer return p ~= nil and p:GetAttribute("DevLogs") == true end return function(...) if ok() then P(...) end end, function(...) if ok() then W(...) end end end)() -- DevLogs: клиентские логи видят только админы (флаг ставит DevLogFlag.server)
 -- SeedBagUI.client.lua
 -- "Leaf bag" Tool interaction. While the bag is in hand, pressing E
 -- opens the seed picker; if the player is also next to a watered
@@ -28,9 +29,14 @@ local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local RunService        = game:GetService("RunService")
 local UserInputService  = game:GetService("UserInputService")
+-- ⚠️ Геймпад: что считать кликом и клавишей — одно правило на все файлы (GamepadInput).
+local GamepadInput = require(game:GetService("ReplicatedStorage"):WaitForChild("GamepadInput"))
 
 local player    = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
+
+-- общая кнопка закрытия окна: одна фабрика на все меню (UITheme.closeButton)
+local UITheme = require(ReplicatedStorage:WaitForChild("UITheme"))
 
 local seedBagEvent = ReplicatedStorage:WaitForChild("SeedBagAction")
 local pickupEvent  = ReplicatedStorage:WaitForChild("PickupDroppedItem")
@@ -111,9 +117,14 @@ hintLabel.BackgroundTransparency = 0.4
 hintLabel.TextColor3             = Color3.fromRGB(255, 255, 255)
 hintLabel.Font                   = Enum.Font.GothamBold
 hintLabel.TextSize               = 18
-hintLabel.Text                   = "[E] Open Seed Bag"
+hintLabel.Text                   = "[E] Открыть мешок с семенами"
 hintLabel.Visible                = false
 hintLabel.Parent                 = hintGui
+
+-- ⚠️ Подсказка уступает диалогу: пока собеседник говорит, она поднимается
+-- над его окном. Правило одно на всю игру — см. ReplicatedStorage/HudDock.
+local HudDock = require(game:GetService("ReplicatedStorage"):WaitForChild("HudDock"))
+HudDock.keepAbove(hintLabel, 12)
 do
 	local c = Instance.new("UICorner")
 	c.CornerRadius = UDim.new(0, 8)
@@ -260,7 +271,7 @@ titleLabel.AnchorPoint        = Vector2.new(0, 0.5)
 titleLabel.Position           = UDim2.new(0, 88, 0.5, -16)
 titleLabel.Size               = UDim2.new(1, -260, 0, 28)
 titleLabel.BackgroundTransparency = 1
-titleLabel.Text               = "Seed Bag"
+titleLabel.Text               = "Мешок с семенами"
 titleLabel.TextColor3         = COLOR_PAPER_LIGHT
 titleLabel.TextXAlignment     = Enum.TextXAlignment.Left
 titleLabel.TextYAlignment     = Enum.TextYAlignment.Center
@@ -279,7 +290,7 @@ subtitleLabel.AnchorPoint            = Vector2.new(0, 0.5)
 subtitleLabel.Position               = UDim2.new(0, 88, 0.5, 16)
 subtitleLabel.Size                   = UDim2.new(1, -260, 0, 22)
 subtitleLabel.BackgroundTransparency = 1
-subtitleLabel.Text                   = "Choose what to plant"
+subtitleLabel.Text                   = "Выбери, что посадить"
 subtitleLabel.TextColor3             = COLOR_PAPER_LIGHT
 subtitleLabel.TextXAlignment         = Enum.TextXAlignment.Left
 subtitleLabel.TextYAlignment         = Enum.TextYAlignment.Center
@@ -323,22 +334,26 @@ do
 	sc.Parent      = counterLabel
 end
 
-local closeBtn = Instance.new("TextButton")
-closeBtn.AnchorPoint            = Vector2.new(1, 0.5)
-closeBtn.Position               = UDim2.new(1, -12, 0.5, 0)
-closeBtn.Size                   = UDim2.fromOffset(38, 38)
-closeBtn.BackgroundColor3       = COLOR_WOOD_DARK
-closeBtn.Text                   = "×"
-closeBtn.TextColor3             = COLOR_PAPER_LIGHT
-closeBtn.Font                   = Enum.Font.GothamBold
-closeBtn.TextSize               = 26
-closeBtn.AutoButtonColor        = false
-closeBtn.Parent                 = header
-do
-	local c = Instance.new("UICorner")
-	c.CornerRadius = UDim.new(0, 10)
-	c.Parent       = closeBtn
-end
+--[[ ⚠️ КРЕСТИК СОБИРАЕТ UITheme, А НЕ ЭТОТ ФАЙЛ.
+     Владелец требует, чтобы кнопка закрытия во всех меню океана выглядела
+     одинаково; эталоном он назвал инвентарь. Пока каждое меню рисовало крестик
+     само, они разъехались: здесь была тёмно-деревянная кнопка 38×38 с символом
+     «×» шрифтом, в соседнем окне — красный квадратик 30 px.
+     Размер сюда не передаётся намеренно: он живёт в UITheme.CLOSE_SIZE, и
+     менять его надо там — сразу во всех меню.
+     Родитель прежний — header, шапка окна, а НЕ панель: крестик и раньше сидел
+     в шапке, рядом со счётчиком, и переносить его на панель эта задача не
+     просила.
+     Посадка обычная (правый верхний угол), поэтому position и anchorPoint не
+     передаём: умолчание модуля и есть посадка инвентаря. Прежняя кнопка стояла
+     по центру шапки по вертикали, новая — в 8 px от её верха; расхождение в
+     13 px и есть цена унификации. Со счётчиком не столкнётся: counterFrame
+     заканчивается в 64 px от правой кромки шапки, крестик занимает последние
+     36 px.
+     ZIndex передан прежний, 1: у старой кнопки он не задавался вовсе, то есть
+     был умолчанием, и все соседи по шапке тоже идут с 1. Не передать его —
+     значит получить из модуля 20 и без нужды поднять крестик над раскладкой. ]]
+local closeBtn = UITheme.closeButton({ parent = header, zIndex = 1 })
 
 -- ── Grid (left side) ────────────────────────────────────────────
 local GRID_LEFT   = 14
@@ -503,7 +518,7 @@ detailName.AnchorPoint            = Vector2.new(0.5, 0)
 detailName.Position               = UDim2.new(0.5, 0, 0.65, 0)
 detailName.Size                   = UDim2.new(0.9, 0, 0.13, 0)
 detailName.BackgroundTransparency = 1
-detailName.Text                   = "Select a seed"
+detailName.Text                   = "Выбери семя"
 detailName.TextColor3             = COLOR_WOOD_DARKEST
 detailName.Font                   = Enum.Font.GothamBold
 detailName.TextScaled             = true
@@ -525,7 +540,7 @@ plantBtn.AnchorPoint            = Vector2.new(0.5, 1)
 plantBtn.Position               = UDim2.new(0.5, 0, 0.95, 0)
 plantBtn.Size                   = UDim2.new(0.9, 0, 0.18, 0)
 plantBtn.BackgroundColor3       = COLOR_GREEN_OK
-plantBtn.Text                   = "Plant"
+plantBtn.Text                   = "Посадить"
 plantBtn.TextColor3             = Color3.fromRGB(245, 245, 240)
 plantBtn.Font                   = Enum.Font.GothamBold
 plantBtn.TextScaled             = true
@@ -554,7 +569,7 @@ tipLabel.AnchorPoint            = Vector2.new(0.5, 1)
 tipLabel.Position               = UDim2.new(0.5, 0, 1, -22)
 tipLabel.Size                   = UDim2.new(1, -64, 0, 22)
 tipLabel.BackgroundTransparency = 1
-tipLabel.Text                   = "Tip: Click a seed to select it, then click \"Plant\"."
+tipLabel.Text                   = "Подсказка: кликни по семени, чтобы выбрать, затем нажми «Посадить»."
 tipLabel.TextColor3             = COLOR_PAPER_LIGHT
 tipLabel.Font                   = Enum.Font.Gotham
 tipLabel.TextSize               = 16
@@ -578,7 +593,7 @@ local function paintDetail()
 		detailIcon.Image          = meta.icon
 		detailName.Text           = meta.display
 		plantBtn.Visible          = true
-		plantBtn.Text             = "Plant"
+		plantBtn.Text             = "Посадить"
 		-- Plant hands the seed Tool to the player; they aim and place
 		-- themselves. No bed-proximity check anymore — the button is
 		-- live as soon as a seed slot is selected.
@@ -586,9 +601,9 @@ local function paintDetail()
 		plantBtn.BackgroundColor3 = COLOR_GREEN_OK
 	else
 		detailIcon.Image          = ""
-		detailName.Text           = "Select a seed"
+		detailName.Text           = "Выбери семя"
 		plantBtn.Visible          = true
-		plantBtn.Text             = "Plant"
+		plantBtn.Text             = "Посадить"
 		plantBtn.Active           = false
 		plantBtn.BackgroundColor3 = COLOR_GREEN_DIM
 	end
@@ -732,7 +747,7 @@ UserInputService.InputBegan:Connect(function(input, processed)
 		closePicker()
 		return
 	end
-	if input.KeyCode ~= Enum.KeyCode.E then return end
+	if not GamepadInput.isKey(input, Enum.KeyCode.E) then return end
 	-- E also closes the picker if it's already open — symmetrical with
 	-- Escape, and matches "press the same key to toggle" muscle memory.
 	if pickerGui.Enabled then

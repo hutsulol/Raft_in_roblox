@@ -1,0 +1,76 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Luckiest+Guy&family=Russo+One&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; }
+  @keyframes itemPop { 0% { transform: scale(0) rotate(-18deg); opacity: 0; } 55% { transform: scale(1.18) rotate(6deg); opacity: 1; } 100% { transform: scale(1) rotate(0deg); opacity: 1; } }
+  @keyframes starPop { 0% { transform: scale(0); opacity: 0; } 60% { transform: scale(1.4); opacity: 1; } 100% { transform: scale(1); opacity: 1; } }
+  @keyframes textUp { 0% { transform: translateY(14px); opacity: 0; } 100% { transform: translateY(0); opacity: 1; } }
+  @keyframes revealOut { 0% { opacity: 1; transform: scale(1); } 100% { opacity: 0; transform: scale(0.8); } }
+</style>
+</helmet>
+
+<div data-screen-label="Reward Reveal" style="min-height: 100vh; display: flex; align-items: center; justify-content: center; background: radial-gradient(ellipse at 50% 45%, #2b3648 0%, #1a2230 55%, #0c1018 100%); padding: 32px; font-family: 'Nunito', sans-serif; box-sizing: border-box; overflow: hidden;">
+
+  <div style="display: flex; flex-direction: column; align-items: center; gap: 0;">
+
+    <sc-if value="{{ shown }}" hint-placeholder-val="{{ true }}">
+      <!-- появляется, висит ~2.3с и исчезает -->
+      <div style="display: flex; flex-direction: column; align-items: center; animation: revealOut 0.5s ease-in 2.8s forwards;">
+
+        <!-- item -->
+        <div style="position: relative; width: 320px; height: 230px; display: flex; align-items: center; justify-content: center;">
+          <!-- в Roblox — ImageLabel/ViewportFrame предмета -->
+          <div style="position: relative; font-size: 130px; line-height: 1; color: #e8f0f8; text-shadow: 0 5px 0 rgba(0,0,0,0.55); animation: itemPop 0.55s cubic-bezier(0.2, 1.5, 0.4, 1) 0.05s both;">⚔︎</div>
+
+          <!-- star -->
+          <div style="position: absolute; left: 76px; bottom: 48px; font-size: 36px; color: #ffd23a; text-shadow: 0 2px 0 #000, 2px 0 0 #000, -2px 0 0 #000, 0 -2px 0 #000; animation: starPop 0.4s cubic-bezier(0.2, 1.5, 0.4, 1) 0.35s both;">★</div>
+        </div>
+
+        <!-- name -->
+        <div style="max-width: 480px; text-align: center; font-family: 'Luckiest Guy', 'Russo One', sans-serif; font-size: 40px; line-height: 1.15; letter-spacing: 2px; color: #ffffff; -webkit-text-stroke: 2px #000; text-shadow: 0 4px 0 #000; animation: textUp 0.4s ease-out 0.35s both; margin-top: -6px;">{{ itemName }}</div>
+
+        <!-- status -->
+        <div style="text-align: center; font-family: 'Luckiest Guy', 'Russo One', sans-serif; font-size: 30px; letter-spacing: 3px; color: {{ statusColor }}; -webkit-text-stroke: 1.5px #000; text-shadow: 0 3px 0 #000; animation: textUp 0.4s ease-out 0.5s both; margin-top: 4px;">{{ statusLabel }}</div>
+      </div>
+    </sc-if>
+
+    <!-- replay (демо) -->
+    <button onClick="{{ onReplay }}" style="margin-top: 40px; padding: 10px 26px; font-family: 'Nunito', sans-serif; font-weight: 900; font-size: 15px; letter-spacing: 1px; text-transform: uppercase; color: #7fa8c9; background: #0e1f30; border: 3px solid #000; cursor: pointer;" style-hover="filter: brightness(1.2);">▶ Показать снова</button>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 820, &quot;height&quot;: 640 },
+  &quot;itemName&quot;: { &quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;АБОРДАЖНАЯ САБЛЯ&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Предмет&quot; },
+  &quot;duplicate&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Предмет&quot; }
+}">
+class Component extends DCLogic {
+  state = { shown: true };
+
+  renderVals() {
+    const duplicate = this.props.duplicate ?? false;
+
+    return {
+      shown: this.state.shown,
+      itemName: this.props.itemName ?? 'АБОРДАЖНАЯ САБЛЯ',
+      statusLabel: duplicate ? 'ДУБЛИКАТ' : 'НОВОЕ!',
+      statusColor: duplicate ? '#c86ae8' : '#ffd23a',
+      onReplay: () => {
+        this.setState({ shown: false }, () => this.setState({ shown: true }));
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

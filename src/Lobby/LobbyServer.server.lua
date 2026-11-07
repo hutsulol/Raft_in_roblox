@@ -8,6 +8,8 @@ local TeleportService = game:GetService("TeleportService")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local DataStoreService = game:GetService("DataStoreService")
 
+local RaftShared = require(ReplicatedStorage:WaitForChild("RaftSaveShared"))
+
 local OCEAN_PLACE_ID = 77272676169005
 
 -- Only run in the lobby place, NOT in the ocean sub-place
@@ -27,6 +29,14 @@ end
 local playerLoadSave = {} -- [player] = true/false
 local MAX_GROUP_SIZE = 5
 local COUNTDOWN_TIME = 15
+--[[ ⚠️ НЕПОЛНАЯ ПАТИ НЕ УЛЕТАЕТ. ЖДЁМ, ПОКА НАБЕРЁТСЯ.
+     Я было пустил отсчёт с момента создания и отправлял тех, кто успел, — но
+     это отправляло игрока одного в пати на двоих, чего он не заказывал.
+     Теперь отсчёт запускается ТОЛЬКО когда состав собран, а до тех пор на
+     табло висит Waiting.
+
+     Пати на одного — тот же случай «состав собран», просто собирается сразу. ]]
+local FULL_TIME = 3    -- секунд от полного состава до вылета
 local PAD_RANGE = 20 -- how far a player can be from pad before auto-removed
 
 -- ─── RemoteEvents ───
@@ -34,30 +44,65 @@ local lobbyEvent = Instance.new("RemoteEvent")
 lobbyEvent.Name = "LobbyEvent"
 lobbyEvent.Parent = ReplicatedStorage
 
--- ─── Find pads ───
+-- ─── Зоны телепорта ───
+-- Лобби переделали: вместо трёх плоских падов LobbyPad_* теперь четыре модели
+-- TeleportZone*, у каждой свой борт, табло и точка сбора.
+--
+-- ⚠️ «ПАДОМ» ДЛЯ ОСТАЛЬНОГО КОДА ОСТАЁТСЯ ДЕТАЛЬ, А НЕ МОДЕЛЬ.
+-- Ниже всё построено на BasePart: pad.Position, pad.Touched, атрибуты дебаунса.
+-- Подменить его Моделью — значит переписать половину файла ради одной строки
+-- поиска. Поэтому от модели зоны берём ОДНУ деталь-триггер, а саму модель
+-- держим рядом в zoneOf — она нужна только чтобы найти табло.
+--
+-- ⚠️ ИМЯ ДЕТАЛИ-ТРИГГЕРА ИЩЕМ С ЗАПАСОМ. Сборка в Studio живая: сегодня объём
+-- зовётся ZoneContainer, завтра его переименуют. Поэтому идём по списку
+-- кандидатов, а если ни один не подошёл — берём первую попавшуюся деталь и
+-- ГРОМКО сообщаем, какую именно: молчащая зона отлаживается часами.
+local ZONE_PREFIX = "TeleportZone"
+local TRIGGER_NAMES = { "ZoneContainer", "LobbyPos", "Trigger", "Pad" }
+
+local zoneOf = {}   -- [pad] = модель зоны
+
+local function triggerPart(zone)
+	for _, name in TRIGGER_NAMES do
+		local part = zone:FindFirstChild(name, true)
+		if part and part:IsA("BasePart") then return part, name end
+	end
+	local any = zone:FindFirstChildWhichIsA("BasePart", true)
+	return any, any and "первая попавшаяся деталь" or nil
+end
+
 local function findLobbyPads()
+	local zones = {}
+	for _, d in workspace:GetDescendants() do
+		if d:IsA("Model") and d.Name:sub(1, #ZONE_PREFIX) == ZONE_PREFIX then
+			table.insert(zones, d)
+		end
+	end
+	table.sort(zones, function(a, b) return a.Name < b.Name end)
+
 	local pads = {}
-	for i = 1, 3 do
-		local pad = workspace:FindFirstChild("LobbyPad_" .. i, true)
-		if pad then
-			table.insert(pads, pad)
+	for _, zone in zones do
+		local part, how = triggerPart(zone)
+		if part then
+			zoneOf[part] = zone
+			table.insert(pads, part)
+			print(("[Lobby] зона %s: триггер %s (%s)"):format(zone.Name, part.Name, how))
+		else
+			warn(("[Lobby] в зоне %s нет ни одной детали — она не сработает"):format(zone.Name))
 		end
 	end
 	return pads
 end
 
 local lobbyPads = findLobbyPads()
-
--- ReturnToPastGame pad (save-load lobby)
-local savePads = {} -- [pad] = true for pads that load a saved game
-local returnPad = workspace:FindFirstChild("ReturnToPastGame", true)
-if returnPad then
-	table.insert(lobbyPads, returnPad)
-	savePads[returnPad] = true
-	print("[Lobby] Found ReturnToPastGame pad")
-else
-	print("[Lobby] ReturnToPastGame pad not found in workspace")
+if #lobbyPads == 0 then
+	warn(("[Lobby] в Workspace нет моделей %s* — вставать некуда"):format(ZONE_PREFIX))
 end
+
+-- Падов-сейвов больше нет: загрузка идёт кнопкой в меню лобби, а не отдельной
+-- зоной. Таблицу оставляем пустой, чтобы не потрошить ветки ниже.
+local savePads = {}
 
 -- ─── Lobby State ───
 -- Each pad can hold one lobby
@@ -79,8 +124,71 @@ for _, pad in lobbyPads do
 	initLobby(pad)
 end
 
--- ─── Billboard GUI above each pad ───
+-- ─── Табло над зоной ───
+-- ⚠️ ТАБЛО У ЗОНЫ УЖЕ ЕСТЬ — СВОЁ, СВЁРСТАННОЕ В STUDIO.
+-- Раньше скрипт сносил чужое и лепил своё; с новыми зонами так нельзя: там
+-- BillboardGui с готовыми PlayerCount и StateLabel, и переписать его кодом
+-- значит выкинуть работу художника. Ищем существующее, и только если его нет —
+-- собираем запасное сами.
+local function findLabels(pad)
+	local zone = zoneOf[pad] or pad
+	local bb = zone:FindFirstChildWhichIsA("BillboardGui", true)
+	if not bb then return nil end
+	local count = bb:FindFirstChild("PlayerCount", true) or bb:FindFirstChild("CountLabel", true)
+	local state = bb:FindFirstChild("StateLabel", true) or bb:FindFirstChild("StatusLabel", true)
+	if count and state then return bb, state, count end
+	return nil
+end
+
+-- ⚠️ ТЕКСТ ТАБЛО В ПОКОЕ — АВТОРСКИЙ, ЕГО НЕ СОЧИНЯЕМ.
+-- Я подставил сюда русские строки, и на них слетел шрифт: у подписи в Studio
+-- выбран фонт без кириллицы, движок молча заменяет его на запасной. Поэтому
+-- в покое возвращаем ровно ту строку, которая была свёрстана, а свои пишем
+-- только для состояний, которых в вёрстке нет (отсчёт, загрузка).
+local defaultText = {}
+local function remember(label)
+	if label and defaultText[label] == nil then defaultText[label] = label.Text end
+end
+
+-- ⚠️ БОРТИКИ ЗОНЫ: ПРОХОДИМЫ, ПОКА ИДЁТ НАБОР, И ЗАКРЫТЫ НА ОТСЧЁТЕ.
+-- Смысл в том, чтобы на старте никто не выскочил и не влез в последний момент.
+-- Держать их закрытыми ВСЁ время нельзя: тогда в зону не войти и набора не
+-- будет вовсе. Состояние не хранится отдельно, а считается из лобби (см.
+-- updateBillboard) — иначе оно рано или поздно разойдётся с реальностью.
+local bordersCache = {}
+local function borderParts(pad)
+	if bordersCache[pad] then return bordersCache[pad] end
+	local zone = zoneOf[pad]
+	local root = zone and (zone:FindFirstChild("Border", true) or zone)
+	local parts = {}
+	if root then
+		for _, d in root:GetDescendants() do
+			if d:IsA("BasePart") then table.insert(parts, d) end
+		end
+		if root:IsA("BasePart") then table.insert(parts, root) end
+	end
+	bordersCache[pad] = parts
+	return parts
+end
+
+local sealedNow = {}
+local function setSealed(pad, sealed)
+	if sealedNow[pad] == sealed then return end   -- каждый кадр трогать физику незачем
+	sealedNow[pad] = sealed
+	local parts = borderParts(pad)
+	for _, part in parts do
+		part.CanCollide = sealed
+	end
+	-- Диагностика: если борт всё равно проходим, первым делом надо знать, СКОЛЬКО
+	-- деталей нашлось. Ноль означает, что "Border" лежит не там, где его ищут.
+	print(("[Lobby] %s: борт %s (деталей %d)"):format(
+		zoneOf[pad] and zoneOf[pad].Name or pad.Name,
+		sealed and "ЗАКРЫТ" or "открыт", #parts))
+end
+
 local function createBillboard(pad)
+	if findLabels(pad) then return end   -- своё табло на месте, не трогаем
+
 	local existing = pad:FindFirstChild("LobbyBillboard")
 	if existing then existing:Destroy() end
 
@@ -123,23 +231,58 @@ end
 
 local function updateBillboard(pad)
 	local lobby = lobbies[pad]
-	local bb = pad:FindFirstChild("LobbyBillboard")
-	if not bb then return end
-
-	local statusLabel = bb:FindFirstChild("StatusLabel")
-	local countLabel = bb:FindFirstChild("CountLabel")
+	if not lobby then return end
+	local _, statusLabel, countLabel = findLabels(pad)
 	if not statusLabel or not countLabel then return end
+	remember(statusLabel)
+	remember(countLabel)
 
+	--[[ ⚠️ ТАБЛО ПЕРЕВЁРСТАНО: СВЕРХУ СЧЁТ, СНИЗУ ВРЕМЯ.
+	     Раньше в нижней строке был текст состояния («Waiting for players…»),
+	     теперь там секунды. Пишем только цифры — они одинаково выглядят в любом
+	     шрифте, а слова на кириллице ломали фонт вёрстки (уже проходили).
+	     Пока отсчёта нет, возвращаем ровно то, что нарисовано в Studio: это и
+	     есть заявленное время ожидания, и придумывать своё число незачем. ]]
 	if not lobby.active then
-		statusLabel.Text = "Waiting..."
-		countLabel.Text = "0/" .. MAX_GROUP_SIZE
-	elseif lobby.countdown > 0 then
-		statusLabel.Text = "Start: " .. lobby.countdown .. "s"
-		countLabel.Text = #lobby.players .. "/" .. lobby.maxPlayers
+		statusLabel.Text = defaultText[statusLabel]
+		countLabel.Text = defaultText[countLabel]
 	else
-		statusLabel.Text = "Waiting..."
 		countLabel.Text = #lobby.players .. "/" .. lobby.maxPlayers
+		local full = #lobby.players >= lobby.maxPlayers
+
+		--[[ ⚠️ ПОКА ПАТИ НЕ СОБРАНА — «Waiting», А НЕ ТИКАЮЩИЕ СЕКУНДЫ.
+		     Секунды на неполном лобби читаются как «сейчас улетим», хотя игра
+		     ещё ждёт людей, и игрок не понимает, чего он ждёт.
+
+		     Сам таймер при этом ИДЁТ: без него пати, которую никто не дособрал,
+		     висела бы вечно — этим мы уже обжигались. Просто не показываем его,
+		     пока есть куда ждать. Последние секунды всё же показываем: вылет
+		     без всякого предупреждения выглядит сбоем.  ]]
+		local WARN_AT = 5
+		if lobby.teleporting then
+			statusLabel.Text = "0s"
+		elseif full or (lobby.countdown > 0 and lobby.countdown <= WARN_AT) then
+			statusLabel.Text = lobby.countdown .. "s"
+		else
+			statusLabel.Text = "Waiting"
+		end
 	end
+
+	-- Замок едет вместе с табло: updateBillboard уже зовётся на КАЖДОЙ смене
+	-- состояния лобби, и отдельный вызов setSealed рано или поздно забыли бы
+	-- в одной из веток — например при отмене телепорта.
+	-- ⚠️ ЗАКРЫВАЕМ СРАЗУ, КАК ЛОББИ СОЗДАНО, а не на отсчёте.
+	-- Сначала я запирал зону только на countdown, чтобы к набору можно было
+	-- подойти. По факту важнее другое: состав пати фиксируется в момент выбора
+	-- размера, и выйти из зоны после этого нельзя.
+	setSealed(pad, lobby.active)
+
+	-- ⚠️ СВОБОДНА ЗОНА ИЛИ НЕТ — ОТДАЁМ АТРИБУТОМ.
+	-- Клиенту это нужно, чтобы вести к ней стрелку, а гонять ради одного
+	-- логического значения свой ремоут незачем: атрибуты реплицируются сами и
+	-- переживают доезд игрока позже события.
+	local zone = zoneOf[pad]
+	if zone then zone:SetAttribute("Free", not lobby.active) end
 end
 
 -- Create billboards for all pads
@@ -183,6 +326,32 @@ local function getNearestPad(player)
 		return closest
 	end
 	return nil
+end
+
+--[[ ⚠️ ПРОВЕРЯЕМ ОБЪЁМ ЗОНЫ, А НЕ РАССТОЯНИЕ ДО ТОЧКИ.
+     Зоны прямоугольные и разного размера: любой радиус будет либо выпускать
+     игрока за борт, либо держать в пати того, кто уже ушёл. Считаем попадание
+     в коробку самой детали-триггера, с небольшим запасом — на толщину тела и
+     на то, что персонаж стоит НА зоне, а не в ней. ]]
+--[[ ⚠️ ЗАПАС ПО ВЫСОТЕ БОЛЬШОЙ, И ЭТО НЕ НЕБРЕЖНОСТЬ.
+     Где стоит коробка триггера относительно пола, знает только тот, кто её
+     ставил: её могли утопить в землю или поднять над ней. Игрок всегда стоит
+     НА полу, поэтому по вертикали промахнуться легко, а по горизонтали — нет.
+     Тесная проверка выкидывала бы из пати того, кто спокойно стоит в зоне.
+     Числа те же, что и в клиентской проверке (LobbyMainUI): граница должна
+     совпадать, иначе клиент закроет окно, а сервер решит, что игрок на месте. ]]
+local ZONE_MARGIN_XZ = 6
+local ZONE_MARGIN_Y  = 30
+
+local function isInsideZone(player, pad)
+	local char = player.Character
+	local hrp = char and char:FindFirstChild("HumanoidRootPart")
+	if not (hrp and pad and pad.Parent) then return false end
+	local rel = pad.CFrame:PointToObjectSpace(hrp.Position)
+	local half = pad.Size * 0.5
+	return math.abs(rel.X) <= half.X + ZONE_MARGIN_XZ
+		and math.abs(rel.Y) <= half.Y + ZONE_MARGIN_Y
+		and math.abs(rel.Z) <= half.Z + ZONE_MARGIN_XZ
 end
 
 local function broadcastLobbyState(pad)
@@ -239,7 +408,50 @@ local function removePlayerFromLobby(player, pad)
 	updateBillboard(pad)
 end
 
-local function startCountdown(pad)
+-- ─── Access mode + active slot of a raft owner ───
+-- Приоритет — атрибуты игрока (их ставит SaveMenuService мгновенно,
+-- всегда актуальны). Если игрок не открывал меню сохранений — читаем
+-- базу один раз (кэш на сессию). Объявлено ДО startCountdown, чтобы
+-- телепорт-замыкание захватило локаль, а не nil-глобал.
+local ownerInfoCache = {} -- [userId] = { access, activeSlot } (только фолбэк из базы)
+local function getOwnerInfo(owner)
+	-- owner — объект Player (владелец лобби)
+	local attrAccess = owner:GetAttribute(RaftShared.ATTR_ACCESS)
+	local attrSlot = owner:GetAttribute(RaftShared.ATTR_SLOT)
+	if attrAccess ~= nil then
+		return {
+			access = (attrAccess == RaftShared.ACCESS_FRIENDS) and RaftShared.ACCESS_FRIENDS or RaftShared.ACCESS_EVERYONE,
+			activeSlot = math.clamp(math.floor(tonumber(attrSlot) or 1), 1, RaftShared.MAX_SLOTS),
+		}
+	end
+
+	local userId = owner.UserId
+	if ownerInfoCache[userId] then return ownerInfoCache[userId] end
+	local info = { access = RaftShared.ACCESS_EVERYONE, activeSlot = 1 }
+	if raftStore then
+		local ok, raw = pcall(function()
+			return raftStore:GetAsync(RaftShared.indexKey(userId))
+		end)
+		if ok and type(raw) == "table" then
+			local idx = RaftShared.normalizeIndex(raw)
+			info.access = idx.access
+			info.activeSlot = idx.activeSlot
+		end
+	end
+	ownerInfoCache[userId] = info
+	return info
+end
+
+-- дружит ли owner с игроком (для доступа "только друзья")
+local function isFriendOfOwner(owner, joiner)
+	if owner.UserId == joiner.UserId then return true end
+	local ok, res = pcall(function()
+		return owner:IsFriendsWith(joiner.UserId)
+	end)
+	return ok and res == true
+end
+
+local function startCountdown(pad, seconds)
 	local lobby = lobbies[pad]
 	if not lobby or lobby.teleporting then return end
 
@@ -249,7 +461,7 @@ local function startCountdown(pad)
 		lobby.countdownThread = nil
 	end
 
-	lobby.countdown = COUNTDOWN_TIME
+	lobby.countdown = seconds or COUNTDOWN_TIME
 	broadcastLobbyState(pad)
 
 	lobby.countdownThread = task.spawn(function()
@@ -264,9 +476,27 @@ local function startCountdown(pad)
 			lobby.teleporting = true
 			broadcastLobbyState(pad)
 
+			-- режим доступа + активный слот владельца (из меню сохранений)
+			local ownerInfo = getOwnerInfo(lobby.owner)
+
+			-- доступ "только друзья": на момент запуска отсеиваем тех, кто
+			-- перестал (или не был) другом владельца — например, вошёл в
+			-- лобби до переключения владельца на "друзья"
 			local playersToTeleport = {}
 			for _, p in lobby.players do
-				table.insert(playersToTeleport, p)
+				if ownerInfo.access ~= RaftShared.ACCESS_FRIENDS or isFriendOfOwner(lobby.owner, p) then
+					table.insert(playersToTeleport, p)
+				else
+					lobbyEvent:FireClient(p, "notFriend")
+					lobbyEvent:FireClient(p, "leftLobby")
+				end
+			end
+
+			if #playersToTeleport == 0 then
+				lobby.teleporting = false
+				lobby.countdown = 0
+				broadcastLobbyState(pad)
+				return
 			end
 
 			local success, err = pcall(function()
@@ -276,6 +506,8 @@ local function startCountdown(pad)
 
 				-- Always pass the lobby owner so only they get raft saves
 				teleportData.raftOwnerId = lobby.owner.UserId
+				teleportData.accessMode = ownerInfo.access
+				teleportData.saveSlot = ownerInfo.activeSlot
 
 				if savePads[pad] and lobby.owner then
 					-- Save pad: load the lobby owner's saved raft for everyone
@@ -294,6 +526,41 @@ local function startCountdown(pad)
 				end
 
 				teleportOptions:SetTeleportData(teleportData)
+
+				-- ⚠️ СВОЙ СЕРВЕР КАЖДОЙ ГРУППЕ, А НЕ ТОЛЬКО «ТОЛЬКО ДРУЗЬЯМ».
+				--
+				-- Раньше резерв включался лишь для ACCESS_FRIENDS, а «всем»
+				-- уезжало обычным TeleportAsync — и матчмейкинг Roblox сажал
+				-- новую группу в УЖЕ ЗАПУЩЕННЫЙ сервер к чужому плоту. Игрок
+				-- создавал новую игру и попадал в чужую партию.
+				--
+				-- Состав группы здесь набирается ЛОББИ (пады, кнопка «Войти»),
+				-- а не матчмейкингом Roblox, поэтому подселение посторонних не
+				-- нужно ни в одном режиме доступа. ACCESS_EVERYONE означает
+				-- «ко мне можно проситься в лобби», а не «Roblox волен подсадить
+				-- кого угодно в мой океан».
+				--
+				-- Для «только друзей» остаётся fail-closed: не выдался приватный
+				-- сервер — роняем телепорт, а не сливаем приватность молча.
+				-- Для «всех» приватность не на кону, поэтому при отказе
+				-- (например, ReserveServer недоступен в Studio) громко ругаемся,
+				-- но игрока пускаем — иначе тестировать станет нечем.
+				if ownerInfo.access == RaftShared.ACCESS_FRIENDS then
+					teleportOptions.ReservedServerAccessCode =
+						TeleportService:ReserveServer(OCEAN_PLACE_ID)
+				else
+					local ok, code = pcall(function()
+						return TeleportService:ReserveServer(OCEAN_PLACE_ID)
+					end)
+					if ok and code then
+						teleportOptions.ReservedServerAccessCode = code
+					else
+						warn("[Lobby] ReserveServer не дал сервер (" .. tostring(code)
+							.. ") — группа уедет в общий матчмейкинг и может попасть "
+							.. "к чужому плоту")
+					end
+				end
+
 				TeleportService:TeleportAsync(OCEAN_PLACE_ID, playersToTeleport, teleportOptions)
 			end)
 
@@ -316,36 +583,43 @@ local function checkPlayerSave(player)
 		warn("[Lobby] No DataStore, skipping save check for " .. player.Name)
 		return false
 	end
-	local key = "player_" .. player.UserId
-	print("[Lobby] Checking save for " .. player.Name .. " (key: " .. key .. ")")
-	local success, data = pcall(function()
-		return raftStore:GetAsync(key)
+	local userId = player.UserId
+
+	-- любой занятый слот в индексе = сейв есть; возвращаем активный слот
+	local okIdx, rawIdx = pcall(function()
+		return raftStore:GetAsync(RaftShared.indexKey(userId))
 	end)
-	if success and data and data.raft then
-		print("[Lobby] FOUND save for " .. player.Name .. " (saved at " .. tostring(data.savedAt) .. ")")
-		return true
+	if okIdx and type(rawIdx) == "table" then
+		local idx = RaftShared.normalizeIndex(rawIdx)
+		for i = 1, RaftShared.MAX_SLOTS do
+			if idx.slots[i] then
+				print("[Lobby] FOUND save (индекс) for " .. player.Name .. ", активный слот " .. idx.activeSlot)
+				return true, idx.activeSlot
+			end
+		end
+	end
+
+	-- совместимость: старый сейв под слотом 1 без записи в индексе
+	local success, data = pcall(function()
+		return raftStore:GetAsync(RaftShared.slotKey(userId, 1))
+	end)
+	if success and type(data) == "table" and data.raft then
+		print("[Lobby] FOUND legacy save for " .. player.Name)
+		return true, 1
 	elseif not success then
 		warn("[Lobby] DataStore read error: " .. tostring(data))
 	else
 		print("[Lobby] No save found for " .. player.Name)
 	end
-	return false
+	return false, nil
 end
 
--- ─── Auto-check save on join and show prompt ───
+-- ─── Auto-check save on join ───
+-- СТАРЫЙ авто-промпт «Continue?» ОТКЛЮЧЁН: загрузка сохранений теперь
+-- идёт через меню «МОЙ ПЛОТ» на падах SaveGame (SaveMenuService),
+-- поэтому «saveFound» больше не шлём, чтобы не всплывало старое окно.
 local function checkAndNotifyPlayer(player)
-	task.spawn(function()
-		-- Wait for client to load
-		task.wait(3)
-		if not player.Parent then return end -- left already
-		print("[Lobby] Checking save for player: " .. player.Name)
-		local hasSave = checkPlayerSave(player)
-		print("[Lobby] Save check result for " .. player.Name .. ": " .. tostring(hasSave))
-		if hasSave then
-			print("[Lobby] Sending saveFound to " .. player.Name)
-			lobbyEvent:FireClient(player, "saveFound")
-		end
-	end)
+	-- намеренно ничего не делаем (см. комментарий выше)
 end
 
 Players.PlayerAdded:Connect(function(player)
@@ -365,9 +639,34 @@ lobbyEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		-- Player chose "Yes" — teleport them solo to their saved raft
 		playerLoadSave[player] = true
 		task.spawn(function()
+			local info = getOwnerInfo(player)
 			local success, err = pcall(function()
 				local teleportOptions = Instance.new("TeleportOptions")
-				teleportOptions:SetTeleportData({loadSave = true, raftOwnerId = player.UserId})
+				teleportOptions:SetTeleportData({
+					loadSave = true,
+					raftOwnerId = player.UserId,
+					saveSlot = info.activeSlot,
+					accessMode = info.access,
+					-- Размер комнаты для замка на стороне океана (RoomLock):
+					-- «продолжить» — всегда в одиночку.
+					playerCount = 1,
+				})
+				-- Свой сервер и на «продолжить»: иначе игрок со своим сейвом
+				-- приезжал бы в чужой уже запущенный океан (см. подробный
+				-- разбор у группового телепорта выше).
+				if info.access == RaftShared.ACCESS_FRIENDS then
+					teleportOptions.ReservedServerAccessCode = TeleportService:ReserveServer(OCEAN_PLACE_ID)
+				else
+					local ok, code = pcall(function()
+						return TeleportService:ReserveServer(OCEAN_PLACE_ID)
+					end)
+					if ok and code then
+						teleportOptions.ReservedServerAccessCode = code
+					else
+						warn("[Lobby] ReserveServer не дал сервер (" .. tostring(code)
+							.. ") — продолжение уедет в общий матчмейкинг")
+					end
+				end
 				TeleportService:TeleportAsync(OCEAN_PLACE_ID, {player}, teleportOptions)
 			end)
 			if not success then
@@ -414,6 +713,12 @@ lobbyEvent.OnServerEvent:Connect(function(player, action, data, data2)
 
 		local lobby = lobbies[pad]
 		if lobby.active then return end -- already created
+		-- ⚠️ Создать пати можно только СТОЯ в зоне: клиент шлёт pad сам, и без
+		-- этой проверки игру можно было бы запустить с другого конца лобби.
+		if not isInsideZone(player, pad) then
+			lobbyEvent:FireClient(player, "leftLobby")
+			return
+		end
 
 		-- If this is a save pad, verify player has save data
 		if savePads[pad] then
@@ -436,9 +741,10 @@ lobbyEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		lobbyEvent:FireClient(player, "joinedLobby", pad)
 		broadcastLobbyState(pad)
 
-		-- If solo (1 player), start countdown immediately
+		-- Пати на одного собрана в момент создания — сразу короткий отсчёт.
+		-- Остальные ждут игроков, отсчёт начнётся при заполнении.
 		if maxPlayers == 1 then
-			startCountdown(pad)
+			startCountdown(pad, FULL_TIME)
 		end
 
 	elseif action == "joinLobby" then
@@ -451,14 +757,63 @@ lobbyEvent.OnServerEvent:Connect(function(player, action, data, data2)
 		if #lobby.players >= lobby.maxPlayers then return end
 		if lobby.teleporting then return end
 
+		-- доступ "только друзья": пускаем в лобби владельца лишь его друзей
+		if lobby.owner and getOwnerInfo(lobby.owner).access == RaftShared.ACCESS_FRIENDS then
+			if not isFriendOfOwner(lobby.owner, player) then
+				lobbyEvent:FireClient(player, "notFriend")
+				return
+			end
+		end
+
+		if not isInsideZone(player, pad) then
+			lobbyEvent:FireClient(player, "leftLobby")
+			return
+		end
 		table.insert(lobby.players, player)
 		lobbyEvent:FireClient(player, "joinedLobby", pad)
 		broadcastLobbyState(pad)
 
-		-- Start countdown when full
+		-- Набрались раньше срока — не тянем остаток ожидания, стартуем коротко.
 		if #lobby.players >= lobby.maxPlayers then
-			startCountdown(pad)
+			startCountdown(pad, FULL_TIME)
 		end
+
+	elseif action == "goToZone" then
+		-- ⚠️ ИГРАТЬ ВЕДЁТ В ЗОНУ, А НЕ ОТКРЫВАЕТ ОКНО НАПРЯМУЮ.
+		-- Пати создаётся в конкретной зоне (createLobby ждёт pad), поэтому
+		-- сперва ставим игрока в свободную, и уже оттуда идёт обычный путь —
+		-- тот же, что и когда игрок пришёл в зону ногами.
+		if isPlayerInAnyLobby(player) then return end
+		local char = player.Character
+		if not (char and char:FindFirstChild("HumanoidRootPart")) then return end
+
+		local free
+		for _, pad in lobbyPads do
+			local lobby = lobbies[pad]
+			if lobby and not lobby.active then free = pad break end
+		end
+		if not free then
+			lobbyEvent:FireClient(player, "noFreeZone")
+			return
+		end
+
+		--[[ ⚠️ ВЫСАЖИВАЕМ НА ПОЛ ЗОНЫ, А НЕ НА ВЕРХ ЕЁ ОБЪЁМА.
+		     ZoneContainer — это коробка во всю зону, и она высокая. Я считал от
+		     ВЕРХНЕЙ грани, поэтому игрока ставило над зоной, а не внутрь неё.
+		     Пол — нижняя грань той же коробки; от неё и отмеряем рост
+		     персонажа. Если в зоне есть своя точка (Target/LobbyPos), она
+		     плоская, и низ с верхом у неё почти совпадают — формула та же. ]]
+		local zone = zoneOf[free]
+		local spot = zone and (zone:FindFirstChild("Target", true)
+			or zone:FindFirstChild("LobbyPos", true))
+		local base = (spot and spot:IsA("BasePart")) and spot or free
+		local floor = base.Position.Y - base.Size.Y / 2
+		char:PivotTo(CFrame.new(Vector3.new(base.Position.X, floor + 3.5, base.Position.Z)))
+
+		-- ⚠️ Touched после телепорта не гарантирован: персонаж может встать уже
+		-- внутри детали, не коснувшись её. Поэтому окно открываем сами — тем же
+		-- сообщением, что шлёт касание.
+		lobbyEvent:FireClient(player, "touchedPad", free)
 
 	elseif action == "leaveLobby" then
 		local pad = findPadForPlayer(player)
@@ -490,6 +845,31 @@ for _, pad in lobbyPads do
 		lobbyEvent:FireClient(player, "touchedPad", pad)
 	end)
 end
+
+--[[ ⚠️ ВЫШЕЛ ИЗ ЗОНЫ — ВЫШЕЛ ИЗ ПАТИ.
+     Без этого можно было встать в зону, дождаться окна, отойти и спокойно
+     бегать по лобби, пока идёт отсчёт: место в пати занято, а игрока там нет.
+     Проверяем дважды в секунду — чаще незачем, реже игрок успеет уйти далеко.
+     На телепорте не трогаем: состав уже зафиксирован, и выдёргивать из него
+     в последний момент нельзя. ]]
+task.spawn(function()
+	while true do
+		task.wait(0.5)
+		for _, pad in lobbyPads do
+			local lobby = lobbies[pad]
+			if lobby and lobby.active and not lobby.teleporting then
+				-- копия списка: removePlayerFromLobby меняет его на ходу
+				local inside = {}
+				for _, p in lobby.players do table.insert(inside, p) end
+				for _, p in inside do
+					if not isInsideZone(p, pad) then
+						removePlayerFromLobby(p, pad)
+					end
+				end
+			end
+		end
+	end
+end)
 
 -- ─── Cleanup on player leaving ───
 Players.PlayerRemoving:Connect(function(player)

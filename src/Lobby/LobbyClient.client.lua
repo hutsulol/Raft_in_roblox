@@ -40,7 +40,12 @@ local function closeUI()
 end
 
 -- ─── Create Group Selection UI ───
+-- ⚠️ СТАРОЕ ОКНО «Create Group» ОТКЛЮЧЕНО ЦЕЛИКОМ.
+-- Его заменил модал «Создать пати» в LobbyMainUI. Тело оставлено на случай
+-- отката, но вызывать его больше неоткуда: ранний return не даёт ему собрать
+-- ни одного элемента, даже если кто-то позовёт по старой памяти.
 local function showCreateUI(pad, isSavePad)
+	do return end
 	closeUI()
 	currentPad = pad
 	selectedMaxPlayers = 5
@@ -550,7 +555,20 @@ lobbyEvent.OnClientEvent:Connect(function(action, pad, data)
 		if state.active then
 			showJoinUI(pad, state)
 		else
-			showCreateUI(pad, state.isSavePad)
+			-- ⚠️ ОКНО ВЫБОРА РАЗМЕРА ТЕПЕРЬ РИСУЕТ LobbyMainUI.
+			-- Своё «Create Group» оставляем как запасное: если новый экран не
+			-- поднялся, игрок всё равно сможет создать пати, а не упрётся в
+			-- зону, которая молча ничего не делает.
+			-- ⚠️ ОКНО ВЫБОРА РАЗМЕРА РИСУЕТ ТОЛЬКО LobbyMainUI.
+			-- Здесь был запасной вызов старого «Create Group». Он и вылезал
+			-- поверх нового экрана: синяя шапка, латиница, чужой стиль. Запасной
+			-- вариант тут вреден — два окна об одном и том же путают сильнее,
+			-- чем честная строка в логе.
+			if typeof(_G.OpenPartyModal) == "function" then
+				_G.OpenPartyModal(pad)
+			else
+				warn("[Лобби] LobbyMainUI не поднялся — окно создания пати не открыть")
+			end
 		end
 
 	elseif action == "joinedLobby" then

@@ -1,0 +1,64 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@700;900&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:#0b3f7a;font-family:'Rubik',sans-serif;-webkit-font-smoothing:antialiased}
+a{color:#fff3d6}a:hover{color:#ffd77a}
+@keyframes hudIn{from{opacity:0;transform:translateX(-50%) translateY(30px)}to{opacity:1;transform:translateX(-50%) translateY(0)}}
+@keyframes hudOut{from{opacity:1;transform:translateX(-50%) translateY(0)}to{opacity:0;transform:translateX(-50%) translateY(30px)}}
+</style>
+</helmet>
+<div style="position:relative;width:1100px;height:610px;overflow:hidden;background:url('uploads/pasted-1788422425004-0.png') center/cover no-repeat;border-radius:6px">
+  <sc-if value="{{ visible }}" hint-placeholder-val="{{ true }}">
+  <div style="position:absolute;left:50%;bottom:36px;transform:translateX(-50%);display:flex;flex-direction:column;align-items:center;gap:12px;animation:{{ anim }} .3s ease-out both">
+    <div style="color:#fff;font-weight:900;font-size:20px;letter-spacing:.02em;text-shadow:0 2px 0 rgba(0,0,0,.6),0 0 6px rgba(0,0,0,.5)">{{ heightLabel }}</div>
+    <div style="display:flex;gap:14px">
+    <button onClick="{{ raise }}" disabled="{{ atTop }}" style="position:relative;overflow:hidden;appearance:none;cursor:pointer;width:172px;height:70px;border-radius:999px;border:3px solid #1a1626;background:linear-gradient(180deg,#9be86a 0%,#4db43a 55%,#2f8a2a 100%);box-shadow:0 5px 0 #143d1a,0 9px 16px rgba(0,0,0,.35);color:#fff;font-family:inherit;font-weight:900;font-size:24px;letter-spacing:.03em;text-shadow:0 2px 0 rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;gap:12px;opacity:{{ topOpacity }};transition:transform .08s,box-shadow .08s" style-active="transform:translateY(4px);box-shadow:0 1px 0 #143d1a,0 4px 8px rgba(0,0,0,.3)">
+      <div style="position:absolute;left:14px;right:14px;top:5px;height:18px;border-radius:999px;background:rgba(255,255,255,.35)"></div>
+      <div style="position:relative;width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-bottom:15px solid #fff;filter:drop-shadow(0 2px 0 rgba(0,0,0,.45))"></div>
+      <span style="position:relative">ВВЕРХ</span>
+    </button>
+    <button onClick="{{ lower }}" disabled="{{ atBottom }}" style="position:relative;overflow:hidden;appearance:none;cursor:pointer;width:172px;height:70px;border-radius:999px;border:3px solid #1a1626;background:linear-gradient(180deg,#7ed0ff 0%,#2f8be6 55%,#1b5fb8 100%);box-shadow:0 5px 0 #0f2f66,0 9px 16px rgba(0,0,0,.35);color:#fff;font-family:inherit;font-weight:900;font-size:24px;letter-spacing:.03em;text-shadow:0 2px 0 rgba(0,0,0,.45);display:flex;align-items:center;justify-content:center;gap:12px;opacity:{{ bottomOpacity }};transition:transform .08s,box-shadow .08s" style-active="transform:translateY(4px);box-shadow:0 1px 0 #0f2f66,0 4px 8px rgba(0,0,0,.3)">
+      <div style="position:absolute;left:14px;right:14px;top:5px;height:18px;border-radius:999px;background:rgba(255,255,255,.35)"></div>
+      <div style="position:relative;width:0;height:0;border-left:11px solid transparent;border-right:11px solid transparent;border-top:15px solid #fff;filter:drop-shadow(0 2px 0 rgba(0,0,0,.45))"></div>
+      <span style="position:relative">ВНИЗ</span>
+    </button>
+    </div>
+  </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;step&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:25,&quot;options&quot;:[10,25,50,100],&quot;tsType&quot;:&quot;number&quot;}}">
+class Component extends DCLogic {
+  state = { inZone: true, depth: 0, leaving: false };
+  renderVals() {
+    const { inZone, depth, leaving } = this.state;
+    const step = Number(this.props.step ?? 25);
+    const lowered = depth >= 100, raised = depth <= 0;
+    return {
+      visible: inZone || leaving,
+      anim: leaving ? 'hudOut' : 'hudIn',
+      heightLabel: 'Высота: ' + (100 - depth) + '%',
+      atTop: raised, atBottom: lowered,
+      topOpacity: raised ? 0.45 : 1, bottomOpacity: lowered ? 0.45 : 1,
+      raise: () => this.setState(s => ({ depth: Math.max(0, s.depth - step) })),
+      lower: () => this.setState(s => ({ depth: Math.min(100, s.depth + step) })),
+      zoneLabel: inZone ? 'Выйти из зоны' : 'Войти в зону',
+      toggleZone: () => {
+        if (this.state.inZone) { this.setState({ inZone: false, leaving: true }); setTimeout(() => this.setState({ leaving: false }), 300); }
+        else this.setState({ inZone: true });
+      },
+    };
+  }
+}
+</script>
+</body>
+</html>

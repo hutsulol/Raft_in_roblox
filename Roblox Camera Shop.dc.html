@@ -1,0 +1,163 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Baloo+2:wght@600;700;800&display=swap" rel="stylesheet">
+<style>
+body{margin:0;background:transparent;font-family:'Baloo 2',sans-serif;}
+a{color:#ffd93b;} a:hover{color:#fff;}
+</style>
+</helmet>
+<div style="width:1280px;height:720px;position:relative;overflow:hidden;user-select:none;">
+<div style="width:1920px;height:1080px;position:absolute;top:0;left:0;transform:scale(0.6667);transform-origin:top left;">
+
+  <!-- Shop panel (compact) -->
+  <div style="position:absolute;left:180px;top:110px;width:480px;transform:scale(1);">
+    <div style="background:linear-gradient(#3f8de0,#2a6fc4);border:3px solid #123a6e;border-radius:8px;padding:16px 10px 14px;text-align:center;position:relative;box-shadow:0 4px 0 rgba(0,0,0,.35);">
+      <div style="position:absolute;top:5px;left:12px;right:12px;height:8px;background-image:radial-gradient(circle,rgba(255,255,255,.35) 3px,transparent 3.5px);background-size:26px 8px;"></div>
+      <div style="font-size:36px;font-weight:800;color:#fff;-webkit-text-stroke:1.5px #0d2c55;text-shadow:0 3px 0 rgba(0,0,0,.3);">Магазин камер</div>
+    </div>
+    <div style="background:rgba(15,18,24,.92);border:3px solid #05070a;border-radius:8px;margin-top:6px;padding:12px;display:flex;gap:10px;">
+      <div style="flex:1;display:flex;flex-direction:column;gap:12px;height:620px;overflow:hidden;">
+        <sc-for list="{{ cameras }}" as="cam" hint-placeholder-count="5">
+          <div style="background:{{ cam.cardBg }};border:2.5px solid {{ cam.cardBorder }};border-radius:8px;padding:12px;display:flex;gap:14px;align-items:center;flex:none;cursor:pointer;" style-hover="filter:brightness(1.12);" onClick="{{ cam.select }}">
+            <div style="width:96px;height:96px;background:linear-gradient(#4e88c8,#3a6ea8);border:2.5px solid #16324f;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none;">
+              <div style="position:relative;width:56px;height:38px;background:{{ cam.bodyColor }};border-radius:6px;border:2px solid #111;">
+                <div style="position:absolute;top:-8px;left:8px;width:18px;height:8px;background:{{ cam.bodyColor }};border:2px solid #111;border-bottom:none;border-radius:4px 4px 0 0;"></div>
+                <div style="position:absolute;top:6px;left:16px;width:22px;height:22px;background:#1b2b4a;border:2.5px solid #111;border-radius:50%;"></div>
+                <div style="position:absolute;top:4px;right:5px;width:7px;height:7px;background:#ffd93b;border-radius:50%;"></div>
+              </div>
+            </div>
+            <div style="flex:1;">
+              <div style="font-size:26px;font-weight:800;color:#fff;-webkit-text-stroke:1px #000;line-height:1.1;">{{ cam.name }}</div>
+              <sc-if value="{{ cam.owned }}" hint-placeholder-val="{{ false }}">
+                <div style="font-size:22px;line-height:1;margin-top:2px;"><span style="color:#ffd93b;text-shadow:0 0 2px #4a3200;">{{ cam.starsOn }}</span><span style="color:#3a3f48;">{{ cam.starsOff }}</span></div>
+              </sc-if>
+              <div style="display:flex;align-items:center;justify-content:space-between;margin-top:6px;">
+                <div style="font-size:24px;font-weight:800;color:{{ cam.rarityColor }};-webkit-text-stroke:1px #000;">{{ cam.rarity }}</div>
+                <div style="display:flex;align-items:center;gap:8px;">
+                  <sc-if value="{{ cam.owned }}" hint-placeholder-val="{{ false }}">
+                    <div style="font-size:22px;font-weight:800;color:#5ce65c;-webkit-text-stroke:1px #0a3d0a;">Куплено</div>
+                  </sc-if>
+                  <sc-if value="{{ cam.notOwned }}" hint-placeholder-val="{{ true }}">
+                    <div style="width:30px;height:30px;background:radial-gradient(circle at 40% 35%,#ffe45e,#d99a10);border-radius:50%;border:2.5px solid #7a5205;"></div>
+                    <div style="font-size:32px;font-weight:800;color:#ffd93b;-webkit-text-stroke:1.5px #4a3200;">{{ cam.price }}</div>
+                  </sc-if>
+                </div>
+              </div>
+            </div>
+          </div>
+        </sc-for>
+      </div>
+      <div style="width:16px;background:#0a0c10;border-radius:8px;position:relative;"><div style="position:absolute;top:8px;left:2px;width:12px;height:170px;background:#3a3f48;border-radius:6px;"></div></div>
+    </div>
+  </div>
+
+  <!-- Stats -->
+  <div style="position:absolute;left:1150px;top:100px;display:flex;align-items:center;gap:16px;">
+    <div style="font-size:30px;font-weight:800;color:#fff;-webkit-text-stroke:1px #000;">Уровень:</div>
+    <div style="font-size:34px;line-height:1;"><span style="color:#ffd93b;text-shadow:0 2px 0 #4a3200;">{{ selStarsOn }}</span><span style="color:#1c2a3d;">{{ selStarsOff }}</span></div>
+  </div>
+  <div style="position:absolute;left:1150px;top:170px;display:grid;grid-template-columns:auto 250px;gap:24px 40px;align-items:center;">
+    <div style="font-size:32px;font-weight:800;color:#39e639;-webkit-text-stroke:1px #063306;">Зум</div>
+    <div style="height:30px;background:#15181e;border:2px solid #060708;"><div style="width:{{ zoomW }};height:100%;background:#5ce65c;transition:width .25s ease-out;"></div></div>
+    <div style="font-size:32px;font-weight:800;color:#f2e23a;-webkit-text-stroke:1px #4a4306;">Качество</div>
+    <div style="height:30px;background:#15181e;border:2px solid #060708;"><div style="width:{{ qualW }};height:100%;background:#f2e23a;transition:width .25s ease-out;"></div></div>
+    <div style="font-size:32px;font-weight:800;color:#c95cf2;-webkit-text-stroke:1px #3a0a4d;">Стабилизация</div>
+    <div style="height:30px;background:#15181e;border:2px solid #060708;"><div style="width:{{ stabW }};height:100%;background:#c95cf2;transition:width .25s ease-out;"></div></div>
+  </div>
+
+  <!-- Big camera in world -->
+  <div style="position:absolute;left:1000px;top:440px;transform:rotate(-6deg);">
+    <div style="position:relative;width:520px;height:320px;background:linear-gradient(160deg,#8b8f96,#5c6067 55%,#43464c);border-radius:28px;border:5px solid #2b2d31;box-shadow:20px 40px 40px rgba(0,40,90,.35);">
+      <div style="position:absolute;top:-46px;left:110px;width:180px;height:52px;background:linear-gradient(#7d8188,#55585e);border:5px solid #2b2d31;border-bottom:none;border-radius:16px 16px 0 0;"></div>
+      <div style="position:absolute;top:60px;left:150px;width:200px;height:200px;background:radial-gradient(circle at 40% 35%,#3a5f9e,#101c33 70%);border-radius:50%;border:8px solid #26282c;box-shadow:inset 0 0 30px #000;"></div>
+      <div style="position:absolute;top:100px;left:190px;width:50px;height:36px;background:rgba(255,255,255,.25);border-radius:50%;transform:rotate(-25deg);"></div>
+      <div style="position:absolute;top:30px;right:40px;width:26px;height:26px;background:#e33;border-radius:50%;box-shadow:0 0 14px #e33;"></div>
+      <div style="position:absolute;top:24px;left:36px;width:70px;height:34px;background:#ffd93b;border-radius:8px;border:3px solid #7a5205;"></div>
+      <div style="position:absolute;bottom:28px;right:36px;width:90px;height:56px;background:#101318;border-radius:8px;border:3px solid #000;"></div>
+    </div>
+  </div>
+
+  <!-- Buy / Upgrade / Close buttons -->
+  <div style="position:absolute;left:760px;top:600px;display:flex;flex-direction:column;gap:20px;">
+    <sc-if value="{{ selNotOwned }}" hint-placeholder-val="{{ true }}">
+      <div style="width:200px;background:#e8c60e;border:3px solid #8a7407;border-radius:6px;padding:10px 0;display:flex;align-items:center;justify-content:center;gap:10px;position:relative;box-shadow:0 4px 0 rgba(0,0,0,.35);cursor:pointer;" style-hover="filter:brightness(1.08);" onClick="{{ buy }}">
+        <div style="position:absolute;top:3px;left:8px;right:8px;height:6px;background-image:radial-gradient(circle,rgba(255,255,255,.4) 2px,transparent 2.5px);background-size:18px 6px;"></div>
+        <div style="width:28px;height:28px;background:radial-gradient(circle at 40% 35%,#ffe45e,#d99a10);border-radius:50%;border:2.5px solid #7a5205;"></div>
+        <div style="font-size:30px;font-weight:800;color:#fff;-webkit-text-stroke:1.2px #6b5a05;">{{ selPrice }}</div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ selCanUpgrade }}" hint-placeholder-val="{{ false }}">
+      <div style="width:200px;background:#3ec93e;border:3px solid #1a6e1a;border-radius:6px;padding:6px 0;position:relative;box-shadow:0 4px 0 rgba(0,0,0,.35);cursor:pointer;text-align:center;" style-hover="filter:brightness(1.08);" onClick="{{ upgrade }}">
+        <div style="position:absolute;top:3px;left:8px;right:8px;height:6px;background-image:radial-gradient(circle,rgba(255,255,255,.4) 2px,transparent 2.5px);background-size:18px 6px;"></div>
+        <div style="font-size:26px;font-weight:800;color:#fff;-webkit-text-stroke:1.2px #124d12;">Улучшить</div>
+        <div style="display:flex;align-items:center;justify-content:center;gap:6px;">
+          <div style="width:20px;height:20px;background:radial-gradient(circle at 40% 35%,#ffe45e,#d99a10);border-radius:50%;border:2px solid #7a5205;"></div>
+          <div style="font-size:22px;font-weight:800;color:#ffe45e;-webkit-text-stroke:1px #4a3200;">{{ upgradeCost }}</div>
+        </div>
+      </div>
+    </sc-if>
+    <sc-if value="{{ selMaxed }}" hint-placeholder-val="{{ false }}">
+      <div style="width:200px;background:#2a2f38;border:3px solid #0a0c10;border-radius:6px;padding:10px 0;text-align:center;box-shadow:0 4px 0 rgba(0,0,0,.35);">
+        <div style="font-size:26px;font-weight:800;color:#ffd93b;-webkit-text-stroke:1px #4a3200;">Макс. уровень</div>
+      </div>
+    </sc-if>
+    <div style="width:200px;background:#e23b3b;border:3px solid #7e1414;border-radius:6px;padding:10px 0;text-align:center;position:relative;box-shadow:0 4px 0 rgba(0,0,0,.35);cursor:pointer;" style-hover="filter:brightness(1.08);">
+      <div style="position:absolute;top:3px;left:8px;right:8px;height:6px;background-image:radial-gradient(circle,rgba(255,255,255,.35) 2px,transparent 2.5px);background-size:18px 6px;"></div>
+      <div style="font-size:30px;font-weight:800;color:#fff;-webkit-text-stroke:1.2px #5c0d0d;">Закрыть</div>
+    </div>
+  </div>
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;$preview&quot;:{&quot;width&quot;:1280,&quot;height&quot;:720},&quot;price&quot;:{&quot;editor&quot;:&quot;int&quot;,&quot;default&quot;:500,&quot;tsType&quot;:&quot;number&quot;,&quot;min&quot;:0}}">
+class Component extends DCLogic {
+  state = {
+    sel: 1,
+    items: [
+      { name: 'Старая камера', rarity: 'Обычный', rarityColor: '#e8e8e8', price: 350, bodyColor: '#8a6f52', owned: true, level: 3, stats: [22, 30, 25] },
+      { name: 'Плёночная камера', rarity: 'Обычный', rarityColor: '#e8e8e8', price: 500, bodyColor: '#c9c2b4', owned: true, level: 1, stats: [30, 52, 44] },
+      { name: 'Цифровая камера', rarity: 'Редкий', rarityColor: '#4fd8f0', price: 800, bodyColor: '#5a6e8c', owned: false, level: 0, stats: [48, 60, 55] },
+      { name: 'Экшн-камера', rarity: 'Эпический', rarityColor: '#c95cf2', price: 1200, bodyColor: '#2e3138', owned: false, level: 0, stats: [60, 72, 80] },
+      { name: 'Боевая кинокамера', rarity: 'Легендарный', rarityColor: '#ffb020', price: 2500, bodyColor: '#3a4a3a', owned: false, level: 0, stats: [85, 90, 88] }
+    ]
+  };
+  renderVals() {
+    const MAX = 5, items = this.state.items, sel = items[this.state.sel];
+    const bonus = sel.level * 4;
+    const w = i => Math.min(100, sel.stats[i] + (sel.owned ? bonus : 0)) + '%';
+    const upgradeCost = Math.round(sel.price * 0.4 * (sel.level + 1));
+    return {
+      cameras: items.map((it, i) => ({
+        ...it,
+        notOwned: !it.owned,
+        starsOn: '★'.repeat(it.level),
+        starsOff: '★'.repeat(MAX - it.level),
+        cardBg: i === this.state.sel ? 'rgba(45,58,78,.95)' : 'rgba(30,34,42,.95)',
+        cardBorder: i === this.state.sel ? '#4fa3e8' : '#0a0c10',
+        select: () => this.setState({ sel: i })
+      })),
+      selPrice: sel.price,
+      selNotOwned: !sel.owned,
+      selCanUpgrade: sel.owned && sel.level < MAX,
+      selMaxed: sel.owned && sel.level >= MAX,
+      selStarsOn: '★'.repeat(sel.level),
+      selStarsOff: '★'.repeat(MAX - sel.level),
+      upgradeCost,
+      zoomW: w(0), qualW: w(1), stabW: w(2),
+      buy: () => this.setState(s => ({ items: s.items.map((it, i) => i === s.sel ? { ...it, owned: true } : it) })),
+      upgrade: () => this.setState(s => ({ items: s.items.map((it, i) => i === s.sel && it.level < MAX ? { ...it, level: it.level + 1 } : it) }))
+    };
+  }
+}
+</script>
+</body>
+</html>

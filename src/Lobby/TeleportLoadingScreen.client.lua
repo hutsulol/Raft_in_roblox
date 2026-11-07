@@ -50,7 +50,10 @@ local function buildTransferGui()
 	gui.Name           = "TeleportTransferScreen"
 	gui.ResetOnSpawn   = false
 	gui.IgnoreGuiInset = true
-	gui.DisplayOrder   = 100
+	-- ВЫШЕ всех меню лобби (они занимают 100..200: награды 100, оружие 101,
+	-- пираты 102, магазин 103, классы 110, админка 200). При DisplayOrder 100
+	-- кнопки меню рисовались ПОВЕРХ чёрного экрана перехода.
+	gui.DisplayOrder   = 1000
 
 	local backdrop = Instance.new("Frame")
 	backdrop.Name             = "Backdrop"
@@ -117,7 +120,7 @@ local function playIrisOut()
 	irisGui.Name           = "TeleportIrisOut"
 	irisGui.ResetOnSpawn   = false
 	irisGui.IgnoreGuiInset = true
-	irisGui.DisplayOrder   = 99
+	irisGui.DisplayOrder   = 999 -- на 1 ниже чёрного экрана, но выше всех меню
 	irisGui.Parent         = playerGui
 
 	-- Pre-stage the title invisibly so it's already in the layout

@@ -1,0 +1,80 @@
+[
+  {
+    "name": "Fish_Sardine",
+    "triangles": 14500,
+    "relaxedVertices": 1934,
+    "welded": 2349
+  },
+  {
+    "name": "Fish_Mackerel",
+    "triangles": 14500,
+    "relaxedVertices": 1940,
+    "welded": 2082
+  },
+  {
+    "name": "Fish_Seabass",
+    "triangles": 14500,
+    "relaxedVertices": 1221,
+    "welded": 1610
+  },
+  {
+    "name": "Fish_Dorado",
+    "triangles": 14500,
+    "relaxedVertices": 1745,
+    "welded": 2167
+  },
+  {
+    "name": "Fish_Bream",
+    "triangles": 14499,
+    "relaxedVertices": 1115,
+    "welded": 1156
+  },
+  {
+    "name": "Fish_Barracuda",
+    "triangles": 14500,
+    "relaxedVertices": 1913,
+    "welded": 1955
+  },
+  {
+    "name": "Fish_Tuna",
+    "triangles": 14499,
+    "relaxedVertices": 1580,
+    "welded": 2012
+  },
+  {
+    "name": "Fish_Swordfish",
+    "triangles": 14499,
+    "relaxedVertices": 2789,
+    "welded": 2101
+  },
+  {
+    "name": "Fish_GoldFugu",
+    "triangles": 14500,
+    "relaxedVertices": 3315,
+    "welded": 0
+  },
+  {
+    "name": "Fish_Marlin",
+    "triangles": 14500,
+    "relaxedVertices": 1993,
+    "welded": 2113
+  },
+  {
+    "name": "Fish_GhostRay",
+    "triangles": 14498,
+    "relaxedVertices": 1874,
+    "welded": 2326
+  },
+  {
+    "name": "Fish_Krakenling",
+    "triangles": 14499,
+    "relaxedVertices": 2929,
+    "welded": 0
+  },
+  {
+    "name": "Fish_Leviathan",
+    "triangles": 14500,
+    "relaxedVertices": 1144,
+    "welded": 1483
+  }
+]

@@ -1,0 +1,10 @@
+{
+  "title": "МЕШОК PIRATE",
+  "offer": "ВЫГОДНЫЙ НАБОР",
+  "price": 100,
+  "hero": "assets/bag.png",
+  "currencyIcon": "assets/robux.png",
+  "fontFamily": "Arial Black, Arial",
+  "palette": {"top":"#FFD14A","bottom":"#00B795","accent":"#F29A16","panel":"#FFF5D8","offerText":"#155D4D"},
+  "rewards": [{"label":"2 000","asset":"assets/coin.png"}]
+}

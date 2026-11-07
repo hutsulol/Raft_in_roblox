@@ -1,0 +1,17 @@
+local npc = script.Parent
+
+-- Only relevant for fishing-rod mercenaries
+local equippedWeapon = npc:GetAttribute("EquippedWeapon") or "Sword"
+if equippedWeapon ~= "FishingRod" then
+	return
+end
+
+local hum = npc:FindFirstChildOfClass("Humanoid")
+local anim = hum:WaitForChild("Animator")
+
+local idleAnim = anim:LoadAnimation(script:WaitForChild("Fishing"))
+
+npc:SetAttribute("IsFishing", true)
+
+idleAnim.Looped = true
+idleAnim:Play()

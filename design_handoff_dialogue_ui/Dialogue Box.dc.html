@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&family=Russo+One&display=swap" rel="stylesheet">
+  <style>
+    body { margin: 0; background: #0b1520; }
+    a { color: #8ecdf6; } a:hover { color: #b3e0ff; }
+    @keyframes dlg-bounce { 0%,100% { transform: translateY(0); opacity: 1; } 50% { transform: translateY(5px); opacity: .6; } }
+    @keyframes dlg-blink { 0%,100% { opacity: 1; } 50% { opacity: 0.3; } }
+    @keyframes dlg-pop { 0% { transform: scale(0.4) translateY(24px); opacity: 0; } 100% { transform: scale(1) translateY(0); opacity: 1; } }
+  </style>
+  <script src="./image-slot.js"></script>
+</helmet>
+<div style="position: relative; width: 1571px; height: 712px; overflow: hidden; font-family: 'Nunito', sans-serif; background-image: url('uploads/pasted-1785766534151-0.png'); background-size: 1571px 712px; background-repeat: no-repeat;">
+  <!-- Patch over the old baked-in day banner -->
+  <div style="position: absolute; left: 615px; top: 20px; width: 245px; height: 78px; background: linear-gradient(180deg, rgb(70,154,216) 0%, rgb(98,175,218) 100%); border-radius: 20px; filter: blur(1px);"></div>
+  <!-- New day counter: no plate, sun/moon emoji -->
+  <div style="position: absolute; left: 587px; top: 30px; width: 300px; display: flex; align-items: center; justify-content: center; gap: 10px;">
+    {{ timeEmoji }}
+    {{ timeLabel }}
+  </div>
+  <sc-if value="{{ dimBackground }}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; inset: 0; background: radial-gradient(ellipse at 50% 75%, rgba(0,0,0,0.05) 30%, rgba(0,0,0,0.35) 100%); pointer-events: none;"></div>
+  </sc-if>
+  <!-- Dialogue (no plate, day-counter style) -->
+  <div onClick="{{ onAdvance }}" style="position: absolute; left: 440px; top: 500px; width: 620px; display: flex; align-items: center; gap: 14px; cursor: pointer; user-select: none;">
+    <div style="flex: 0 0 auto; width: 78px; height: 78px; border-radius: 50%; box-shadow: 0 4px 14px rgba(0,0,0,0.4); border: 3px solid rgba(255,255,255,0.85); box-sizing: border-box; overflow: hidden;">
+      <image-slot id="speaker-avatar" shape="circle" placeholder="Аватар" style="width: 72px; height: 72px;"></image-slot>
+    </div>
+    <div style="flex: 0 1 auto; width: fit-content; max-width: 500px; min-width: 0; display: flex; flex-direction: column; align-items: flex-start; gap: 4px; background: rgba(40,44,50,0.45); border-radius: 12px; padding: 10px 14px 9px; backdrop-filter: blur(3px); box-shadow: 0 4px 14px rgba(0,0,0,0.2);">
+      <div style="font-family: 'Russo One', sans-serif; font-size: 17px; color: #8ecdf6; text-shadow: 0 2px 0 rgba(20,60,100,0.55), 0 4px 10px rgba(0,0,0,0.35); letter-spacing: 0.5px;">Житель Боб</div>
+      <p style="margin: 0; min-height: 24px; font-weight: 800; font-size: 18px; line-height: 1.35; color: #ffffff; text-shadow: 0 2px 0 rgba(20,60,100,0.5), 0 4px 12px rgba(0,0,0,0.35); text-wrap: pretty;">{{ dialogueText }}</p>
+      <sc-if value="{{ showQuestion }}" hint-placeholder-val="{{ false }}">
+        <div style="display: flex; gap: 10px; margin-top: 6px; animation: dlg-pop 0.35s ease-out both;">
+          <sc-for list="{{ questionOptions }}" as="q" hint-placeholder-count="2">
+            <div onClick="{{ q.pick }}" style="padding: 5px 18px 6px; border-radius: 999px; background: linear-gradient(180deg, #7a5430 0%, #4a3018 100%); border: 2px solid #241609; box-shadow: 0 2px 6px rgba(0,0,0,0.35), inset 0 1px 0 rgba(255,220,160,0.3); cursor: pointer; font-weight: 900; font-size: 15px; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.45);" style-hover="background: linear-gradient(180deg, #8a6238 0%, #58391d 100%); transform: translateY(-1px)">{{ q.label }}</div>
+          </sc-for>
+        </div>
+      </sc-if>
+    </div>
+  </div>
+  <!-- Reward toast -->
+  <sc-if value="{{ showReward }}" hint-placeholder-val="{{ false }}">
+    <div style="position: absolute; left: 0; right: 0; top: 414px; margin: 0 auto; width: fit-content; display: flex; align-items: center; gap: 18px; padding: 9px 24px 9px 18px; border-radius: 999px; background: rgba(40,44,50,0.55); backdrop-filter: blur(4px); box-shadow: 0 6px 18px rgba(0,0,0,0.35); animation: dlg-pop 0.45s cubic-bezier(0.34, 1.56, 0.64, 1) both; pointer-events: none;">
+      <span style="font-weight: 900; font-size: 12px; letter-spacing: 1.5px; text-transform: uppercase; color: rgba(142,205,246,0.95); text-shadow: 0 1px 2px rgba(0,0,0,0.5);">Получено</span>
+      <sc-for list="{{ rewardItems }}" as="r" hint-placeholder-count="0">
+        <div style="display: flex; align-items: center; gap: 8px;">
+          <div style="width: 46px; height: 46px; border-radius: 50%; border: 3px solid #8ecdf6; box-sizing: border-box; overflow: hidden; box-shadow: 0 3px 10px rgba(0,0,0,0.4); flex: 0 0 auto;">
+            {{ r.iconEl }}
+          </div>
+          <span style="font-family: 'Russo One', sans-serif; font-size: 17px; color: #ffffff; text-shadow: 0 2px 0 rgba(20,60,100,0.5), 0 3px 8px rgba(0,0,0,0.4);">{{ r.name }}</span>
+        </div>
+      </sc-for>
+    </div>
+  </sc-if>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 1571, &quot;height&quot;: 712 },
+  &quot;timeOfDay&quot;: { &quot;editor&quot;: &quot;enum&quot;, &quot;options&quot;: [&quot;день&quot;, &quot;ночь&quot;], &quot;default&quot;: &quot;день&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Счётчик дня&quot; },
+  &quot;dimBackground&quot;: { &quot;editor&quot;: &quot;boolean&quot;, &quot;default&quot;: false, &quot;tsType&quot;: &quot;boolean&quot;, &quot;section&quot;: &quot;Диалог&quot; },
+  &quot;typingSpeed&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 30, &quot;min&quot;: 10, &quot;max&quot;: 80, &quot;step&quot;: 5, &quot;unit&quot;: &quot;мс/симв&quot;, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Диалог&quot; }
+}">
+class Component extends DCLogic {
+  state = { line: 0, chars: 0, done: false, blink: false };
+  lines() {
+    return [
+      { text: 'Привет, путник! Наш плот совсем маленький. Собери брёвна — и мы построим что-нибудь получше!' },
+      { text: 'Доски найдёшь прямо на плоту, а брёвна иногда прибивает волнами к краю.' },
+      { text: 'Возьми этот револьвер — пригодится для защиты!', rewards: [{ name: 'Револьвер', icon: 'revolver-icon.png' }] },
+      { text: 'И вот ещё припасы на первое время!', rewards: [{ name: 'Мушкет', icon: 'musket-icon.png' }, { name: 'Факел', icon: 'torch-icon.png' }] },
+      { text: 'Ну что, поможешь нам отстроить плот?', question: [{ label: 'Конечно!', next: 5 }, { label: 'Позже', next: 6 }] },
+      { text: 'Отлично! Тогда держи полный набор выжившего!', rewards: [{ name: 'Револьвер', icon: 'revolver-icon.png' }, { name: 'Мушкет', icon: 'musket-icon.png' }, { name: 'Факел', icon: 'torch-icon.png' }], next: 0 },
+      { text: 'Ну что ж, возвращайся, когда будешь готов.', next: 0 }
+    ];
+  }
+  componentDidMount() { this.startTyping(); }
+  componentWillUnmount() { clearInterval(this._t); clearTimeout(this._b); }
+  startTyping() {
+    clearInterval(this._t); clearTimeout(this._b);
+    this.setState({ chars: 0, done: false, blink: false });
+    const speed = this.props.typingSpeed ?? 30;
+    this._t = setInterval(() => {
+      const full = this.lines()[this.state.line].text.length;
+      if (this.state.chars + 1 >= full) { this.finishLine(); }
+      else { this.setState(s => ({ chars: s.chars + 1 })); }
+    }, speed);
+  }
+  finishLine() {
+    clearInterval(this._t); clearTimeout(this._b);
+    this.setState({ chars: this.lines()[this.state.line].text.length, done: true, blink: false });
+    this._b = setTimeout(() => this.setState({ blink: true }), 5000);
+  }
+  renderVals() {
+    const { line, chars, done, blink } = this.state;
+    const entry = this.lines()[line];
+    const text = entry.text;
+    return {
+      showReward: done && !!entry.rewards,
+      rewardItems: (entry.rewards || []).map(r => ({
+        name: r.name,
+        iconEl: React.createElement('img', { src: r.icon, alt: r.name, style: { width: '100%', height: '100%', objectFit: 'cover', display: 'block' } })
+      })),
+      showQuestion: done && !!entry.question,
+      questionOptions: (entry.question || []).map(o => ({
+        label: o.label,
+        pick: (e) => { e.stopPropagation(); this.setState({ line: o.next }, () => this.startTyping()); }
+      })),
+      onAdvance: () => {
+        const cur = this.lines()[this.state.line];
+        if (!this.state.done) { this.finishLine(); }
+        else if (cur.question) { /* нужно выбрать ответ */ }
+        else { this.setState(s => ({ line: cur.next ?? (s.line + 1) % this.lines().length }), () => this.startTyping()); }
+      },
+      dialogueText: React.createElement('span', {
+        style: blink ? { animation: 'dlg-blink 1.2s ease-in-out infinite' } : null
+      }, done ? text : text.slice(0, chars) + '▌'),
+      dimBackground: this.props.dimBackground ?? false,
+      timeEmoji: (() => {
+        const night = (this.props.timeOfDay ?? 'день') === 'ночь';
+        const mk = (emoji, on) => React.createElement('span', {
+          key: emoji,
+          style: {
+            gridArea: '1 / 1', fontSize: '34px', lineHeight: 1,
+            filter: 'drop-shadow(0 2px 3px rgba(0,0,0,0.35))',
+            opacity: on ? 1 : 0,
+            transform: on ? 'rotate(0deg) scale(1)' : 'rotate(-120deg) scale(0.3)',
+            transition: 'opacity 0.7s ease, transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)'
+          }
+        }, emoji);
+        return React.createElement('span', { style: { display: 'inline-grid' } }, [mk('☀️', !night), mk('🌙', night)]);
+      })(),
+      timeLabel: (() => {
+        const night = (this.props.timeOfDay ?? 'день') === 'ночь';
+        const mk = (text, on, dir) => React.createElement('span', {
+          key: text,
+          style: {
+            gridArea: '1 / 1', whiteSpace: 'nowrap',
+            fontFamily: "'Russo One', sans-serif", fontSize: '32px', lineHeight: 1.2,
+            color: '#ffffff', letterSpacing: '1px',
+            textShadow: '0 2px 0 rgba(20,60,100,0.55), 0 4px 10px rgba(0,0,0,0.3)',
+            opacity: on ? 1 : 0,
+            transform: on ? 'translateY(0)' : `translateY(${dir * 16}px)`,
+            transition: 'opacity 0.7s ease, transform 0.7s cubic-bezier(0.34, 1.56, 0.64, 1)'
+          }
+        }, text);
+        return React.createElement('span', { style: { display: 'inline-grid' } }, [mk('День 1', !night, -1), mk('Ночь 1', night, 1)]);
+      })()
+    };
+  }
+}
+</script>
+</body>
+</html>

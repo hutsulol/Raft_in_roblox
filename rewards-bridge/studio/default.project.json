@@ -1,0 +1,19 @@
+{
+  "name": "PirateCodeLab",
+  "tree": {
+    "$className": "DataModel",
+    "HttpService": { "$className": "HttpService", "$properties": { "HttpEnabled": true } },
+    "ServerStorage": { "StudioConfig": { "$path": "../data/StudioConfig.lua" } },
+    "ServerScriptService": {
+      "RewardCodes": { "$path": "../roblox/RewardCodes.lua" },
+      "CodeLab": { "$path": "CodeLab.server.lua" }
+    },
+    "StarterPlayer": { "StarterPlayerScripts": { "CodeLabUI": { "$path": "CodeLabUI.client.lua" } } },
+    "Workspace": {
+      "$className": "Workspace",
+      "Floor": { "$className": "Part", "$properties": { "Anchored": true, "Size": [100, 1, 100], "Position": [0, -1, 0], "Color": [0.08, 0.15, 0.2] } },
+      "Spawn": { "$className": "SpawnLocation", "$properties": { "Anchored": true, "Size": [6, 1, 6], "Position": [0, 0, 0], "Neutral": true } }
+    },
+    "Lighting": { "$className": "Lighting", "$properties": { "ClockTime": 14, "Brightness": 2 } }
+  }
+}

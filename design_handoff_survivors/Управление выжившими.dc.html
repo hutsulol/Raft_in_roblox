@@ -1,0 +1,368 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; background: #e9e6e0; }
+    * { box-sizing: border-box; }
+    a { color: #2e6bb4; } a:hover { color: #1c4f8f; }
+  </style>
+</helmet>
+
+<div style="font-family: 'Nunito', sans-serif; color: #2b2620; padding: 44px 40px 80px 40px; max-width: 1320px; margin: 0 auto;">
+
+  <div style="max-width: 880px; margin-bottom: 32px;">
+    <div style="font-size: 13px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #8a7a5e; margin-bottom: 10px;">Roblox UI · Pirate Island · Тема «Океан»</div>
+    <h1 style="font-size: 32px; font-weight: 900; margin: 0 0 12px 0; line-height: 1.15;">Управление выжившими</h1>
+    <p style="font-size: 15px; font-weight: 700; line-height: 1.6; color: #5a5247; margin: 0;">
+      Нажмите на выжившего в списке, чтобы открыть его страницу: слева предпросмотр персонажа, справа работа и зарплата. Всё интерактивно.
+    </p>
+  </div>
+
+  <div style="background: linear-gradient(180deg, #7ec0e6 0%, #5fa8d6 100%); border-radius: 16px; padding: 40px 20px; display: flex; justify-content: center; margin-bottom: 44px;">
+
+    <!-- ================= LIST VIEW ================= -->
+    <sc-if value="{{ isList }}" hint-placeholder-val="{{ true }}">
+      <div style="display: flex; gap: 16px; align-items: flex-start; flex-wrap: wrap; justify-content: center; max-width: 100%;">
+
+        <!-- sidebar -->
+        <div style="width: 230px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 4px solid #1c4f8f; border-radius: 18px; padding: 14px; box-shadow: 0 10px 24px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 12px;">
+          <div style="font-size: 19px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); text-align: center;">Команда</div>
+          <div style="background: #1c4f8f; border-radius: 12px; padding: 8px 10px; text-align: center; display: flex; flex-direction: column; gap: 1px;">
+            <div style="font-size: 12px; font-weight: 900; color: #a9d6f7; text-transform: uppercase; letter-spacing: 1px;">Выживших</div>
+            <div style="font-size: 24px; font-weight: 900; color: #ffd95a; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">{{ countLabel }}</div>
+          </div>
+          <div style="background: #1c4f8f; border-radius: 12px; padding: 8px 10px; text-align: center; display: flex; flex-direction: column; gap: 1px;">
+            <div style="font-size: 12px; font-weight: 900; color: #a9d6f7; text-transform: uppercase; letter-spacing: 1px;">Зарплаты / день</div>
+            <div style="display: flex; align-items: center; justify-content: center; gap: 6px;">
+              <div style="width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2px solid #b07a14;"></div>
+              <div style="font-size: 22px; font-weight: 900; color: #ffd95a; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">{{ totalSalary }}</div>
+            </div>
+          </div>
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <sc-for list="{{ filters }}" as="f" hint-placeholder-count="4">
+              <sc-if value="{{ f.active }}" hint-placeholder-val="{{ false }}">
+                <div onClick="{{ f.pick }}" style="background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 3px solid #b07a14; border-radius: 12px; padding: 10px 0; text-align: center; font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -5px 0 rgba(0,0,0,0.18); cursor: pointer;">{{ f.name }}</div>
+              </sc-if>
+              <sc-if value="{{ f.idle }}" hint-placeholder-val="{{ true }}">
+                <div onClick="{{ f.pick }}" style="background: #2e6bb4; border: 3px solid #1c4f8f; border-radius: 12px; padding: 10px 0; text-align: center; font-size: 16px; font-weight: 900; color: #cfe6fa; box-shadow: inset 0 -5px 0 rgba(0,0,0,0.18); cursor: pointer;" style-hover="background: #3776c2;">{{ f.name }}</div>
+              </sc-if>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- list panel -->
+        <div style="width: min(600px, 100%); background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 4px solid #1c4f8f; border-radius: 18px; padding: 16px; box-shadow: 0 10px 24px rgba(0,0,0,0.3);">
+          <div style="display: flex; align-items: center; gap: 12px; margin-bottom: 14px;">
+            <div style="font-size: 19px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); flex: 1;">Выжившие</div>
+            <div style="display: flex; align-items: center; gap: 6px; background: #2e6bb4; border: 2px solid #1c4f8f; border-radius: 999px; padding: 4px 12px 4px 5px;">
+              <div style="width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2px solid #b07a14;"></div>
+              <span style="font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">{{ coins }}</span>
+            </div>
+            <div style="width: 34px; height: 34px; background: linear-gradient(180deg, #ff7a6a 0%, #e84a3a 100%); border: 3px solid #a82e2e; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18); cursor: pointer;">✕</div>
+          </div>
+
+          <div style="display: flex; flex-direction: column; gap: 10px;">
+            <sc-for list="{{ rows }}" as="r" hint-placeholder-count="4">
+              <div onClick="{{ r.open }}" style="display: flex; align-items: center; gap: 14px; background: #6fb5ee; border: 3px solid #2e6bb4; border-radius: 14px; padding: 10px 14px; cursor: pointer;" style-hover="background: #7cbff2;">
+                <div style="width: 60px; height: 60px; flex: none; border: 3px solid {{ r.rarityColor }}; border-radius: 12px; overflow: hidden; background: #a9d6f7;">
+                  <img src="uploads/pasted-1791284095628-0.png" alt="" style="width: 100%; height: 100%; object-fit: cover; display: block; filter: {{ r.tint }};">
+                </div>
+                <div style="display: flex; flex-direction: column; gap: 5px; flex: 1; min-width: 0;">
+                  <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">{{ r.name }}</div>
+                    <div style="background: {{ r.rarityColor }}; border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.35);">Ур. {{ r.level }}</div>
+                  </div>
+                  <div style="display: flex; align-items: center; gap: 8px; flex-wrap: wrap;">
+                    <div style="background: #2e6bb4; border: 2px solid #1c4f8f; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 900; color: #ffffff;">{{ r.job }}</div>
+                    <div style="background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2px solid #b07a14; border-radius: 999px; padding: 1px 9px; font-size: 11px; font-weight: 900; color: #6b4a08;">{{ r.mainBonus }}</div>
+                    <div style="display: flex; align-items: center; gap: 5px; background: #2e6bb4; border: 2px solid #1c4f8f; border-radius: 999px; padding: 2px 10px 2px 3px;">
+                      <div style="width: 16px; height: 16px; border-radius: 50%; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2px solid #b07a14;"></div>
+                      <span style="font-size: 12px; font-weight: 900; color: #ffd95a;">{{ r.salary }} / день</span>
+                    </div>
+                  </div>
+                </div>
+                <div style="display: flex; flex-direction: column; align-items: flex-end; gap: 4px; width: 92px; flex: none;">
+                  <div style="font-size: 11px; font-weight: 900; color: #1c4f8f; text-transform: uppercase;">Настроение</div>
+                  <div style="width: 100%; height: 10px; background: #1c4f8f; border-radius: 999px; overflow: hidden;">
+                    <div style="height: 100%; width: {{ r.moodPct }}; background: {{ r.moodColor }}; border-radius: 999px;"></div>
+                  </div>
+                </div>
+                <div style="width: 34px; height: 34px; flex: none; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 3px solid #b07a14; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.15);">›</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+    <!-- ================= DETAIL VIEW ================= -->
+    <sc-if value="{{ isDetail }}" hint-placeholder-val="{{ false }}">
+      <div style="display: flex; gap: 16px; align-items: stretch; flex-wrap: wrap; justify-content: center; max-width: 100%;">
+
+        <!-- preview -->
+        <div style="width: 300px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 4px solid #1c4f8f; border-radius: 18px; padding: 14px; box-shadow: 0 10px 24px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 12px;">
+          <div style="display: flex; align-items: center; gap: 10px;">
+            <div onClick="{{ back }}" style="width: 34px; height: 34px; background: #2e6bb4; border: 3px solid #1c4f8f; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 900; color: #ffffff; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18); cursor: pointer;" style-hover="background: #3776c2;">‹</div>
+            <div style="font-size: 19px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); flex: 1;">{{ sel.name }}</div>
+          </div>
+          <div style="position: relative; height: 320px; background: linear-gradient(180deg, #2e6bb4 0%, #1c4f8f 100%); border: 3px solid {{ sel.rarityColor }}; border-radius: 14px; overflow: hidden; display: flex; align-items: center; justify-content: center;">
+            <div style="position: absolute; width: 240px; height: 240px; border-radius: 50%; background: radial-gradient(circle, rgba(169,214,247,0.5) 0%, rgba(169,214,247,0) 70%);"></div>
+            <img src="uploads/pasted-1791284095628-0.png" alt="Персонаж" style="position: relative; width: 200px; height: auto; border-radius: 18px; filter: {{ sel.tint }};">
+            <div style="position: absolute; bottom: 14px; left: 50%; transform: translateX(-50%); width: 150px; height: 18px; border-radius: 50%; background: rgba(0,0,0,0.25);"></div>
+            <div style="position: absolute; top: 10px; left: 10px; background: {{ sel.rarityColor }}; border: 2px solid #ffffff; white-space: nowrap; border-radius: 999px; padding: 2px 10px; font-size: 12px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.35);">Ур. {{ sel.level }}</div>
+            <div style="position: absolute; bottom: 8px; right: 10px; font-family: monospace; font-size: 10px; color: #a9d6f7;">3D-модель · вращение</div>
+          </div>
+          <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 8px;">
+            <div style="background: #1c4f8f; border-radius: 12px; padding: 7px 10px; display: flex; flex-direction: column; gap: 4px;">
+              <div style="font-size: 11px; font-weight: 900; color: #a9d6f7; text-transform: uppercase;">Здоровье</div>
+              <div style="height: 10px; background: #143a6b; border-radius: 999px; overflow: hidden;"><div style="height: 100%; width: {{ sel.hpPct }}; background: #e84a3a; border-radius: 999px;"></div></div>
+            </div>
+            <div style="background: #1c4f8f; border-radius: 12px; padding: 7px 10px; display: flex; flex-direction: column; gap: 4px;">
+              <div style="font-size: 11px; font-weight: 900; color: #a9d6f7; text-transform: uppercase;">Настроение</div>
+              <div style="height: 10px; background: #143a6b; border-radius: 999px; overflow: hidden;"><div style="height: 100%; width: {{ sel.moodPct }}; background: {{ sel.moodColor }}; border-radius: 999px;"></div></div>
+            </div>
+          </div>
+          <div style="background: #1c4f8f; border-radius: 14px; padding: 10px; display: flex; flex-direction: column; gap: 8px;">
+            <div style="font-size: 12px; font-weight: 900; color: #a9d6f7; text-transform: uppercase; letter-spacing: 1px;">Бонусы капитана</div>
+            <sc-for list="{{ sel.bonuses }}" as="b" hint-placeholder-count="2">
+              <div style="display: flex; align-items: center; gap: 10px; background: #2e6bb4; border: 2px solid #143a6b; border-radius: 10px; padding: 6px 8px;">
+                <div style="width: 30px; height: 30px; flex: none; border-radius: 50%; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2px solid #b07a14; display: flex; align-items: center; justify-content: center; font-size: 13px; font-weight: 900; color: #6b4a08;">{{ b.sign }}</div>
+                <div style="flex: 1; min-width: 0; display: flex; flex-direction: column; line-height: 1.15;">
+                  <div style="font-size: 15px; font-weight: 900; color: #ffd95a; text-shadow: 0 1px 0 rgba(0,0,0,0.35);">{{ b.value }}</div>
+                  <div style="font-size: 12px; font-weight: 900; color: #ffffff;">{{ b.label }}</div>
+                </div>
+                <div style="background: {{ b.tagColor }}; border-radius: 999px; padding: 1px 8px; font-size: 10px; font-weight: 900; color: #ffffff; white-space: nowrap; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">{{ b.type }}</div>
+              </div>
+            </sc-for>
+          </div>
+        </div>
+
+        <!-- management -->
+        <div style="width: min(560px, 100%); background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 4px solid #1c4f8f; border-radius: 18px; padding: 16px; box-shadow: 0 10px 24px rgba(0,0,0,0.3); display: flex; flex-direction: column; gap: 14px;">
+          <div style="display: flex; align-items: center; gap: 12px;">
+            <div style="font-size: 19px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); flex: 1;">Управление</div>
+            <div style="display: flex; align-items: center; gap: 6px; background: #2e6bb4; border: 2px solid #1c4f8f; border-radius: 999px; padding: 4px 12px 4px 5px;">
+              <div style="width: 20px; height: 20px; border-radius: 50%; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2px solid #b07a14;"></div>
+              <span style="font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">{{ coins }}</span>
+            </div>
+            <div onClick="{{ back }}" style="width: 34px; height: 34px; background: linear-gradient(180deg, #ff7a6a 0%, #e84a3a 100%); border: 3px solid #a82e2e; border-radius: 10px; display: flex; align-items: center; justify-content: center; font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18); cursor: pointer;">✕</div>
+          </div>
+
+          <!-- job -->
+          <div style="background: #6fb5ee; border: 3px solid #2e6bb4; border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <div style="font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Место работы</div>
+              <div style="font-size: 12px; font-weight: 900; color: #1c4f8f;">{{ jobHint }}</div>
+            </div>
+            <div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 8px;">
+              <sc-for list="{{ jobs }}" as="j" hint-placeholder-count="6">
+                <sc-if value="{{ j.active }}" hint-placeholder-val="{{ false }}">
+                  <div onClick="{{ j.pick }}" style="display: flex; flex-direction: column; gap: 6px; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 3px solid #b07a14; border-radius: 12px; padding: 6px; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.15); cursor: pointer;">
+                    <div style="position: relative; height: 124px; background: #fff3c9; border: 2px solid #b07a14; border-radius: 9px; display: flex; align-items: center; justify-content: center; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.06) 0 6px, transparent 6px 12px);">
+                      <span style="font-family: monospace; font-size: 9px; color: #8a5a0a;">превью здания</span>
+                      <div style="position: absolute; top: 4px; right: 4px; background: #1f7a33; border-radius: 999px; padding: 0 7px; font-size: 10px; font-weight: 900; color: #ffffff;">ЗДЕСЬ</div>
+                    </div>
+                    <div style="font-size: 13px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); line-height: 1.1;">{{ j.name }}</div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+                      <div style="font-size: 11px; font-weight: 900; color: #7a4f06; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ j.place }}</div>
+                      <div style="font-size: 11px; font-weight: 900; color: #6b4a08; white-space: nowrap;">{{ j.seatsLabel }}</div>
+                    </div>
+                    <div style="display: flex; gap: 3px;">
+                      <sc-for list="{{ j.seats }}" as="st" hint-placeholder-count="3">
+                        <div style="flex: 1; height: 6px; border-radius: 999px; background: {{ st.color }};"></div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ j.idle }}" hint-placeholder-val="{{ true }}">
+                  <div onClick="{{ j.pick }}" style="display: flex; flex-direction: column; gap: 6px; background: #2e6bb4; border: 3px solid #1c4f8f; border-radius: 12px; padding: 6px; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18); cursor: pointer;" style-hover="background: #3776c2;">
+                    <div style="height: 124px; background: #a9d6f7; border: 2px solid #1c4f8f; border-radius: 9px; display: flex; align-items: center; justify-content: center; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.07) 0 6px, transparent 6px 12px);">
+                      <span style="font-family: monospace; font-size: 9px; color: #1c4f8f;">превью здания</span>
+                    </div>
+                    <div style="font-size: 13px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); line-height: 1.1;">{{ j.name }}</div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+                      <div style="font-size: 11px; font-weight: 900; color: #a9d6f7; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ j.place }}</div>
+                      <div style="font-size: 11px; font-weight: 900; color: #ffd95a; white-space: nowrap;">{{ j.seatsLabel }}</div>
+                    </div>
+                    <div style="display: flex; gap: 3px;">
+                      <sc-for list="{{ j.seats }}" as="st" hint-placeholder-count="3">
+                        <div style="flex: 1; height: 6px; border-radius: 999px; background: {{ st.color }};"></div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-if>
+                <sc-if value="{{ j.full }}" hint-placeholder-val="{{ false }}">
+                  <div style="display: flex; flex-direction: column; gap: 6px; background: #5d7d9e; border: 3px solid #45627f; border-radius: 12px; padding: 6px; opacity: 0.8; cursor: not-allowed;">
+                    <div style="position: relative; height: 124px; background: #8aa6c2; border: 2px solid #45627f; border-radius: 9px; display: flex; align-items: center; justify-content: center; background-image: repeating-linear-gradient(45deg, rgba(0,0,0,0.07) 0 6px, transparent 6px 12px);">
+                      <span style="font-family: monospace; font-size: 9px; color: #2f4660;">превью здания</span>
+                      <div style="position: absolute; top: 4px; right: 4px; background: #e84a3a; border-radius: 999px; padding: 0 7px; font-size: 10px; font-weight: 900; color: #ffffff;">ЗАНЯТО</div>
+                    </div>
+                    <div style="font-size: 13px; font-weight: 900; color: #e3edf6; line-height: 1.1;">{{ j.name }}</div>
+                    <div style="display: flex; align-items: center; justify-content: space-between; gap: 4px;">
+                      <div style="font-size: 11px; font-weight: 900; color: #c9d6e3; white-space: nowrap; overflow: hidden; text-overflow: ellipsis;">{{ j.place }}</div>
+                      <div style="font-size: 11px; font-weight: 900; color: #e3edf6; white-space: nowrap;">{{ j.seatsLabel }}</div>
+                    </div>
+                    <div style="display: flex; gap: 3px;">
+                      <sc-for list="{{ j.seats }}" as="st" hint-placeholder-count="3">
+                        <div style="flex: 1; height: 6px; border-radius: 999px; background: {{ st.color }};"></div>
+                      </sc-for>
+                    </div>
+                  </div>
+                </sc-if>
+              </sc-for>
+            </div>
+            <sc-if value="{{ canRest }}" hint-placeholder-val="{{ true }}">
+              <div onClick="{{ rest }}" style="align-self: flex-start; background: #2e6bb4; border: 3px solid #1c4f8f; border-radius: 12px; padding: 7px 16px; font-size: 13px; font-weight: 900; color: #cfe6fa; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18); cursor: pointer;" style-hover="background: #3776c2;">Снять с работы (отдых)</div>
+            </sc-if>
+          </div>
+
+          <!-- salary -->
+          <div style="background: #6fb5ee; border: 3px solid #2e6bb4; border-radius: 14px; padding: 12px 14px; display: flex; flex-direction: column; gap: 10px;">
+            <div style="display: flex; align-items: baseline; gap: 8px;">
+              <div style="font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Зарплата</div>
+              <div style="font-size: 12px; font-weight: 900; color: #1c4f8f;">чем выше, тем лучше настроение и скорость работы</div>
+            </div>
+            <div style="display: flex; align-items: center; gap: 12px;">
+              <div onClick="{{ dec }}" style="width: 44px; height: 44px; flex: none; background: #2e6bb4; border: 3px solid #1c4f8f; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; color: #ffffff; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18); cursor: pointer;" style-active="transform: translateY(2px);">−</div>
+              <div style="flex: 1; display: flex; flex-direction: column; gap: 6px;">
+                <div style="display: flex; align-items: center; justify-content: center; gap: 7px;">
+                  <div style="width: 22px; height: 22px; border-radius: 50%; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2px solid #b07a14;"></div>
+                  <div style="font-size: 24px; font-weight: 900; color: #ffd95a; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">{{ sel.salary }}</div>
+                  <div style="font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">/ день</div>
+                </div>
+                <div style="height: 12px; background: #1c4f8f; border-radius: 999px; overflow: hidden;"><div style="height: 100%; width: {{ salaryPct }}; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border-radius: 999px;"></div></div>
+              </div>
+              <div onClick="{{ inc }}" style="width: 44px; height: 44px; flex: none; background: #2e6bb4; border: 3px solid #1c4f8f; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 24px; font-weight: 900; color: #ffffff; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18); cursor: pointer;" style-active="transform: translateY(2px);">+</div>
+            </div>
+          </div>
+
+          <!-- stats -->
+          <div style="display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px;">
+            <sc-for list="{{ stats }}" as="s" hint-placeholder-count="3">
+              <div style="background: #1c4f8f; border-radius: 12px; padding: 8px 10px; text-align: center; display: flex; flex-direction: column; gap: 1px;">
+                <div style="font-size: 11px; font-weight: 900; color: #a9d6f7; text-transform: uppercase;">{{ s.label }}</div>
+                <div style="font-size: 18px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.35);">{{ s.value }}</div>
+              </div>
+            </sc-for>
+          </div>
+
+          <!-- actions -->
+          <div style="display: flex; gap: 10px; margin-top: auto;">
+            <div onClick="{{ back }}" style="flex: 1; background: linear-gradient(180deg, #5ee07a 0%, #34b84e 100%); border: 3px solid #1f7a33; border-radius: 12px; padding: 11px 0; text-align: center; font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18); cursor: pointer;" style-active="transform: translateY(2px);">Сохранить</div>
+            <div onClick="{{ fire }}" style="background: linear-gradient(180deg, #ff7a6a 0%, #e84a3a 100%); border: 3px solid #a82e2e; border-radius: 12px; padding: 11px 20px; text-align: center; font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18); cursor: pointer;" style-active="transform: translateY(2px);">Выгнать</div>
+          </div>
+        </div>
+      </div>
+    </sc-if>
+
+  </div>
+
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+    <div style="background: #ffffff; border-radius: 16px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 12px;">Логика</div>
+      <div style="font-size: 13px; font-weight: 700; line-height: 2; color: #5a5247;">
+        Список → клик по строке → страница выжившего<br>
+        Предпросмотр: ViewportFrame с моделью, вращение мышью<br>
+        Зарплата: шаг 5, от 0 до 100 монет / день<br>
+        Зарплата влияет на настроение, настроение — на скорость<br>
+        Работа: одна на выжившего, «Отдых» — без работы
+      </div>
+    </div>
+    <div style="background: #ffffff; border-radius: 16px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 12px;">Настроение</div>
+      <div style="display: flex; flex-direction: column; gap: 9px; font-size: 13px; font-weight: 700; color: #5a5247;">
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #5ee07a; flex: none;"></div>Довольны (≥ 65%) — #5EE07A</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #ffd95a; flex: none;"></div>Нормально (35–64%) — #FFD95A</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #ff6b5e; flex: none;"></div>Недовольны (&lt; 35%) — #FF6B5E</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  state = {
+    view: 'list', sel: 0, filter: 'Все', coins: 3115,
+    crew: [
+      { name: 'Анна «Шторм»', level: 5, job: 'Рыбацкий причал', salary: 40, hp: 90, tint: 'none',
+        bonuses: [{ sign: '$', value: '+150%', label: 'Прибыль с улова', type: 'Пассивный' }, { sign: '⚡', value: '+20%', label: 'Скорость на причале', type: 'На работе' }] },
+      { name: 'Капитан Рон', level: 8, job: 'Верфь', salary: 65, hp: 75, tint: 'hue-rotate(180deg)',
+        bonuses: [{ sign: '$', value: '+200%', label: 'Прибыль всей команды', type: 'Пассивный' }, { sign: '⚒', value: '−30%', label: 'Стоимость постройки', type: 'На работе' }, { sign: '♥', value: '+10', label: 'Настроение соседей', type: 'Аура' }] },
+      { name: 'Мия Ракушка', level: 2, job: 'Отдых', salary: 10, hp: 100, tint: 'hue-rotate(90deg)',
+        bonuses: [{ sign: '★', value: '+15%', label: 'Шанс редкой находки', type: 'Пассивный' }] },
+      { name: 'Старый Билл', level: 4, job: 'Кухня', salary: 25, hp: 55, tint: 'hue-rotate(260deg) saturate(0.8)',
+        bonuses: [{ sign: '♥', value: '+25%', label: 'Сытость от еды', type: 'На работе' }, { sign: '$', value: '+50%', label: 'Прибыль кухни', type: 'Пассивный' }] },
+      { name: 'Кира Волна', level: 6, job: 'Плантация', salary: 50, hp: 80, tint: 'hue-rotate(40deg)',
+        bonuses: [{ sign: '$', value: '+120%', label: 'Прибыль урожая', type: 'Пассивный' }, { sign: '⚡', value: '+35%', label: 'Скорость роста', type: 'На работе' }] }
+    ]
+  };
+  jobsList = [
+    { name: 'Рыбацкий причал', place: 'Восточный край', cap: 3 },
+    { name: 'Верфь', place: 'Нос плота', cap: 2 },
+    { name: 'Плантация', place: 'Центр', cap: 3 },
+    { name: 'Кухня', place: 'Жилой блок', cap: 1 },
+    { name: 'Сторожевая вышка', place: 'Корма', cap: 1 },
+    { name: 'Лесопилка', place: 'Западный край', cap: 2 }
+  ];
+  tagColor(t) { return t === 'Пассивный' ? '#34b84e' : t === 'Аура' ? '#9b5fe0' : '#e8902a'; }
+  rarity(l) { return l >= 8 ? '#e8902a' : l >= 6 ? '#9b5fe0' : l >= 4 ? '#1c4f8f' : '#34b84e'; }
+  mood(c) { return Math.max(10, Math.min(100, Math.round(c.salary * 1.1 + 15 + (c.job === 'Отдых' ? 20 : 0)))); }
+  moodColor(m) { return m >= 65 ? '#5ee07a' : m >= 35 ? '#ffd95a' : '#ff6b5e'; }
+  upd(fn) { this.setState(s => { const crew = s.crew.slice(); crew[s.sel] = { ...crew[s.sel], ...fn(crew[s.sel]) }; return { crew }; }); }
+  renderVals() {
+    const s = this.state;
+    const deco = (c, i) => { const m = this.mood(c); return { ...c, rarityColor: this.rarity(c.level), moodPct: m + '%', moodColor: this.moodColor(m), hpPct: c.hp + '%', i,
+      mainBonus: c.bonuses[0].value + ' ' + c.bonuses[0].label.split(' ')[0].toLowerCase(),
+      bonuses: c.bonuses.map(b => ({ ...b, tagColor: this.tagColor(b.type) })) }; };
+    const all = s.crew.map(deco);
+    const rows = all.filter(c => s.filter === 'Все' || (s.filter === 'Работают' ? c.job !== 'Отдых' : s.filter === 'Отдыхают' ? c.job === 'Отдых' : this.mood(c) < 35))
+      .map(c => ({ ...c, open: () => this.setState({ view: 'detail', sel: c.i }) }));
+    const sel = all[Math.min(s.sel, all.length - 1)] || all[0];
+    const m = sel ? this.mood(sel) : 0;
+    const speed = sel ? Math.round(60 + m * 0.6) : 0;
+    return {
+      isList: s.view === 'list', isDetail: s.view === 'detail' && !!sel,
+      coins: s.coins.toLocaleString('ru-RU'),
+      countLabel: s.crew.length + ' / 8',
+      totalSalary: s.crew.reduce((a, c) => a + c.salary, 0),
+      filters: ['Все', 'Работают', 'Отдыхают', 'Недовольны'].map(n => ({ name: n, active: n === s.filter, idle: n !== s.filter, pick: () => this.setState({ filter: n }) })),
+      rows, sel: sel || {},
+      salaryPct: sel ? sel.salary + '%' : '0%',
+      jobHint: sel && sel.job === 'Отдых' ? 'сейчас отдыхает — выберите здание' : 'сейчас: ' + (sel ? sel.job : ''),
+      jobs: this.jobsList.map(j => {
+        const used = s.crew.filter(c => c.job === j.name).length;
+        const mine = !!sel && sel.job === j.name;
+        const full = !mine && used >= j.cap;
+        return { ...j, active: mine, idle: !mine && !full, full,
+          seatsLabel: used + ' / ' + j.cap + ' мест',
+          seats: Array.from({ length: j.cap }, (_, k) => ({ color: k < used ? (mine ? '#1f7a33' : '#ffd95a') : (mine ? 'rgba(107,74,8,0.25)' : 'rgba(20,58,107,0.6)') })),
+          pick: () => this.upd(() => ({ job: j.name })) };
+      }),
+      canRest: !!sel && sel.job !== 'Отдых',
+      rest: () => this.upd(() => ({ job: 'Отдых' })),
+      stats: [
+        { label: 'Скорость', value: (sel && sel.job === 'Отдых') ? '—' : speed + '%' },
+        { label: 'Настроение', value: m + '%' },
+        { label: 'Опыт', value: sel ? sel.level * 120 + ' XP' : '' }
+      ],
+      dec: () => this.upd(c => ({ salary: Math.max(0, c.salary - 5) })),
+      inc: () => this.upd(c => ({ salary: Math.min(100, c.salary + 5) })),
+      back: () => this.setState({ view: 'list' }),
+      fire: () => this.setState(st => ({ view: 'list', crew: st.crew.filter((_, i) => i !== st.sel), sel: 0 }))
+    };
+  }
+}
+</script>
+</body>
+</html>

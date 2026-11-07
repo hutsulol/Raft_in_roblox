@@ -1,19 +1,20 @@
+local print, warn = (function() local RS = game:GetService("RunService") if RS:IsServer() then return print, warn end local P, W, Pl = print, warn, game:GetService("Players") local function ok() local p = Pl.LocalPlayer return p ~= nil and p:GetAttribute("DevLogs") == true end return function(...) if ok() then P(...) end end, function(...) if ok() then W(...) end end end)() -- DevLogs: клиентские логи видят только админы (флаг ставит DevLogFlag.server)
 -- TrackerCard.client.lua
--- The always-on HUD card in the top-right that shows the currently
--- tracked quest. Built across H1 → H6:
---
---   H1 (this commit): ScreenGui + container Frame anchored top-right.
---   H2: card chrome (paper fill, wood-dark stroke, rounded corners).
---   H3: card content (icon + title + objective + progress bar + timer).
---   H4: reactive paint — find q.tracked == true in the QuestState snapshot.
---   H5: live tick for tracked challenges (RunService.Heartbeat).
---   H6: click-to-open-QuestMenu + slide-in/out animations.
---
--- The card is fed by the same QuestState RemoteEvent the in-menu
--- tabs use, so tracking from any tab updates the HUD without an
--- extra round-trip.
+-- HUD-трекер активного квеста — дизайн по хендоффу design_handoff_quest_tracker:
+-- компактный виджет в ВЕРХНЕМ ЛЕВОМ углу, ПОД роблоксовским топбаром (IgnoreGuiInset
+-- выключен — системный инсет отступает сам). Без плашки-подложки — чистый текст с
+-- чёрной обводкой поверх игры + тонкий прогресс-бар:
+--   • заголовок квеста: 23px, белый, обводка ~2.5 (кириллица → GothamBlack);
+--   • кнопка «?» 26×26: синяя #4a90dc, рамка 2px, скругление 8, тень-подложка снизу;
+--     клик открывает меню квестов (_G.OpenQuestMenu);
+--   • бар 13px: фон чёрный 55%, рамка 2px, заливка — зелёный вертикальный градиент
+--     #6fdc5f → #35b435 → #1f7a24, ширина твинится 0.35s при изменении прогресса;
+--   • счётчик «2/5»: 20px, белый с обводкой, справа от бара;
+--   • таймер испытаний — красная метка в строке заголовка (логика прежнего трекера).
+-- Данные — тот же QuestState RemoteEvent, что у меню (первый квест с q.tracked == true).
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local CollectionService = game:GetService("CollectionService")
 local Players           = game:GetService("Players")
 local RunService        = game:GetService("RunService")
 local TweenService      = game:GetService("TweenService")
@@ -32,278 +33,188 @@ local function waitForQuestStateEvent(timeoutSec)
 	return nil
 end
 
--- ─── ScreenGui + anchor (H1) ────────────────────────────────────────
--- Pinned to the top-right corner with IgnoreGuiInset = true so the
--- card sits in the same band as the rest of the HUD (above CoreGui's
--- top inset). Two-frame structure: outer ScreenGui owns input layer,
--- container Frame is sized to fit the card so animations/visibility
--- toggles affect the whole thing without leaking into HUD geometry.
-local TRACKER_W = 320
-local TRACKER_H = 132
-local TRACKER_MARGIN = 16
+-- ── геометрия/палитра (из хендоффа) ──
+local TRACKER_W = 300
+local MARGIN_X, MARGIN_Y = 14, 10
+local TITLE_H = 28
+local BAR_H = 13
+local BAR_Y = TITLE_H + 8 -- отступ ряда прогресса от заголовка
 
-local screenGui = Instance.new("ScreenGui")
-screenGui.Name = "QuestTrackerGui"
-screenGui.ResetOnSpawn = false
-screenGui.IgnoreGuiInset = true
-screenGui.DisplayOrder = 80   -- below QuestMenu (110) + entry button (90) + phone (200)
-screenGui.Enabled = false      -- H4 enables once a tracked quest exists
-screenGui.Parent = localPlayer:WaitForChild("PlayerGui")
+local BLUE       = Color3.fromRGB(74, 144, 220)  -- #4a90dc — кнопка «?»
+local FILL_TOP   = Color3.fromRGB(111, 220, 95)  -- #6fdc5f
+local FILL_MID   = Color3.fromRGB(53, 180, 53)   -- #35b435
+local FILL_DARK  = Color3.fromRGB(31, 122, 36)   -- #1f7a24
+local TIMER_RED  = Color3.fromRGB(255, 107, 90)
+local FONT = Enum.Font.GothamBlack -- кириллица; для латиницы хендофф предлагал FredokaOne
 
-local container = Instance.new("Frame")
-container.Name = "Tracker"
-container.AnchorPoint = Vector2.new(1, 0)
-container.Position = UDim2.new(1, -TRACKER_MARGIN, 0, TRACKER_MARGIN + 36)
--- ↑ +36 keeps us clear of the Roblox top bar / coreGui chrome.
-container.Size = UDim2.fromOffset(TRACKER_W, TRACKER_H)
-container.BackgroundTransparency = 1
-container.BorderSizePixel = 0
-container.Parent = screenGui
+local function new(class, props, parent)
+	local o = Instance.new(class)
+	for k, v in pairs(props) do o[k] = v end
+	if parent then o.Parent = parent end
+	return o
+end
 
--- ─── Palette ────────────────────────────────────────────────────────
-local COLOR_WOOD_DARKEST = Color3.fromRGB( 61,  40,  23)
-local COLOR_WOOD_DARK    = Color3.fromRGB( 91,  58,  34)
-local COLOR_WOOD_MID     = Color3.fromRGB(138, 106,  68)
-local COLOR_WOOD_BASE    = Color3.fromRGB(176, 138,  92)
-local COLOR_PAPER        = Color3.fromRGB(233, 217, 184)
-local COLOR_PAPER_LIGHT  = Color3.fromRGB(243, 230, 204)
-local COLOR_PROGRESS     = Color3.fromRGB(126, 175,  90)
-local COLOR_PROGRESS_DK  = Color3.fromRGB( 92, 132,  68)
-local COLOR_RIBBON       = Color3.fromRGB(115, 158,  84)
-local COLOR_TIMER        = Color3.fromRGB(178,  79,  64)
+-- ── ScreenGui + контейнер ──
+local screenGui = new("ScreenGui", {
+	Name = "QuestTrackerGui", ResetOnSpawn = false,
+	IgnoreGuiInset = false, -- сидим ПОД топбаром Roblox: инсет отступает сам
+	DisplayOrder = 80,      -- ниже QuestMenu (110) / кнопки входа (90) / телефона (200)
+	Enabled = false,        -- включается, когда есть отслеживаемый квест
+}, localPlayer:WaitForChild("PlayerGui"))
 
--- ─── Wooden frame (T7) ──────────────────────────────────────────────
--- Outer wooden tone Frame (the "frame") + inset paper Frame (the
--- "page"). Approximates the reference's hand-painted wooden border
--- without custom assets — the inner paper holds the icon, title,
--- body, progress bar and the N/M counter.
-local card = Instance.new("TextButton")
-card.Name = "Card"
-card.AutoButtonColor = false
-card.Size = UDim2.fromScale(1, 1)
-card.BackgroundColor3 = COLOR_WOOD_BASE
-card.BackgroundTransparency = 0
-card.BorderSizePixel = 0
-card.Text = ""
-card.ZIndex = 1
-card.Parent = container
+local container = new("Frame", {
+	Name = "Tracker", AnchorPoint = Vector2.new(0, 0),
+	Position = UDim2.new(0, MARGIN_X, 0, MARGIN_Y),
+	Size = UDim2.fromOffset(TRACKER_W, BAR_Y + BAR_H + 4),
+	BackgroundTransparency = 1, BorderSizePixel = 0,
+}, screenGui)
 
-local cCorner = Instance.new("UICorner")
-cCorner.CornerRadius = UDim.new(0, 14)
-cCorner.Parent = card
+-- ⚠️ НА ТЕЛЕФОНЕ ТРЕКЕР СЖИМАЕМ ЦЕЛИКОМ.
+-- Ширина TRACKER_W и кегль подбирались под монитор. На телефоне карточка занимала
+-- почти полэкрана в ширину и наезжала на столбик кнопок слева (на скриншоте
+-- название квеста лежало прямо на «Квестах» и «Карте»). Один UIScale на контейнер:
+-- внутренняя вёрстка (ряд заголовка, «?», полоса прогресса) остаётся прежней.
+-- ⚠️ ВЕШАТЬ НА container, А НЕ НА screenGui: UIScale работает только внутри
+-- GuiObject, на ScreenGui он не применяется вовсе.
+--[[ ⚠️ МНОЖИТЕЛЬ ТРЕКЕРНЫЙ, А НЕ ПАНЕЛЬНЫЙ.
+     Вызов шёл без второго аргумента, то есть брал factor() по умолчанию — 0.55,
+     придуманный для МЕНЮ во весь экран. На телефоне он ещё умножается на долю
+     высоты, и карточка выходила около 0.4: сто двадцать пикселей ширины и
+     строка, которую не прочесть. А это единственное место, где написано, что
+     игроку делать прямо сейчас.
+     Своё число (см. trackerFactor в HudScale) поднимает её примерно в полтора
+     раза и при этом оставляет запас до столбика кнопок под ней — просто
+     карточный множитель 0.85 упёрся бы в «Квесты» на низком экране.
+     Функцией, а не числом: при повороте телефона пересчитается сама. ]]
+do
+	local Hud = require(game:GetService("ReplicatedStorage"):WaitForChild("HudScale"))
+	Hud.applyScaleLive(container, Hud.trackerFactor)
+end
 
-local cStroke = Instance.new("UIStroke")
-cStroke.Color = COLOR_WOOD_DARKEST
-cStroke.Thickness = 2
-cStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-cStroke.Parent = card
+-- ── строка заголовка: [название][?][таймер] в ряд с зазором 9 ──
+local titleRow = new("Frame", {
+	Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(1, 0, 0, TITLE_H),
+	BackgroundTransparency = 1,
+}, container)
+new("UIListLayout", {
+	FillDirection = Enum.FillDirection.Horizontal,
+	VerticalAlignment = Enum.VerticalAlignment.Center,
+	SortOrder = Enum.SortOrder.LayoutOrder,
+	Padding = UDim.new(0, 9),
+}, titleRow)
 
--- A subtle vertical wood-tone gradient across the outer frame so the
--- "wood" reads as more than a flat fill.
-local cGrad = Instance.new("UIGradient")
-cGrad.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0, COLOR_WOOD_BASE),
-	ColorSequenceKeypoint.new(1, COLOR_WOOD_MID),
-})
-cGrad.Rotation = 90
-cGrad.Parent = card
+local title = new("TextLabel", {
+	LayoutOrder = 1, AutomaticSize = Enum.AutomaticSize.X,
+	Size = UDim2.new(0, 0, 0, TITLE_H), BackgroundTransparency = 1,
+	Font = FONT, TextSize = 23, TextColor3 = Color3.new(1, 1, 1),
+	TextXAlignment = Enum.TextXAlignment.Left, Text = "",
+	-- БЕЗ ClipsDescendants: он срезал чёрную обводку у последней буквы (рамка текста
+	-- меряется без учёта UIStroke). Сверхдлинные названия ужимаются многоточием.
+	TextTruncate = Enum.TextTruncate.AtEnd,
+}, titleRow)
+new("UISizeConstraint", { MaxSize = Vector2.new(TRACKER_W - 26 - 9, TITLE_H) }, title)
+new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 2.5 }, title)
 
--- Paper inset — sits 6 px in from every edge so the wood frame shows
--- around it.
-local paper = Instance.new("Frame")
-paper.Name = "Paper"
-paper.AnchorPoint = Vector2.new(0.5, 0.5)
-paper.Position = UDim2.fromScale(0.5, 0.5)
-paper.Size = UDim2.new(1, -12, 1, -12)
-paper.BackgroundColor3 = COLOR_PAPER_LIGHT
-paper.BorderSizePixel = 0
-paper.ZIndex = card.ZIndex + 1
-paper.Parent = card
+-- «?»: тень-подложка снизу + синяя кнопка (открывает меню квестов)
+local helpWrap = new("Frame", {
+	LayoutOrder = 2, Size = UDim2.fromOffset(26, 29), BackgroundTransparency = 1,
+}, titleRow)
+local helpShadow = new("Frame", { -- тень-подложка 2.5px под кнопкой
+	Position = UDim2.fromOffset(0, 2), Size = UDim2.fromOffset(26, 26),
+	BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, BorderSizePixel = 0,
+}, helpWrap)
+new("UICorner", { CornerRadius = UDim.new(0, 8) }, helpShadow)
+-- аура-свечение за «?» (как у редкой награды в меню квестов): «дышит», пока
+-- включена подсветка брёвен — видно, что режим в работе
+local helpAura = new("Frame", {
+	AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(13, 13),
+	Size = UDim2.fromOffset(34, 34), BackgroundColor3 = Color3.fromRGB(90, 180, 255),
+	BackgroundTransparency = 0.5, BorderSizePixel = 0, Visible = false, ZIndex = 0,
+}, helpWrap)
+new("UICorner", { CornerRadius = UDim.new(0, 10) }, helpAura)
+local helpAuraTween = TweenService:Create(helpAura,
+	TweenInfo.new(0.8, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+	{ BackgroundTransparency = 0.1, Size = UDim2.fromOffset(42, 42) })
 
-local pCorner = Instance.new("UICorner")
-pCorner.CornerRadius = UDim.new(0, 9)
-pCorner.Parent = paper
+-- ⚠️ СОСТОЯНИЙ ДВА, А ВИДНО БЫЛО ТОЛЬКО ОДНО.
+-- Аура выше зажигается, когда подсказка УЖЕ включена, то есть отвечает на вопрос
+-- «режим идёт». А на главный вопрос — «тут вообще есть кнопка?» — не отвечал
+-- никто: выключённый «?» стоял неподвижным синим квадратиком у названия квеста,
+-- и его просто не замечали. Поэтому у выключенного состояния теперь свой зов:
+-- от кнопки расходится кольцо, как круг по воде, а сама она медленно дышит.
+-- Зов НАРОЧНО редкий, с паузой между кругами: непрерывное мельтешение в углу
+-- экрана начинает раздражать быстрее, чем успевает привлечь.
+local helpPing = new("Frame", {
+	AnchorPoint = Vector2.new(0.5, 0.5), Position = UDim2.fromOffset(13, 13),
+	Size = UDim2.fromOffset(26, 26), BackgroundTransparency = 1,
+	BorderSizePixel = 0, Visible = false, ZIndex = 0,
+}, helpWrap)
+new("UICorner", { CornerRadius = UDim.new(1, 0) }, helpPing)
+local pingStroke = new("UIStroke", {
+	Color = Color3.fromRGB(130, 205, 255), Thickness = 2, Transparency = 0.1,
+}, helpPing)
 
-local pStroke = Instance.new("UIStroke")
-pStroke.Color = COLOR_WOOD_DARK
-pStroke.Thickness = 1
-pStroke.Transparency = 0.4
-pStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-pStroke.Parent = paper
+-- Кольцо и его прозрачность идут ОДНИМ таймингом: разъедутся — круг то догонит
+-- собственное затухание, то отстанет, и вместо волны получится мигание.
+local PING_INFO = TweenInfo.new(1.15, Enum.EasingStyle.Quad, Enum.EasingDirection.Out,
+	-1, false, 1.4)   -- -1 = бесконечно, false = не назад, 1.4 — пауза между кругами
+local pingGrow = TweenService:Create(helpPing, PING_INFO, { Size = UDim2.fromOffset(56, 56) })
+local pingFade = TweenService:Create(pingStroke, PING_INFO, { Transparency = 1 })
 
-local pPad = Instance.new("UIPadding")
-pPad.PaddingTop    = UDim.new(0, 8)
-pPad.PaddingBottom = UDim.new(0, 8)
-pPad.PaddingLeft   = UDim.new(0, 10)
-pPad.PaddingRight  = UDim.new(0, 10)
-pPad.Parent = paper
+local helpBtn = new("TextButton", {
+	Position = UDim2.fromOffset(0, 0), Size = UDim2.fromOffset(26, 26),
+	BackgroundColor3 = BLUE, Text = "?", Font = FONT, TextSize = 16,
+	TextColor3 = Color3.new(1, 1, 1), AutoButtonColor = true, ZIndex = 2,
+}, helpWrap)
+new("UICorner", { CornerRadius = UDim.new(0, 8) }, helpBtn)
+new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 2 }, helpBtn)
 
--- ─── Card content (H3 / T7) ─────────────────────────────────────────
--- Larger 60×60 icon on the left, title + body stacked to the right.
--- Progress bar pinned to the bottom-left, with the N/M counter sitting
--- to its right. Timer label overlays the counter when a tracked
--- challenge is running.
-local iconImage = Instance.new("ImageLabel")
-iconImage.Name = "Icon"
-iconImage.AnchorPoint = Vector2.new(0, 0)
-iconImage.Position = UDim2.new(0, 0, 0, 0)
-iconImage.Size = UDim2.fromOffset(60, 60)
-iconImage.BackgroundTransparency = 1
-iconImage.ScaleType = Enum.ScaleType.Fit
-iconImage.Image = ""
-iconImage.ZIndex = paper.ZIndex + 1
-iconImage.Parent = paper
+-- Дыхание самой кнопки — вторая половина «зова». Кольцо ловит взгляд движением
+-- по краю, а качающийся размер говорит, что двигается именно КНОПКА, а не блик
+-- рядом с ней. Амплитуда маленькая: «?» стоит вплотную к названию квеста, и
+-- крупный размах наезжал бы на текст.
+local helpScale = new("UIScale", { Scale = 1 }, helpBtn)
+local helpBreath = TweenService:Create(helpScale,
+	TweenInfo.new(1.1, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+	{ Scale = 1.12 })
 
-local title = Instance.new("TextLabel")
-title.Name = "Title"
-title.AnchorPoint = Vector2.new(0, 0)
-title.Position = UDim2.new(0, 70, 0, 2)
-title.Size = UDim2.new(1, -70 - 36, 0, 22)
-title.BackgroundTransparency = 1
-title.Font = Enum.Font.GothamBold
-title.TextSize = 18
-title.TextColor3 = COLOR_WOOD_DARKEST
-title.TextXAlignment = Enum.TextXAlignment.Left
-title.TextYAlignment = Enum.TextYAlignment.Center
-title.TextTruncate = Enum.TextTruncate.AtEnd
-title.Text = ""
-title.ZIndex = paper.ZIndex + 1
-title.Parent = paper
+local timerLabel = new("TextLabel", {
+	LayoutOrder = 3, AutomaticSize = Enum.AutomaticSize.X,
+	Size = UDim2.new(0, 0, 0, TITLE_H), BackgroundTransparency = 1,
+	Font = FONT, TextSize = 18, TextColor3 = TIMER_RED,
+	Text = "", Visible = false,
+}, titleRow)
+new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 2 }, timerLabel)
 
-local objective = Instance.new("TextLabel")
-objective.Name = "Objective"
-objective.AnchorPoint = Vector2.new(0, 0)
-objective.Position = UDim2.new(0, 70, 0, 28)
-objective.Size = UDim2.new(1, -70, 0, 18)
-objective.BackgroundTransparency = 1
-objective.Font = Enum.Font.GothamMedium
-objective.TextSize = 13
-objective.TextColor3 = COLOR_WOOD_MID
-objective.TextXAlignment = Enum.TextXAlignment.Left
-objective.TextYAlignment = Enum.TextYAlignment.Center
-objective.TextTruncate = Enum.TextTruncate.AtEnd
-objective.Text = ""
-objective.ZIndex = paper.ZIndex + 1
-objective.Parent = paper
+-- ── ряд прогресса: бар (гибкая ширина) + счётчик справа, зазор 10 ──
+local COUNTER_W = 46
+local track = new("Frame", {
+	Position = UDim2.new(0, 0, 0, BAR_Y), Size = UDim2.new(1, -(COUNTER_W + 10), 0, BAR_H),
+	BackgroundColor3 = Color3.new(0, 0, 0), BackgroundTransparency = 0.45, -- rgba(0,0,0,0.55)
+	BorderSizePixel = 0, ClipsDescendants = true,
+}, container)
+new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 2 }, track)
 
-local timerLabel = Instance.new("TextLabel")
-timerLabel.Name = "TimerLabel"
-timerLabel.AnchorPoint = Vector2.new(1, 0)
-timerLabel.Position = UDim2.new(1, 0, 0, 2)
-timerLabel.Size = UDim2.fromOffset(60, 22)
-timerLabel.BackgroundTransparency = 1
-timerLabel.Font = Enum.Font.GothamBold
-timerLabel.TextSize = 16
-timerLabel.TextColor3 = COLOR_TIMER
-timerLabel.TextXAlignment = Enum.TextXAlignment.Right
-timerLabel.TextYAlignment = Enum.TextYAlignment.Center
-timerLabel.Text = ""
-timerLabel.Visible = false
-timerLabel.ZIndex = paper.ZIndex + 1
-timerLabel.Parent = paper
+local fill = new("Frame", {
+	Position = UDim2.new(0, 0, 0, 0), Size = UDim2.new(0, 0, 1, 0),
+	BackgroundColor3 = FILL_MID, BorderSizePixel = 0,
+}, track)
+new("UIGradient", {
+	Rotation = 90,
+	Color = ColorSequence.new({
+		ColorSequenceKeypoint.new(0, FILL_TOP),
+		ColorSequenceKeypoint.new(0.5, FILL_MID),
+		ColorSequenceKeypoint.new(1, FILL_DARK),
+	}),
+}, fill)
 
--- Progress bar — taller (14 px) than the menu cards' bar so the
--- striped fill reads at a glance. The fill carries a 45° gradient
--- alternating two greens for the diagonal stripe effect from the
--- reference.
-local PROGRESS_H = 14
-local progressTrack = Instance.new("Frame")
-progressTrack.Name = "ProgressTrack"
-progressTrack.AnchorPoint = Vector2.new(0, 1)
-progressTrack.Position = UDim2.new(0, 0, 1, 0)
-progressTrack.Size = UDim2.new(1, -50, 0, PROGRESS_H)
-progressTrack.BackgroundColor3 = COLOR_WOOD_DARK
-progressTrack.BackgroundTransparency = 0.45
-progressTrack.BorderSizePixel = 0
-progressTrack.ZIndex = paper.ZIndex + 1
-progressTrack.Parent = paper
-local trackCorner = Instance.new("UICorner")
-trackCorner.CornerRadius = UDim.new(0, math.floor(PROGRESS_H / 2))
-trackCorner.Parent = progressTrack
-local trackStroke = Instance.new("UIStroke")
-trackStroke.Color = COLOR_WOOD_DARK
-trackStroke.Thickness = 1
-trackStroke.Transparency = 0.5
-trackStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-trackStroke.Parent = progressTrack
-
-local progressFill = Instance.new("Frame")
-progressFill.Name = "ProgressFill"
-progressFill.AnchorPoint = Vector2.new(0, 0.5)
-progressFill.Position = UDim2.fromScale(0, 0.5)
-progressFill.Size = UDim2.fromScale(0, 1)
-progressFill.BackgroundColor3 = COLOR_PROGRESS
-progressFill.BorderSizePixel = 0
-progressFill.ZIndex = progressTrack.ZIndex + 1
-progressFill.Parent = progressTrack
-local fillCorner = Instance.new("UICorner")
-fillCorner.CornerRadius = UDim.new(0, math.floor(PROGRESS_H / 2))
-fillCorner.Parent = progressFill
-local fillGrad = Instance.new("UIGradient")
-fillGrad.Color = ColorSequence.new({
-	ColorSequenceKeypoint.new(0,    COLOR_PROGRESS),
-	ColorSequenceKeypoint.new(0.49, COLOR_PROGRESS),
-	ColorSequenceKeypoint.new(0.50, COLOR_PROGRESS_DK),
-	ColorSequenceKeypoint.new(1,    COLOR_PROGRESS_DK),
-})
-fillGrad.Rotation = 45
-fillGrad.Parent = progressFill
-
-local progressLabel = Instance.new("TextLabel")
-progressLabel.Name = "ProgressLabel"
-progressLabel.AnchorPoint = Vector2.new(1, 1)
-progressLabel.Position = UDim2.new(1, 0, 1, 0)
-progressLabel.Size = UDim2.fromOffset(46, PROGRESS_H + 4)
-progressLabel.BackgroundTransparency = 1
-progressLabel.Font = Enum.Font.GothamBold
-progressLabel.TextSize = 14
-progressLabel.TextColor3 = COLOR_WOOD_DARKEST
-progressLabel.TextXAlignment = Enum.TextXAlignment.Right
-progressLabel.TextYAlignment = Enum.TextYAlignment.Center
-progressLabel.Text = ""
-progressLabel.ZIndex = paper.ZIndex + 1
-progressLabel.Parent = paper
-
--- ─── Ribbon accent (T7) ─────────────────────────────────────────────
--- Decorative green ribbon at the top-right that mimics the reference's
--- leaf banner. It hangs slightly past the card edge with two small
--- tails (faux notches) on the bottom — we approximate them by giving
--- the ribbon its own wood-darkest stroke + UICorner with a sharp
--- bottom-left corner.
-local ribbon = Instance.new("Frame")
-ribbon.Name = "Ribbon"
-ribbon.AnchorPoint = Vector2.new(1, 0)
-ribbon.Position = UDim2.new(1, -8, 0, -4)
-ribbon.Size = UDim2.fromOffset(28, 38)
-ribbon.BackgroundColor3 = COLOR_RIBBON
-ribbon.BorderSizePixel = 0
-ribbon.ZIndex = card.ZIndex + 3
-ribbon.Parent = card
-
-local rCorner = Instance.new("UICorner")
-rCorner.CornerRadius = UDim.new(0, 4)
-rCorner.Parent = ribbon
-
-local rStroke = Instance.new("UIStroke")
-rStroke.Color = COLOR_WOOD_DARKEST
-rStroke.Thickness = 1.5
-rStroke.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
-rStroke.Parent = ribbon
-
-local ribbonGlyph = Instance.new("TextLabel")
-ribbonGlyph.Name = "Glyph"
-ribbonGlyph.AnchorPoint = Vector2.new(0.5, 0.5)
-ribbonGlyph.Position = UDim2.fromScale(0.5, 0.42)
-ribbonGlyph.Size = UDim2.fromScale(1, 1)
-ribbonGlyph.BackgroundTransparency = 1
-ribbonGlyph.Font = Enum.Font.GothamBold
-ribbonGlyph.TextSize = 18
-ribbonGlyph.TextColor3 = COLOR_PAPER_LIGHT
-ribbonGlyph.Text = "✦"   -- generic; per-quest icon would need an
-                          -- asset registry. Reads as a "this is a
-                          -- quest" marker against the green ribbon.
-ribbonGlyph.ZIndex = ribbon.ZIndex + 1
-ribbonGlyph.Parent = ribbon
+local counter = new("TextLabel", {
+	AnchorPoint = Vector2.new(1, 0), Position = UDim2.new(1, 0, 0, BAR_Y - 4),
+	Size = UDim2.fromOffset(COUNTER_W, 20), BackgroundTransparency = 1,
+	Font = FONT, TextSize = 20, TextColor3 = Color3.new(1, 1, 1),
+	TextXAlignment = Enum.TextXAlignment.Right, Text = "",
+}, container)
+new("UIStroke", { Color = Color3.new(0, 0, 0), Thickness = 2 }, counter)
 
 local questStateEvent = waitForQuestStateEvent(30)
 if not questStateEvent then
@@ -311,13 +222,9 @@ if not questStateEvent then
 	return
 end
 
--- ─── Reactive paint (H4) ────────────────────────────────────────────
--- Server enforces "one tracked at a time" in the QuestState handlers,
--- so we just hunt for the first q.tracked == true. If none is found
--- the tracker hides itself; otherwise we paint title/objective/
--- progress/timer and show the ScreenGui.
-local trackedQuest    -- cached for H5's heartbeat tick
-local trackedDeadline -- os.clock()-based deadline for challenges
+-- ── реактивная отрисовка: первый q.tracked == true из снапшота QuestState ──
+local trackedQuest
+local trackedDeadline
 
 local function fmtSeconds(secs)
 	secs = math.max(0, math.floor(secs + 0.5))
@@ -326,26 +233,375 @@ local function fmtSeconds(secs)
 	return string.format("%d:%02d", m, s)
 end
 
--- ─── Slide animation (H6) ───────────────────────────────────────────
--- Declared above paint() so the paint upvalue resolution captures the
--- right local. Earlier wiring put these below paint() and the script
--- silently fell through to a global slideIn lookup, which crashed
--- paint() before it could set the icon/title/objective text — that's
--- why the tracker rendered as just card chrome with no content.
+-- ── подсветка БРЁВЕН в океане (онбординг-квест First Timber) ──
+-- Пока отслеживается onboarding_logs, кнопка «?» ВКЛЮЧАЕТ/ВЫКЛЮЧАЕТ золотую подсветку
+-- всех плавающих брёвен (ресурсы с атрибутом ResourceType == "Log"), включая те, что
+-- заспавнятся позже. При смене/завершении квеста подсветка гаснет сама.
+local ONBOARDING_ID = "onboarding_logs"
+-- Второй онбординг-квест (Fresh Water): «?» включает пошаговую подсказку
+-- с подсветкой UI — логика живёт в PurifierQuestHint.client.lua и
+-- публикуется через _G.PurifierHintSetEnabled / _G.PurifierHintEnabled.
+local PURIFIER_ID = "onboarding_purifier"
+-- Третий онбординг-квест (Ночлег): «?» так же включает пошаговую подсказку —
+-- логика в BedQuestHint.client.lua, ручки _G.BedHintSetEnabled / _G.BedHintEnabled.
+local BED_ID = "onboarding_bed"
+-- Четвёртый (Водолаз): «?» подсвечивает монолит — DiverQuestHint.client.
+local DIVER_ID = "onboarding_diver"
+-- Расширение плота: «?» ведёт по шагам молоток → руки → клетка пола.
+local RAFT_ID = "onboarding_raft"
+-- Свой огород: «?» ведёт по шагам грядка → установка → полив → посадка свёклы
+-- (BeetQuestHint.client.lua).
+local BEET_ID = "onboarding_beet"
+-- «Место для вещей»: ящик по первому переполнению рюкзака (StorageQuestHint.client)
+local STORAGE_ID = "storage_box"
+-- Цепочка стартового острова: «?» подсвечивает то, что нужно на текущем шаге —
+-- корову (а после охоты упавшее мясо) и путь до жареного мяса. Подсветка коровы —
+-- StartIsleQuestHint.client.lua, шаги мангала — StartIsleGrillHint.client.lua.
+-- У первого квеста подсказки нет: подсвечивать остров целиком нечего, он и так
+-- стоит по курсу.
+local ISLE_COW_ID   = "startisle_cow"
+local ISLE_MEAT_ID  = "startisle_meat"
+local GOLD = Color3.fromRGB(255, 210, 58)
+local logsGlowOn = false   -- тумблер «?» первого квеста (сама подсветка — в resGlow)
+
+-- «дышащая» аура вокруг «?» — общий индикатор «режим подсказки включён»
+-- (подсветка брёвен у квеста #1 или пошаговая подсказка у квеста #2)
+-- on = подсказка включена. Включена — ровная аура «режим работает» и никакого
+-- зова: звать уже некуда, игрок нажал. Выключена — наоборот.
+local function setHelpAura(on)
+	helpAura.Visible = on
+	helpPing.Visible = not on
+
+	if on then
+		pingGrow:Cancel()
+		pingFade:Cancel()
+		helpBreath:Cancel()
+		helpScale.Scale = 1
+		helpAuraTween:Play()
+	else
+		helpAuraTween:Cancel()
+		helpAura.BackgroundTransparency = 0.5
+		helpAura.Size = UDim2.fromOffset(34, 34)
+		-- ⚠️ ПЕРЕД ЗАПУСКОМ ВОЗВРАЩАЕМ НАЧАЛЬНЫЕ ЗНАЧЕНИЯ РУКАМИ.
+		-- Cancel останавливает твин ТАМ, ГДЕ ЗАСТАЛ, и повторный Play поехал бы от
+		-- полурастянутого и полупрозрачного кольца: первый круг после выключения
+		-- подсказки выходил бы обрубком.
+		helpPing.Size = UDim2.fromOffset(26, 26)
+		pingStroke.Transparency = 0.1
+		pingGrow:Play()
+		pingFade:Play()
+		helpBreath:Play()
+	end
+end
+
+local function purifierHintEnabled()
+	return typeof(_G.PurifierHintEnabled) == "function" and _G.PurifierHintEnabled() == true
+end
+
+local function bedHintEnabled()
+	return typeof(_G.BedHintEnabled) == "function" and _G.BedHintEnabled() == true
+end
+
+-- Любая пошаговая подсказка: аура «?» отражает их все разом.
+local function diverHintEnabled()
+	return typeof(_G.DiverHintEnabled) == "function" and _G.DiverHintEnabled() == true
+end
+
+local function raftHintEnabled()
+	return typeof(_G.RaftHintEnabled) == "function" and _G.RaftHintEnabled() == true
+end
+
+local function storageHintEnabled()
+	return typeof(_G.StorageHintEnabled) == "function" and _G.StorageHintEnabled() == true
+end
+local function beetHintEnabled()
+	return typeof(_G.BeetHintEnabled) == "function" and _G.BeetHintEnabled() == true
+end
+
+-- Подсказки цепочки острова: ручки одни на три квеста по форме, но каждая своя.
+local function isleHintEnabled(getName)
+	return typeof(_G[getName]) == "function" and _G[getName]() == true
+end
+
+local function anyIsleHintOn()
+	return isleHintEnabled("StartIsleCowHintEnabled")
+		or isleHintEnabled("StartIsleGrillHintEnabled")
+end
+
+local function anyHintOn()
+	return purifierHintEnabled() or bedHintEnabled()
+		or diverHintEnabled() or raftHintEnabled() or beetHintEnabled()
+		or storageHintEnabled() or anyIsleHintOn()
+end
+
+-- Все пошаговые подсказки одной таблицей: id квеста → как её включить и как
+-- спросить состояние. Ручки живут в _G и появляются, когда загрузится их скрипт,
+-- поэтому храним ИМЯ, а не саму функцию.
+-- (Подсветка брёвен у первого квеста устроена иначе — она целиком внутри этого
+-- файла, см. setLogsGlow, и в таблицу не входит.)
+local HINTS = {
+	[PURIFIER_ID] = { set = "PurifierHintSetEnabled", get = purifierHintEnabled },
+	[BED_ID]      = { set = "BedHintSetEnabled",      get = bedHintEnabled },
+	[DIVER_ID]    = { set = "DiverHintSetEnabled",    get = diverHintEnabled },
+	[RAFT_ID]     = { set = "RaftHintSetEnabled",     get = raftHintEnabled },
+	[BEET_ID]     = { set = "BeetHintSetEnabled",     get = beetHintEnabled },
+	[STORAGE_ID]  = { set = "StorageHintSetEnabled",  get = storageHintEnabled },
+	-- «Земли по курсу» здесь нет намеренно: подсвечивать остров целиком нечего,
+	-- он и так стоит по курсу и виден с плота. Её «?» открывает меню квестов.
+	[ISLE_COW_ID]   = { set = "StartIsleCowHintSetEnabled",
+		get = function() return isleHintEnabled("StartIsleCowHintEnabled") end },
+	-- «Мясо на углях» — пошаговая подсказка, отдельным скриптом
+	-- (StartIsleGrillHint.client.lua): собрать мангал → поставить → разжечь →
+	-- положить мясо. Подсветкой предмета тут не обойтись — мангала ещё нет.
+	[ISLE_MEAT_ID]  = { set = "StartIsleGrillHintSetEnabled",
+		get = function() return isleHintEnabled("StartIsleGrillHintEnabled") end },
+	-- сюжет торговца: первый житель → «Команда» → рыбацкое место (TeamQuestHint.client)
+	["story_assign_fisher"] = { set = "TeamHintSetEnabled",
+		get = function() return typeof(_G.TeamHintEnabled) == "function" and _G.TeamHintEnabled() == true end },
+	-- сюжет торговца: подарок → в руки → поставить на край плота (FishingPlaceHint.client)
+	["story_fishing_place"] = { set = "FishingPlaceHintSetEnabled",
+		get = function() return typeof(_G.FishingPlaceHintEnabled) == "function" and _G.FishingPlaceHintEnabled() == true end },
+}
+
+-- ── РЕЖИМ ТУТОРИАЛА ──
+-- Пока true, каждый новый квест приходит с уже зажжённой подсказкой. Гаснет
+-- НАВСЕГДА (на забег), как только игрок выключит подсказку кнопкой «?»: раз он
+-- знает, где эта кнопка, и она ему не нужна — навязываться больше незачем.
+-- Включить обратно можно тем же «?», но сам себя туториал уже не предлагает.
+-- Живёт в пределах сессии: новая игра — снова с нуля, как и сами квесты.
+local tutorialOn = true
+
+-- ⚠️ ЗЕЛЁНЫЙ, А НЕ ЗОЛОТОЙ.
+-- Золото на воде под солнцем сливалось с бликами: на скриншоте бревно и блик
+-- различить было нельзя. Зелёный на синем читается издалека.
+local LOG_GREEN = Color3.fromRGB(70, 235, 90)
+
+-- Иконка-указатель над ресурсом (исходник: test/quest_arrow/Quest_arrow_down.png).
+-- Пусто = запасной ромб (см. ниже), он рисуется без ассетов.
+local ARROW_ICON = "rbxassetid://78628006161298"
+
+-- ⚠️ СТРЕЛКУ ВЕШАЕМ НА СЕРЕДИНУ ГАБАРИТА, А НЕ НА САМ ОБЪЕКТ.
+-- BillboardGui считает смещение от начала координат того, к чему привязан, а у
+-- импортированного бревна оно на торце — стрелка и висела сбоку. Ставим внутрь
+-- Attachment ровно в центр габарита: тогда «над» действительно означает над.
+-- ⚠️ ВЕШАЕМ НА САМУЮ КРУПНУЮ ДЕТАЛЬ, БЕЗ ВСЯКИХ СМЕЩЕНИЙ.
+-- Прошлые заходы считали центр габарита модели и клали его в локальные
+-- координаты якоря. У плавающего бревна это не работает в принципе: оно
+-- переворачивается на волне, локальные оси едут вместе с ним, и «центр» уползает
+-- вбок тем дальше, чем круче крен. Начало координат любой BasePart и так лежит в
+-- середине её габарита, поэтому берём самую большую деталь бревна и держимся за
+-- неё — без пересчётов, без дрейфа, при любом положении.
+local function centreAttachment(inst)
+	local part, size
+	if inst:IsA("BasePart") then
+		part, size = inst, inst.Size
+	elseif inst:IsA("Model") then
+		local best, bestVol = nil, -1
+		for _, d in ipairs(inst:GetDescendants()) do
+			if d:IsA("BasePart") then
+				local v = d.Size.X * d.Size.Y * d.Size.Z
+				if v > bestVol then best, bestVol = d, v end
+			end
+		end
+		-- ⚠️ У ОСЬМИНОГА PrimaryPart — НЕПОДВИЖНЫЙ ЯКОРЬ.
+		-- Это невидимый кубик 1×1×1, он заанкорен, а качается, всплывает и тонет
+		-- голова: её двигает сустав. Стрелка на пивоте висела бы на месте, пока
+		-- туша ходит вверх-вниз. Самая крупная деталь у него — как раз голова.
+		part = (not inst:GetAttribute("IsOctopus") and inst.PrimaryPart) or best
+		size = part and part.Size
+	end
+	if not (part and size) then return nil end
+
+	-- ⚠️ ЯКОРЬ СТАВИМ РОВНО В ЦЕНТР, БЕЗ ПОДЪЁМА.
+	-- Подъём вверх зашивать сюда нельзя: координаты якоря ЛОКАЛЬНЫЕ, и когда
+	-- бревно переворачивается на волне, вместе с ним поворачивается и смещение —
+	-- стрелку уносило вбок и под воду. Высоту даёт StudsOffsetWorldSpace у самого
+	-- билборда: она мировая и повороту не подвластна.
+	--
+	-- ⚠️ И СНАЧАЛА ПРИКРЕПИТЬ, ПОТОМ ЗАДАВАТЬ ПОЗИЦИЮ.
+	-- У Attachment без родителя мировых координат нет вовсе.
+	-- Подъём считаем по самой длинной стороне: бревно лежит боком, и «половина
+	-- высоты» у него — это половина толщины, стрелка утыкалась бы в само бревно.
+	local span = math.max(size.X, size.Y, size.Z)
+	local lift = span * 0.5 + 1.1
+	-- ⚠️ ОСЬМИНОГУ ПОДЪЁМ БОЛЬШЕ, ЧЕМ ДАЁТ ОБЩАЯ ФОРМУЛА.
+	-- Билборд со стрелкой 3.4 стада высотой и центрируется на подъёме — нижний
+	-- край уходит на 1.7 стада НИЖЕ него. Плоскому бревну этого хватало, а у
+	-- осьминога над центром головы ещё корона, да и сам он качается на волне:
+	-- стрелка въезжала прямо в него. Прибавка, а не замена формулы — у бревна
+	-- высота выверена отдельно, и трогать её незачем.
+	if inst:GetAttribute("IsOctopus") then lift += 2.2 end
+	part:SetAttribute("ArrowLift", lift)
+	return part
+end
+
+-- Состояние подсветки ПО ТИПУ РЕСУРСА: [resType] = { glows = {...}, addedConn }
+-- Отсутствие записи = подсветка этого типа выключена.
+-- Типов больше одного, потому что в те же брёвна упирается расширение плота, а в
+-- канистры — очиститель воды: подсказки этих квестов зовут ту же подсветку через
+-- _G.ResourceGlowSetEnabled, а не заводят свою.
+local resGlow = {}
+
+local function glowResource(resType, inst)
+	local st = resGlow[resType]
+	if not st or st.glows[inst] then return end
+	if inst:GetAttribute("ResourceType") ~= resType then return end
+	local hl = Instance.new("Highlight")
+	-- ⚠️ ТОЛЬКО КОНТУР, БЕЗ ЗАЛИВКИ.
+	-- Заливка перекрашивала само бревно в зелёное, и было не понять, что это
+	-- бревно: на воде плавали зелёные плашки. Обводка показывает, ЧТО подсвечено,
+	-- не подменяя предмет.
+	hl.FillTransparency = 1
+	hl.OutlineColor = LOG_GREEN
+	hl.OutlineTransparency = 0
+	-- ⚠️ Occluded, А НЕ AlwaysOnTop.
+	-- С AlwaysOnTop контур пробивался сквозь волны и плот: бревно за гребнем
+	-- читалось как висящее в воздухе кольцо. Occluded прячет обводку за тем, что
+	-- реально закрывает бревно, — за место подсветки отвечает стрелка.
+	hl.DepthMode = Enum.HighlightDepthMode.Occluded
+	hl.Adornee = inst
+	hl.Parent = inst
+	st.glows[inst] = hl
+
+	-- ⚠️ СТРЕЛКА НАД БРЕВНОМ, А НЕ ТОЛЬКО КОНТУР.
+	-- Контур говорит «вот оно», но на ряби из десятка бликов глаз всё равно ищет.
+	-- Стрелка сверху показывает НАПРАВЛЕНИЕ и, покачиваясь, ловит взгляд движением
+	-- там, где всё остальное неподвижно.
+	local att = centreAttachment(inst)
+	if not att then return end
+
+	-- ⚠️ РАЗМЕР В СТУДАХ (Scale), А НЕ В ПИКСЕЛЯХ (Offset).
+	-- У BillboardGui offset — это ПОСТОЯННЫЙ размер на экране: стрелка над
+	-- бревном у горизонта рисовалась ровно такой же, как над соседним, и
+	-- закрывала пол-неба. Scale задаёт величину в мире, и указатель ведёт себя
+	-- как предмет: вблизи крупный, вдали мелкий.
+	-- ⚠️ AlwaysOnTop ВЫКЛЮЧЕН.
+	-- С ним стрелка рисовалась поверх всего, включая собственное бревно, и от
+	-- этого казалась ещё и «наклеенной на экран».
+	local lift = att:GetAttribute("ArrowLift") or 3.2
+	local bb = Instance.new("BillboardGui")
+	bb.Name = "QuestArrow"
+	bb.Size = UDim2.fromScale(3.4, 3.4)      -- студа
+	-- ⚠️ ПОДЪЁМ ЧЕРЕЗ StudsOffset, А НЕ StudsOffsetWorldSpace.
+	-- Вопреки названию, «world space» отсчитывается ОТ ОСЕЙ САМОГО АДОРНИ. Бревно
+	-- плавает лёжа, его собственный «вверх» смотрит вбок — и стрелку уносило
+	-- вбок ровно на величину подъёма, сколько центр ни пересчитывай. StudsOffset
+	-- задаётся в системе самого билборда, а тот всегда развёрнут к камере: его +Y
+	-- это «вверх на экране», то есть над бревном при любом его положении.
+	bb.StudsOffset = Vector3.new(0, lift, 0)
+	bb.StudsOffsetWorldSpace = Vector3.zero
+	bb.AlwaysOnTop = false
+	bb.LightInfluence = 0
+	bb.MaxDistance = 400
+	bb.Adornee = att
+	bb.Parent = att       -- уходит вместе с якорем, а тот — вместе с подсветкой
+
+	-- ⚠️ КАРТИНКА, А НЕ СИМВОЛ «▼».
+	-- Первый заход рисовал стрелку текстом, и её не было видно вовсе: этот глиф
+	-- есть не во всех шрифтах Roblox, и вместо стрелки получалась пустота.
+	-- Иконка нарисована (test/quest_arrow/Quest_arrow_down.png); пока её id не
+	-- вписан, показываем ромб из повёрнутого квадрата — он рисуется всегда.
+	if ARROW_ICON ~= "" then
+		local arrow = Instance.new("ImageLabel")
+		arrow.Size = UDim2.fromScale(1, 1)
+		arrow.BackgroundTransparency = 1
+		arrow.Image = ARROW_ICON
+		arrow.ScaleType = Enum.ScaleType.Fit
+		arrow.Parent = bb
+	else
+		local dia = Instance.new("Frame")
+		dia.AnchorPoint = Vector2.new(0.5, 0.5)
+		dia.Position = UDim2.fromScale(0.5, 0.5)
+		dia.Size = UDim2.fromScale(0.62, 0.62)
+		dia.Rotation = 45
+		dia.BackgroundColor3 = LOG_GREEN
+		dia.BorderSizePixel = 0
+		dia.Parent = bb
+		local ds = Instance.new("UIStroke")
+		ds.Thickness = 3
+		ds.Color = Color3.new(0, 0, 0)
+		ds.ApplyStrokeMode = Enum.ApplyStrokeMode.Border
+		ds.Parent = dia
+	end
+
+	-- покачивание: вверх-вниз, бесконечно
+	local bob = TweenService:Create(bb,
+		TweenInfo.new(0.7, Enum.EasingStyle.Sine, Enum.EasingDirection.InOut, -1, true),
+		{ StudsOffset = Vector3.new(0, lift + 0.8, 0) })
+	bob:Play()
+
+	-- якорь стрелки живёт ровно столько же, сколько подсветка
+	-- ⚠️ УБИРАЕМ БИЛБОРД, А НЕ ТО, К ЧЕМУ ОН ПРИКРЕПЛЁН.
+	-- Держимся мы за саму деталь бревна — уничтожить её значило бы уничтожить
+	-- добычу. Гасим ровно то, что создали.
+	hl.Destroying:Connect(function()
+		if bb.Parent then bb:Destroy() end
+	end)
+end
+
+local function setResourceGlow(resType, on)
+	local st = resGlow[resType]
+	if on then
+		if st then return end
+		st = { glows = {} }
+		resGlow[resType] = st
+		for _, inst in ipairs(CollectionService:GetTagged("Resource")) do
+			glowResource(resType, inst)
+		end
+		-- то, что всплывёт позже, подсвечивается сразу
+		st.addedConn = CollectionService:GetInstanceAddedSignal("Resource"):Connect(function(inst)
+			glowResource(resType, inst)
+		end)
+	else
+		if not st then return end
+		if st.addedConn then st.addedConn:Disconnect() end
+		for _, hl in pairs(st.glows) do
+			if hl.Parent then hl:Destroy() end
+		end
+		resGlow[resType] = nil
+	end
+end
+
+local function setLogsGlow(on)
+	logsGlowOn = on
+	-- состояние тумблера — синее «дышащее» свечение вокруг «?» (кнопка не заливается)
+	setHelpAura(on)
+	setResourceGlow("Log", on)
+end
+
+-- Подсветка нужна не только первому квесту: расширение плота упирается в те же
+-- брёвна, а очиститель — в канистры. Отдаём наружу ГОТОВУЮ, с зелёным контуром и
+-- стрелкой, а не пересобираем вторую такую же в каждой подсказке. Владелец у неё
+-- по-прежнему один, этот файл.
+_G.ResourceGlowSetEnabled = function(resType, on)
+	if typeof(resType) ~= "string" then return end
+	setResourceGlow(resType, on and true or false)
+end
+_G.ResourceGlowEnabled = function(resType)
+	return resGlow[resType] ~= nil
+end
+
+-- Брёвна первого квеста ходят через свою ручку: она заодно ведёт тумблер «?»
+-- (logsGlowOn) и его ауру, а не только сами подсветки.
+_G.LogsGlowSetEnabled = function(on)
+	setLogsGlow(on and true or false)
+end
+_G.LogsGlowEnabled = function() return logsGlowOn end
+
+-- появление/уход: короткий слайд от ЛЕВОГО края (виджет теперь слева)
 local OPEN_INFO  = TweenInfo.new(0.28, Enum.EasingStyle.Back, Enum.EasingDirection.Out)
 local CLOSE_INFO = TweenInfo.new(0.18, Enum.EasingStyle.Quad, Enum.EasingDirection.In)
-local REST_X     = -TRACKER_MARGIN
-local HIDDEN_X   = TRACKER_W + 16
+local HIDDEN_X   = -(TRACKER_W + 24)
 
 local function slideIn()
-	container.Position = UDim2.new(1, HIDDEN_X, 0, TRACKER_MARGIN + 36)
+	container.Position = UDim2.new(0, HIDDEN_X, 0, MARGIN_Y)
 	TweenService:Create(container, OPEN_INFO,
-		{ Position = UDim2.new(1, REST_X, 0, TRACKER_MARGIN + 36) }):Play()
+		{ Position = UDim2.new(0, MARGIN_X, 0, MARGIN_Y) }):Play()
 end
 
 local function slideOutAndHide()
 	local tween = TweenService:Create(container, CLOSE_INFO,
-		{ Position = UDim2.new(1, HIDDEN_X, 0, TRACKER_MARGIN + 36) })
+		{ Position = UDim2.new(0, HIDDEN_X, 0, MARGIN_Y) })
 	tween:Play()
 	tween.Completed:Connect(function()
 		if not trackedQuest then
@@ -355,13 +611,82 @@ local function slideOutAndHide()
 end
 
 local wasVisible = false
+
+-- бета-онбординг: трекер появляется через 10 секунд после входа — первые секунды
+-- игрок осматривается, HUD не наваливается сразу. Пока «спим», снапшоты всё равно
+-- запоминаются (trackedQuest), и по истечении задержки карточка выезжает сама.
+local BOOT_DELAY = 10
+local bootMuted  = true
+task.delay(BOOT_DELAY, function()
+	bootMuted = false
+	if trackedQuest then
+		screenGui.Enabled = true
+		slideIn()
+		wasVisible = true
+	end
+end)
+
 local function paint(q)
 	local previous = trackedQuest
 	trackedQuest = q
 
+	-- ⚠️ ВКЛЮЧЁННАЯ ПОДСКАЗКА РОВНО ОДНА — ЧЬЯ УГОДНО, КРОМЕ ОТСЛЕЖИВАЕМОЙ, ГАСНЕТ.
+	-- Баннеры всех подсказок висят в одной точке экрана, и две включённые сразу
+	-- давали нечитаемую кашу из наложенных строк. Гасим безусловно, а не «если
+	-- квест сменился»: так лишняя подсказка не переживёт ни один снапшот, каким бы
+	-- путём она ни включилась.
+	for id, h in pairs(HINTS) do
+		if h.get() and (not q or q.id ~= id) then
+			local fn = _G[h.set]
+			if typeof(fn) == "function" then fn(false) end
+		end
+	end
+	if logsGlowOn and (not q or q.id ~= ONBOARDING_ID) then
+		setLogsGlow(false)
+	end
+
+	-- ⚠️ КВЕСТ ОТКРЫВАЕТСЯ С УЖЕ ВКЛЮЧЁННОЙ ПОДСКАЗКОЙ — ПОКА ИДЁТ ТУТОРИАЛ.
+	-- Игрок в первый раз не знает ни про кнопку «?», ни про то, что она вообще
+	-- что-то делает. Ждать, пока он сам догадается её нажать, — значит смотреть,
+	-- как он бродит по плоту. Выключил руками хоть раз (см. helpBtn ниже) —
+	-- туториал считается пройденным, и следующие квесты приходят молча.
+	-- Срабатывает только на СМЕНЕ квеста, иначе выключенная подсказка зажигалась
+	-- бы обратно на каждом снапшоте.
+	if tutorialOn and q and (not previous or previous.id ~= q.id) then
+		if q.id == ONBOARDING_ID then
+			if not logsGlowOn then setLogsGlow(true) end
+		else
+			local h = HINTS[q.id]
+			if h then
+				-- ⚠️ ЧЕРЕЗ КАДР, А НЕ СРАЗУ.
+				-- Подсказки слушают тот же снапшот QuestState и по нему решают, жив
+				-- ли их квест. Порядок обработчиков не задан: включи мы подсказку
+				-- прямо здесь, она могла бы получить сигнал раньше своего скрипта и
+				-- отказаться — «квеста ещё нет». Ждём, пока снапшот разойдётся всем.
+				local wantId = q.id
+				task.defer(function()
+					-- ⚠️ СРАВНИВАЕМ ID, А НЕ ТАБЛИЦЫ.
+					-- Каждый снапшот приносит НОВЫЕ таблицы квестов, поэтому проверка
+					-- «trackedQuest ~= q» была истинной даже для того же самого квеста —
+					-- и включение отменялось почти всегда.
+					if not tutorialOn then return end
+					if not trackedQuest or trackedQuest.id ~= wantId then return end
+					local fn = _G[h.set]
+					if typeof(fn) == "function" and not h.get() then
+						fn(true)
+						setHelpAura(logsGlowOn or anyHintOn())
+					end
+				end)
+			end
+		end
+	end
+
+	-- аура «?» отражает фактическое состояние подсказок (они могут погаснуть
+	-- сами — например, квест выполнен)
+	setHelpAura(logsGlowOn or anyHintOn())
+
 	if not q then
 		if wasVisible then
-			-- Animate out, then hide (slideOutAndHide guards for re-entry).
 			slideOutAndHide()
 			wasVisible = false
 		else
@@ -371,42 +696,46 @@ local function paint(q)
 		return
 	end
 
-	-- New quest tracked (or first one this session) → slide in.
-	if not previous or previous.id ~= q.id then
+	if bootMuted then
+		-- «тихий» период после входа: карточку покажет task.delay выше
+		screenGui.Enabled = false
+		wasVisible = false
+	elseif not previous or previous.id ~= q.id then
 		screenGui.Enabled = true
 		slideIn()
+		wasVisible = true
 	else
 		screenGui.Enabled = true
+		wasVisible = true
 	end
-	wasVisible = true
 
-	iconImage.Image = q.icon or ""
-	title.Text      = q.title or q.id or ""
-
-	-- Objective text — story has multiple, dailies/challenges have one.
-	-- Show the first not-yet-completed objective; if all are done,
-	-- show the last one so the line doesn't blank out before claim.
+	-- на трекере — ЗАДАЧА, которую надо выполнить, а не название квеста. Задачи
+	-- отображаются ПО ОЧЕРЕДИ (первая незакрытая, потом следующая...), но сервер
+	-- засчитывает прогресс ВСЕМ одновременно: если закрыть вторую раньше первой,
+	-- к моменту её показа она уже будет полной и очередь перескочит дальше.
+	-- Бар и счётчик — прогресс ИМЕННО текущей показанной задачи, не сумма всех.
 	local objs = q.objectives or {}
-	local prog, goal = 0, 0
-	local activeObj = objs[#objs]
-	local pickedActive = false
+	local activeObj = objs[#objs] -- всё закрыто → остаётся последняя (строка не пустеет)
 	for _, obj in ipairs(objs) do
 		local p = tonumber(obj.progress) or 0
 		local g = tonumber(obj.goal) or 0
-		prog = prog + p
-		goal = goal + g
-		if not pickedActive and p < g then
+		if p < g then
 			activeObj = obj
-			pickedActive = true
+			break
 		end
 	end
-	objective.Text = activeObj and (activeObj.label or activeObj.eventType or "") or ""
+	title.Text = (activeObj and (activeObj.label or activeObj.eventType)) or q.title or q.id or ""
+	local prog = activeObj and (tonumber(activeObj.progress) or 0) or 0
+	local goal = activeObj and (tonumber(activeObj.goal) or 0) or 0
 
+	-- заливка твинится (~0.35s из хендоффа), счётчик — «2/5»
 	local pct = (goal > 0) and math.clamp(prog / goal, 0, 1) or 0
-	progressFill.Size  = UDim2.new(pct, 0, 1, 0)
-	progressLabel.Text = string.format("%d / %d", prog, goal)
+	TweenService:Create(fill,
+		TweenInfo.new(0.35, Enum.EasingStyle.Quad, Enum.EasingDirection.Out),
+		{ Size = UDim2.new(pct, 0, 1, 0) }):Play()
+	counter.Text = string.format("%d/%d", prog, goal)
 
-	-- Timer — only for tracked challenges that are still running.
+	-- таймер — только для запущенных отслеживаемых испытаний
 	if q.kind == "challenge" and q.startedAt and q.secondsRemaining
 		and not q.rewardPending then
 		timerLabel.Visible = true
@@ -428,24 +757,77 @@ questStateEvent.OnClientEvent:Connect(function(action, payload)
 	paint(picked)
 end)
 
--- ─── Click-to-open-menu (H6) ────────────────────────────────────────
--- Clicking anywhere on the card opens the QuestMenu via the global
--- _G.OpenQuestMenu hook QuestEntryButton + QuestMenu publish.
-card.Activated:Connect(function()
+-- «?»: во время онбординга #1 — ТУМБЛЕР подсветки брёвен в океане;
+-- во время онбординга #2 — ТУМБЛЕР пошаговой подсказки (подсветка кнопки
+-- инвентаря → вкладки крафта → рецепта → установка/заливка очистителя);
+-- после них — как раньше, открывает меню квестов
+helpBtn.Activated:Connect(function()
+	local id = trackedQuest and trackedQuest.id
+
+	-- Выключение РУКАМИ закрывает туториал: дальше квесты приходят молча.
+	-- Смотрим на НАМЕРЕНИЕ, а не на факт: setEnabled может отказаться включаться
+	-- (квест уже закрыт), и по факту получилось бы «выключено» — туториал сняли бы
+	-- с игрока, который его о том не просил.
+	local function toggled(want)
+		if not want then tutorialOn = false end
+		setHelpAura(logsGlowOn or anyHintOn())
+	end
+
+	if id == ONBOARDING_ID then
+		local want = not logsGlowOn
+		setLogsGlow(want)
+		toggled(want)
+		return
+	end
+
+	local h = id and HINTS[id]
+	if h then
+		local fn = _G[h.set]
+		if typeof(fn) == "function" then
+			local want = not h.get()
+			fn(want)
+			toggled(want)
+			return
+		end
+	end
+
 	local opener = _G.OpenQuestMenu
 	if typeof(opener) == "function" then
 		pcall(opener)
 	end
 end)
 
--- ─── Live countdown tick (H5) ───────────────────────────────────────
--- For tracked challenges only; advances the timer label off the
--- cached deadline so it ticks down between server pushes. When the
--- timer hits zero we ping the server with getState — its expiry
--- sweep then snaps the card off the tracker (and back to "Start"
--- on the Challenges tab). A debounce keeps us from spamming.
+--[[ ⚠️ ПОКА ИДЁТ ОТСЧЁТ ОСТРОВА — «?» СПРЯТАН, НО ТАЙМЕР НЕ ЗДЕСЬ.
+     IslandQuestCard публикует _G.IslandQuestClock (секунды до конца бонуса) и
+     сам рисует таймер на СВОЕЙ карточке. Раньше он дублировался и на главной
+     карточке («Собери брёвна 2:57»), и выглядело так, будто основной квест
+     ограничен по времени. Владелец: таймер — только у второстепенного с
+     островом. Здесь на время отсчёта лишь прячем подсказку «?»: бонус — за
+     самостоятельную зачистку. ]]
+local islandClock = false
+local function islandClockLeft()
+	local fn = _G.IslandQuestClock
+	if typeof(fn) ~= "function" then return nil end
+	local ok, left = pcall(fn)
+	return (ok and type(left) == "number" and left > 0) and left or nil
+end
+_G.TrackerIslandClockActive = function() return islandClock end
+
+-- живой отсчёт таймера между серверными пушами + пинг серверу на истечении
 local sentExpiryPing = false
 RunService.Heartbeat:Connect(function()
+	local left = islandClockLeft()
+	--[[ ⚠️ «?» ОСНОВНОГО КВЕСТА ОСТАЁТСЯ ВСЕГДА. Здесь он прятался на время
+	     отсчёта острова — но отсчёт относится к КАРТОЧКЕ ОСТРОВА, а не к этой:
+	     с двумя активными квестами игрок терял кнопку и не мог выключить
+	     подсказки основного (владелец). Запрет подсказок на время таймера ведёт
+	     сама карточка острова; здесь только помним, что отсчёт идёт. ]]
+	if left then
+		islandClock = true
+	elseif islandClock then
+		islandClock = false
+	end
+	if not helpWrap.Visible and not trackedDeadline then helpWrap.Visible = true end
 	if not trackedQuest or not trackedDeadline then return end
 	if trackedQuest.rewardPending then return end
 	local remaining = trackedDeadline - os.clock()

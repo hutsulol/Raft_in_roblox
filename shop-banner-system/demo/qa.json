@@ -1,0 +1,13 @@
+{
+  "status": "draft",
+  "missing": [
+    "hero",
+    "currencyIcon",
+    "reward 1",
+    "reward 2"
+  ],
+  "visualReviewRequired": true,
+  "rewardCount": 2,
+  "rows": 1,
+  "fontFamily": "Arial Black, Arial"
+}

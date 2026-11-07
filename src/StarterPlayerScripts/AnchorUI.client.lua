@@ -16,6 +16,8 @@ local Debris            = game:GetService("Debris")
 local player = Players.LocalPlayer
 local playerGui = player:WaitForChild("PlayerGui")
 local mouse  = player:GetMouse()
+-- ⚠️ Геймпад: что считать кликом и клавишей — одно правило на все файлы (GamepadInput).
+local GamepadInput = require(game:GetService("ReplicatedStorage"):WaitForChild("GamepadInput"))
 local camera = workspace.CurrentCamera
 
 local anchorEvent = ReplicatedStorage:WaitForChild("AnchorAction")
@@ -66,7 +68,7 @@ local title = Instance.new("TextLabel")
 title.Size = UDim2.new(1, -20, 0, 22)
 title.Position = UDim2.new(0, 10, 0, 8)
 title.BackgroundTransparency = 1
-title.Text = "Anchor"
+title.Text = "Якорь"
 title.Font = Enum.Font.GothamBold
 title.TextSize = 18
 title.TextColor3 = COLORS.title
@@ -233,7 +235,7 @@ RunService.RenderStepped:Connect(updateUI)
 -- The wheel's HingeConstraint is pulsed by AnchorInteraction.server
 -- on "lower"/"raise", so all we do here is forward the key press.
 local function playRopeSound()
-	local template = SoundService:FindFirstChild("low_rope")
+	local template = (SoundService:FindFirstChild("low_rope") or SoundService:FindFirstChild("low_rope", true))
 	if not template or not template:IsA("Sound") then return end
 	local clone = template:Clone()
 	clone.Parent = SoundService
@@ -245,10 +247,10 @@ UserInputService.InputBegan:Connect(function(input, processed)
 	if processed then return end
 	-- Only act while the UI is visible (i.e. cursor is on the wheel).
 	if not currentAnchor then return end
-	if input.KeyCode == Enum.KeyCode.E then
+	if GamepadInput.isKey(input, Enum.KeyCode.E) then
 		anchorEvent:FireServer("lower", currentAnchor)
 		playRopeSound()
-	elseif input.KeyCode == Enum.KeyCode.Q then
+	elseif GamepadInput.isKey(input, Enum.KeyCode.Q) then
 		anchorEvent:FireServer("raise", currentAnchor)
 		playRopeSound()
 	end

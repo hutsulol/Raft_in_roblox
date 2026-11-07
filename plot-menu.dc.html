@@ -1,0 +1,126 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=Russo+One&family=Balsamiq+Sans:ital,wght@0,700;1,700&family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+<script src="./image-slot.js"></script>
+<style>
+body { margin:0; font-family:'Nunito',sans-serif; }
+a { color:#2ec9e8; } a:hover { color:#1a9cbf; }
+@keyframes popIn { 0%{transform:scale(.92);opacity:0} 100%{transform:scale(1);opacity:1} }
+</style>
+</helmet>
+<div style="min-height:100vh; display:flex; flex-direction:column; align-items:center; justify-content:center; padding:28px; position:relative; overflow:hidden; background:linear-gradient(180deg,#1a1030 0%,#2b1a4e 55%,#3a2a5e 100%);">
+  <div style="position:absolute; inset:0;">
+    <image-slot id="bg-game" shape="rect" placeholder="скриншот игры (фон)"></image-slot>
+  </div>
+  <div style="position:absolute; inset:0; background:rgba(15,10,40,.35); pointer-events:none;"></div>
+
+  <div style="position:relative; width:660px; animation:popIn .25s ease-out;">
+    <div style="text-align:center; margin-bottom:10px;">
+      <span style="font-family:'Balsamiq Sans',sans-serif; font-style:italic; font-weight:700; font-size:52px; color:#2ed3ee; -webkit-text-stroke:2px #0e6d85; text-shadow:0 4px 0 #0e6d85, 0 8px 18px rgba(0,0,0,.5); letter-spacing:3px;">МОЙ ПЛОТ</span>
+    </div>
+
+    <button onClick="{{ close }}" style="position:absolute; top:44px; right:-26px; z-index:4; width:70px; height:70px; border-radius:24px; border:none; background:linear-gradient(180deg,#ff6b9d,#f0245a); color:#fff; font-family:'Russo One',sans-serif; font-size:32px; cursor:pointer; box-shadow:0 0 0 4px rgba(255,255,255,.9), 0 8px 18px rgba(0,0,0,.45); line-height:1;" style-hover="transform:scale(1.08)" style-active="transform:scale(.95)">✕</button>
+
+    <div style="position:relative; background:rgba(196,206,240,.9); border:5px solid #55e8ff; border-radius:22px; box-shadow:0 0 24px rgba(85,232,255,.5), 0 18px 40px rgba(0,0,20,.5); padding:26px 22px 22px;">
+      <div style="position:absolute; top:-16px; left:-16px; width:38px; height:38px; border-radius:50%; background:radial-gradient(circle at 32% 28%, #ffffff, #cfe6f5 45%, #9fc3dd); box-shadow:0 4px 8px rgba(0,0,20,.4);"></div>
+      <div style="position:absolute; top:-16px; right:52px; width:38px; height:38px; border-radius:50%; background:radial-gradient(circle at 32% 28%, #ffffff, #cfe6f5 45%, #9fc3dd); box-shadow:0 4px 8px rgba(0,0,20,.4);"></div>
+      <div style="position:absolute; bottom:-16px; left:-16px; width:38px; height:38px; border-radius:50%; background:radial-gradient(circle at 32% 28%, #ffffff, #cfe6f5 45%, #9fc3dd); box-shadow:0 4px 8px rgba(0,0,20,.4);"></div>
+      <div style="position:absolute; bottom:-16px; right:-16px; width:38px; height:38px; border-radius:50%; background:radial-gradient(circle at 32% 28%, #ffffff, #cfe6f5 45%, #9fc3dd); box-shadow:0 4px 8px rgba(0,0,20,.4);"></div>
+
+      <div style="display:flex; flex-direction:column; gap:12px;">
+        <sc-for list="{{ slots }}" as="slot" hint-placeholder-count="3">
+          <button onClick="{{ slot.select }}" style="position:relative; display:flex; align-items:center; gap:16px; width:100%; text-align:left; padding:12px 16px; border-radius:16px; cursor:pointer; background:linear-gradient(180deg,#ffffff 0%,#c9f2fb 100%); border:{{ slot.border }}; box-shadow:{{ slot.shadow }}; transition:transform .12s;" style-hover="transform:scale(1.015)" style-active="transform:scale(.99)">
+            <div style="width:64px; height:64px; flex:none;">
+              <image-slot id="{{ slot.imgId }}" shape="circle" placeholder="фото" style="width:64px; height:64px;"></image-slot>
+            </div>
+            <div style="flex:1; min-width:0;">
+              <div style="display:flex; align-items:center; gap:10px;">
+                <span style="font-family:'Balsamiq Sans',sans-serif; font-style:italic; font-weight:700; font-size:23px; color:#2ec9e8; -webkit-text-stroke:1px #0e7d99; text-shadow:0 2px 0 rgba(255,255,255,.8); letter-spacing:1px;">{{ slot.name }}</span>
+                <sc-if value="{{ slot.auto }}" hint-placeholder-val="{{ false }}">
+                  <span style="font-family:'Russo One',sans-serif; font-size:11px; color:#fff; background:linear-gradient(180deg,#38b6ff,#1273d4); border:2px solid #fff; border-radius:9px; padding:3px 9px; letter-spacing:1px; box-shadow:0 2px 4px rgba(0,20,60,.3);">АВТО</span>
+                </sc-if>
+              </div>
+              <div style="font-size:13.5px; font-weight:800; color:#3d7ea6; margin-top:2px;">{{ slot.sub }}</div>
+            </div>
+            <sc-if value="{{ slot.selected }}" hint-placeholder-val="{{ false }}">
+              <div style="width:42px; height:42px; flex:none; border-radius:50%; background:linear-gradient(180deg,#9bf05f,#3fc31e); border:3px solid #fff; box-shadow:0 4px 8px rgba(20,90,10,.4); display:flex; align-items:center; justify-content:center; color:#fff; font-size:24px; font-weight:900;">✓</div>
+            </sc-if>
+          </button>
+        </sc-for>
+      </div>
+
+      <div style="text-align:center; font-family:'Balsamiq Sans',sans-serif; font-style:italic; font-weight:700; font-size:14px; color:#2ec9e8; -webkit-text-stroke:.5px #0e7d99; margin:12px 0 16px;">ПРИ ВЫХОДЕ ПЛОТ СОХРАНЯЕТСЯ В СЛОТ «АВТО»!</div>
+
+      <div style="display:flex; gap:10px;">
+        <sc-for list="{{ accessOptions }}" as="opt" hint-placeholder-count="3">
+          <button onClick="{{ opt.select }}" style="flex:1; padding:13px 8px; border-radius:16px; cursor:pointer; font-family:'Balsamiq Sans',sans-serif; font-style:italic; font-weight:700; font-size:18px; letter-spacing:1px; color:{{ opt.color }}; -webkit-text-stroke:{{ opt.stroke }}; background:{{ opt.bg }}; border:3px solid #fff; box-shadow:{{ opt.shadow }}; transition:transform .12s;" style-hover="transform:scale(1.05)" style-active="transform:scale(.97)">{{ opt.label }}</button>
+        </sc-for>
+      </div>
+
+      <div style="text-align:center; font-size:14px; font-weight:900; margin:12px 0 18px; color:{{ accessHintColor }};">{{ accessHint }}</div>
+
+      <div style="display:flex; justify-content:center;">
+        <button onClick="{{ load }}" style="min-width:340px; padding:16px 40px; border-radius:18px; cursor:pointer; border:3px solid #fff; background:linear-gradient(180deg,#a5f05f 0%,#4ec31e 60%,#3aa815 100%); font-family:'Balsamiq Sans',sans-serif; font-style:italic; font-weight:700; font-size:30px; color:#fff; letter-spacing:2px; -webkit-text-stroke:1px #1c7d10; text-shadow:0 3px 0 #1c7d10; box-shadow:0 6px 14px rgba(0,40,0,.4), inset 0 2px 0 rgba(255,255,255,.5); transition:transform .12s;" style-hover="transform:scale(1.05)" style-active="transform:scale(.96)">ЗАГРУЗИТЬ</button>
+      </div>
+
+      <sc-if value="{{ loadedMsg }}" hint-placeholder-val="{{ false }}">
+        <div style="text-align:center; margin-top:12px; font-weight:900; color:#0d6b2f; font-size:15px;">{{ loadedMsg }}</div>
+      </sc-if>
+    </div>
+
+    <div style="text-align:center; margin-top:18px; font-family:'Balsamiq Sans',sans-serif; font-style:italic; font-weight:700; font-size:19px; color:#2ed3ee; -webkit-text-stroke:.6px #0e6d85; text-shadow:0 2px 6px rgba(0,0,0,.6); letter-spacing:2px;">ВЫБЕРИ СОХРАНЕНИЕ И НАЖМИ «ЗАГРУЗИТЬ»!</div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{&quot;defaultAccess&quot;:{&quot;editor&quot;:&quot;enum&quot;,&quot;default&quot;:&quot;друзья&quot;,&quot;options&quot;:[&quot;друзья&quot;,&quot;никто&quot;],&quot;tsType&quot;:&quot;string&quot;,&quot;section&quot;:&quot;Настройки&quot;}}">
+class Component extends DCLogic {
+  state = { selected: 2, access: this.props.defaultAccess ?? 'друзья', loaded: '' };
+  renderVals() {
+    const sel = this.state.selected, access = this.state.access;
+    const slotData = [
+      { name: 'ПЛОТ 1', sub: 'Сохранено — 49 дн назад', auto: false, imgId: 'slot-img-1' },
+      { name: 'ПЛОТ 2', sub: 'Сохранено', auto: false, imgId: 'slot-img-2' },
+      { name: 'ПОСЛЕДНИЙ ПЛОТ', sub: 'Автосохранение при выходе — 13 ч назад', auto: true, imgId: 'slot-img-3' },
+    ];
+    const slots = slotData.map((s, i) => ({
+      ...s,
+      selected: sel === i,
+      border: sel === i ? '4px solid #ffd93b' : '3px solid #6fd9f2',
+      shadow: sel === i ? '0 0 16px rgba(255,217,59,.7), 0 6px 12px rgba(0,0,40,.3)' : '0 4px 10px rgba(0,0,40,.25), inset 0 1px 0 rgba(255,255,255,.8)',
+      select: () => this.setState({ selected: i, loaded: '' }),
+    }));
+    const hints = {
+      'друзья': ['Только ваши друзья могут зайти на ваш плот.', '#1a6a9c'],
+      'все': ['Любой игрок на сервере может зайти на ваш плот.', '#c22333'],
+      'никто': ['Плот закрыт — зайти можете только вы.', '#1a6a9c'],
+    };
+    const accessOptions = ['друзья', 'никто'].map(key => ({
+      label: key.toUpperCase(),
+      select: () => this.setState({ access: key }),
+      color: access === key ? '#ffffff' : '#2ec9e8',
+      stroke: access === key ? '1px #0a4d94' : '.6px #0e7d99',
+      bg: access === key ? 'linear-gradient(180deg,#38b6ff,#1273d4)' : 'linear-gradient(180deg,#ffffff,#c9f2fb)',
+      shadow: access === key ? '0 0 14px rgba(56,182,255,.8), 0 4px 10px rgba(0,0,40,.3)' : '0 4px 10px rgba(0,0,40,.2)',
+    }));
+    return {
+      slots, accessOptions,
+      accessHint: hints[access][0],
+      accessHintColor: hints[access][1],
+      loadedMsg: this.state.loaded,
+      load: () => this.setState({ loaded: '«' + slotData[sel].name + '» загружается…' }),
+      close: () => this.setState({ loaded: '' }),
+    };
+  }
+}
+</script>
+</body>
+</html>

@@ -1,0 +1,56 @@
+{
+  "canvas": [
+    1000,
+    633
+  ],
+  "splitY": 406,
+  "hero": {
+    "x": 631,
+    "y": 113,
+    "width": 320,
+    "height": 423
+  },
+  "button": {
+    "x": 645,
+    "y": 475,
+    "width": 310,
+    "height": 100
+  },
+  "currency": {
+    "x": 693,
+    "y": 513,
+    "width": 29,
+    "height": 29
+  },
+  "font": "Nunito Black, outlines embedded in SVG",
+  "texts": [
+    {
+      "key": "title",
+      "text": "Мешок Pirate",
+      "font": "Nunito Black",
+      "size": 35,
+      "width": 237.02
+    },
+    {
+      "key": "offer",
+      "text": "ВЫГОДНЫЙ НАБОР",
+      "font": "Nunito Black",
+      "size": 34,
+      "width": 352.78400000000005
+    },
+    {
+      "key": "amount",
+      "text": "2 000",
+      "font": "Nunito Black",
+      "size": 43,
+      "width": 115.49799999999999
+    },
+    {
+      "key": "price",
+      "text": "100",
+      "font": "Nunito Black",
+      "size": 47,
+      "width": 84.6
+    }
+  ]
+}

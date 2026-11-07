@@ -89,6 +89,12 @@ local function setupPlayer(player)
 	local manaMax     = intValue("ManaMax",     initialMax, folder)
 	local manaCurrent = intValue("ManaCurrent", initialMax, folder)
 
+	-- Воздух дайвера под водой. Управляется DiverAir.server.lua (заполняет
+	-- значения и показывает полосу только выбранному дайверу). AirMax = 0
+	-- у остальных игроков → полоса воздуха на клиенте скрыта.
+	intValue("AirMax",     0, folder)
+	intValue("AirCurrent", 0, folder)
+
 	manaStat:GetPropertyChangedSignal("Value"):Connect(function()
 		local oldMax = manaMax.Value
 		local newMax = computeManaMax(manaStat.Value)
@@ -159,8 +165,14 @@ end)
 -- supported action to the attribute IntValue it should bump and silently
 -- ignore everything else so other handlers on the same event (daily-quest
 -- claim, etc.) keep working.
+--[[ ⚠️ СИЛЫ ЗДЕСЬ БОЛЬШЕ НЕТ, И ЭТО НЕ ЗАБЫВЧИВОСТЬ.
+     Сила теперь зарабатывается ударами и растёт уровнями с удваивающимся
+     порогом (Stats/Strength.server.lua). Пока строка upgradeStrength стояла в
+     этой таблице, любой клиент мог прислать её и поднять уровень за очко
+     прокачки — мимо всей новой экономики и мимо потолка в десять уровней.
+     Меню, которое её слало, давно в архиве, но приём ремоута был живым:
+     неиспользуемый путь — это всё ещё путь. ]]
 local UPGRADE_ACTIONS = {
-	upgradeStrength = "Strength",
 	upgradeMana     = "Mana",
 	upgradeMutation = "Mutation",
 }

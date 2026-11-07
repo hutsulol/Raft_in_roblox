@@ -1,0 +1,162 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="font-family: 'Nunito', sans-serif; min-height: 100vh; background: linear-gradient(180deg, #8ec8ec 0%, #6fb0dc 55%, #5aa0d2 100%); display: flex; align-items: center; justify-content: center; padding: 48px 24px;">
+
+  <!-- ====================== EGG CASE MODAL ====================== -->
+  <div style="position: relative; width: 760px;">
+
+    <!-- side controls: left = luck, right = qty -->
+    <div style="position: absolute; left: -104px; top: 96px; display: flex; flex-direction: column; gap: 16px;">
+      <!-- Удача -->
+      <div style="width: 88px; height: 88px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 4px solid #1c4f8f; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; box-shadow: inset 0 -5px 0 rgba(0,0,0,0.18), 0 6px 14px rgba(0,0,0,0.22); cursor: pointer;">
+        <div style="position: relative; width: 34px; height: 30px;">
+          <div style="position: absolute; top: 0; left: 11px; width: 12px; height: 14px; border-radius: 50% 50% 50% 0; background: #d7f0c2;"></div>
+          <div style="position: absolute; top: 8px; left: 0; width: 14px; height: 12px; border-radius: 50% 0 50% 50%; background: #d7f0c2;"></div>
+          <div style="position: absolute; top: 8px; right: 0; width: 14px; height: 12px; border-radius: 0 50% 50% 50%; background: #d7f0c2;"></div>
+          <div style="position: absolute; bottom: 0; left: 11px; width: 12px; height: 14px; border-radius: 50% 0 50% 50%; background: #d7f0c2;"></div>
+        </div>
+        <div style="font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">Удача</div>
+      </div>
+      <!-- Суперудача -->
+      <div style="width: 88px; height: 88px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 4px solid #1c4f8f; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; box-shadow: inset 0 -5px 0 rgba(0,0,0,0.18), 0 6px 14px rgba(0,0,0,0.22); cursor: pointer;">
+        <div style="position: relative; width: 34px; height: 30px;">
+          <div style="position: absolute; top: 0; left: 11px; width: 12px; height: 14px; border-radius: 50% 50% 50% 0; background: #c9b6f5;"></div>
+          <div style="position: absolute; top: 8px; left: 0; width: 14px; height: 12px; border-radius: 50% 0 50% 50%; background: #c9b6f5;"></div>
+          <div style="position: absolute; top: 8px; right: 0; width: 14px; height: 12px; border-radius: 0 50% 50% 50%; background: #c9b6f5;"></div>
+          <div style="position: absolute; bottom: 0; left: 11px; width: 12px; height: 14px; border-radius: 50% 0 50% 50%; background: #c9b6f5;"></div>
+        </div>
+        <div style="font-size: 12px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); text-align: center; line-height: 1.05;">Супер-<br>удача</div>
+      </div>
+    </div>
+
+    <div style="position: absolute; right: -104px; top: 96px; display: flex; flex-direction: column; gap: 16px;">
+      <!-- АВТО -->
+      <div style="width: 88px; height: 88px; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 4px solid #1c4f8f; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; box-shadow: inset 0 -5px 0 rgba(0,0,0,0.12), 0 6px 14px rgba(0,0,0,0.22); cursor: pointer;">
+        <div style="width: 28px; height: 28px; border: 4px solid #1c4f8f; border-top-color: transparent; border-radius: 50%; position: relative;"><div style="position: absolute; top: -7px; right: -3px; width: 0; height: 0; border-left: 7px solid #1c4f8f; border-top: 4px solid transparent; border-bottom: 4px solid transparent;"></div></div>
+        <div style="font-size: 14px; font-weight: 900; color: #1c4f8f;">АВТО</div>
+      </div>
+      <!-- Много -->
+      <div style="width: 88px; height: 88px; background: linear-gradient(180deg, #a9d6f7 0%, #8fc3ec 100%); border: 4px solid #1c4f8f; border-radius: 18px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 5px; box-shadow: inset 0 -5px 0 rgba(0,0,0,0.12), 0 6px 14px rgba(0,0,0,0.22); cursor: pointer;">
+        <div style="display: flex; gap: 3px;">
+          <div style="width: 13px; height: 17px; border-radius: 50% 50% 48% 48%; background: #1c4f8f;"></div>
+          <div style="width: 13px; height: 17px; border-radius: 50% 50% 48% 48%; background: #1c4f8f;"></div>
+          <div style="width: 13px; height: 17px; border-radius: 50% 50% 48% 48%; background: #1c4f8f;"></div>
+        </div>
+        <div style="font-size: 14px; font-weight: 900; color: #1c4f8f;">Много</div>
+      </div>
+    </div>
+
+    <!-- main panel -->
+    <div style="background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 5px solid #1c4f8f; border-radius: 26px; padding: 22px 26px 28px 26px; box-shadow: inset 0 3px 0 rgba(255,255,255,0.3), 0 18px 44px rgba(0,0,0,0.35);">
+
+      <!-- header -->
+      <div style="display: flex; align-items: center; justify-content: space-between; margin-bottom: 16px;">
+        <div style="width: 38px;"></div>
+        <div style="text-align: center;">
+          <div style="font-size: 13px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #cfe8ff; text-shadow: 0 1px 0 rgba(0,0,0,0.25);">Покупка яйца</div>
+          <div style="font-size: 26px; font-weight: 900; color: #ffffff; text-shadow: 0 3px 0 rgba(0,0,0,0.28); margin-top: 2px;">Приключенское яйцо</div>
+        </div>
+        <!-- close -->
+        <div style="width: 38px; height: 38px; background: linear-gradient(180deg, #ff7b6e 0%, #e64a3c 100%); border: 3px solid #a82a1f; border-radius: 12px; display: flex; align-items: center; justify-content: center; font-size: 20px; font-weight: 900; color: #fff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); cursor: pointer; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.2);">✕</div>
+      </div>
+
+      <!-- rarity odds row -->
+      <div style="display: grid; grid-template-columns: repeat(5, 1fr); gap: 10px; margin-bottom: 22px;">
+
+        <!-- common -->
+        <div style="background: rgba(255,255,255,0.16); border: 3px solid #e8eef5; border-radius: 14px; padding: 8px 6px 6px 6px; display: flex; flex-direction: column; align-items: center; gap: 6px;">
+          <div style="width: 100%; aspect-ratio: 1; background: linear-gradient(180deg, #c9dcf0 0%, #aac5e0 100%); border-radius: 10px; display: flex; align-items: flex-end; justify-content: center;">
+            <div style="width: 30px; height: 44px; background: #8aa0b8; border-radius: 14px 14px 8px 8px; margin-bottom: 4px;"></div>
+          </div>
+          <div style="font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">50%</div>
+        </div>
+
+        <!-- uncommon -->
+        <div style="background: rgba(255,255,255,0.16); border: 3px solid #5fe07a; border-radius: 14px; padding: 8px 6px 6px 6px; display: flex; flex-direction: column; align-items: center; gap: 6px;">
+          <div style="width: 100%; aspect-ratio: 1; background: linear-gradient(180deg, #cdeed4 0%, #a7d8b2 100%); border-radius: 10px; display: flex; align-items: flex-end; justify-content: center;">
+            <div style="width: 30px; height: 44px; background: #4e9d63; border-radius: 14px 14px 8px 8px; margin-bottom: 4px;"></div>
+          </div>
+          <div style="font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">30%</div>
+        </div>
+
+        <!-- rare (highlighted blue) -->
+        <div style="background: rgba(255,255,255,0.22); border: 3px solid #ffffff; border-radius: 14px; padding: 8px 6px 6px 6px; display: flex; flex-direction: column; align-items: center; gap: 6px; box-shadow: 0 0 0 3px rgba(84,167,236,0.7), 0 6px 14px rgba(0,0,0,0.25);">
+          <div style="width: 100%; aspect-ratio: 1; background: linear-gradient(180deg, #a9d6f7 0%, #6fb0e6 100%); border-radius: 10px; display: flex; align-items: flex-end; justify-content: center;">
+            <div style="width: 30px; height: 44px; background: #2e6bb4; border-radius: 14px 14px 8px 8px; margin-bottom: 4px;"></div>
+          </div>
+          <div style="font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">17%</div>
+        </div>
+
+        <!-- epic -->
+        <div style="background: rgba(255,255,255,0.16); border: 3px solid #b07ef0; border-radius: 14px; padding: 8px 6px 6px 6px; display: flex; flex-direction: column; align-items: center; gap: 6px;">
+          <div style="width: 100%; aspect-ratio: 1; background: linear-gradient(180deg, #ddc9f3 0%, #c0a3e6 100%); border-radius: 10px; display: flex; align-items: flex-end; justify-content: center;">
+            <div style="width: 30px; height: 44px; background: #7a45b8; border-radius: 14px 14px 8px 8px; margin-bottom: 4px;"></div>
+          </div>
+          <div style="font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">2.5%</div>
+        </div>
+
+        <!-- legendary -->
+        <div style="background: rgba(255,255,255,0.16); border: 3px solid #f5a93c; border-radius: 14px; padding: 8px 6px 6px 6px; display: flex; flex-direction: column; align-items: center; gap: 6px;">
+          <div style="width: 100%; aspect-ratio: 1; background: linear-gradient(180deg, #f7dcae 0%, #ecc079 100%); border-radius: 10px; display: flex; align-items: flex-end; justify-content: center;">
+            <div style="width: 30px; height: 44px; background: #c98a2a; border-radius: 14px 14px 8px 8px; margin-bottom: 4px;"></div>
+          </div>
+          <div style="font-size: 14px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3);">0.5%</div>
+        </div>
+
+      </div>
+
+      <!-- egg display stage -->
+      <div style="background: linear-gradient(180deg, #2e6bb4 0%, #1c4f8f 100%); border: 4px solid #143a6b; border-radius: 20px; padding: 26px; display: flex; align-items: center; justify-content: center; position: relative; overflow: hidden; box-shadow: inset 0 4px 14px rgba(0,0,0,0.3);">
+        <!-- soft glow -->
+        <div style="position: absolute; width: 320px; height: 320px; border-radius: 50%; background: radial-gradient(circle, rgba(169,214,247,0.55) 0%, rgba(169,214,247,0) 70%);"></div>
+        <!-- sparkles -->
+        <div style="position: absolute; top: 26px; left: 60px; color: #cfe8ff; font-size: 22px;">✦</div>
+        <div style="position: absolute; bottom: 30px; right: 70px; color: #cfe8ff; font-size: 16px;">✦</div>
+        <div style="position: absolute; top: 60px; right: 110px; color: #a9d6f7; font-size: 13px;">✦</div>
+        <!-- egg -->
+        <div style="position: relative; width: 150px; height: 192px;">
+          <div style="width: 100%; height: 100%; background: linear-gradient(150deg, #eaf5ff 0%, #c4e1f7 45%, #8fc3ec 100%); border-radius: 50% 50% 48% 48% / 60% 60% 42% 42%; box-shadow: inset -12px -16px 26px rgba(28,79,143,0.35), inset 14px 14px 22px rgba(255,255,255,0.7); position: relative;">
+            <!-- spots -->
+            <div style="position: absolute; top: 56px; left: 30px; width: 26px; height: 22px; background: rgba(46,107,180,0.45); border-radius: 50%;"></div>
+            <div style="position: absolute; top: 100px; left: 78px; width: 32px; height: 26px; background: rgba(46,107,180,0.4); border-radius: 50%;"></div>
+            <div style="position: absolute; top: 130px; left: 36px; width: 20px; height: 18px; background: rgba(46,107,180,0.35); border-radius: 50%;"></div>
+            <!-- shine -->
+            <div style="position: absolute; top: 24px; left: 28px; width: 30px; height: 46px; background: rgba(255,255,255,0.75); border-radius: 50%; transform: rotate(-18deg); filter: blur(1px);"></div>
+          </div>
+        </div>
+      </div>
+
+      <!-- cost + buy -->
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 14px; margin-top: 22px;">
+        <div style="display: flex; align-items: center; gap: 10px;">
+          <div style="width: 30px; height: 30px; border-radius: 50%; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 3px solid #b07a14; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; color: #b07a14;">$</div>
+          <div style="font-size: 30px; font-weight: 900; color: #ffffff; text-shadow: 0 3px 0 rgba(0,0,0,0.28);">35</div>
+        </div>
+        <div style="width: 100%; max-width: 340px; padding: 14px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 4px solid #1c4f8f; border-radius: 16px; text-align: center; font-size: 22px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); cursor: pointer; box-shadow: inset 0 -5px 0 rgba(0,0,0,0.2), 0 6px 14px rgba(0,0,0,0.25);">
+          Купить · 1
+        </div>
+      </div>
+
+    </div>
+  </div>
+</div>
+</x-dc>
+</body>
+</html>

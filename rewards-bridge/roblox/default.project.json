@@ -1,0 +1,10 @@
+{
+  "name": "RewardCodesAdapter",
+  "tree": {
+    "$className": "DataModel",
+    "ServerScriptService": {
+      "RewardCodes": { "$path": "RewardCodes.lua" },
+      "RewardCodesBootstrap": { "$path": "RewardCodesBootstrap.server.lua" }
+    }
+  }
+}

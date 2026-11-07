@@ -43,7 +43,7 @@ txt.Font = Enum.Font.GothamSemibold
 txt.TextSize = 12
 txt.TextColor3 = Color3.fromRGB(255, 238, 196)
 txt.TextStrokeTransparency = 0.5
-txt.Text = "Pick up"
+txt.Text = "Подобрать"
 txt.Parent = holder
 
 local function resolveTarget(inst)
@@ -95,7 +95,7 @@ RunService.RenderStepped:Connect(function()
 		if pos and (pos - hrp.Position).Magnitude <= PICKUP_DISTANCE then
 			currentTarget = target
 			local name = target:GetAttribute("PickupDisplayName") or target.Name
-			txt.Text = "Pick up: " .. tostring(name)
+			txt.Text = "Подобрать: " .. tostring(name)
 			holder.Position = UDim2.fromOffset(mousePos.X, mousePos.Y - 36)
 			holder.Visible = true
 			return
@@ -110,5 +110,9 @@ UserInputService.InputBegan:Connect(function(input, gp)
 	if gp then return end
 	if input.KeyCode ~= PICKUP_KEY then return end
 	if not currentTarget then return end
+	-- Suppress the inventory's E-toggle for this press. InventoryUI
+	-- defers its toggle decision and skips it when LastPickupTime is
+	-- within the last 0.2 s.
+	_G.LastPickupTime = os.clock()
 	pickupEvent:FireServer(currentTarget)
 end)

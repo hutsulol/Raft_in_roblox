@@ -1,0 +1,157 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; background: #e9e6e0; }
+    * { box-sizing: border-box; }
+  </style>
+</helmet>
+
+<div style="font-family: 'Nunito', sans-serif; color: #2b2620; padding: 44px 40px 80px 40px; max-width: 1320px; margin: 0 auto;">
+
+  <!-- header -->
+  <div style="max-width: 880px; margin-bottom: 36px;">
+    <div style="font-size: 13px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #8a7a5e; margin-bottom: 10px;">Roblox UI · Pet Egg · Тема «Океан»</div>
+    <h1 style="font-size: 32px; font-weight: 900; margin: 0 0 12px 0; line-height: 1.15;">Прозрачная панель над яйцом</h1>
+    <p style="font-size: 15px; font-weight: 700; line-height: 1.6; color: #5a5247; margin: 0;">
+      Billboard-панель, висящая над яйцом в мире: показывает питомцев, которые могут выпасть, и их шансы.
+      Полупрозрачное стекло в синей палитре, рамки слотов окрашены по редкости.
+    </p>
+  </div>
+
+  <!-- ============ CLEAN PANEL ON BLUE STAGE ============ -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px;">
+    <h2 style="font-size: 19px; font-weight: 900; margin: 0;">Панель</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">слоты по редкости, выделенная — текущий «подсвеченный» питомец</span>
+  </div>
+  <div style="background: linear-gradient(180deg, #6fb0dc 0%, #4f93c8 100%); border-radius: 16px; padding: 46px 36px; margin-bottom: 44px; display: flex; justify-content: center;">
+
+    <!-- THE PANEL -->
+    <div style="display: inline-flex; flex-direction: column; align-items: center; gap: 10px;">
+      <div style="display: flex; gap: 12px; padding: 14px; background: linear-gradient(180deg, rgba(31,79,143,0.62) 0%, rgba(20,58,107,0.62) 100%); border: 3px solid rgba(169,214,247,0.85); border-radius: 20px; box-shadow: inset 0 2px 0 rgba(255,255,255,0.25), 0 10px 26px rgba(0,0,0,0.3); backdrop-filter: blur(6px); -webkit-backdrop-filter: blur(6px);">
+
+        <!-- common 50 -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+          <div style="width: 92px; height: 92px; background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 100%); border: 3px solid #e3ebf3; border-radius: 14px; display: flex; align-items: flex-end; justify-content: center; box-shadow: inset 0 2px 8px rgba(0,0,0,0.25);">
+            <div style="width: 40px; height: 56px; background: linear-gradient(180deg, #b9c6d4 0%, #8593a4 100%); border-radius: 18px 18px 10px 10px; margin-bottom: 8px;"></div>
+          </div>
+          <div style="font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.4);">50%</div>
+        </div>
+
+        <!-- uncommon 30 -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+          <div style="width: 92px; height: 92px; background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 100%); border: 3px solid #5fe07a; border-radius: 14px; display: flex; align-items: flex-end; justify-content: center; box-shadow: inset 0 2px 8px rgba(0,0,0,0.25), 0 0 10px rgba(95,224,122,0.4);">
+            <div style="width: 40px; height: 56px; background: linear-gradient(180deg, #79c98c 0%, #4e9d63 100%); border-radius: 18px 18px 10px 10px; margin-bottom: 8px;"></div>
+          </div>
+          <div style="font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.4);">30%</div>
+        </div>
+
+        <!-- rare 17 — highlighted -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+          <div style="width: 100px; height: 100px; margin-top: -4px; background: linear-gradient(180deg, rgba(169,214,247,0.32) 0%, rgba(84,167,236,0.18) 100%); border: 4px solid #ffffff; border-radius: 16px; display: flex; align-items: flex-end; justify-content: center; box-shadow: inset 0 2px 8px rgba(0,0,0,0.2), 0 0 0 3px rgba(84,167,236,0.85), 0 0 16px rgba(84,167,236,0.6);">
+            <div style="width: 44px; height: 60px; background: linear-gradient(180deg, #7fb8ec 0%, #2e6bb4 100%); border-radius: 20px 20px 10px 10px; margin-bottom: 8px;"></div>
+          </div>
+          <div style="font-size: 17px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.4);">17%</div>
+        </div>
+
+        <!-- epic 2.5 -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+          <div style="width: 92px; height: 92px; background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 100%); border: 3px solid #b07ef0; border-radius: 14px; display: flex; align-items: flex-end; justify-content: center; box-shadow: inset 0 2px 8px rgba(0,0,0,0.25), 0 0 10px rgba(176,126,240,0.4);">
+            <div style="width: 40px; height: 56px; background: linear-gradient(180deg, #b78ee6 0%, #7a45b8 100%); border-radius: 18px 18px 10px 10px; margin-bottom: 8px;"></div>
+          </div>
+          <div style="font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.4);">2.5%</div>
+        </div>
+
+        <!-- legendary 0.5 -->
+        <div style="display: flex; flex-direction: column; align-items: center; gap: 6px;">
+          <div style="width: 92px; height: 92px; background: linear-gradient(180deg, rgba(255,255,255,0.18) 0%, rgba(255,255,255,0.06) 100%); border: 3px solid #f5a93c; border-radius: 14px; display: flex; align-items: flex-end; justify-content: center; box-shadow: inset 0 2px 8px rgba(0,0,0,0.25), 0 0 10px rgba(245,169,60,0.45);">
+            <div style="width: 40px; height: 56px; background: linear-gradient(180deg, #f0c074 0%, #c98a2a 100%); border-radius: 18px 18px 10px 10px; margin-bottom: 8px;"></div>
+          </div>
+          <div style="font-size: 16px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.4);">0.5%</div>
+        </div>
+
+      </div>
+      <!-- little pointer down toward the egg -->
+      <div style="width: 0; height: 0; border-left: 14px solid transparent; border-right: 14px solid transparent; border-top: 16px solid rgba(31,79,143,0.62);"></div>
+    </div>
+
+  </div>
+
+  <!-- ============ IN CONTEXT ============ -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px;">
+    <h2 style="font-size: 19px; font-weight: 900; margin: 0;">В контексте игры</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">панель висит над яйцом, стрелка указывает вниз</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 22px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 44px;">
+    <div style="position: relative; border-radius: 10px; overflow: hidden; line-height: 0;">
+      <img src="uploads/pasted-1781530679152-0.png" alt="Скриншот игры" style="width: 100%; display: block;">
+
+      <!-- overlaid panel, scaled down, positioned over the egg -->
+      <div style="position: absolute; top: 5%; left: 50%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center; gap: 5px;">
+        <div style="display: flex; gap: 7px; padding: 8px; background: linear-gradient(180deg, rgba(31,79,143,0.62) 0%, rgba(20,58,107,0.62) 100%); border: 2px solid rgba(169,214,247,0.85); border-radius: 13px; box-shadow: inset 0 1px 0 rgba(255,255,255,0.25), 0 6px 16px rgba(0,0,0,0.35); backdrop-filter: blur(5px); -webkit-backdrop-filter: blur(5px);">
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 3px;">
+            <div style="width: 54px; height: 54px; background: rgba(255,255,255,0.12); border: 2px solid #e3ebf3; border-radius: 9px; display: flex; align-items: flex-end; justify-content: center;"><div style="width: 24px; height: 33px; background: linear-gradient(180deg, #b9c6d4, #8593a4); border-radius: 11px 11px 6px 6px; margin-bottom: 4px;"></div></div>
+            <div style="font-size: 11px; font-weight: 900; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.5);">50%</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 3px;">
+            <div style="width: 54px; height: 54px; background: rgba(255,255,255,0.12); border: 2px solid #5fe07a; border-radius: 9px; display: flex; align-items: flex-end; justify-content: center; box-shadow: 0 0 7px rgba(95,224,122,0.4);"><div style="width: 24px; height: 33px; background: linear-gradient(180deg, #79c98c, #4e9d63); border-radius: 11px 11px 6px 6px; margin-bottom: 4px;"></div></div>
+            <div style="font-size: 11px; font-weight: 900; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.5);">30%</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 3px;">
+            <div style="width: 58px; height: 58px; margin-top: -2px; background: rgba(84,167,236,0.22); border: 3px solid #fff; border-radius: 10px; display: flex; align-items: flex-end; justify-content: center; box-shadow: 0 0 0 2px rgba(84,167,236,0.85), 0 0 10px rgba(84,167,236,0.6);"><div style="width: 26px; height: 36px; background: linear-gradient(180deg, #7fb8ec, #2e6bb4); border-radius: 12px 12px 6px 6px; margin-bottom: 4px;"></div></div>
+            <div style="font-size: 12px; font-weight: 900; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.5);">17%</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 3px;">
+            <div style="width: 54px; height: 54px; background: rgba(255,255,255,0.12); border: 2px solid #b07ef0; border-radius: 9px; display: flex; align-items: flex-end; justify-content: center; box-shadow: 0 0 7px rgba(176,126,240,0.4);"><div style="width: 24px; height: 33px; background: linear-gradient(180deg, #b78ee6, #7a45b8); border-radius: 11px 11px 6px 6px; margin-bottom: 4px;"></div></div>
+            <div style="font-size: 11px; font-weight: 900; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.5);">2.5%</div>
+          </div>
+          <div style="display: flex; flex-direction: column; align-items: center; gap: 3px;">
+            <div style="width: 54px; height: 54px; background: rgba(255,255,255,0.12); border: 2px solid #f5a93c; border-radius: 9px; display: flex; align-items: flex-end; justify-content: center; box-shadow: 0 0 7px rgba(245,169,60,0.45);"><div style="width: 24px; height: 33px; background: linear-gradient(180deg, #f0c074, #c98a2a); border-radius: 11px 11px 6px 6px; margin-bottom: 4px;"></div></div>
+            <div style="font-size: 11px; font-weight: 900; color: #fff; text-shadow: 0 1px 0 rgba(0,0,0,0.5);">0.5%</div>
+          </div>
+        </div>
+        <div style="width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; border-top: 11px solid rgba(31,79,143,0.62);"></div>
+      </div>
+
+    </div>
+  </div>
+
+  <!-- ============ SPECS ============ -->
+  <div style="display: grid; grid-template-columns: 1fr 1fr; gap: 20px;">
+    <div style="background: #ffffff; border-radius: 16px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 12px;">Реализация (Roblox Studio)</div>
+      <div style="font-size: 13px; font-weight: 700; line-height: 2; color: #5a5247;">
+        BillboardGui на яйце, StudsOffset Y ≈ +6<br>
+        Size: ~9 × 2 studs, AlwaysOnTop = true<br>
+        Слот: 92×92, UICorner 14, UIStroke 3<br>
+        Стекло: Frame BG #1F4F8F, Transparency 0.38<br>
+        Подсвеченный слот крупнее (100×100) + белая рамка<br>
+        Слоты — UIListLayout, Horizontal, Padding 12
+      </div>
+    </div>
+    <div style="background: #ffffff; border-radius: 16px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 12px;">Цвета рамок по редкости</div>
+      <div style="display: flex; flex-direction: column; gap: 9px; font-size: 13px; font-weight: 700; color: #5a5247;">
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #e3ebf3; border: 1px solid #c7cfd8; flex: none;"></div>Обычный — #E3EBF3 · 50%</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #5fe07a; flex: none;"></div>Необычный — #5FE07A · 30%</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #54a7ec; flex: none;"></div>Редкий — #54A7EC (белая обводка) · 17%</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #b07ef0; flex: none;"></div>Эпический — #B07EF0 · 2.5%</div>
+        <div style="display: flex; align-items: center; gap: 10px;"><div style="width: 22px; height: 22px; border-radius: 6px; background: #f5a93c; flex: none;"></div>Легендарный — #F5A93C · 0.5%</div>
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+</body>
+</html>

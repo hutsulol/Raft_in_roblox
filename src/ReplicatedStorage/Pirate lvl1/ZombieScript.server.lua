@@ -1,0 +1,211 @@
+-- Zombie.script — minimal self-contained pirate AI.
+--
+-- Replaces the old Quenty monster framework that required a
+-- Configurations folder, a Mind folder, Died / Respawned / Attacked
+-- BindableEvents, a Respawn BindableFunction, and an Attack Animation
+-- child. None of those are needed: tunables live in local constants
+-- below and the loop reads state straight off the Humanoid.
+--
+-- Role is driven by CollectionService tags on the model itself:
+--   * "SpawnedMercenary" → hunt nearest HostilePirate
+--   * anything else       → hunt nearest player + any SpawnedMercenary
+--
+-- Stops cleanly on death — no respawn loop.
+
+local CollectionService = game:GetService("CollectionService")
+local Players            = game:GetService("Players")
+local RunService         = game:GetService("RunService")
+
+local self        = script.Parent
+local humanoid    = self:WaitForChild("Humanoid", 5)
+local rootPart    = self:WaitForChild("HumanoidRootPart", 5)
+
+if not humanoid or not rootPart then
+	warn("[Zombie] missing Humanoid / HumanoidRootPart on " .. self:GetFullName())
+	return
+end
+
+-- ─── Tunables ─────────────────────────────────────────────────────────────
+local DETECTION_RANGE = 200   -- studs
+local ATTACK_RANGE    = 5     -- studs
+local ATTACK_DAMAGE   = 10
+local ATTACK_COOLDOWN = 1.0   -- seconds (1.5× faster than the old 1.5s)
+local WALK_SPEED      = 16
+local TICK_INTERVAL   = 0.1   -- AI tick — 10Hz is plenty for chase/attack
+
+-- ─── State ────────────────────────────────────────────────────────────────
+local lastAttack = 0
+local alive      = true
+
+-- ─── Startup normalisation ────────────────────────────────────────────────
+-- A previous playtest may have saved the template mid-ragdoll. Force the
+-- humanoid back into a walkable state so MoveTo actually moves it.
+humanoid.WalkSpeed     = WALK_SPEED
+humanoid.PlatformStand = false
+humanoid.Sit           = false
+rootPart.Anchored      = false
+
+-- ─── Attack animation ─────────────────────────────────────────────────────
+-- Walk / idle come from the rig's own Animate script (same way the
+-- working Pirate_2 mercenary does it), so we DO NOT disable it.
+--
+-- The original Zombie.script required a child Animation called "Attack"
+-- (the assert on `script.Attack` is what threw "Monster does not have
+-- a MonsterScript.Attack Animation" after the template lost it). We
+-- still prefer that Instance when the template ships one, but fall
+-- back to the standard R6 tool-slash asset so every pirate visibly
+-- swings even if no Animation child is present.
+local DEFAULT_ATTACK_ID = "rbxassetid://129967390"  -- R6 toolslash
+
+local animator = humanoid:FindFirstChildOfClass("Animator")
+if not animator then
+	animator = Instance.new("Animator")
+	animator.Parent = humanoid
+end
+
+local attackTrack
+do
+	local anim = script:FindFirstChild("Attack")
+		or self:FindFirstChild("AttackAnim")
+	if not (anim and anim:IsA("Animation")) then
+		anim = Instance.new("Animation")
+		anim.Name = "Attack"
+		anim.AnimationId = DEFAULT_ATTACK_ID
+	end
+	local ok, track = pcall(animator.LoadAnimation, animator, anim)
+	if ok then
+		attackTrack = track
+		attackTrack.Priority = Enum.AnimationPriority.Action
+	end
+end
+
+-- ─── Helpers ──────────────────────────────────────────────────────────────
+
+-- Returns the BasePart used for distance / movement (R15 players and R6
+-- pirates both resolve to a valid part).
+local function rootOf(humanoidInst)
+	if not humanoidInst then return nil end
+	local rp = humanoidInst.RootPart
+	if rp and rp:IsA("BasePart") then return rp end
+	if humanoidInst.Torso and humanoidInst.Torso:IsA("BasePart") then
+		return humanoidInst.Torso
+	end
+	local model = humanoidInst.Parent
+	return model and model:FindFirstChild("HumanoidRootPart") or nil
+end
+
+local function isMercenary()
+	return CollectionService:HasTag(self, "SpawnedMercenary")
+end
+
+-- Walk through the candidate list and return the nearest live Humanoid.
+local function nearestFrom(humanoids)
+	local myPos = rootPart.Position
+	local bestHum, bestDist = nil, DETECTION_RANGE
+	for _, hum in ipairs(humanoids) do
+		if hum and hum ~= humanoid and hum.Health > 0 then
+			local part = rootOf(hum)
+			if part then
+				local d = (part.Position - myPos).Magnitude
+				if d < bestDist then
+					bestHum, bestDist = hum, d
+				end
+			end
+		end
+	end
+	return bestHum
+end
+
+-- Build the candidate list based on this unit's role.
+local function findTarget()
+	local mercRole = isMercenary()
+	local candidates = {}
+
+	if mercRole then
+		for _, pirate in CollectionService:GetTagged("HostilePirate") do
+			if pirate:IsDescendantOf(workspace) and pirate ~= self then
+				local hum = pirate:FindFirstChildOfClass("Humanoid")
+				if hum then table.insert(candidates, hum) end
+			end
+		end
+	else
+		-- Hostile pirate targets players + any spawned mercenary.
+		for _, player in ipairs(Players:GetPlayers()) do
+			local char = player.Character
+			if char then
+				local hum = char:FindFirstChildOfClass("Humanoid")
+				if hum then table.insert(candidates, hum) end
+			end
+		end
+		for _, merc in CollectionService:GetTagged("SpawnedMercenary") do
+			if merc:IsDescendantOf(workspace) and merc ~= self then
+				local hum = merc:FindFirstChildOfClass("Humanoid")
+				if hum then table.insert(candidates, hum) end
+			end
+		end
+	end
+
+	return nearestFrom(candidates)
+end
+
+local function tryAttack(targetHum, targetRoot)
+	if tick() - lastAttack < ATTACK_COOLDOWN then return end
+	if (rootPart.Position - targetRoot.Position).Magnitude > ATTACK_RANGE then return end
+	lastAttack = tick()
+	targetHum:TakeDamage(ATTACK_DAMAGE)
+
+	-- Play the rig's Attack animation (either the one shipped with the
+	-- model or the default R6 sword-slash). Stop first so consecutive
+	-- swings visibly restart from frame 0.
+	if attackTrack then
+		pcall(function()
+			attackTrack:Stop(0)
+			attackTrack:Play(0.1)
+		end)
+	end
+
+	-- Activate the equipped Tool (ClassicSword) so its built-in swing
+	-- animation + sound play alongside, matching Pirate_2's behaviour.
+	local tool = self:FindFirstChildWhichIsA("Tool")
+	if tool then
+		pcall(function() tool:Activate() end)
+	end
+end
+
+-- ─── Lifecycle ────────────────────────────────────────────────────────────
+humanoid.Died:Connect(function()
+	alive = false
+end)
+
+print("[Zombie] AI online for " .. self:GetFullName())
+
+-- ─── Main loop ────────────────────────────────────────────────────────────
+while alive and self.Parent do
+	local ok, err = pcall(function()
+		if humanoid.Health <= 0 then
+			alive = false
+			return
+		end
+		local target = findTarget()
+		if not target then return end
+		local tRoot = rootOf(target)
+		if not tRoot then return end
+
+		local dist = (rootPart.Position - tRoot.Position).Magnitude
+		if dist > ATTACK_RANGE then
+			-- Chase: MoveTo drives the humanoid's Running state which
+			-- the sibling Animate script uses to pick the walk/run track.
+			humanoid:MoveTo(tRoot.Position)
+		else
+			-- In melee: face the target without drifting away.
+			humanoid:MoveTo(rootPart.Position)
+		end
+		tryAttack(target, tRoot)
+	end)
+	if not ok then
+		warn("[Zombie] tick error: " .. tostring(err))
+	end
+	task.wait(TICK_INTERVAL)
+end
+
+if attackTrack then attackTrack:Stop(0) end

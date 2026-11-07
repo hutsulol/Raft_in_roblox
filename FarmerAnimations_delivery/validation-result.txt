@@ -1,0 +1,2 @@
+PASS: luaparse syntax, UTF-8 without BOM; 28 new clips executed in Fengari mathematical CFrame test harness; 12 original clips unchanged; mappings, durations, key times, six joints, finite values, loop seams, gait phase, event keys, missing-base guard, WorkKneel fallback.
+Not a Roblox rendering/physics test. Studio visual checklist remains pending.

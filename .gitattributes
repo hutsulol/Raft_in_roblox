@@ -1,0 +1,12 @@
+# Normalize line endings to LF. Roblox Studio and Rojo use LF internally, so
+# CRLF files show as spurious changes on every Rojo connect. Keep everything LF.
+* text=auto eol=lf
+*.lua text eol=lf
+*.luau text eol=lf
+*.json text eol=lf
+
+# Binary Roblox assets — never normalize or diff these.
+*.rbxl binary
+*.rbxlx binary
+*.rbxm binary
+*.rbxmx binary

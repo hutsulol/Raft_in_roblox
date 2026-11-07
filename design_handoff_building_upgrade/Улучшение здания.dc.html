@@ -1,0 +1,188 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin="anonymous">
+  <link href="https://fonts.googleapis.com/css2?family=Nunito:wght@700;800;900&display=swap" rel="stylesheet">
+  <style>
+    html, body { margin: 0; padding: 0; background: #e9e6e0; }
+    * { box-sizing: border-box; }
+    a { color: #2e6bb4; } a:hover { color: #1c4f8f; }
+  </style>
+</helmet>
+
+<div style="font-family: 'Nunito', sans-serif; color: #2b2620; padding: 44px 40px 80px 40px; max-width: 1320px; margin: 0 auto;">
+
+  <div style="max-width: 880px; margin-bottom: 32px;">
+    <div style="font-size: 13px; font-weight: 900; letter-spacing: 2px; text-transform: uppercase; color: #8a7a5e; margin-bottom: 10px;">Roblox UI · Pirate Island · Тема «Океан»</div>
+    <h1 style="font-size: 32px; font-weight: 900; margin: 0 0 12px 0; line-height: 1.15;">Улучшение здания</h1>
+    <p style="font-size: 15px; font-weight: 700; line-height: 1.6; color: #5a5247; margin: 0;">
+      Одна компактная табличка, всегда висит над зданием: уровень, множитель прибыли и кнопка-молоток с ценой. Нажатие сразу запускает улучшение, прогресс сборки — прямо в кнопке.
+    </p>
+  </div>
+
+  <!-- ============ IN CONTEXT ============ -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px;">
+    <h2 style="font-size: 19px; font-weight: 900; margin: 0;">В игре</h2>
+    <span style="font-size: 13px; font-weight: 700; color: #8a7f6e;">нажмите молоток</span>
+  </div>
+  <div style="background: #ffffff; border-radius: 16px; padding: 22px; box-shadow: 0 1px 4px rgba(0,0,0,0.06); margin-bottom: 44px;">
+    <div style="position: relative; border-radius: 10px; overflow: hidden; max-width: 956px; margin: 0 auto; line-height: 1.15;">
+      <div style="aspect-ratio: 956 / 520; overflow: hidden;"><img src="uploads/pasted-1791572013960-0.png" alt="Здание в игре" style="width: 100%; display: block;"></div>
+
+      <div style="position: absolute; left: 50%; top: 1%; transform: translateX(-50%); display: flex; flex-direction: column; align-items: center;">
+        <div style="position: relative; z-index: 2; margin-bottom: -9px; padding: 3px 16px 5px 16px; background: linear-gradient(180deg, #ffe38a 0%, #f5b73c 100%); border: 3px solid #0d2a4f; border-radius: 12px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.15), inset 0 2px 0 rgba(255,255,255,0.5), 0 4px 10px rgba(0,0,0,0.3); transform: rotate(-2deg);">
+          <span style="font-size: 17px; font-weight: 900; color: #ffffff; -webkit-text-stroke: 4px #0d2a4f; paint-order: stroke fill; white-space: nowrap; letter-spacing: 0.3px;">Домик фермера</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; padding: 5px; background: linear-gradient(180deg, rgba(31,79,143,0.85) 0%, rgba(20,58,107,0.85) 100%); border: 3px solid rgba(169,214,247,0.9); border-radius: 16px; box-shadow: inset 0 2px 0 rgba(255,255,255,0.25), 0 6px 16px rgba(0,0,0,0.3);">
+          <div style="height: 40px; min-width: 40px; padding: 0 8px; flex: none; border-radius: 11px; background: linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%); border: 3px solid #1c4f8f; display: flex; align-items: center; justify-content: center; gap: 3px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.18);">
+            <span style="font-size: 10px; font-weight: 900; color: #cfe6fa; text-transform: uppercase;">Ур</span>
+            <span style="font-size: 20px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.35); line-height: 1;">{{ lvl }}</span>
+          </div>
+          <span style="font-size: 24px; font-weight: 900; color: #ffd95a; -webkit-text-stroke: 4px #0d2a4f; paint-order: stroke fill; line-height: 1; padding: 0 2px;">{{ mult }}</span>
+
+          <sc-if value="{{ canBuy }}" hint-placeholder-val="{{ true }}">
+            <div onClick="{{ upgrade }}" style="position: relative; height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 6px; border-radius: 11px; background: linear-gradient(180deg, #6ff08a 0%, #34b84e 100%); border: 3px solid #1f7a33; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.2), inset 0 2px 0 rgba(255,255,255,0.45); cursor: pointer;" style-hover="filter: brightness(1.06);" style-active="transform: translateY(2px);">
+              <div style="position: relative; width: 22px; height: 22px; transform: rotate(-35deg); flex: none;">
+                <div style="position: absolute; left: 8px; top: 7px; width: 6px; height: 15px; border-radius: 3px; background: #b5793a; border: 2px solid #5d3a18;"></div>
+                <div style="position: absolute; left: 1px; top: 0; width: 20px; height: 9px; border-radius: 3px; background: linear-gradient(180deg, #e3e8ef 0%, #9aa1ad 100%); border: 2px solid #3d4552;"></div>
+              </div>
+              <div style="width: 14px; height: 14px; flex: none; border-radius: 50%; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2px solid #b07a14;"></div>
+              <span style="font-size: 15px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.3); white-space: nowrap;">{{ cost }}</span>
+              <div style="position: absolute; top: -7px; right: -7px; width: 16px; height: 16px; border-radius: 50%; background: #e84a3a; border: 2px solid #ffffff; display: flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 900; color: #ffffff;">!</div>
+            </div>
+          </sc-if>
+          <sc-if value="{{ cantBuy }}" hint-placeholder-val="{{ false }}">
+            <div style="height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 6px; border-radius: 11px; background: #2e6bb4; border: 3px solid #1c4f8f; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.18);">
+              <div style="position: relative; width: 22px; height: 22px; transform: rotate(-35deg); flex: none; opacity: 0.7;">
+                <div style="position: absolute; left: 8px; top: 7px; width: 6px; height: 15px; border-radius: 3px; background: #b5793a; border: 2px solid #5d3a18;"></div>
+                <div style="position: absolute; left: 1px; top: 0; width: 20px; height: 9px; border-radius: 3px; background: linear-gradient(180deg, #e3e8ef 0%, #9aa1ad 100%); border: 2px solid #3d4552;"></div>
+              </div>
+              <div style="width: 14px; height: 14px; flex: none; border-radius: 50%; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2px solid #b07a14;"></div>
+              <span style="font-size: 15px; font-weight: 900; color: #ff8a7e; text-shadow: 0 1px 0 rgba(0,0,0,0.3); white-space: nowrap;">{{ cost }}</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ isBuilding }}" hint-placeholder-val="{{ false }}">
+            <div style="position: relative; height: 40px; width: 96px; border-radius: 11px; background: #143a6b; border: 3px solid #0d2a4f; overflow: hidden;">
+              <div style="height: 100%; width: {{ progPct }}; background: linear-gradient(180deg, #ffe38a 0%, #f5b73c 100%); box-shadow: inset 0 -3px 0 rgba(0,0,0,0.15);"></div>
+              <span style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; color: #ffffff; -webkit-text-stroke: 3px #0d2a4f; paint-order: stroke fill;">{{ progPct }}</span>
+            </div>
+          </sc-if>
+        </div>
+        <div style="width: 0; height: 0; border-left: 9px solid transparent; border-right: 9px solid transparent; border-top: 10px solid rgba(20,58,107,0.85);"></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ============ STATES ============ -->
+  <div style="display: flex; align-items: baseline; gap: 14px; margin-bottom: 14px;">
+    <h2 style="font-size: 19px; font-weight: 900; margin: 0;">Состояния</h2>
+  </div>
+  <div style="background: linear-gradient(180deg, #7ec0e6 0%, #5fa8d6 100%); border-radius: 16px; padding: 30px 24px; margin-bottom: 44px; display: flex; flex-wrap: wrap; gap: 28px; justify-content: center;">
+    <sc-for list="{{ states }}" as="st" hint-placeholder-count="4">
+      <div style="display: flex; flex-direction: column; align-items: center; gap: 10px;">
+        <div style="display: flex; flex-direction: column; align-items: center;">
+        <div style="position: relative; z-index: 2; margin-bottom: -9px; padding: 3px 16px 5px 16px; background: linear-gradient(180deg, #ffe38a 0%, #f5b73c 100%); border: 3px solid #0d2a4f; border-radius: 12px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.15), inset 0 2px 0 rgba(255,255,255,0.5), 0 4px 10px rgba(0,0,0,0.3); transform: rotate(-2deg);">
+          <span style="font-size: 17px; font-weight: 900; color: #ffffff; -webkit-text-stroke: 4px #0d2a4f; paint-order: stroke fill; white-space: nowrap;">{{ st.name }}</span>
+        </div>
+        <div style="display: flex; align-items: center; gap: 6px; padding: 5px; background: linear-gradient(180deg, rgba(31,79,143,0.85) 0%, rgba(20,58,107,0.85) 100%); border: 3px solid rgba(169,214,247,0.9); border-radius: 16px; box-shadow: inset 0 2px 0 rgba(255,255,255,0.25), 0 6px 16px rgba(0,0,0,0.25);">
+          <div style="height: 40px; min-width: 40px; padding: 0 8px; border-radius: 11px; background: {{ st.lvlBg }}; border: 3px solid {{ st.lvlBorder }}; display: flex; align-items: center; justify-content: center; gap: 3px; box-shadow: inset 0 -3px 0 rgba(0,0,0,0.18);">
+            <span style="font-size: 10px; font-weight: 900; color: #ffffff; opacity: 0.8; text-transform: uppercase;">Ур</span>
+            <span style="font-size: 20px; font-weight: 900; color: #ffffff; text-shadow: 0 2px 0 rgba(0,0,0,0.35); line-height: 1;">{{ st.lvl }}</span>
+          </div>
+          <span style="font-size: 24px; font-weight: 900; color: #ffd95a; -webkit-text-stroke: 4px #0d2a4f; paint-order: stroke fill; line-height: 1; padding: 0 2px;">{{ st.mult }}</span>
+          <sc-if value="{{ st.hasBtn }}" hint-placeholder-val="{{ true }}">
+            <div style="height: 40px; display: flex; align-items: center; gap: 6px; padding: 0 10px 0 6px; border-radius: 11px; background: {{ st.btnBg }}; border: 3px solid {{ st.btnBorder }}; box-shadow: inset 0 -4px 0 rgba(0,0,0,0.2);">
+              <div style="position: relative; width: 22px; height: 22px; transform: rotate(-35deg); flex: none;">
+                <div style="position: absolute; left: 8px; top: 7px; width: 6px; height: 15px; border-radius: 3px; background: #b5793a; border: 2px solid #5d3a18;"></div>
+                <div style="position: absolute; left: 1px; top: 0; width: 20px; height: 9px; border-radius: 3px; background: linear-gradient(180deg, #e3e8ef 0%, #9aa1ad 100%); border: 2px solid #3d4552;"></div>
+              </div>
+              <div style="width: 14px; height: 14px; border-radius: 50%; background: linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%); border: 2px solid #b07a14;"></div>
+              <span style="font-size: 15px; font-weight: 900; color: {{ st.costColor }}; text-shadow: 0 1px 0 rgba(0,0,0,0.3);">{{ st.cost }}</span>
+            </div>
+          </sc-if>
+          <sc-if value="{{ st.isProg }}" hint-placeholder-val="{{ false }}">
+            <div style="position: relative; height: 40px; width: 96px; border-radius: 11px; background: #143a6b; border: 3px solid #0d2a4f; overflow: hidden;">
+              <div style="height: 100%; width: 62%; background: linear-gradient(180deg, #ffe38a 0%, #f5b73c 100%);"></div>
+              <span style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 14px; font-weight: 900; color: #ffffff; -webkit-text-stroke: 3px #0d2a4f; paint-order: stroke fill;">62%</span>
+            </div>
+          </sc-if>
+        </div>
+        </div>
+        <span style="font-size: 13px; font-weight: 900; color: #ffffff; text-shadow: 0 1px 0 rgba(0,0,0,0.25);">{{ st.label }}</span>
+      </div>
+    </sc-for>
+  </div>
+
+  <!-- ============ SPEC ============ -->
+  <div style="display: grid; grid-template-columns: repeat(auto-fit, minmax(300px, 1fr)); gap: 20px;">
+    <div style="background: #ffffff; border-radius: 16px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 12px;">Уровни (пример)</div>
+      <div style="display: flex; flex-direction: column; gap: 6px; font-size: 13px; font-weight: 700; color: #5a5247;">
+        <sc-for list="{{ table }}" as="r" hint-placeholder-count="6">
+          <div style="display: grid; grid-template-columns: 60px 70px 1fr; gap: 10px;"><b>Ур. {{ r.n }}</b><span style="color: #b07a14; font-weight: 900;">{{ r.mult }}</span><span>{{ r.cost }}</span></div>
+        </sc-for>
+      </div>
+    </div>
+    <div style="background: #ffffff; border-radius: 16px; padding: 24px; box-shadow: 0 1px 4px rgba(0,0,0,0.06);">
+      <div style="font-size: 14px; font-weight: 900; margin-bottom: 12px;">Поведение</div>
+      <div style="font-size: 13px; font-weight: 700; line-height: 2; color: #5a5247;">
+        BillboardGui над крышей, ~200 × 50 px, всегда видна<br>
+        Зелёный молоток + «!» — хватает монет, нажатие = улучшение<br>
+        Синий молоток, красная цена — не хватает монет<br>
+        Сборка — прогресс в той же кнопке, 2 c<br>
+        Макс. уровень — табличка золотая, кнопки нет
+      </div>
+    </div>
+  </div>
+
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script>
+class Component extends DCLogic {
+  MULTS = [1, 1.5, 2, 3, 4.5, 6];
+  COSTS = [500, 1500, 4000, 10000, 25000];
+  state = { lvl: 2, coins: 12450, prog: -1 };
+  componentWillUnmount() { clearInterval(this.t); }
+  fmtM(m) { return '×' + String(m).replace('.', ','); }
+  fmtN(n) { return n.toLocaleString('ru-RU'); }
+  upgrade() {
+    const s = this.state, c = this.COSTS[s.lvl];
+    if (s.prog >= 0 || c == null || s.coins < c) return;
+    this.setState({ coins: s.coins - c, prog: 0 });
+    clearInterval(this.t);
+    this.t = setInterval(() => this.setState(st => {
+      const p = st.prog + 5;
+      if (p >= 100) { clearInterval(this.t); return { prog: -1, lvl: st.lvl + 1 }; }
+      return { prog: p };
+    }), 100);
+  }
+  renderVals() {
+    const s = this.state, isMax = s.lvl >= this.MULTS.length - 1, building = s.prog >= 0;
+    const cost = this.COSTS[s.lvl], enough = !isMax && s.coins >= cost;
+    const blue = { lvlBg: 'linear-gradient(180deg, #54a7ec 0%, #3a7fd0 100%)', lvlBorder: '#1c4f8f' };
+    return {
+      lvl: s.lvl, mult: this.fmtM(this.MULTS[s.lvl]), cost: isMax ? '' : this.fmtN(cost),
+      canBuy: enough && !building, cantBuy: !isMax && !enough && !building, isBuilding: building,
+      progPct: Math.max(0, s.prog) + '%',
+      upgrade: () => this.upgrade(),
+      states: [
+        { ...blue, name: 'Домик фермера', lvl: 2, mult: '×2', hasBtn: true, isProg: false, btnBg: 'linear-gradient(180deg, #6ff08a 0%, #34b84e 100%)', btnBorder: '#1f7a33', cost: '4 000', costColor: '#ffffff', label: 'Можно улучшить' },
+        { ...blue, name: 'Рыбацкий причал', lvl: 3, mult: '×3', hasBtn: true, isProg: false, btnBg: '#2e6bb4', btnBorder: '#1c4f8f', cost: '10 000', costColor: '#ff8a7e', label: 'Не хватает монет' },
+        { ...blue, name: 'Верфь', lvl: 3, mult: '×3', hasBtn: false, isProg: true, label: 'Сборка' },
+        { lvlBg: 'linear-gradient(180deg, #ffd95a 0%, #f5b73c 100%)', lvlBorder: '#b07a14', name: 'Плантация', lvl: 5, mult: '×6', hasBtn: false, isProg: false, label: 'Макс. уровень' }
+      ],
+      table: this.MULTS.map((m, i) => ({ n: i, mult: this.fmtM(m), cost: i === 0 ? 'базовый' : 'улучшение: ' + this.fmtN(this.COSTS[i - 1]) + ' монет' }))
+    };
+  }
+}
+</script>
+</body>
+</html>

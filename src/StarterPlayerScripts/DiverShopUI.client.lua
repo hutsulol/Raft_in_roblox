@@ -1,0 +1,4 @@
+-- DiverShopUI.client.lua
+-- MERGED: the monolith is now ONE two-state window (repair ⇄ upgrades) with the aging-overlay
+-- transition, living in MonolithRepairUI.client.lua (it also listens to DiverShopEvent "open").
+-- This script is intentionally an empty stub so Rojo overwrites the old standalone shop window.

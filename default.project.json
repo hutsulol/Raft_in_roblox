@@ -1,0 +1,41 @@
+{
+  "name": "roblox_project",
+  "servePort": 34872,
+  "tree": {
+    "$className": "DataModel",
+    "ReplicatedFirst": {
+      "$path": "src/ReplicatedFirst",
+      "$ignoreUnknownInstances": true
+    },
+    "ReplicatedStorage": {
+      "$path": "src/ReplicatedStorage",
+      "$ignoreUnknownInstances": true
+    },
+    "ServerScriptService": {
+      "$path": "src/ServerScriptService",
+      "$ignoreUnknownInstances": true
+    },
+    "ServerStorage": {
+      "$path": "src/ServerStorage",
+      "$ignoreUnknownInstances": true
+    },
+    "StarterPlayer": {
+      "$ignoreUnknownInstances": true,
+      "StarterPlayerScripts": {
+        "$path": "src/StarterPlayerScripts",
+        "$ignoreUnknownInstances": true
+      }
+    },
+    "StarterPack": {
+      "$ignoreUnknownInstances": true
+    },
+    "Workspace": {
+      "$ignoreUnknownInstances": true,
+      "Egg_pedestal": {
+        "$className": "Model",
+        "$ignoreUnknownInstances": true,
+        "EggLevitate": { "$path": "src/Workspace/Egg_pedestal/EggLevitate.server.lua" }
+      }
+    }
+  }
+}

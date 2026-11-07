@@ -1,10 +1,23 @@
 local Players = game:GetService("Players")
 local rs = game:GetService("ReplicatedStorage")
 
+local Config = require(rs:WaitForChild("WeaponUpgradeConfig"))
+local RaftShake = require(rs:WaitForChild("RaftShake"))
+
 -- ─── Config ───
 local MAX_HUNGER = 100
 local HUNGER_DRAIN_AMOUNT = 2
-local HUNGER_DRAIN_INTERVAL = 15 -- lose 2 hunger every 15 seconds
+-- ⚠️ ГОЛОД ИДЁТ РОВНО С ТОЙ ЖЕ СКОРОСТЬЮ, ЧТО И ЖАЖДА.
+-- Держать равным THIRST_DRAIN_INTERVAL в ThirstSystem: 100 единиц уходят за один
+-- световой день (380с), то есть 100/2 = 50 тиков по 7.6 секунды. Раньше здесь
+-- стояло 58 секунд — полный запас таял почти шесть суток, и шкала сытости просто
+-- не участвовала в игре: жажда мучила каждый день, голод не мучил никогда.
+-- Меняешь одну — меняй и вторую, иначе они снова разъедутся.
+--
+-- Чем это оплачено: еды теперь нужно примерно столько же, сколько воды. Глоток
+-- даёт 25 (DRINK_RESTORE), приём пищи — 20 (EAT_RESTORE ниже), значит за день
+-- нужно около пяти порций. Класс «Выживший» так же вдвое замедляет расход.
+local HUNGER_DRAIN_INTERVAL = 7.6 -- lose 2 hunger every 7.6s → ~100 за день
 local EAT_RESTORE = 20
 local HUNGER_DAMAGE = 0.625 -- damage per tick at 0 hunger (5 / 8)
 local HP_REGEN_AMOUNT = 5 -- HP restored when eating
@@ -89,7 +102,10 @@ task.spawn(function()
 		task.wait(HUNGER_DRAIN_INTERVAL)
 		for _, player in Players:GetPlayers() do
 			if hungerData[player] then
-				hungerData[player] = math.max(0, hungerData[player] - HUNGER_DRAIN_AMOUNT)
+				-- ВЫЖИВШИЙ (1 ур.): голод расходуется в 2 раза медленнее
+				local drain = HUNGER_DRAIN_AMOUNT
+				if Config.activeClassLevel(player, "survivor") >= 1 then drain = drain * 0.5 end
+				hungerData[player] = math.max(0, hungerData[player] - drain)
 				hungerEvent:FireClient(player, hungerData[player], MAX_HUNGER)
 
 				if hungerData[player] <= 0 then
@@ -144,12 +160,18 @@ task.spawn(function()
 
 			local hunger = hungerData[player] or 0
 			local hungerRatio = hunger / MAX_HUNGER
+			--[[ ⚠️ БЕЗ ЕДЫ ИЛИ БЕЗ ВОДЫ ЗДОРОВЬЕ НЕ ВОССТАНАВЛИВАЕТСЯ.
+			     Раньше смотрели только на голод: с пустой шкалой воды игрок всё
+			     равно отхиливался (владелец). Жажда живёт в ThirstSystem — берём
+			     через _G.GetThirst; пока модуль не поднялся, считаем воду полной. ]]
+			local thirst = (typeof(_G.GetThirst) == "function" and _G.GetThirst(player)) or 100
+			local thirstRatio = thirst / 100
 
-			-- At 0 hunger, no regen (already taking damage)
-			if hunger <= 0 then continue end
+			-- пустой голод ИЛИ пустая жажда — регена нет вовсе
+			if hunger <= 0 or thirst <= 0 then continue end
 
-			-- Below 50% hunger: regen 5x slower (only heal every 5th tick)
-			if hungerRatio < 0.5 then
+			-- Below 50% hunger or thirst: regen 5x slower (only heal every 5th tick)
+			if hungerRatio < 0.5 or thirstRatio < 0.5 then
 				-- Use a counter attribute to track slow ticks
 				local counter = (player:GetAttribute("_regenCounter") or 0) + 1
 				if counter < HP_REGEN_SLOW_MULT then
@@ -454,6 +476,8 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		primary.AssemblyLinearVelocity  = linVel
 		primary.AssemblyAngularVelocity = angVel
+		-- игрока на палубе сервером не удержать — просим его клиент (RaftShake)
+		RaftShake.notify()
 
 		-- Setup click detector for grape picking — berry bush only.
 		-- Pineapple bushes are harvested via E (FruitBushSystem).
@@ -586,3 +610,10 @@ bushActionEvent.OnServerEvent:Connect(function(player, action, target)
 		end)
 	end
 end)
+-- СЕЙВ: голод переживает выход из игры
+_G.GetHunger = function(player) return hungerData[player] end
+_G.SetHunger = function(player, v)
+	v = tonumber(v); if not v then return end
+	hungerData[player] = math.clamp(v, 0, MAX_HUNGER)
+	hungerEvent:FireClient(player, hungerData[player], MAX_HUNGER)
+end

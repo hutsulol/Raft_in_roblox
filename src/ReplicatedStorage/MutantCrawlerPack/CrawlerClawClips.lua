@@ -1,0 +1,1 @@
+return {Scratch=require(script.Parent.CrawlerScratchClip),ScratchPounce=require(script.Parent.CrawlerScratchPounceClip),LatchFall=require(script.Parent.CrawlerLatchFallClip)}

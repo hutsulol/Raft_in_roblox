@@ -1,0 +1,8 @@
+<?xml version='1.0' encoding='utf-8'?>
+<roblox version="4"><Item class="RemoteEvent" referent="RBXF4C0A1EA7BAD4AFCAA7BDC6A887E5E09">
+				<Properties>
+					<BinaryString name="AttributesSerialize" />
+					<string name="Name">CrawlerEvent</string>
+					</Properties>
+			</Item>
+			</roblox>

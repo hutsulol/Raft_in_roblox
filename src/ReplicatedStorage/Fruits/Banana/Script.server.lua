@@ -1,0 +1,95 @@
+-- Fruit eat Script
+-- Lives inside Banana / Coconut / PineApple Tool inside
+-- ReplicatedStorage.Fruits. Mirrors the Paddle / Stone_Axe in-tool
+-- pattern: server-side Script that owns Tool.Activated and handles
+-- the eat flow end-to-end.
+--
+-- Sequence on click:
+--   1. Mark Consumed=true so FoodSystem's AncestryChanged refund
+--      hook treats this as a deliberate spend, not an unequip.
+--   2. Load + play the Eat animation on the player's Humanoid.
+--   3. task.wait EAT_DELAY (1.2 s per the user brief) — animation
+--      runs while the fruit visibly stays in the player's hand.
+--   4. Play the shared "Eating Fruit Sound" right as the fruit
+--      disappears (cloned so it survives the Tool's :Destroy).
+--   5. Restore hunger / HP via the _G hooks FoodSystem publishes —
+--      _G.GetFoodData(toolName) → { hunger, hp }, _G.RestoreHunger.
+--   6. :Destroy().
+
+local Tool = script.Parent
+
+local Players           = game:GetService("Players")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local Debris            = game:GetService("Debris")
+local SoundService      = game:GetService("SoundService")
+
+local EAT_DELAY = 1.2
+
+local function findEatSound()
+	local fruits = ReplicatedStorage:FindFirstChild("Fruits")
+	if not fruits then return nil end
+	for _, name in ipairs({ "Eating Fruit Sound", "Eating_Fruit_Sound", "Eat Sound", "Eating" }) do
+		local s = fruits:FindFirstChild(name)
+		if s and s:IsA("Sound") then return s end
+	end
+	for _, child in fruits:GetDescendants() do
+		if child:IsA("Sound") and child.Name:lower():find("eat") then
+			return child
+		end
+	end
+	return nil
+end
+
+local activated = false
+
+Tool.Activated:Connect(function()
+	if activated then return end
+	activated = true
+	Tool:SetAttribute("Consumed", true)
+
+	local character = Tool.Parent
+	local humanoid  = character and character:FindFirstChildOfClass("Humanoid")
+
+	-- Play the eat animation on the player's Animator. Once
+	-- LoadAnimation reads the AnimationId, the track lives on the
+	-- Animator — so it keeps playing through Tool:Destroy().
+	local anim = Tool:FindFirstChild("Eat")
+	if humanoid and anim and anim:IsA("Animation") then
+		local ok, track = pcall(function() return humanoid:LoadAnimation(anim) end)
+		if ok and track then
+			track.Priority = Enum.AnimationPriority.Action
+			track:Play()
+		end
+	end
+
+	-- Hold the fruit visible while the chew animation plays. Sound +
+	-- destruction both happen at the EAT_DELAY mark — that's when
+	-- the bite "lands" on screen.
+	task.wait(EAT_DELAY)
+
+	-- Play the shared eat sound right as the fruit disappears. We
+	-- clone it so the audio survives the upcoming Tool:Destroy().
+	local eatSound = findEatSound()
+	if eatSound then
+		local clone = eatSound:Clone()
+		clone.Parent = character or SoundService
+		clone:Play()
+		Debris:AddItem(clone, (eatSound.TimeLength or 1) + 0.5)
+	end
+
+	local player = Players:GetPlayerFromCharacter(character)
+	if player then
+		-- FoodSystem.server.lua exposes both hooks. Defaults below
+		-- cover the case where the script loads before the Food
+		-- system finishes registering its globals.
+		local data = (typeof(_G.GetFoodData) == "function" and _G.GetFoodData(Tool.Name))
+			or { hunger = 20, hp = 5 }
+		if typeof(_G.RestoreHunger) == "function" then
+			_G.RestoreHunger(player, data.hunger, data.hp)
+		end
+	end
+
+	if Tool and Tool.Parent then
+		Tool:Destroy()
+	end
+end)

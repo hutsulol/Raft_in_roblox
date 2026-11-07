@@ -6,6 +6,8 @@ local rs = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
 
+local AssetFind = require(rs:WaitForChild("AssetFind"))
+
 local DIG_HITS_REQUIRED = 5
 local DIG_RANGE = 15
 
@@ -16,7 +18,7 @@ digDirtEvent.Parent = rs
 -- ─── Dig sound (from Shovel tool in ReplicatedStorage) ───
 local function playDigSound(atPart)
 	if not atPart then return end
-	local shovel = rs:FindFirstChild("Shovel")
+	local shovel = AssetFind.find("Shovel")
 	if not shovel then return end
 	-- Look for Shoveling sound recursively in the Shovel tool
 	local snd = shovel:FindFirstChild("Shoveling", true)

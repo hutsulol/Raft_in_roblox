@@ -1,0 +1,132 @@
+[
+  {
+    "name": "Fish_Sardine",
+    "displayName": "Сардина",
+    "maxDimensionStuds": 1.35,
+    "blenderDimensions": [
+      1.350000023841858,
+      0.5179343223571777,
+      0.6247302889823914
+    ]
+  },
+  {
+    "name": "Fish_Mackerel",
+    "displayName": "Скумбрия",
+    "maxDimensionStuds": 1.65,
+    "blenderDimensions": [
+      1.649999976158142,
+      0.6782848834991455,
+      0.8363221883773804
+    ]
+  },
+  {
+    "name": "Fish_Seabass",
+    "displayName": "Морской окунь",
+    "maxDimensionStuds": 1.9,
+    "blenderDimensions": [
+      1.899999976158142,
+      0.8830564022064209,
+      1.0914690494537354
+    ]
+  },
+  {
+    "name": "Fish_Dorado",
+    "displayName": "Дорадо",
+    "maxDimensionStuds": 2.0,
+    "blenderDimensions": [
+      2.0,
+      0.7929410338401794,
+      1.0684417486190796
+    ]
+  },
+  {
+    "name": "Fish_Bream",
+    "displayName": "Морской лещ",
+    "maxDimensionStuds": 1.7,
+    "blenderDimensions": [
+      1.7000000476837158,
+      0.8208538293838501,
+      1.0216538906097412
+    ]
+  },
+  {
+    "name": "Fish_Barracuda",
+    "displayName": "Барракуда",
+    "maxDimensionStuds": 2.5,
+    "blenderDimensions": [
+      2.5,
+      0.6428955793380737,
+      0.7234899401664734
+    ]
+  },
+  {
+    "name": "Fish_Tuna",
+    "displayName": "Тунец",
+    "maxDimensionStuds": 2.4,
+    "blenderDimensions": [
+      2.4000000953674316,
+      0.9343530535697937,
+      1.3322422504425049
+    ]
+  },
+  {
+    "name": "Fish_Swordfish",
+    "displayName": "Рыба-меч",
+    "maxDimensionStuds": 2.8,
+    "blenderDimensions": [
+      2.799999952316284,
+      0.7689332365989685,
+      1.138596773147583
+    ]
+  },
+  {
+    "name": "Fish_GoldFugu",
+    "displayName": "Золотая фугу",
+    "maxDimensionStuds": 1.55,
+    "blenderDimensions": [
+      1.5089099407196045,
+      1.5499999523162842,
+      1.4969403743743896
+    ]
+  },
+  {
+    "name": "Fish_Marlin",
+    "displayName": "Синий марлин",
+    "maxDimensionStuds": 3.0,
+    "blenderDimensions": [
+      3.0,
+      1.1777392625808716,
+      1.5686699151992798
+    ]
+  },
+  {
+    "name": "Fish_GhostRay",
+    "displayName": "Призрачный скат",
+    "maxDimensionStuds": 2.5,
+    "blenderDimensions": [
+      2.5,
+      2.2321691513061523,
+      0.954505205154419
+    ]
+  },
+  {
+    "name": "Fish_Krakenling",
+    "displayName": "Кракенёнок",
+    "maxDimensionStuds": 2.2,
+    "blenderDimensions": [
+      2.200000047683716,
+      1.8663707971572876,
+      1.3904043436050415
+    ]
+  },
+  {
+    "name": "Fish_Leviathan",
+    "displayName": "Левиафан",
+    "maxDimensionStuds": 3.2,
+    "blenderDimensions": [
+      3.200000286102295,
+      2.030989408493042,
+      1.421245813369751
+    ]
+  }
+]

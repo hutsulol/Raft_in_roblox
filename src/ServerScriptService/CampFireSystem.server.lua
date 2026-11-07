@@ -27,6 +27,10 @@
 local rs      = game:GetService("ReplicatedStorage")
 local Players  = game:GetService("Players")
 local TweenService = game:GetService("TweenService")
+local PlaceCheck = require(game:GetService("ReplicatedStorage"):WaitForChild("PlaceCheck"))   -- «место занято» — общая проверка
+
+local RaftShake = require(rs:WaitForChild("RaftShake"))
+local AssetFind = require(rs:WaitForChild("AssetFind"))
 
 local cupActionEvent = rs:WaitForChild("CupAction")
 
@@ -393,8 +397,8 @@ local function setupCampFire(model)
 			prompt = Instance.new("ProximityPrompt")
 			prompt.Parent = anchor
 		end
-		prompt.ActionText            = "Add Log"
-		prompt.ObjectText            = "Campfire"
+		prompt.ActionText            = "Подбросить бревно"
+		prompt.ObjectText            = "Костёр"
 		prompt.KeyboardKeyCode       = Enum.KeyCode.E
 		prompt.HoldDuration          = 0
 		prompt.MaxActivationDistance = PROMPT_RANGE
@@ -432,7 +436,8 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	if not raft or not raft.PrimaryPart then return end
 	if typeof(target) ~= "CFrame" then return end
 
-	local template = rs:FindFirstChild("FireCamp")
+	-- по имени, а не по месту: модели разложены по папкам (см. AssetFind)
+	local template = AssetFind.find("FireCamp")
 	if not template then
 		warn(LOG_TAG .. " ReplicatedStorage.FireCamp template missing")
 		return
@@ -451,6 +456,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		model.WorldPivot = CFrame.new(bbCF.Position)
 	end
 	model:PivotTo(worldCF)
+	if PlaceCheck.refuseIfBlocked(model, raft, player) then return end   -- в предмет ставить нельзя
 	model.Parent = raft
 
 	-- Weld to the raft while anchored, then restore velocity (same
@@ -474,6 +480,8 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	end
 	primary.AssemblyLinearVelocity  = linVel
 	primary.AssemblyAngularVelocity = angVel
+	-- игрока на палубе сервером не удержать — просим его клиент (RaftShake)
+	RaftShake.notify()
 
 	setupCampFire(model)
 	tool:Destroy()
@@ -510,6 +518,11 @@ local LEGENDARY_COOKED_TEXTURE_ID = "rbxassetid://138934138408588"
 local LEGENDARY_RAW_TEXTURE_NUM = "155812542"
 local MEAT_RAW_TEXTURE_ID = "rbxassetid://96631156827637"
 local MEAT_COOKED_TEXTURE_ID = "rbxassetid://81212406244264"
+-- ОВОЩИ (картофель и свёкла) делят ОДНУ пару текстур на двоих: модели разные,
+-- а «сырое / печёное» задаётся одинаково. Поэтому проверка идёт по текстуре, а
+-- не по типу ресурса — новый овощ с той же парой заработает без правок здесь.
+local VEG_RAW_TEXTURE_ID = "rbxassetid://80019572040251"
+local VEG_COOKED_TEXTURE_ID = "rbxassetid://110431523187509"
 local MEAT_BASE_COOK_MULT = 2 -- meat cooks 2x slower than fish baseline
 
 local cookProgress = {}  -- [droppedModel] = seconds accumulated in heat
@@ -575,11 +588,13 @@ local function canCookFish(model, cookedDecal)
 	-- Resource-key fallback for fish that should be cookable even if
 	-- authored decals are inconsistent in a given asset revision.
 	local resType = model:GetAttribute("ResourceType")
-	if resType == "Tilapia_Fish" or resType == "Carp_Fish" or resType == "Legendary_Fish" or resType == "Meat" then
+	if resType == "Tilapia_Fish" or resType == "Carp_Fish" or resType == "Legendary_Fish" or resType == "Meat"
+		or resType == "Chicken_drumstick" or resType == "Potato" or resType == "Beet" then
 		return true
 	end
 	for _, d in model:GetDescendants() do
 		if d:IsA("MeshPart") and d.TextureID == MEAT_RAW_TEXTURE_ID then return true end
+		if d:IsA("MeshPart") and d.TextureID == VEG_RAW_TEXTURE_ID then return true end
 	end
 	return false
 end
@@ -591,7 +606,8 @@ local function requiredCookTime(item)
 	local amount = tonumber(item:GetAttribute("ResourceAmount")) or 1
 	amount = math.max(1, math.floor(amount + 0.0001))
 	local base = COOK_TIME
-	if item:GetAttribute("ResourceType") == "Meat" then
+	local rt = item:GetAttribute("ResourceType")
+	if rt == "Meat" or rt == "Chicken_drumstick" then
 		base = base * MEAT_BASE_COOK_MULT
 	end
 	return base * (1 + COOK_STACK_EXTRA_PER_FISH * (amount - 1))
@@ -658,6 +674,8 @@ local function swapMeshTextureIds(model)
 			d.TextureId = LEGENDARY_COOKED_TEXTURE_ID
 		elseif d:IsA("MeshPart") and d.TextureID == MEAT_RAW_TEXTURE_ID then
 			d.TextureID = MEAT_COOKED_TEXTURE_ID
+		elseif d:IsA("MeshPart") and d.TextureID == VEG_RAW_TEXTURE_ID then
+			d.TextureID = VEG_COOKED_TEXTURE_ID
 		end
 	end
 end
@@ -690,9 +708,32 @@ local function cookFish(model, raw, cooked, scripts)
 
 	-- Flip the resource so pickup yields the edible cooked variant.
 	local resType = model:GetAttribute("ResourceType")
+	-- ОКОРОЧОК ЖАРИТСЯ В ЖАРЕНОЕ МЯСО (как при убийстве огнём): отдельной
+	-- «жареной» модели и ключа у него нет. Внешне — темнеет корочкой.
+	if resType == "Chicken_drumstick" then
+		model:SetAttribute("ResourceType", "Meat_Cooked")
+		for _, d in model:GetDescendants() do
+			if d:IsA("BasePart") then d.Color = d.Color:Lerp(Color3.fromRGB(120, 62, 28), 0.55) end
+		end
+		if model:IsA("BasePart") then model.Color = model.Color:Lerp(Color3.fromRGB(120, 62, 28), 0.55) end
+		return
+	end
 	if typeof(resType) == "string" and resType:sub(-#COOKED_SUFFIX) ~= COOKED_SUFFIX then
 		model:SetAttribute("ResourceType", resType .. COOKED_SUFFIX)
 	end
+end
+
+-- Прожарить модель еды «как на костре»: смена raw/cooked декалей и
+-- текстур + переключение ResourceType на вариант _Cooked. Экспортируем,
+-- чтобы МАНГАЛ (GrillSystem) не дублировал эти правила у себя — иначе
+-- новая рыба требовала бы правок в двух местах.
+_G.CookFoodModel = function(model)
+	if typeof(model) ~= "Instance" or not model.Parent then return false end
+	if model:GetAttribute("Cooked") then return true end
+	local raw, cooked, scripts = findFishDecals(model)
+	if not canCookFish(model, cooked) then return false end
+	cookFish(model, raw, cooked, scripts)
+	return true
 end
 
 task.spawn(function()

@@ -1,3 +1,4 @@
+local print, warn = (function() local RS = game:GetService("RunService") if RS:IsServer() then return print, warn end local P, W, Pl = print, warn, game:GetService("Players") local function ok() local p = Pl.LocalPlayer return p ~= nil and p:GetAttribute("DevLogs") == true end return function(...) if ok() then P(...) end end, function(...) if ok() then W(...) end end end)() -- DevLogs: клиентские логи видят только админы (флаг ставит DevLogFlag.server)
 -- OnboardingController.client.lua
 -- Step 2C of the onboarding system: bridge the OnboardingFlow
 -- RemoteEvent to the _G.ShowOnboardingTip widget.
@@ -23,9 +24,9 @@ local ReplicatedStorage = game:GetService("ReplicatedStorage")
 local CollectionService = game:GetService("CollectionService")
 
 local CHOP_TREES_GOAL = 3   -- mirror of CHOP_TREES_GOAL in
-                            -- ChopTreesFlow.server.lua. Used only for
-                            -- the initial render before the server's
-                            -- first progress packet arrives.
+-- ChopTreesFlow.server.lua. Used only for
+-- the initial render before the server's
+-- first progress packet arrives.
 
 -- Delay before the tooltip first appears, measured from the point the
 -- player's character lands in the world. Gives the player a beat to
@@ -140,7 +141,17 @@ local function stopLogHighlights()
 	end
 end
 
+--[[ ⚠️ ПОДСКАЗКА «GET THE FIRST LOGS» ОТКЛЮЧЕНА, А НЕ УДАЛЕНА.
+     Она осталась от английского онбординга и дублирует квест «Первое дерево»
+     (onboarding_logs): игрок видел на экране два счётчика об одном и том же —
+     квестовый 0/3 и это окно 2/3, причём второе на латинице.
+     Выключаю показ, а не вырезаю код: серверный ChopTreesFlow продолжает вести
+     свой счёт, на нём завязан прогресс, и вырывать одну половину пары значит
+     чинить симптом. Понадобится вернуть — снять ранний выход. ]]
+local SHOW_CHOP_TREES_TIP = false
+
 local function startChopTreesTip(initialProgress)
+	if not SHOW_CHOP_TREES_TIP then return end
 	if activeHandles.chopTrees then return end -- already showing
 
 	completedFlags.chopTrees = false
@@ -224,7 +235,7 @@ event.OnClientEvent:Connect(function(action, ...)
 		local handle = activeHandles.chopTrees
 		if handle and handle.complete then
 			handle.complete()  -- the widget runs its celebration pop
-			                   -- and auto-dismisses after 1.4 s.
+			-- and auto-dismisses after 1.4 s.
 		end
 	end
 end)

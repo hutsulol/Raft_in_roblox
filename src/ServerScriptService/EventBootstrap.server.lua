@@ -26,3 +26,8 @@ local function ensureEvent(name)
 end
 
 ensureEvent("OpenWorkbench")
+ensureEvent("RewardReveal") -- сервер выдал редкий предмет → клиент играет Reward Reveal (RewardReveal.client)
+-- сборку плота перестроили → клиенты удерживают своих персонажей на месте (RaftShake)
+ensureEvent("RaftShook")
+-- добыча монет крупным событием → на экране убийцы идёт дождь монет (CoinRainFX)
+ensureEvent("CoinRain")

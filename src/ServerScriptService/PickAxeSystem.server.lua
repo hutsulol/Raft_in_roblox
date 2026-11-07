@@ -5,6 +5,8 @@ local rs = game:GetService("ReplicatedStorage")
 local Players = game:GetService("Players")
 local Debris = game:GetService("Debris")
 
+local AssetFind = require(rs:WaitForChild("AssetFind"))
+
 -- ─── Config ───
 local MINE_HITS_REQUIRED = 5
 -- Per-hit drop chance: each swing independently rolls for one Stone, so
@@ -17,7 +19,7 @@ local MINE_RANGE = 15
 -- ─── Dig sound (from Shovel tool) ───
 local function playDigSound(atPart)
 	if not atPart then return end
-	local shovel = rs:FindFirstChild("Shovel")
+	local shovel = AssetFind.find("Shovel")
 	if not shovel then return end
 	local handle = shovel:FindFirstChild("Handle")
 	if not handle then return end
@@ -87,8 +89,22 @@ end
 inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	if action ~= "craft" or data ~= "Pick-Axe" then return end
 
+	-- ⚠️ Админу бесплатно — тем же правилом, что и остальной крафт (см.
+	-- InventoryCrafting, freeCraft). Кирка живёт в отдельном обработчике, поэтому
+	-- про бесплатность ей приходится рассказывать здесь же.
+	local freeCraft = false
+	do
+		local okCfg, cfg = pcall(function()
+			return require(rs:WaitForChild("WeaponUpgradeConfig", 5))
+		end)
+		if okCfg and cfg and typeof(cfg.isAdmin) == "function" then
+			local okAdm, res = pcall(cfg.isAdmin, player)
+			freeCraft = okAdm and res == true
+		end
+	end
+
 	local inv = _G.GetInventory and _G.GetInventory(player) or {}
-	if (inv.Log or 0) < 2 then return end
+	if not freeCraft and ((inv.Log or 0) < 3 or (inv.Stone or 0) < 2) then return end
 
 	-- Look up the template BEFORE deducting resources. The old flow
 	-- pulled 2 Log first, then bailed silently when the template was
@@ -98,10 +114,14 @@ inventoryCraftEvent.OnServerEvent:Connect(function(player, action, data)
 	-- matching how InventoryCrafting resolves recipes.
 	local template = rs:FindFirstChild("Pick-Axe") or rs:FindFirstChild("Pick-Axe", true)
 
-	if _G.RemoveResourceFromInventory then
-		_G.RemoveResourceFromInventory(player, "Log", 2)
+	if freeCraft then
+		-- платы нет вовсе
+	elseif _G.RemoveResourceFromInventory then
+		_G.RemoveResourceFromInventory(player, "Log", 3)
+		_G.RemoveResourceFromInventory(player, "Stone", 2)
 	else
-		inv.Log = inv.Log - 2
+		inv.Log = inv.Log - 3
+		inv.Stone = (inv.Stone or 0) - 2
 	end
 
 	local tool

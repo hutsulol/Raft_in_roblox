@@ -1,0 +1,10 @@
+{
+  "title": "Master of sword",
+  "offer": "NEWBUY OFFER",
+  "price": 400,
+  "hero": "",
+  "currencyIcon": "",
+  "fontFamily": "Arial Black, Arial",
+  "palette": {"top":"#FF398F","bottom":"#00BE8C","accent":"#F71979","panel":"#FFF0F7","offerText":"#FFFFFF"},
+  "rewards": [{"label":"×1","asset":""},{"label":"2 500","asset":""}]
+}

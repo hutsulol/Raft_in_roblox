@@ -1,0 +1,379 @@
+-- HarvestResources.script (Infected_Military_Menu — Soldier mercenary)
+--
+-- Direct copy of src/Pirate_2/HarvestResources.script. Drives the
+-- Soldier merc's "no weapon → pick up floating logs / plastic /
+-- leaves" loop, identical to the Pirate's. Logic uses script.Parent
+-- and CollectionService tags ("SpawnedMercenary", "HostilePirate"),
+-- so it's rig-agnostic — no Pirate-specific assumptions baked in.
+--
+-- Kept as a baked-in script alongside Combat.script + Fishing.script
+-- so the rig has full mercenary behaviour without depending on the
+-- runtime inject pass in MercenarySpawner. The spawner's inject is
+-- now a no-op for these names (it skips when the clone already
+-- carries an authored copy).
+
+local Players           = game:GetService("Players")
+local CollectionService = game:GetService("CollectionService")
+local ReplicatedStorage = game:GetService("ReplicatedStorage")
+local SoundService      = game:GetService("SoundService")
+local Debris            = game:GetService("Debris")
+
+-- Per-merc Speed → gather time spec from src/GameDesign/StatsSystem.md.
+-- Same module the Pirate's HarvestResources uses; keeps both rigs in
+-- sync on the doc formula. Async require so init never blocks.
+local MercStats
+task.spawn(function()
+	local mod = ReplicatedStorage:WaitForChild("MercStats", 30)
+	if mod then
+		local ok, result = pcall(require, mod)
+		if ok then MercStats = result end
+	end
+end)
+
+-- Per-type break sounds. Log / Leaves ship as a child Sound inside the
+-- resource template; Plastic / Rock live in SoundService. The merc
+-- plays these directly from the server so the audio replicates to all
+-- clients even though the resource is destroyed on the same frame.
+local BREAK_SOUND_CHILD = {
+	Log    = "Wood Break",
+	Leaves = "Ruin_Leaves",
+}
+local BREAK_SOUND_SERVICE = {
+	Plastic = "Plastic Break",
+	Rock    = "Rock_Crush",
+}
+
+local PICKUP_RADIUS   = 50   -- matches the player's pickup radius
+local ATTACK_COOLDOWN = 15   -- seconds between harvest swings
+local HARVEST_TYPES = { Log = true, Plastic = true, Leaves = true }
+local HOSTILE_BACKOFF_RANGE = 120
+local HIT_ANIM_ID = "rbxassetid://77340277526241"
+
+local BACKPACK_SLOT_COUNTS = {
+	Backpack = 6,
+	BackPack_lvl2 = 9,
+}
+local DEFAULT_SLOTS = 6
+
+local model = script.Parent
+
+while not model:IsDescendantOf(workspace) do
+	model.AncestryChanged:Wait()
+end
+
+while model.Parent and not CollectionService:HasTag(model, "SpawnedMercenary") do
+	task.wait(1)
+end
+if not model.Parent then return end
+
+-- Only Unarmed mercs harvest. Sword mercs fight (Combat.script),
+-- FishingRod mercs fish (Fishing.script) — keep each role self-contained
+-- so swapping EquippedWeapon in the menu picks the right behaviour.
+local equippedWeapon = model:GetAttribute("EquippedWeapon") or "Sword"
+if equippedWeapon ~= "Unarmed" then return end
+
+local humanoid = model:WaitForChild("Humanoid", 5)
+if not humanoid then return end
+
+local function getHRP()
+	return model:FindFirstChild("HumanoidRootPart")
+end
+
+-- Load the HitAnim bundled at model.Animate.hit.HitAnim. Fall back to
+-- the raw asset id when the child isn't present (e.g. template not yet
+-- synced).
+local function getHitAnimation()
+	local animate = model:FindFirstChild("Animate")
+	if animate then
+		local hit = animate:FindFirstChild("hit")
+		if hit then
+			local anim = hit:FindFirstChild("HitAnim")
+			if anim and anim:IsA("Animation") then
+				return anim
+			end
+		end
+	end
+	local fallback = Instance.new("Animation")
+	fallback.AnimationId = HIT_ANIM_ID
+	return fallback
+end
+
+local animator = humanoid:FindFirstChildOfClass("Animator")
+if not animator then
+	animator = Instance.new("Animator")
+	animator.Parent = humanoid
+end
+
+local hitTrack
+do
+	local ok, track = pcall(function()
+		return animator:LoadAnimation(getHitAnimation())
+	end)
+	if ok and track then
+		track.Priority = Enum.AnimationPriority.Action3
+		track.Looped = false
+		hitTrack = track
+	end
+end
+
+-- ── Cooldown billboard ─────────────────────────────────────────────────
+-- A small floating countdown over the merc's head shows how many
+-- seconds remain until the next harvest swing.
+local cooldownEndsAt = 0
+local cooldownLabel
+
+do
+	local adornee = model:FindFirstChild("Head") or model:FindFirstChild("HumanoidRootPart")
+	if adornee then
+		local bb = Instance.new("BillboardGui")
+		bb.Name = "HarvestCooldown"
+		bb.Adornee = adornee
+		bb.AlwaysOnTop = true
+		bb.LightInfluence = 0
+		bb.Size = UDim2.fromOffset(80, 28)
+		bb.StudsOffset = Vector3.new(0, 1.8, 0)
+		bb.Enabled = false
+		bb.Parent = adornee
+
+		local bg = Instance.new("Frame")
+		bg.Size = UDim2.new(1, 0, 1, 0)
+		bg.BackgroundColor3 = Color3.fromRGB(15, 25, 45)
+		bg.BackgroundTransparency = 0.2
+		bg.BorderSizePixel = 0
+		bg.Parent = bb
+
+		local corner = Instance.new("UICorner")
+		corner.CornerRadius = UDim.new(0, 6)
+		corner.Parent = bg
+
+		local stroke = Instance.new("UIStroke")
+		stroke.Thickness = 1.5
+		stroke.Color = Color3.fromRGB(120, 210, 255)
+		stroke.Transparency = 0.3
+		stroke.Parent = bg
+
+		cooldownLabel = Instance.new("TextLabel")
+		cooldownLabel.BackgroundTransparency = 1
+		cooldownLabel.Size = UDim2.new(1, 0, 1, 0)
+		cooldownLabel.Font = Enum.Font.GothamBold
+		cooldownLabel.TextSize = 16
+		cooldownLabel.TextColor3 = Color3.fromRGB(220, 240, 255)
+		cooldownLabel.TextStrokeTransparency = 0.4
+		cooldownLabel.Text = ""
+		cooldownLabel.Parent = bb
+
+		task.spawn(function()
+			while model.Parent and humanoid.Health > 0 do
+				local remaining = cooldownEndsAt - tick()
+				local hidden = model:GetAttribute("CooldownHidden") == true
+				if remaining > 0 and not hidden then
+					bb.Enabled = true
+					cooldownLabel.Text = string.format("%ds", math.ceil(remaining))
+				else
+					bb.Enabled = false
+				end
+				task.wait(0.2)
+			end
+			if bb then bb:Destroy() end
+		end)
+	end
+end
+
+local function playHitAnim()
+	if not hitTrack then return end
+	hitTrack:Stop()
+	hitTrack:Play()
+
+	-- Arm-swing whoosh, stored as model.swing. Look it up lazily in case
+	-- the merc was cloned before the Sound replicated in.
+	local swing = model:FindFirstChild("swing")
+	if swing and swing:IsA("Sound") then
+		swing:Play()
+	end
+end
+
+local function getSlotCount(mercEntry)
+	local bp = mercEntry:GetAttribute("EquippedBackpack") or ""
+	return BACKPACK_SLOT_COUNTS[bp] or DEFAULT_SLOTS
+end
+
+local function addToMercBackpack(mercEntry, itemName)
+	local slots = getSlotCount(mercEntry)
+	for i = 1, slots do
+		local name = mercEntry:GetAttribute("Slot" .. i .. "_Name")
+		if name == itemName then
+			local count = mercEntry:GetAttribute("Slot" .. i .. "_Count") or 0
+			mercEntry:SetAttribute("Slot" .. i .. "_Count", count + 1)
+			return true
+		end
+	end
+	for i = 1, slots do
+		local name = mercEntry:GetAttribute("Slot" .. i .. "_Name")
+		if name == nil or name == "" then
+			mercEntry:SetAttribute("Slot" .. i .. "_Name", itemName)
+			mercEntry:SetAttribute("Slot" .. i .. "_Count", 1)
+			return true
+		end
+	end
+	return false
+end
+
+local function getResourcePos(resource)
+	if resource:IsA("Model") then
+		return resource:GetPivot().Position
+	end
+	return resource.Position
+end
+
+local function findNearestResource(myPos)
+	local closest, closestDist = nil, PICKUP_RADIUS
+	for _, resource in CollectionService:GetTagged("Resource") do
+		if resource.Parent then
+			local rt = resource:GetAttribute("ResourceType")
+			local hp = resource:GetAttribute("ResourceHP") or 0
+			if HARVEST_TYPES[rt] and hp > 0 then
+				local d = (getResourcePos(resource) - myPos).Magnitude
+				if d < closestDist then
+					closest, closestDist = resource, d
+				end
+			end
+		end
+	end
+	return closest
+end
+
+local function hasHostileNearby(myPos)
+	for _, pirate in CollectionService:GetTagged("HostilePirate") do
+		if pirate:IsDescendantOf(workspace) then
+			local h = pirate:FindFirstChildOfClass("Humanoid")
+			if h and h.Health > 0 then
+				local torso = pirate:FindFirstChild("Torso")
+					or pirate:FindFirstChild("HumanoidRootPart")
+				if torso and (torso.Position - myPos).Magnitude < HOSTILE_BACKOFF_RANGE then
+					return true
+				end
+			end
+		end
+	end
+	return false
+end
+
+local function getOwnerEntry()
+	local ownerUserId = model:GetAttribute("OwnerUserId")
+	local mercName = model:GetAttribute("MercName")
+	if not ownerUserId or not mercName then return nil end
+	local owner = Players:GetPlayerByUserId(ownerUserId)
+	if not owner then return nil end
+	local folder = owner:FindFirstChild("Mercenaries")
+	if not folder then return nil end
+	return folder:FindFirstChild(mercName)
+end
+
+local function playBreakSound(resource, rt)
+	if rt == "Log" or rt == "Leaves" then
+		-- Log / Leaves ship a Sound child inside the resource template.
+		-- Clone it onto an invisible anchored workspace part at the
+		-- resource's position so it plays spatially.
+		local childName = BREAK_SOUND_CHILD[rt]
+		local template = childName and resource:FindFirstChild(childName, true)
+		if not template or not template:IsA("Sound") then return end
+
+		local clone = template:Clone()
+		local anchor = Instance.new("Part")
+		anchor.Anchored = true
+		anchor.CanCollide = false
+		anchor.CanQuery = false
+		anchor.CanTouch = false
+		anchor.Transparency = 1
+		anchor.Size = Vector3.new(0.1, 0.1, 0.1)
+		anchor.CFrame = CFrame.new(getResourcePos(resource))
+		anchor.Parent = workspace
+
+		clone.Parent = anchor
+		clone:Play()
+
+		Debris:AddItem(anchor, 5)
+	else
+		-- Plastic / Rock live in SoundService and play as 2D sounds —
+		-- match the client's ResourcePull path exactly.
+		local svcName = BREAK_SOUND_SERVICE[rt]
+		local template = svcName and SoundService:FindFirstChild(svcName)
+		if not template or not template:IsA("Sound") then return end
+
+		local clone = template:Clone()
+		clone.Parent = SoundService
+		clone:Play()
+
+		Debris:AddItem(clone, 5)
+	end
+end
+
+local function harvestResource(resource)
+	local entry = getOwnerEntry()
+	local rt = resource:GetAttribute("ResourceType")
+	local amount = resource:GetAttribute("ResourceAmount") or 1
+	if entry and HARVEST_TYPES[rt] then
+		for _ = 1, amount do
+			if not addToMercBackpack(entry, rt) then break end
+		end
+	end
+	resource:SetAttribute("ResourceHP", 0)
+
+	-- Play the break sound server-side from an anchored dummy part so
+	-- it replicates to every client independently of the resource's
+	-- upcoming destruction.
+	playBreakSound(resource, rt)
+
+	resource:Destroy()
+end
+
+local lastAttack = 0
+
+-- Harvest cooldown = MercStats.gatherTime(merc speed) per
+-- StatsSystem.md. Soldier base speed 131 → 8 s harvest cycle.
+local function getHarvestCooldown()
+	if not MercStats then return ATTACK_COOLDOWN end
+	local stats = MercStats.statsFromRig(model)
+	return MercStats.gatherTime(stats.speed)
+end
+
+task.spawn(function()
+	while model.Parent and humanoid.Health > 0 do
+		local hrp = getHRP()
+		if not hrp then
+			task.wait(0.25)
+			continue
+		end
+
+		-- Combat takes priority — let Combat.script drive the rig.
+		if hasHostileNearby(hrp.Position) then
+			task.wait(0.5)
+			continue
+		end
+
+		local resource = findNearestResource(hrp.Position)
+		if not resource then
+			task.wait(0.5)
+			continue
+		end
+
+		local now = tick()
+		local cooldown = getHarvestCooldown()
+		if now - lastAttack >= cooldown then
+			lastAttack = now
+			cooldownEndsAt = now + cooldown
+			playHitAnim()
+
+			-- Let the swing animation (~0.3 s) finish before the resource
+			-- pops, so the break visually lines up with the hit rather
+			-- than happening on the wind-up.
+			local swingDelay = (hitTrack and hitTrack.Length > 0) and hitTrack.Length or 0.3
+			task.wait(swingDelay)
+
+			if resource.Parent then
+				harvestResource(resource)
+			end
+		end
+		task.wait(0.25)
+	end
+end)

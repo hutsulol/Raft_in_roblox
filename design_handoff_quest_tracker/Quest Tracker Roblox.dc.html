@@ -1,0 +1,55 @@
+<!DOCTYPE html>
+<html>
+<head>
+<meta charset="utf-8">
+<meta name="viewport" content="width=device-width, initial-scale=1">
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link href="https://fonts.googleapis.com/css2?family=M+PLUS+Rounded+1c:wght@800;900&display=swap" rel="stylesheet">
+<style>
+  html, body { margin: 0; padding: 0; }
+</style>
+</helmet>
+
+<div data-screen-label="Quest Tracker" style="min-height: 100vh; display: flex; align-items: flex-start; justify-content: flex-start; background: radial-gradient(ellipse at 50% 60%, #2b3648 0%, #1a2230 60%, #10151f 100%); padding: 26px; font-family: 'M PLUS Rounded 1c', sans-serif; box-sizing: border-box;">
+
+  <!-- HUD quest tracker (вариант 1b: без плашки, чистый текст) -->
+  <div style="width: 300px;">
+    <div style="display: flex; align-items: center; gap: 9px;">
+      <div style="font-weight: 900; font-size: 23px; line-height: 1.2; color: #ffffff; text-shadow: 0 2.5px 0 #000, 1.5px 0 0 #000, -1.5px 0 0 #000, 0 -1.5px 0 #000, 1px 1px 0 #000, -1px -1px 0 #000;">{{ title }}</div>
+      <div style="width: 26px; height: 26px; flex: none; display: flex; align-items: center; justify-content: center; background: #4a90dc; border: 2px solid #000; border-radius: 8px; box-shadow: 0 2.5px 0 rgba(0,0,0,0.55); font-weight: 900; font-size: 16px; line-height: 1; color: #ffffff; text-shadow: 0 1.5px 0 #000; cursor: pointer;">?</div>
+    </div>
+
+    <div style="display: flex; align-items: center; gap: 10px; margin-top: 8px;">
+      <div style="flex: 1; position: relative; height: 13px; background: rgba(0,0,0,0.55); border: 2px solid #000; box-sizing: border-box; overflow: hidden;">
+        <div style="position: absolute; top: 0; left: 0; bottom: 0; width: {{ pctWidth }}; background: linear-gradient(180deg, #6fdc5f 0%, #35b435 50%, #1f7a24 100%); transition: width 0.35s ease;"></div>
+      </div>
+      <div style="flex: none; font-weight: 900; font-size: 20px; line-height: 1; color: #ffffff; text-shadow: 0 2px 0 #000, 1.5px 0 0 #000, -1.5px 0 0 #000, 0 -1.5px 0 #000;">{{ progressLabel }}</div>
+    </div>
+  </div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props="{
+  &quot;$preview&quot;: { &quot;width&quot;: 560, &quot;height&quot;: 260 },
+  &quot;title&quot;: { &quot;editor&quot;: &quot;text&quot;, &quot;default&quot;: &quot;Постройте 5 полов&quot;, &quot;tsType&quot;: &quot;string&quot;, &quot;section&quot;: &quot;Квест&quot; },
+  &quot;progress&quot;: { &quot;editor&quot;: &quot;range&quot;, &quot;default&quot;: 2, &quot;min&quot;: 0, &quot;max&quot;: 5, &quot;step&quot;: 1, &quot;tsType&quot;: &quot;number&quot;, &quot;section&quot;: &quot;Квест&quot; }
+}">
+class Component extends DCLogic {
+  renderVals() {
+    const progress = Math.max(0, Math.min(this.props.progress ?? 2, 5));
+    const pct = progress / 5;
+
+    return {
+      title: this.props.title ?? 'Постройте 5 полов',
+      pctWidth: (pct * 100) + '%',
+      progressLabel: progress + '/5',
+    };
+  }
+}
+</script>
+</body>
+</html>

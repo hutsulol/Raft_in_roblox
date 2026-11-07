@@ -1,3 +1,4 @@
+local print, warn = (function() local RS = game:GetService("RunService") if RS:IsServer() then return print, warn end local P, W, Pl = print, warn, game:GetService("Players") local function ok() local p = Pl.LocalPlayer return p ~= nil and p:GetAttribute("DevLogs") == true end return function(...) if ok() then P(...) end end, function(...) if ok() then W(...) end end end)() -- DevLogs: клиентские логи видят только админы (флаг ставит DevLogFlag.server)
 -- QuestsTab.client.lua
 -- Renders daily quest cards into the Quests tab's content page.
 -- Builds incrementally across D1 → D10 so each commit is testable.
@@ -13,6 +14,7 @@
 -- content modules.
 
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
+
 
 -- ─── Wood/paper palette (matches OnboardingTooltip + QuestMenu) ─────
 local COLOR_WOOD_DARKEST = Color3.fromRGB( 61,  40,  23)
@@ -246,7 +248,7 @@ local function buildCard(parent, layoutOrder)
 	rewardCaption.TextSize = 11
 	rewardCaption.TextColor3 = COLOR_WOOD_MID
 	rewardCaption.TextXAlignment = Enum.TextXAlignment.Center
-	rewardCaption.Text = "Reward"
+	rewardCaption.Text = "Награда"
 	rewardCaption.ZIndex = card.ZIndex + 1
 	rewardCaption.Parent = card
 
@@ -308,7 +310,7 @@ local function buildCard(parent, layoutOrder)
 	trackBtn.Font = Enum.Font.GothamBold
 	trackBtn.TextSize = 14
 	trackBtn.TextColor3 = COLOR_WOOD_DARKEST
-	trackBtn.Text = "★ Track"
+	trackBtn.Text = "★ Отслеживать"
 	trackBtn.ZIndex = card.ZIndex + 2
 	trackBtn.Parent = card
 	local btnCorner = Instance.new("UICorner")
@@ -392,7 +394,7 @@ emptyState.TextColor3 = COLOR_WOOD_DARK
 emptyState.TextWrapped = true
 emptyState.TextXAlignment = Enum.TextXAlignment.Center
 emptyState.TextYAlignment = Enum.TextYAlignment.Center
-emptyState.Text = "No daily quests right now.\nCheck back tomorrow."
+emptyState.Text = "Сейчас дневных заданий нет.\nЗаходи завтра."
 emptyState.Visible = false
 emptyState.ZIndex = 6
 emptyState.Parent = mountPoint
@@ -427,7 +429,7 @@ local function paintCard(refs, q)
 	-- the reward associated with this quest" because the card layout
 	-- groups it under the divider with the count text.
 	if q.reward and q.reward.count then
-		refs.rewardIcon.Image  = q.icon or ""
+		refs.rewardIcon.Image = q.icon or ""
 		refs.rewardLabel.Text  = "x" .. tostring(q.reward.count)
 	else
 		refs.rewardIcon.Image  = ""
@@ -443,19 +445,19 @@ local function paintCard(refs, q)
 	-- the user-facing affordance is "Claim" first.
 	if q.rewardPending then
 		refs.card:SetAttribute("Mode", "claim")
-		refs.trackBtn.Text = "★ Claim"
+		refs.trackBtn.Text = "★ Забрать"
 		refs.trackBtn.BackgroundColor3 = COLOR_WOOD_BASE
 		refs.trackBtn.TextColor3       = COLOR_PAPER_LIGHT
 		refs.trackBtnStroke.Color      = COLOR_WOOD_DARKEST
 	elseif q.tracked then
 		refs.card:SetAttribute("Mode", "tracking")
-		refs.trackBtn.Text = "★ Tracking"
+		refs.trackBtn.Text = "★ Отслеживается"
 		refs.trackBtn.BackgroundColor3 = COLOR_WOOD_DARK
 		refs.trackBtn.TextColor3       = COLOR_PAPER_LIGHT
 		refs.trackBtnStroke.Color      = COLOR_WOOD_DARKEST
 	else
 		refs.card:SetAttribute("Mode", "track")
-		refs.trackBtn.Text = "★ Track"
+		refs.trackBtn.Text = "★ Отслеживать"
 		refs.trackBtn.BackgroundColor3 = COLOR_PAPER_LIGHT
 		refs.trackBtn.TextColor3       = COLOR_WOOD_DARKEST
 		refs.trackBtnStroke.Color      = COLOR_WOOD_DARK

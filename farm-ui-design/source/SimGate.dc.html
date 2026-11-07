@@ -1,0 +1,118 @@
+<!doctype html>
+<html lang="ru">
+<head>
+<meta charset="utf-8">
+<title>Ворота фермы — симулятор</title>
+<script src="./support.js"></script>
+</head>
+<body>
+<x-dc>
+<helmet>
+<link href="https://fonts.googleapis.com/css2?family=Rubik:wght@700;800;900&amp;display=swap" rel="stylesheet">
+<style>
+body{margin:0;font-family:"Rubik","Fredoka",system-ui,sans-serif;color:#ffffff}
+.o{-webkit-text-stroke:6px #000000;paint-order:stroke fill;text-shadow:0 4px 0 #000000}
+.o2{-webkit-text-stroke:4px #000000;paint-order:stroke fill;text-shadow:0 2px 0 #000000}
+.stripes{background-image:repeating-linear-gradient(-45deg,#ffffff33 0 10px,transparent 10px 20px)}
+</style>
+</helmet>
+<div style="width: 880px; height: 620px; box-sizing: border-box; padding-top: 28px; background: #8fd3ff; display: flex; flex-direction: column; align-items: center; font-family: Rubik, Fredoka, system-ui, sans-serif; color: #ffffff">
+
+<div style="position: relative; z-index: 2; transform: rotate(-2deg); display: flex; align-items: center; gap: 16px; padding: 10px 28px 12px 36px; background: linear-gradient(180deg, #ff7a5c 0%, #e8322a 100%); border: 5px solid #000000; border-radius: 16px; box-shadow: inset 0 4px 0 #ffffff66, 0 6px 0 #000000">
+<div class="o" style="font-size: 40px; line-height: 46px; font-weight: 900; letter-spacing: 1px">ОВЕЧЬЯ ФЕРМА</div>
+<div style="display: flex; align-items: center; gap: 4px; padding: 4px 12px; background: linear-gradient(180deg, #ffe45c, #ffb300); border: 4px solid #000000; border-radius: 999px; transform: rotate(4deg)">
+<svg width="22" height="22" viewBox="0 0 24 24" aria-hidden="true"><path d="M12 2l3 6.5 7 .8-5.2 4.8 1.4 7L12 17.6 5.8 21.1l1.4-7L2 9.3l7-.8z" fill="#ffffff" stroke="#000000" stroke-width="2" stroke-linejoin="round"></path></svg>
+<div class="o2" style="font-size: 20px; font-weight: 900">УР. 3</div>
+</div>
+</div>
+
+<div style="width: 780px; margin-top: -20px; box-sizing: border-box; padding: 40px 28px 28px; background: linear-gradient(180deg, #4fb0ff 0%, #1f63e0 100%); border: 5px solid #000000; border-radius: 26px; box-shadow: inset 0 0 0 4px #ffffff55, 0 8px 0 #000000; display: flex; flex-direction: column; gap: 16px">
+
+<div style="display: flex; align-items: center; gap: 16px; padding: 12px 20px; background: #ffffff; border: 4px solid #000000; border-radius: 20px; box-shadow: 0 5px 0 #000000">
+<svg width="60" height="60" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd21f" stroke="#000000" stroke-width="2.2"></circle><circle cx="12" cy="12" r="6.5" fill="#ffb300" stroke="#c77800" stroke-width="1.5"></circle><path d="M6.5 8.5a6.5 6.5 0 0 1 4-3.5" stroke="#ffffff" stroke-width="2" stroke-linecap="round" fill="none"></path></svg>
+<div style="flex-grow: 1; display: flex; flex-direction: column">
+<div style="font-size: 16px; font-weight: 900; color: #1b2a55; letter-spacing: 1px">ДОХОД ФЕРМЫ</div>
+<div class="o" style="font-size: 52px; line-height: 58px; font-weight: 900; color: #5cf03c">+{{income}}<span style="font-size: 28px"> /ч</span></div>
+</div>
+<div style="display: flex; flex-direction: column; align-items: flex-end">
+<div style="font-size: 14px; font-weight: 900; color: #1b2a55; letter-spacing: 1px">ЧИСТЫМИ</div>
+<div class="o2" style="font-size: 30px; line-height: 36px; font-weight: 900; color: #ffd21f">+{{net}} /ч</div>
+</div>
+</div>
+
+<div style="display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 12px">
+<div style="height: 84px; box-sizing: border-box; padding: 8px 14px; background: linear-gradient(180deg, #7df06a, #22a83a); border: 4px solid #000000; border-radius: 18px; box-shadow: inset 0 4px 0 #ffffff66, 0 5px 0 #000000; display: flex; align-items: center; gap: 10px">
+<svg width="44" height="44" viewBox="0 0 48 48" aria-hidden="true"><rect x="10" y="32" width="6" height="11" fill="#6b6f78" stroke="#000000" stroke-width="3"></rect><rect x="23" y="32" width="6" height="11" fill="#6b6f78" stroke="#000000" stroke-width="3"></rect><rect x="3" y="11" width="33" height="25" rx="11" fill="#ffffff" stroke="#000000" stroke-width="3.5"></rect><rect x="26" y="14" width="19" height="18" rx="5" fill="#8a8f99" stroke="#000000" stroke-width="3.5"></rect><circle cx="32" cy="22" r="2" fill="#000000"></circle><circle cx="39" cy="22" r="2" fill="#000000"></circle></svg>
+<div style="display: flex; flex-direction: column">
+<div class="o2" style="font-size: 14px; font-weight: 900">ОВЦЫ</div>
+<div class="o" style="font-size: 30px; line-height: 34px; font-weight: 900">4/6</div>
+</div>
+</div>
+<div style="height: 84px; box-sizing: border-box; padding: 8px 14px; background: linear-gradient(180deg, #c98bff, #7a2fe0); border: 4px solid #000000; border-radius: 18px; box-shadow: inset 0 4px 0 #ffffff66, 0 5px 0 #000000; display: flex; align-items: center; gap: 10px">
+<svg width="44" height="44" viewBox="0 0 24 24" aria-hidden="true"><path d="M3.5 23c0-5 3.8-8 8.5-8s8.5 3 8.5 8z" fill="#3aa0ff" stroke="#000000" stroke-width="2"></path><circle cx="12" cy="10" r="4.3" fill="#ffd2a6" stroke="#000000" stroke-width="2"></circle><ellipse cx="12" cy="6.2" rx="7.5" ry="2" fill="#ffcf5c" stroke="#000000" stroke-width="1.8"></ellipse><path d="M8.5 6C8.5 2.5 15.5 2.5 15.5 6z" fill="#ffcf5c" stroke="#000000" stroke-width="1.8"></path></svg>
+<div style="display: flex; flex-direction: column">
+<div class="o2" style="font-size: 14px; font-weight: 900">РАБОЧИЕ</div>
+<div class="o" style="font-size: 30px; line-height: 34px; font-weight: 900">1/2</div>
+</div>
+</div>
+<div style="height: 84px; box-sizing: border-box; padding: 8px 14px; background: linear-gradient(180deg, #ff8a7a, #e0302a); border: 4px solid #000000; border-radius: 18px; box-shadow: inset 0 4px 0 #ffffff66, 0 5px 0 #000000; display: flex; align-items: center; gap: 10px">
+<svg width="44" height="44" viewBox="0 0 24 24" aria-hidden="true"><rect x="3" y="7" width="18" height="12" rx="3" fill="#5cf03c" stroke="#000000" stroke-width="2"></rect><circle cx="12" cy="13" r="3" fill="#22a83a" stroke="#000000" stroke-width="1.8"></circle><path d="M6 7V5h12v2" stroke="#000000" stroke-width="2" fill="none"></path></svg>
+<div style="display: flex; flex-direction: column">
+<div class="o2" style="font-size: 14px; font-weight: 900">ЗАРПЛАТЫ</div>
+<div class="o" style="font-size: 30px; line-height: 34px; font-weight: 900">−25/ч</div>
+</div>
+</div>
+</div>
+
+<div style="display: flex; flex-direction: column; gap: 12px">
+<div style="position: relative; height: 38px; box-sizing: border-box; background: #0c2a70; border: 4px solid #000000; border-radius: 19px; overflow: hidden">
+<div class="stripes" style="height: 100%; width: {{satW}}; background-color: {{satColor}}; border-radius: 15px; box-shadow: inset 0 6px 0 #ffffff55"></div>
+<div class="o2" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 900; letter-spacing: 1px">СЫТОСТЬ ОВЕЦ {{sat}}%</div>
+</div>
+<div style="position: relative; height: 38px; box-sizing: border-box; background: #0c2a70; border: 4px solid #000000; border-radius: 19px; overflow: hidden">
+<div class="stripes" style="height: 100%; width: {{waterW}}; background-color: {{waterColor}}; border-radius: 15px; box-shadow: inset 0 6px 0 #ffffff55"></div>
+<div class="o2" style="position: absolute; inset: 0; display: flex; align-items: center; justify-content: center; font-size: 18px; font-weight: 900; letter-spacing: 1px">ВОДА В КОРЫТЕ {{water}}%</div>
+</div>
+</div>
+
+<div style="display: flex; align-items: center; gap: 14px">
+<div style="flex-grow: 1; display: flex; flex-direction: column; gap: 4px">
+<sc-if value="{{warn}}" hint-placeholder-val="{{ false }}">
+<div class="o2" style="font-size: 18px; font-weight: 900; color: #ff5a4a">{{warnText}}</div>
+</sc-if>
+<div style="display: flex; align-items: center; gap: 8px; align-self: flex-start; padding: 6px 16px 6px 8px; background: #0c2a70; border: 4px solid #000000; border-radius: 999px">
+<svg width="30" height="30" viewBox="0 0 24 24" aria-hidden="true"><circle cx="12" cy="12" r="10.5" fill="#ffd21f" stroke="#000000" stroke-width="2.2"></circle><circle cx="12" cy="12" r="6.5" fill="#ffb300" stroke="#c77800" stroke-width="1.5"></circle></svg>
+<div class="o2" style="font-size: 24px; font-weight: 900; color: #ffd21f">1 240</div>
+</div>
+</div>
+<button class="o2" style="height: 66px; padding: 0 36px; background: linear-gradient(180deg, #7df06a 0%, #22a83a 100%); color: #ffffff; border: 5px solid #000000; border-radius: 20px; box-shadow: inset 0 5px 0 #ffffff77, 0 6px 0 #000000; font-family: inherit; font-size: 28px; font-weight: 900; letter-spacing: 1px; cursor: pointer">СОБРАТЬ</button>
+</div>
+
+</div>
+</div>
+</x-dc>
+<script type="text/x-dc" data-dc-script data-props='{"satiety":{"editor":"range","min":0,"max":100,"step":1,"default":72,"section":"Состояние"},"water":{"editor":"range","min":0,"max":100,"step":1,"default":64,"section":"Состояние"},"$preview":{"width":880,"height":620}}'>
+class Component extends DCLogic {
+renderVals() {
+const sat = Math.round(this.props.satiety ?? 72);
+const water = Math.round(this.props.water ?? 64);
+const hungry = sat < 25;
+const dry = water < 20;
+const base = 148, wages = 25;
+const income = hungry || dry ? Math.round(base / 2) : base;
+let warnText = '';
+if (hungry && dry) warnText = 'ОВЦЫ ГОЛОДНЫ И ХОТЯТ ПИТЬ! ДОХОД x0.5';
+else if (hungry) warnText = 'ОВЦЫ ГОЛОДНЫ! ДОХОД x0.5';
+else if (dry) warnText = 'КОРЫТО ПУСТЕЕТ! ДОХОД x0.5';
+return {
+sat, water, income, net: income - wages,
+satW: Math.max(sat, 6) + '%', waterW: Math.max(water, 6) + '%',
+satColor: hungry ? '#ff4a3a' : '#ffa51f',
+waterColor: dry ? '#ff4a3a' : '#2ec8ff',
+warn: hungry || dry, warnText
+};
+}
+}
+</script>
+</body>
+</html>

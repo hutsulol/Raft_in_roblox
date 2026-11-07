@@ -1,0 +1,10 @@
+local module = {}
+
+function module.load(plr)
+	if game.Players[plr] ~= nil then
+		local item = script["FishingRod"]:Clone()
+		item.Parent = game.Players[plr].Backpack
+	end
+end 
+
+return module

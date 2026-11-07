@@ -7,6 +7,8 @@ local RunService = game:GetService("RunService")
 
 local player = Players.LocalPlayer
 local mouse = player:GetMouse()
+-- ⚠️ Геймпад: что считать кликом и клавишей — одно правило на все файлы (GamepadInput).
+local GamepadInput = require(game:GetService("ReplicatedStorage"):WaitForChild("GamepadInput"))
 local camera = workspace.CurrentCamera
 
 local digDirtEvent = ReplicatedStorage:WaitForChild("DigDirt")
@@ -22,6 +24,7 @@ local diggingCooldown = false
 local playerGui = player:WaitForChild("PlayerGui")
 local hintGui = Instance.new("ScreenGui")
 hintGui.Name = "ShovelHint"
+hintGui.ResetOnSpawn = false   -- иначе Roblox удаляет окно при смерти, а скрипт живёт дальше с мёртвым объектом
 hintGui.DisplayOrder = 51
 hintGui.IgnoreGuiInset = true
 hintGui.Parent = playerGui
@@ -39,6 +42,11 @@ hintLabel.TextSize = 18
 hintLabel.Font = Enum.Font.GothamBold
 hintLabel.Visible = false
 hintLabel.Parent = hintGui
+
+-- ⚠️ Подсказка уступает диалогу: пока собеседник говорит, она поднимается
+-- над его окном. Правило одно на всю игру — см. ReplicatedStorage/HudDock.
+local HudDock = require(game:GetService("ReplicatedStorage"):WaitForChild("HudDock"))
+HudDock.keepAbove(hintLabel, 12)
 
 local hintCorner = Instance.new("UICorner")
 hintCorner.CornerRadius = UDim.new(0, 8)
@@ -168,14 +176,14 @@ local function updateHighlight()
 			if highlightBox then
 				highlightBox.Adornee = part
 			end
-			hintLabel.Text = "Click to dig " .. (part:GetAttribute("DigType") or "dirt")
+			hintLabel.Text = "Кликай, чтобы копать " .. (part:GetAttribute("DigType") or "dirt")
 			hintLabel.Visible = true
 			return
 		end
 	end
 
 	clearHighlight()
-	hintLabel.Text = "Aim at sand or clay to dig"
+	hintLabel.Text = "Наведись на песок или глину, чтобы копать"
 	hintLabel.Visible = true
 end
 
@@ -233,7 +241,7 @@ RunService.RenderStepped:Connect(function()
 end)
 
 -- ─── Click to dig ───
-mouse.Button1Down:Connect(function()
+GamepadInput.onPrimary(mouse, function()
 	if not shovelEquipped then return end
 	if diggingCooldown then return end
 	if not highlightedPart then return end
@@ -268,7 +276,7 @@ digDirtEvent.OnClientEvent:Connect(function(action, value, digType)
 			feedbackLabel.TextStrokeTransparency = 0.5
 		end)
 	elseif action == "hit" then
-		feedbackLabel.Text = "Digging... (" .. value .. " hits left)"
+		feedbackLabel.Text = "Копаю... (" .. value .. " hits left)"
 		feedbackLabel.Visible = true
 		feedbackLabel.TextTransparency = 0
 

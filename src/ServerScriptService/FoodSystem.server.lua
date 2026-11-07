@@ -12,14 +12,16 @@
 local Players           = game:GetService("Players")
 local ReplicatedStorage = game:GetService("ReplicatedStorage")
 
+-- Подняты вместе со всей едой (было 15/25/20): фрукт подбирают на ходу, он
+-- обязан остаться самой лёгкой едой — но не такой, чтобы его игнорировали.
 local FOOD_DATA = {
-	Banana    = { hunger = 15, hp = 5 },
-	Coconut   = { hunger = 25, hp = 5 },
-	Pineapple = { hunger = 20, hp = 5 },
+	Banana    = { hunger = 20, hp = 6 },
+	Coconut   = { hunger = 32, hp = 6, thirst = 25 },   -- кокосовая вода: и жажду тоже (владелец)
+	Pineapple = { hunger = 26, hp = 6 },
 	-- The user's Tool template is "PineApple" (capital A). Mirror
 	-- the data here so the in-tool Script can look up by Tool.Name
 	-- without a casing helper.
-	PineApple = { hunger = 20, hp = 5 },
+	PineApple = { hunger = 26, hp = 6 },
 }
 
 -- Cooked fish are an open-ended family: any inventory key ending in
@@ -27,13 +29,26 @@ local FOOD_DATA = {
 -- a flat ~35 % hunger. Keeping it a suffix rule means a newly adapted
 -- fish needs zero changes here.
 local COOKED_SUFFIX     = "_Cooked"
-local COOKED_FISH_HUNGER = 35   -- ~35 % of MAX_HUNGER (100)
-local COOKED_FISH_HP     = 5
-local MEAT_NUTRITION_MULT = 1.5 -- cooked meat is 1.5x cooked fish nutrition
-local COOKED_MEAT_HUNGER = COOKED_FISH_HUNGER * MEAT_NUTRITION_MULT
-local COOKED_MEAT_HP     = COOKED_FISH_HP * MEAT_NUTRITION_MULT
-local RAW_FISH_HUNGER_MULT = 0.2 -- raw fish gives 20% of cooked nutrition
-local RAW_FISH_HP_MULT     = 0.2
+--[[ ⚠️ ЕДА СЫТНЕЕ, ЧЕМ БЫЛА, И У СТЕЙКА ЧИСЛО ЗАДАНО ПРЯМО.
+     Шкала сытости — 100 (MAX_HUNGER в HungerSystem) и уходит она за световой
+     день целиком. Прежние числа заставляли жевать по три-четыре порции подряд:
+     жареная рыба 35, овощ 22, а сырое мясо и вовсе 10.5 — коровы хватало на
+     полтора укуса, при том что за ней надо сходить на остров и убить её.
+     Жареный стейк теперь ровно ПОЛОВИНА шкалы — так просил владелец. Число
+     стоит числом, а не произведением: раньше оно выводилось из рыбы через
+     множитель, и любая правка рыбы незаметно двигала стейк. Хочешь другую
+     сытость мяса — правь эту строку, и только её. ]]
+local COOKED_FISH_HUNGER = 40   -- было 35
+local COOKED_FISH_HP     = 6    -- было 5
+local COOKED_MEAT_HUNGER = 50   -- половина шкалы (MAX_HUNGER = 100)
+local COOKED_MEAT_HP     = 8
+--[[ ⚠️ СЫРОЕ ПОДНЯЛИ, НО РАЗРЫВ ОСТАВИЛИ БОЛЬШИМ.
+     Пятая часть от жареного превращала сырьё в мусор: сырой стейк давал десять
+     единиц из ста, и проще было выбросить. Треть — это уже «съедобно на
+     крайний случай», и при этом костёр по-прежнему втрое выгоднее, то есть
+     готовить смысл не пропал. ]]
+local RAW_FISH_HUNGER_MULT = 0.35 -- было 0.2
+local RAW_FISH_HP_MULT     = 0.35
 local TILAPIA_RAW_TEXTURE_ID = "rbxassetid://711628404"
 local TILAPIA_COOKED_TEXTURE_ID = "rbxassetid://121725790433759"
 local LEGENDARY_RAW_TEXTURE_ID = "http://www.roblox.com/asset/?id=155812542"
@@ -42,6 +57,15 @@ local LEGENDARY_RAW_TEXTURE_NUM = "155812542"
 local LEGENDARY_COOKED_TEXTURE_NUM = "138934138408588"
 local MEAT_RAW_TEXTURE_ID = "rbxassetid://96631156827637"
 local MEAT_COOKED_TEXTURE_ID = "rbxassetid://81212406244264"
+-- Картофель и свёкла делят одну пару текстур (см. CampFireSystem) — держать равным.
+local VEG_RAW_TEXTURE_ID = "rbxassetid://80019572040251"
+local VEG_COOKED_TEXTURE_ID = "rbxassetid://110431523187509"
+-- Овощи сытнее сырой рыбы, но легче мяса; печёные дают полную норму.
+-- Подняты вместе со всей едой (было 22/4): грядка — самая долгая цепочка в
+-- игре (посадить, полить, дождаться), и её плод не должен уступать рыбе вдвое.
+local VEG_HUNGER = 30
+local VEG_HP     = 6
+local VEG_RAW_MULT = 0.5 -- сырой овощ съедобен, и в отличие от мяса не противен
 
 local function isCookedFish(name)
 	return type(name) == "string"
@@ -55,12 +79,25 @@ local function isRawFish(name)
 	return #name > 5 and name:sub(-5) == "_Fish"
 end
 
+-- Окорочок (курица, чайка) — тоже сырое мясо: жарится в «Meat_Cooked»
+-- (CampFireSystem.cookFish), сырым ест как мясо.
 local function isRawMeat(name)
-	return name == "Meat"
+	return name == "Meat" or name == "Chicken_drumstick"
 end
 
 local function isCookedMeat(name)
 	return name == "Meat_Cooked"
+end
+
+-- ОВОЩИ С ГРЯДКИ: картофель и свёкла, сырые и печёные.
+-- Список явный, а не по суффиксу: "_Cooked" уже занят общим правилом жареной
+-- рыбы, и без отдельной проверки печёный картофель считался бы рыбой.
+local VEG_KEYS = {
+	Potato = true, Beet = true,
+	Potato_Cooked = true, Beet_Cooked = true,
+}
+local function isVeg(name)
+	return type(name) == "string" and VEG_KEYS[name] == true
 end
 
 local function isAnyFish(name)
@@ -101,6 +138,10 @@ local function applyFishMeshVisualState(tool, wantCooked)
 				d.TextureID = LEGENDARY_COOKED_TEXTURE_ID
 			elseif type(tex) == "string" and tex:find(LEGENDARY_COOKED_TEXTURE_NUM, 1, true) and (not wantCooked) then
 				d.TextureID = LEGENDARY_RAW_TEXTURE_ID
+			elseif tex == VEG_RAW_TEXTURE_ID and wantCooked then
+				d.TextureID = VEG_COOKED_TEXTURE_ID
+			elseif tex == VEG_COOKED_TEXTURE_ID and (not wantCooked) then
+				d.TextureID = VEG_RAW_TEXTURE_ID
 			elseif tex == MEAT_RAW_TEXTURE_ID and wantCooked then
 				d.TextureID = MEAT_COOKED_TEXTURE_ID
 			elseif tex == MEAT_COOKED_TEXTURE_ID and (not wantCooked) then
@@ -123,6 +164,13 @@ end
 -- pass touches only this table.
 _G.GetFoodData = function(name)
 	if FOOD_DATA[name] then return FOOD_DATA[name] end
+	-- ОВОЩИ. Проверяем ДО общего правила «_Cooked = жареная рыба»: иначе
+	-- Potato_Cooked попал бы в рыбью ветку и дал рыбью сытость.
+	if isVeg(name) then
+		local cooked = name:sub(-#COOKED_SUFFIX) == COOKED_SUFFIX
+		local mult = cooked and 1 or VEG_RAW_MULT
+		return { hunger = VEG_HUNGER * mult, hp = VEG_HP * mult }
+	end
 	if isCookedMeat(name) then
 		return { hunger = COOKED_MEAT_HUNGER, hp = COOKED_MEAT_HP }
 	end
@@ -144,24 +192,94 @@ _G.GetFoodData = function(name)
 	return nil
 end
 
+-- ПРИВЕСТИ ВИД ЕДЫ К СЫРОМУ / ЖАРЕНОМУ.
+--
+-- Нужно наружу, потому что мангал кладёт на решётку КЛОН ШАБЛОНА из
+-- ReplicatedStorage, а шаблоны рыб авторские: у части из них по умолчанию
+-- видна ЖАРЕНАЯ декаль. Сырая рыба попадала на решётку уже подрумяненной, и
+-- понять, готова она или нет, было невозможно.
+--
+-- Правила «какая декаль/текстура за что отвечает» живут здесь же, где и
+-- поедание, — второй копии в GrillSystem быть не должно (там уже так же
+-- переиспользуется _G.CookFoodModel от костра).
+_G.SetFoodVisualCooked = function(inst, wantCooked)
+	if typeof(inst) ~= "Instance" then return end
+	applyFishVisualState(inst, wantCooked and true or false)
+	applyFishMeshVisualState(inst, wantCooked and true or false)
+end
+
 -- Shared eating animation. Anything held as a food Tool plays this
 -- on Tool.Activated. User-authored templates that already ship with
 -- an Animation child named "Eat" keep theirs; we only inject one
 -- when the template is missing it (e.g. the Banana / Pineapple Tools
 -- + the wrapped Coconut model).
+-- ⚠️ АНИМАЦИЯ ДОЛЖНА ПРИНАДЛЕЖАТЬ ВЛАДЕЛЬЦУ ОПЫТА.
+-- Roblox не даёт проигрывать чужие анимации: в логе это выглядит как
+--   Failed to load animation ... The experience doesn't have access permission
+-- и еда съедается молча, без движения. Этот ID — чужой, поэтому анимация еды
+-- не работает ни у овощей, ни у рыбы с мясом.
+-- Чинится НЕ кодом: залей свою анимацию поедания под тем же аккаунтом (или
+-- группой), что и игра, и подставь её ID сюда.
 local EAT_ANIMATION_ID = "rbxassetid://5973758927"
 
+-- ⚠️ ИЩЕМ ПО КЛАССУ, А НЕ ПО ИМЕНИ.
+-- Раньше и здесь, и в обработчике поедания стоял FindFirstChild("Eat"), который
+-- возвращает ПЕРВОГО ребёнка с таким именем ЛЮБОГО класса. У авторских моделей
+-- (овощи пришли одним мешем из FBX) рядом мог оказаться, например, звук с тем же
+-- именем — тогда проверка `:IsA("Animation")` не проходила, и анимация просто
+-- не игралась. Ошибки при этом никакой: еда съедалась молча, без движения.
+local function findEatAnimation(tool)
+	local named = nil
+	for _, c in ipairs(tool:GetChildren()) do
+		if c:IsA("Animation") then
+			if c.Name == "Eat" then return c end
+			named = named or c
+		end
+	end
+	return named
+end
+
+--[[ ⚠️ ОВОЩИ, РЫБА И МЯСО БЕРУТ АНИМАЦИЮ У ФРУКТОВ.
+     У авторских фруктов (Banana / Coconut / PineApple в ReplicatedStorage.Fruits)
+     внутри тула лежит своя Animation "Eat", залитая владельцем опыта — она и
+     играет. Овощи с грядки приходят голым мешем, и раньше им подставлялся
+     EAT_ANIMATION_ID — чужой ассет, который Roblox молча не загружает. Поэтому
+     банан ел с анимацией, а сырая картошка — без. Теперь ищем рабочую
+     анимацию у любого фрукта и клонируем её; чужой ID остаётся последним
+     запасным вариантом. ]]
+local donorEatAnim = nil
+local function findDonorEatAnimation()
+	if donorEatAnim and donorEatAnim.Parent then return donorEatAnim end
+	donorEatAnim = nil
+	local fruits = ReplicatedStorage:FindFirstChild("Fruits")
+	local roots = fruits and { fruits, ReplicatedStorage } or { ReplicatedStorage }
+	for _, root in ipairs(roots) do
+		for _, d in ipairs(root:GetDescendants()) do
+			if d:IsA("Animation") and d.Name == "Eat" and d.AnimationId ~= ""
+				and d.AnimationId ~= EAT_ANIMATION_ID then
+				donorEatAnim = d
+				return d
+			end
+		end
+	end
+	return nil
+end
+
 local function ensureEatAnimation(tool)
-	local existing = tool:FindFirstChild("Eat")
-	if existing and existing:IsA("Animation") then
+	local existing = findEatAnimation(tool)
+	if existing then
 		if existing.AnimationId == "" then
-			existing.AnimationId = EAT_ANIMATION_ID
+			local donor = findDonorEatAnimation()
+			existing.AnimationId = donor and donor.AnimationId or EAT_ANIMATION_ID
 		end
 		return existing
 	end
-	local anim = Instance.new("Animation")
-	anim.Name        = "Eat"
-	anim.AnimationId = EAT_ANIMATION_ID
+	local donor = findDonorEatAnimation()
+	local anim = donor and donor:Clone() or Instance.new("Animation")
+	-- Имя с запасом: если в модели уже есть НЕ-анимация по имени "Eat",
+	-- одноимённый ребёнок только запутал бы поиск.
+	anim.Name        = tool:FindFirstChild("Eat") and "EatAnim" or "Eat"
+	if not donor then anim.AnimationId = EAT_ANIMATION_ID end
 	anim.Parent      = tool
 	return anim
 end
@@ -192,6 +310,19 @@ while not _G.AddResourceToInventory or not _G.RemoveResourceFromInventory or not
 	task.wait(0.1)
 end
 
+-- ⚠️ КЛЮЧ РЕСУРСА ≠ ИМЯ 3D-МОДЕЛИ.
+-- Овощи с грядки авторски названы Raft_potato / Raft_beet, а в инвентаре они
+-- Potato / Beet. Поиск шёл строго по ключу, модель не находилась, и игрок
+-- получал в руки ПУСТОЙ тул-заглушку с невидимым Handle — «свёкла в руках, а
+-- модели нет».
+--
+-- Явная таблица нужна там, где имя расходится непредсказуемо; общее правило
+-- "Raft_<ключ>" ниже подхватывает будущие овощи само, без правок здесь.
+local FOOD_MODEL_NAMES = {
+	Potato = "Raft_potato",
+	Beet   = "Raft_beet",
+}
+
 local function findFoodTemplate(foodName)
 	-- The user can author the template as either a Tool (already
 	-- holdable) or a Model (we wrap it). Look top-level first, then
@@ -199,6 +330,25 @@ local function findFoodTemplate(foodName)
 	local function ok(inst)
 		return inst and (inst:IsA("Tool") or inst:IsA("Model") or inst:IsA("BasePart"))
 	end
+
+	-- Печёный овощ берёт модель сырого: текстуру на «печёный» вид меняет
+	-- applyFishMeshVisualState, отдельной модели для этого нет.
+	local baseKey = foodName:gsub("_Cooked$", "")
+	local aliases = {
+		foodName,
+		FOOD_MODEL_NAMES[foodName],
+		FOOD_MODEL_NAMES[baseKey],
+		"Raft_" .. baseKey:lower(),
+	}
+	for _, name in ipairs(aliases) do
+		if name then
+			local direct = ReplicatedStorage:FindFirstChild(name)
+			if ok(direct) then return direct end
+			local deep = ReplicatedStorage:FindFirstChild(name, true)
+			if ok(deep) then return deep end
+		end
+	end
+
 	local hit = ReplicatedStorage:FindFirstChild(foodName)
 	if ok(hit) then return hit end
 	hit = ReplicatedStorage:FindFirstChild(foodName, true)
@@ -524,9 +674,19 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 	-- fish have no such script (we strip the authored one so it doesn't
 	-- wiggle in hand), so eat them here: play the Eat animation + the
 	-- authored "Eat" sound, then restore hunger and consume.
-	if isAnyFish(foodName) or isMeat(foodName) then
+	-- Овощи едим тем же обработчиком, что рыбу и мясо: своего скрипта внутри
+	-- тула у них нет (он есть только у авторских фруктов).
+	if isAnyFish(foodName) or isMeat(foodName) or isVeg(foodName) then
 		tool.Activated:Connect(function()
 			if tool:GetAttribute("Consumed") then return end
+			-- НЕ ЕДИМ, ЕСЛИ ЦЕЛИМСЯ В РЕШЁТКУ МАНГАЛА.
+			-- Клик там означает «положить жарить», а не «съесть». Перехватить
+			-- нажатие на клиенте нельзя — активация тула идёт мимо
+			-- пользовательских привязок ввода, поэтому запрет стоит здесь, в том
+			-- же месте, где происходит само поедание. Отметку ставит
+			-- GrillSystem по докладу клиента, она протухает за 1.5 с и
+			-- перепроверяется по расстоянию до мангала.
+			if _G.IsAimingAtGrill and _G.IsAimingAtGrill(player) then return end
 			tool:SetAttribute("Consumed", true)
 
 			local data = _G.GetFoodData(foodName)
@@ -542,18 +702,26 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 			-- Eating animation. Force non-looping so Stopped fires and we
 			-- can hold the fish for exactly the clip's length.
 			local track
-			local eatAnim = tool:FindFirstChild("Eat")
-				if eatAnim and eatAnim:IsA("Animation") then
-					track = loadEatTrack(hum, animator, eatAnim)
-					if track then
-						-- Match the Banana/Coconut/PineApple in-tool scripts:
-						-- Action priority ensures the eat pose drives the arm
-						-- even while a Tool is equipped.
-						track.Priority = Enum.AnimationPriority.Action
-						track.Looped = false
-						track:Play()
-					end
+			local eatAnim = findEatAnimation(tool)
+			if eatAnim then
+				track = loadEatTrack(hum, animator, eatAnim)
+				if not track then
+					-- Не молчим: раньше провал загрузки был неотличим от
+					-- «анимации вообще нет», и причину приходилось искать
+					-- в общем потоке ошибок Studio.
+					warn(("[FoodSystem] анимация поедания не загрузилась (%s) — "
+						.. "скорее всего ассет принадлежит не владельцу опыта")
+						:format(eatAnim.AnimationId))
 				end
+				if track then
+					-- Match the Banana/Coconut/PineApple in-tool scripts:
+					-- Action priority ensures the eat pose drives the arm
+					-- even while a Tool is equipped.
+					track.Priority = Enum.AnimationPriority.Action
+					track.Looped = false
+					track:Play()
+				end
+			end
 
 			-- Shared eating sound lives in ReplicatedStorage.Fish. The
 			-- asset is named "Eating  Sound" (double space) — match on a
@@ -587,22 +755,55 @@ equipEvent.OnServerEvent:Connect(function(player, foodName)
 				warn("[FoodSystem] no Eating Sound under ReplicatedStorage.Fish")
 			end
 
-			-- Hold the fish in hand for the whole animation, then eat it.
-			-- Flat short waits cut the clip off; wait on Stopped, capped.
+			-- Держим еду в руке, пока идёт клип, и только потом съедаем.
+			--
+			-- ⚠️ ЖДЁМ ТОЛЬКО ТУ АНИМАЦИЮ, КОТОРАЯ РЕАЛЬНО ПОШЛА.
+			-- Здесь стояло ожидание track.Stopped с потолком в 5 секунд — и оно
+			-- оборачивалось ровно этими пятью секундами, если ассет анимации
+			-- недоступен опыту (см. EAT_ANIMATION_ID выше). LoadAnimation в таком
+			-- случае НЕ падает: трек создаётся, Play() отрабатывает, а вот кадров у
+			-- него нет — значит Stopped не наступает НИКОГДА. Снаружи это выглядело
+			-- как «звук съел, а свёкла осталась в руке»: движения нет, предмет висит,
+			-- повторный клик не делает ничего (Consumed уже стоит).
+			-- Признак загрузившегося клипа — Length больше нуля: у несостоявшегося он
+			-- так и остаётся нулём. Фрукты этой ловушки избежали лишь потому, что
+			-- ждут фиксированную паузу и Stopped не слушают вовсе.
+			local EAT_FALLBACK = 1.2   -- столько же по ощущению, сколько клип
 			if track then
-				local done = false
-				track.Stopped:Once(function() done = true end)
-				local waited = 0
-				while not done and waited < 5 do
-					task.wait(0.1)
-					waited = waited + 0.1
+				-- Length появляется не в тот же кадр — даём ассету догрузиться.
+				local spent = 0
+				while track.Length <= 0 and spent < 0.5 do
+					task.wait(0.05)
+					spent += 0.05
+				end
+
+				if track.Length > 0 then
+					local done = false
+					track.Stopped:Once(function() done = true end)
+					-- потолок по самому клипу, а не общий на все случаи жизни
+					local cap, waited = track.Length + 0.5, 0
+					while not done and waited < cap do
+						task.wait(0.05)
+						waited += 0.05
+					end
+				else
+					warn(("[FoodSystem] анимация поедания не проигралась (%s): ассет "
+						.. "недоступен опыту. Загрузи свою анимацию под аккаунтом "
+						.. "владельца игры и подставь её ID в EAT_ANIMATION_ID.")
+						:format(eatAnim and eatAnim.AnimationId or "?"))
+					task.wait(EAT_FALLBACK)
 				end
 			else
-				task.wait(2)
+				task.wait(EAT_FALLBACK)
 			end
 
 			if data and player and player.Parent then
 				_G.RestoreHunger(player, data.hunger, data.hp)
+				-- кокос: молоко внутри утоляет и жажду
+				if data.thirst and typeof(_G.GetThirst) == "function" and typeof(_G.SetThirst) == "function" then
+					local cur = _G.GetThirst(player)
+					if cur then _G.SetThirst(player, cur + data.thirst) end
+				end
 			end
 			tool:Destroy()
 		end)

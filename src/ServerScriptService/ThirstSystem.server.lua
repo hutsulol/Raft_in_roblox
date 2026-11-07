@@ -1,11 +1,24 @@
 local Players = game:GetService("Players")
 local rs = game:GetService("ReplicatedStorage")
+local PlaceCheck = require(game:GetService("ReplicatedStorage"):WaitForChild("PlaceCheck"))   -- «место занято» — общая проверка
+
+local Config = require(rs:WaitForChild("WeaponUpgradeConfig"))
+local AssetFind = require(rs:WaitForChild("AssetFind"))
+local RaftShake = require(rs:WaitForChild("RaftShake"))
 
 -- ─── Config ───
 local MAX_THIRST = 100
 local THIRST_DRAIN_AMOUNT = 2
-local THIRST_DRAIN_INTERVAL = 10 -- lose 2 thirst every 10 seconds
+-- Полный запас (100) должен уходить РОВНО ЗА ОДИН ДЕНЬ (380с), чтобы к закату
+-- жажда начинала мучить, если не пить. 100/2 = 50 тиков → 380/50 = 7.6с на тик.
+-- Питьё восстанавливает 25 (DRINK_RESTORE), так что за день нужно ~4 глотка.
+-- Класс «Выживший» 1 ур. вдвое замедляет расход (см. ниже) — ему хватает на 2 дня.
+local THIRST_DRAIN_INTERVAL = 7.6 -- lose 2 thirst every 7.6s → ~100 за день
 local DRINK_RESTORE = 25
+-- Сколько длится глоток и как часто в это время подливается шкала. Столько же
+-- держится поза питья на клиенте (DrinkPose читает атрибут Drinking).
+local DRINK_TIME = 1.6
+local DRINK_STEP = 0.1
 local PURIFY_TIME = 20
 local THIRST_DAMAGE = 0.625  -- damage per tick at 0 thirst (5 / 8)
 local MAX_PURIFIER_WATER = 3
@@ -58,7 +71,10 @@ task.spawn(function()
 		task.wait(THIRST_DRAIN_INTERVAL)
 		for _, player in Players:GetPlayers() do
 			if thirstData[player] then
-				thirstData[player] = math.max(0, thirstData[player] - THIRST_DRAIN_AMOUNT)
+				-- ВЫЖИВШИЙ (1 ур.): жажда расходуется в 2 раза медленнее
+				local drain = THIRST_DRAIN_AMOUNT
+				if Config.activeClassLevel(player, "survivor") >= 1 then drain = drain * 0.5 end
+				thirstData[player] = math.max(0, thirstData[player] - drain)
 				thirstEvent:FireClient(player, thirstData[player], MAX_THIRST)
 
 				if thirstData[player] <= 0 then
@@ -80,16 +96,46 @@ local function getCupState(tool)
 	return tool:GetAttribute("CupState") or "empty"
 end
 
+-- ⚠️ СОСУД НЕ ОБЯЗАН БЫТЬ КРУЖКОЙ.
+-- Имя собиралось жёстко из «Cup», и любая ёмкость после первого же действия
+-- становилась кружкой — бутылка теряла и имя, и иконку. Базовое имя держим на
+-- самом туле (CupBase): вся остальная механика воды смотрит на атрибут CupState,
+-- а не на имя, поэтому новый сосуд достаточно создать с этими двумя атрибутами.
+local CUP_SUFFIX = { empty = "", salty = " (Saltwater)", fresh = " (Fresh Water)" }
+
+local function cupBase(tool)
+	local base = tool:GetAttribute("CupBase")
+	if typeof(base) == "string" and base ~= "" then return base end
+	return "Cup"
+end
+
+-- ⚠️ ЁМКОСТЬ СОСУДА — В ГЛОТКАХ, А НЕ В «ПОЛНЫЙ/ПУСТОЙ».
+-- У кружки один глоток, у бутылки два: она больше. Раньше состояние было
+-- двоичным, и налить в бутылку «побольше» было некуда — любой сосуд опустошался
+-- первым же глотком. CupMax задаётся при создании тула (кружка 1, бутылка 2),
+-- CupCharges — сколько осталось сейчас.
+local function cupMax(tool)
+	local m = tonumber(tool:GetAttribute("CupMax"))
+	return (m and m >= 1) and math.floor(m) or 1
+end
+
+local function cupCharges(tool)
+	local c = tonumber(tool:GetAttribute("CupCharges"))
+	return c and math.max(0, math.floor(c)) or 0
+end
+
 local function setCupState(player, tool, state)
 	tool:SetAttribute("CupState", state)
-	if state == "empty" then
-		tool.Name = "Cup"
-	elseif state == "salty" then
-		tool.Name = "Cup (Saltwater)"
-	elseif state == "fresh" then
-		tool.Name = "Cup (Fresh Water)"
-	end
+	-- набрали — сосуд полон; опустел — зарядов нет
+	tool:SetAttribute("CupCharges", (state == "empty") and 0 or cupMax(tool))
+	tool.Name = cupBase(tool) .. (CUP_SUFFIX[state] or "")
 	return tool
+end
+
+-- Наружу: тем же способом переименовывает сосуд полив грядки (PlanterService).
+_G.SetCupState = function(tool, state)
+	if typeof(tool) ~= "Instance" then return end
+	setCupState(nil, tool, state)
 end
 
 -- ─── Purifier Helpers ───
@@ -109,9 +155,15 @@ end
 
 local function swapPurifierModel(purifier)
 	local modelName = getPurifierModel(purifier)
-	local template = rs:FindFirstChild(modelName)
+	-- ⚠️ СТАДИИ ИЩЕМ ПО ИМЕНИ, А НЕ ПРЯМЫМ РЕБЁНКОМ ХРАНИЛИЩА.
+	-- Установку очистителя на AssetFind уже перевели, а вот эту подмену — нет, и
+	-- она отвалилась молча: FindFirstChild перестал видеть стадии, как только их
+	-- сложили в папку. Снаружи это выглядит как «очиститель не меняется при
+	-- наполнении» — вода-то заливается, атрибуты растут, а модель остаётся
+	-- пустой. Ошибки при этом нет, только warn в логе.
+	local template = AssetFind.find(modelName)
 	if not template then
-		warn("ThirstSystem: model not found: " .. modelName)
+		warn("ThirstSystem: не найдена стадия очистителя: " .. modelName)
 		return
 	end
 
@@ -226,6 +278,9 @@ local function swapPurifierModel(purifier)
 		-- out of the assembly.
 		raftPrimary.AssemblyLinearVelocity  = linVel
 		raftPrimary.AssemblyAngularVelocity = angVel
+		-- Скорость плоту вернули, а игрока на палубе — нет: он чужая сборка и
+		-- принадлежит своему клиенту. Просим клиентов удержать место (см. RaftShake).
+		RaftShake.notify()
 	end
 
 	-- Restore attributes
@@ -304,6 +359,13 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		-- Start or restart purification timer
 		startPurification(purifier)
 
+		-- Квест-хук: онбординг-квест #2 «Fresh Water» (onboarding_purifier)
+		-- слушает purifier:filled как финальную цель. pcall — чтобы сбой в
+		-- квестовой системе не ломал заливку воды.
+		if typeof(_G.OnQuestEvent) == "function" then
+			pcall(_G.OnQuestEvent, player, "purifier:filled", 1)
+		end
+
 	elseif action == "collectWater" then
 		-- Player has empty cup, clicks on purifier with fresh water
 		if not tool or getCupState(tool) ~= "empty" then return end
@@ -339,24 +401,64 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 	elseif action == "drink" then
 		-- Player has fresh cup, drinks it
 		if not tool or getCupState(tool) ~= "fresh" then return end
+		-- два глотка разом не начинаем: иначе одна порция воды восстановила бы две
+		if char:GetAttribute("Drinking") == true then return end
 
-		-- Empty the cup FIRST (before anything that could error)
-		setCupState(player, tool, "empty")
+		-- ⚠️ ТРАТИМ ОДИН ГЛОТОК, А НЕ ВЕСЬ СОСУД.
+		-- Бутылка держит два: после первого она остаётся полной наполовину, и
+		-- второй глоток доступен без похода к очистителю.
+		local left = cupCharges(tool) - 1
+		if left > 0 then
+			tool:SetAttribute("CupCharges", left)
+		else
+			setCupState(player, tool, "empty")
+		end
 
-		-- Restore thirst
-		if thirstData[player] then
-			thirstData[player] = math.min(MAX_THIRST, thirstData[player] + DRINK_RESTORE)
-			thirstEvent:FireClient(player, thirstData[player], MAX_THIRST)
+		-- ⚠️ ШКАЛА НАПОЛНЯЕТСЯ ВО ВРЕМЯ ГЛОТКА, А НЕ РАЗОМ.
+		-- Раньше вся порция прибавлялась одним числом в тот же кадр: анимация
+		-- питья ещё только начиналась, а шкала уже стояла полной — выглядело так,
+		-- будто персонаж пьёт «задним числом». Теперь порция размазана по времени
+		-- анимации, и полоска ползёт ровно пока он держит сосуд у рта.
+		--
+		-- Флаг Drinking реплицируется — по нему клиент (DrinkPose) ведёт позу.
+		char:SetAttribute("Drinking", true)
+		task.spawn(function()
+			local steps = math.max(1, math.floor(DRINK_TIME / DRINK_STEP))
+			local per = DRINK_RESTORE / steps
+			for _ = 1, steps do
+				task.wait(DRINK_STEP)
+				-- игрок мог выйти, умереть или сменить тело — глоток обрывается
+				if not player.Parent then return end
+				local c = player.Character
+				if not c or c ~= char then break end
+				local hum = c:FindFirstChildWhichIsA("Humanoid")
+				if not hum or hum.Health <= 0 then break end
+				if thirstData[player] then
+					thirstData[player] = math.min(MAX_THIRST, thirstData[player] + per)
+					thirstEvent:FireClient(player, thirstData[player], MAX_THIRST)
+				end
+			end
+			if char.Parent then char:SetAttribute("Drinking", false) end
+		end)
+
+		-- ФИНАЛ ОНБОРДИНГА «Пресная вода». Квест закрывается ИМЕННО ЗДЕСЬ, а не
+		-- на заливке очистителя: смысл цепочки — утолить жажду, а между заливкой
+		-- и глотком ещё два действия (дождаться очистки и набрать воду). Раньше
+		-- награда выдавалась с полным очистителем и пустой шкалой жажды.
+		if typeof(_G.OnQuestEvent) == "function" then
+			pcall(_G.OnQuestEvent, player, "purifier:drank", 1)
+			-- «чистая вода пошла в дело» — та же цель закрывается и поливом грядки
+			-- (см. purifier:used в QuestCatalog и PlanterService)
+			pcall(_G.OnQuestEvent, player, "purifier:used", 1)
 		end
 
 		-- Play drinking animation (pcall to prevent errors from blocking)
 		pcall(function()
 			local hum = char:FindFirstChildWhichIsA("Humanoid")
 			if hum then
-				local drinkAnim = rs:FindFirstChild("R6 Drinking Animation")
-					or rs:FindFirstChild("Drinking Animation")
-					or rs:FindFirstChild("DrinkingAnimation")
-					or rs:FindFirstChild("Drinking")
+				local drinkAnim = AssetFind.findClass("Animation",
+					"R6 Drinking Animation", "Drinking Animation",
+					"DrinkingAnimation", "Drinking")
 				if drinkAnim and drinkAnim:IsA("Animation") then
 					local animator = hum:FindFirstChildOfClass("Animator")
 					if not animator then
@@ -382,7 +484,8 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		-- Convert raft-relative offset to world space
 		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
 
-		local template = rs:FindFirstChild("Destitalor")
+		-- по имени, а не по месту: модели разложены по папкам (см. AssetFind)
+		local template = AssetFind.find("Destitalor")
 		if not template then return end
 
 		local purifier = template:Clone()
@@ -398,6 +501,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		end
 
 		purifier:PivotTo(worldCF)
+		if PlaceCheck.refuseIfBlocked(purifier, raft, player) then return end   -- в предмет ставить нельзя
 		purifier.Parent = raft
 
 		-- Same velocity-preservation pattern as the workbench branch
@@ -438,6 +542,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		primary.AssemblyLinearVelocity  = linVel
 		primary.AssemblyAngularVelocity = angVel
+		RaftShake.notify()
 
 		-- Remove tool from player
 		tool:Destroy()
@@ -453,7 +558,8 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		local worldCF = raft.PrimaryPart.CFrame:ToWorldSpace(target)
 
-		local template = rs:FindFirstChild("WorkBench")
+		-- по имени, а не по месту: модели разложены по папкам (см. AssetFind)
+		local template = AssetFind.find("WorkBench")
 		if not template then return end
 
 		local workbench = template:Clone()
@@ -466,6 +572,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		end
 
 		workbench:PivotTo(worldCF)
+		if PlaceCheck.refuseIfBlocked(workbench, raft, player) then return end   -- в предмет ставить нельзя
 		workbench.Parent = raft
 
 		-- T13/T15/T16: snapshot raft velocity, force-anchor every part
@@ -497,6 +604,7 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 
 		primary.AssemblyLinearVelocity  = linVel
 		primary.AssemblyAngularVelocity = angVel
+		RaftShake.notify()
 
 		-- Add ProximityPrompt if not already present
 		local hasPrompt = workbench:FindFirstChildWhichIsA("ProximityPrompt", true)
@@ -511,8 +619,8 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 				end
 
 				local prompt = Instance.new("ProximityPrompt")
-				prompt.ActionText = "Craft"
-				prompt.ObjectText = "WorkBench"
+				prompt.ActionText = "Создать"
+				prompt.ObjectText = "Верстак"
 				prompt.KeyboardKeyCode = Enum.KeyCode.E
 				prompt.HoldDuration = 0.5
 				prompt.MaxActivationDistance = 10
@@ -529,3 +637,132 @@ cupActionEvent.OnServerEvent:Connect(function(player, action, target)
 		tool:Destroy()
 	end
 end)
+-- СЕЙВ: жажда переживает выход из игры
+_G.GetThirst = function(player) return thirstData[player] end
+_G.SetThirst = function(player, v)
+	v = tonumber(v); if not v then return end
+	thirstData[player] = math.clamp(v, 0, MAX_THIRST)
+	thirstEvent:FireClient(player, thirstData[player], MAX_THIRST)
+end
+
+
+--[[ ═══ КРУЖКА: ВОДА ВИДНА В РУКЕ ═══
+     Модель Cup — одна на все состояния: Handle (корпус) + WaterFresh + WaterSalty.
+     По CupState показываем нужную воду и прячем другую; тул не пересоздаём.
+     (Жило отдельным скриптом CupVisuals, но новый файл Rojo в плейс не довёз —
+     здесь, рядом с setCupState, оно точно на месте.) ]]
+do
+	local Players = game:GetService("Players")
+
+	local LOG = "[Кружка]"
+	local WATER = { fresh = "WaterFresh", salty = "WaterSalty" }
+
+	local function partNamed(tool, name)
+		local p = tool:FindFirstChild(name, true)
+		return (p and p:IsA("BasePart")) and p or nil
+	end
+
+	-- один раз на тул: ручка = CupBody, вода приварена к ней
+	local function prepare(tool)
+		if tool:GetAttribute("CupPrepared") then return true end
+		local body = partNamed(tool, "CupBody")
+		local handle = tool:FindFirstChild("Handle")
+		if not partNamed(tool, "WaterFresh") and not partNamed(tool, "WaterSalty") and not body then
+			return false   -- старая кружка без мешей воды — показывать нечего
+		end
+		-- крафт назвал «Handle» первую попавшуюся деталь: если это вода — вернуть имя
+		if handle and body and handle ~= body then
+			local missing = nil
+			for _, n in pairs(WATER) do
+				if not partNamed(tool, n) then missing = n end
+			end
+			if missing then   -- «Handle» — это пропавшая вода; своя ручка у тула — не трогаем
+				handle.Name = missing
+				body.Name = "Handle"
+				handle = body
+			end
+		elseif body and not handle then
+			body.Name = "Handle"
+			handle = body
+		end
+		if not (handle and handle:IsA("BasePart")) then return false end
+		for _, n in pairs(WATER) do
+			local w = partNamed(tool, n)
+			if w then
+				w.Anchored = false
+				w.CanCollide = false
+				w.CanTouch = false
+				w.CanQuery = false
+				w.Massless = true
+				local welded = false
+				for _, j in ipairs(tool:GetDescendants()) do
+					if (j:IsA("JointInstance") or j:IsA("WeldConstraint"))
+						and ((j.Part0 == w and j.Part1 == handle) or (j.Part0 == handle and j.Part1 == w)) then
+						welded = true
+						break
+					end
+				end
+				if not welded then
+					local c = Instance.new("WeldConstraint")
+					c.Part0 = handle
+					c.Part1 = w
+					c.Parent = w
+				end
+				if w:GetAttribute("CupOrigTransparency") == nil then
+					w:SetAttribute("CupOrigTransparency", w.Transparency)
+				end
+			end
+		end
+		handle.Anchored = false
+		tool:SetAttribute("CupPrepared", true)
+		return true
+	end
+
+	local function applyLook(tool)
+		if not prepare(tool) then return end
+		local state = tool:GetAttribute("CupState") or "empty"
+		for st, n in pairs(WATER) do
+			local w = partNamed(tool, n)
+			if w then
+				-- в шаблоне вода может быть скрыта (Transparency 1) — тогда видимая = 0
+				local orig = w:GetAttribute("CupOrigTransparency") or 0
+				if orig >= 0.99 then orig = 0 end
+				w.Transparency = (state == st) and orig or 1
+			end
+		end
+		print(("%s %s: вода «%s», WaterFresh=%s WaterSalty=%s"):format(LOG, tool.Name, state,
+			tostring(partNamed(tool, "WaterFresh") and partNamed(tool, "WaterFresh").Transparency),
+			tostring(partNamed(tool, "WaterSalty") and partNamed(tool, "WaterSalty").Transparency)))
+	end
+
+	local function watch(tool)
+		if not tool:IsA("Tool") or tool:GetAttribute("CupWatched") then return end
+		if tool:GetAttribute("CupState") == nil then
+			-- атрибут ставят чуть позже (крафт: initAttributes)
+			local c
+			c = tool:GetAttributeChangedSignal("CupState"):Connect(function()
+				c:Disconnect()
+				watch(tool)
+			end)
+			return
+		end
+		tool:SetAttribute("CupWatched", true)
+		tool:GetAttributeChangedSignal("CupState"):Connect(function() applyLook(tool) end)
+		applyLook(tool)
+	end
+
+	local function scan(container)
+		for _, d in ipairs(container:GetDescendants()) do
+			if d:IsA("Tool") then watch(d) end
+		end
+		container.DescendantAdded:Connect(function(d)
+			if d:IsA("Tool") then task.defer(watch, d) end
+		end)
+	end
+
+	Players.PlayerAdded:Connect(scan)
+	for _, p in ipairs(Players:GetPlayers()) do scan(p) end
+	scan(workspace)
+
+	print(LOG .. " готово: вода в руке по CupState (WaterFresh / WaterSalty в модели Cup)")
+end

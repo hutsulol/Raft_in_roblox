@@ -36,6 +36,8 @@ local AUTO_SAVE_INTERVAL = 120 -- seconds
 -- mirrors the berry-bush Tool flow.
 local RESOURCE_NAMES = {
 	"Log", "Plastic", "Stone", "Plank", "Leaves", "Rope",
+	"Compost",   -- из океана, вдвое реже листвы; идёт на грядку
+	"Wool",      -- шерсть с фермы (FarmSystem): фермер стрижёт овец, игрок забирает со склада
 	"Wet_Brick", "Dry_Brick",
 	"Iron_Ore", "Iron_Ingot",
 	"Blue_Fish", "Carp_Fish", "Fish_Bones", "Foil_Fish",
@@ -47,8 +49,25 @@ local RESOURCE_NAMES = {
 	"Blue_Fish_Cooked", "Carp_Fish_Cooked", "Foil_Fish_Cooked",
 	"Jelly_Fish_Cooked", "Legendary_Fish_Cooked", "Seabass_Fish_Cooked",
 	"Tilapia_Fish_Cooked", "Meat_Cooked",
+	-- Овощи с грядки: сырые и печёные. Обе пары обязаны быть здесь, иначе
+	-- ресурс не синхронизируется с клиентом и не сохраняется.
+	"Potato", "Beet", "Potato_Cooked", "Beet_Cooked",
 	"Banana", "Coconut", "Pineapple",
 	"Pineapple_Bush_Seed",
+	"Rubbish",
+	"Nail",   -- гвозди: куются из хлама (InventoryCrafting), 3 за крафт
+	-- Плавильня (SmelterSystem): водоросли — сырьё, клей — продукт их плавки
+	"Seaweed", "Glue",
+	-- ЭКИПИРОВКА. Надеваемые вещи лежат в инвентаре обычным ресурсом по одной
+	-- штуке: так их можно таскать по слотам, класть в сундук и надевать
+	-- перетаскиванием (см. EquipmentDefs). Без регистрации здесь предмет не
+	-- дошёл бы до клиента и не сохранялся бы.
+	"DivingMask",
+	-- добыча с крабов (CrabGroupAI/CrabLoot): стак в один слот, а не Tool на каждую
+	"Crab_Claw",
+	-- добыча с животных (AnimalLife, SeagullAI): без регистрации пропадала при
+	-- перезаходе и не синхронизировалась
+	"Chicken_drumstick", "Chicken_feather", "Cow_Hide",
 }
 
 local RESOURCE_SET = {}
@@ -150,8 +169,42 @@ end
 -- DataStore: load / save
 -- ═══════════════════════════════════════════════════════════════════════
 
+-- НОВАЯ ИГРА ИЛИ ПРОДОЛЖЕНИЕ?
+--
+-- Лобби кладёт в TeleportData флаг loadSave: true — «продолжить сохранение»,
+-- иначе игрок начал с нуля. Свой DataStore инвентаря об этом не знал и
+-- восстанавливал прошлый стак ВСЕГДА — новая игра начиналась с полным рюкзаком
+-- ресурсов от прошлой партии.
+--
+-- Читаем JoinData здесь, а не спрашиваем RaftSaveSystem: инвентарь грузится
+-- лениво, при первом _G.GetInventory, и это может случиться раньше, чем сейв
+-- успеет принять решение. JoinData доступен сразу с момента входа.
+--
+-- ⚠️ ПРЯМОЙ ЗАХОД = НОВАЯ ИГРА.
+-- Сначала я считал заход без лобби продолжением, чтобы тестовый запуск в Studio
+-- не обнулял рюкзак. Но правило простое и без исключений: инвентарь переносится
+-- ТОЛЬКО когда игрок вошёл через сохранение. Заход напрямую (Studio, ссылка на
+-- место) сохранением не является — значит начинаем с нуля.
+local function wantsSavedInventory(player)
+	local ok, joinData = pcall(function() return player:GetJoinData() end)
+	if not ok or not joinData then return false end
+	local td = joinData.TeleportData
+	if type(td) ~= "table" then return false end -- прямой заход = новая игра
+	if not td.loadSave then return false end     -- новая игра
+	-- В группе сейв принадлежит одному игроку: остальные приходят «с нуля»,
+	-- ровно как это делает восстановление плота (restoreInventory).
+	local owner = td.saveOwnerId
+	return (not owner) or (owner == player.UserId)
+end
+
 local function loadInventory(player)
 	local inv = createEmptyInventory()
+
+	if inventoryStore and not wantsSavedInventory(player) then
+		inventories[player] = inv
+		print("[InventoryManager] " .. player.Name .. ": новая игра — инвентарь пуст")
+		return inv
+	end
 
 	if inventoryStore then
 		local ok, data = pcall(function()
@@ -286,7 +339,33 @@ end
 local function computeLayoutCapacity(player, itemName)
 	local layout = getLayout(player)
 	if not layout then
-		return { emptySlots = 0, partialSpace = 0, capacity = 0 }
+		-- Client hasn't synced its slot layout yet (typical for the
+		-- first ~1-3s of a session, before Backpack spawns and the
+		-- periodic sync task in InventoryUI starts firing). Returning
+		-- 0 here would make StartingResources / E-pickups overflow to
+		-- the ground until the client catches up. Fall back to the
+		-- inventory-quantity math used by _G.HasFreeToolSlot so the
+		-- server can still answer capacity questions before the layout
+		-- arrives. Split stacks aren't a concern in this window
+		-- because the player hasn't touched the UI yet.
+		local unlocked = getUnlockedSlots(player)
+		local tools = countToolSlots(player)
+		local inv = _G.GetInventory(player)
+		local stacks = getTotalResourceStacks(inv)
+		local emptySlots = math.max(0, unlocked - tools - stacks)
+		local partialSpace = 0
+		if itemName then
+			local current = inv[itemName] or 0
+			if current > 0 then
+				local lastStack = current - (math.ceil(current / MAX_STACK) - 1) * MAX_STACK
+				partialSpace = MAX_STACK - lastStack
+			end
+		end
+		return {
+			emptySlots = emptySlots,
+			partialSpace = partialSpace,
+			capacity = emptySlots * MAX_STACK + partialSpace,
+		}
 	end
 
 	local unlocked = getUnlockedSlots(player)
@@ -459,6 +538,16 @@ if not notifyEvent then
 	notifyEvent.Parent = ReplicatedStorage
 end
 
+-- Первое переполнение рюкзака — атрибут игроку (его ждёт StorageQuestWatcher:
+-- мысль «нет места» и квест про контейнер). Ставится один раз.
+local function noteInventoryFull(player, overflow)
+	if player:GetAttribute("InventoryFullOnce") then return end
+	local empty = _G.GetEmptySlotCount and _G.GetEmptySlotCount(player) or 1
+	if (overflow or 0) > 0 or empty <= 0 then
+		player:SetAttribute("InventoryFullOnce", true)
+	end
+end
+
 _G.AddResourceToInventory = function(player, itemName, amount, dropPosition, silent)
 	if type(itemName) ~= "string" or itemName == "" then return 0, 0 end
 	amount = tonumber(amount) or 0
@@ -485,6 +574,7 @@ _G.AddResourceToInventory = function(player, itemName, amount, dropPosition, sil
 		if leftover > 0 and _G.SpawnResourceDrop then
 			_G.SpawnResourceDrop(player, itemName, leftover, dropPosition)
 		end
+		noteInventoryFull(player, leftover)
 		return unitsLanded, leftover
 	end
 
@@ -513,6 +603,7 @@ _G.AddResourceToInventory = function(player, itemName, amount, dropPosition, sil
 	end
 
 	_G.SendInventory(player)
+	noteInventoryFull(player, overflow)
 	return toAdd, overflow
 end
 
